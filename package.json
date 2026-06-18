@@ -24,6 +24,7 @@
     "lint": "eslint .",
     "seed:common": "node dist/scripts/seed-common.js",
     "smoke": "node dist/scripts/smoke.js",
+    "smoke:package": "node dist/scripts/smoke-package.js",
     "smoke:stdio": "node dist/scripts/smoke-stdio.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

@@ -116,7 +116,10 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:stdio
+npm run smoke:package
 ```
+
+`smoke:package` packs the npm tarball, extracts it into a temporary directory, verifies packaged docs/migrations, starts the packaged server over stdio, and calls MCP tools. It links the current `node_modules` into the extracted package so the check stays fast and does not rebuild native dependencies.
 
 ## Notes
 

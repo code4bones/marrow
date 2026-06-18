@@ -243,6 +243,7 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:stdio
+npm run smoke:package
 ```
 
 Current test coverage includes:
@@ -259,6 +260,7 @@ Current test coverage includes:
 - MCP protocol smoke test through in-memory transport
 - CLI smoke test through `npm run smoke`
 - built stdio server smoke test through `npm run smoke:stdio`
+- package tarball smoke test through `npm run smoke:package`
 
 ## Commit Checkpoints
 
