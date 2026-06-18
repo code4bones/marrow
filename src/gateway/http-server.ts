@@ -1,9 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 import type { AppLogger } from "../shared/logging/logger.js";
+import { createGatewayMcpServer } from "./mcp-server.js";
 
 export interface GatewayServerOptions {
   host: string;
@@ -64,6 +66,11 @@ async function handleRequest(
       return;
     }
 
+    if (request.url === "/mcp") {
+      await handleMcpRequest(service, options, request, response, requestId, context, startedAt);
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/health") {
       send(200, { ok: true, service: "project-memory-gateway" });
       return;
@@ -107,6 +114,66 @@ async function handleRequest(
       "gateway request failed"
     );
     send(500, fail(error));
+  }
+}
+
+async function handleMcpRequest(
+  service: PgToolService,
+  options: GatewayServerOptions,
+  request: IncomingMessage,
+  response: ServerResponse,
+  requestId: string,
+  context: GatewayRequestContext,
+  startedAt: number
+): Promise<void> {
+  if (request.method !== "POST") {
+    sendJson(
+      response,
+      405,
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Method not allowed."
+        },
+        id: null
+      },
+      requestId
+    );
+    logRequest(options, request, 405, Date.now() - startedAt, requestId, context);
+    return;
+  }
+
+  const server = createGatewayMcpServer(service, context);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined
+  });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(request, response, await readJson(request));
+    logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
+  } catch (error) {
+    options.logger?.error({ requestId, clientId: context.clientId, error }, "gateway mcp request failed");
+    if (!response.headersSent) {
+      sendJson(
+        response,
+        500,
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32603,
+            message: "Internal server error"
+          },
+          id: null
+        },
+        requestId
+      );
+      logRequest(options, request, 500, Date.now() - startedAt, requestId, context);
+    }
+  } finally {
+    await transport.close();
+    await server.close();
   }
 }
 

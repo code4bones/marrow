@@ -56,15 +56,15 @@ npm run db:pg:migrate
 npm run gateway
 ```
 
-Agents connect through the stdio gateway client:
+Agents connect directly to the MCP Streamable HTTP endpoint:
 
-```bash
-PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
+```text
+http://127.0.0.1:8765/mcp
 ```
 
-For existing `.env` compatibility, `API_ENDPOINT` is accepted as the gateway client URL fallback. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
+For existing `.env` compatibility, `API_ENDPOINT` can point to the MCP endpoint. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
 
-Each stdio gateway client should set a stable identity:
+Each MCP HTTP client should set a stable identity:
 
 ```text
 PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
@@ -199,20 +199,19 @@ Expose a common gateway over HTTP for multiple clients.
 Implemented endpoints are minimal:
 
 ```http
+POST /mcp
 GET /health
 GET /tools
 POST /call
 ```
 
-The gateway exposes the same MCP tool concepts over `POST /call`, backed by PostgreSQL-specific tool service logic.
+The gateway exposes MCP directly over Streamable HTTP at `POST /mcp`. `POST /call` remains a low-level JSON tool-call endpoint for diagnostics and simple integrations.
 
 ### Phase 4: Client access model
 
-Add a stdio proxy or local agent adapter that forwards tool calls to the gateway.
+Use MCP Streamable HTTP clients directly against the gateway.
 
-This preserves agent compatibility while centralizing memory.
-
-Current implementation includes `project-memory-gateway-client`, a stdio MCP proxy that registers the memory tools plus gateway diagnostics and forwards calls to the gateway.
+This preserves agent compatibility while removing the local stdio proxy layer.
 
 ### Phase 5: Auth, permissions, and provenance
 

@@ -22,21 +22,22 @@ server {
 Exposed routes:
 
 ```text
+POST /project-memory/mcp
 GET  /project-memory/health
 GET  /project-memory/tools
 POST /project-memory/call
 ```
 
-Point stdio gateway clients at the proxied endpoint:
+Point MCP Streamable HTTP clients at the proxied endpoint:
 
 ```text
-API_ENDPOINT=https://memory.example.internal/project-memory
+https://memory.example.internal/project-memory/mcp
 ```
 
-or:
+If your launcher uses `API_ENDPOINT`, set it to the MCP endpoint:
 
 ```text
-PROJECT_MEMORY_GATEWAY_URL=https://memory.example.internal/project-memory
+API_ENDPOINT=https://memory.example.internal/project-memory/mcp
 ```
 
 If bearer auth is enabled on the gateway, every client must use the same token:

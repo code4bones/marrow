@@ -8,7 +8,7 @@ Tool names may be adapted to the MCP SDK naming conventions, but the concepts an
 
 Local SQLite stdio mode exposes the core project-memory tools.
 
-PostgreSQL gateway client mode exposes the same core tools plus gateway diagnostics:
+PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics over MCP Streamable HTTP:
 
 * `gateway.status`
 * `gateway.clients`
@@ -44,7 +44,7 @@ Avoid raw stack traces in tool responses.
 
 ## Gateway tools
 
-Gateway tools are available only through the PostgreSQL gateway client.
+Gateway tools are available only through PostgreSQL gateway mode.
 
 ### `gateway.status`
 
@@ -102,7 +102,7 @@ Output:
       "label": "Readable Developer Or Agent Name",
       "lastSeenAt": "2026-06-18T20:00:00.000Z",
       "metadata": {
-        "kind": "mcp-stdio"
+        "kind": "mcp-http"
       }
     }
   ]
@@ -111,7 +111,7 @@ Output:
 
 Use this to inspect which developers or agents have touched the shared memory gateway recently.
 
-Each stdio gateway client should set:
+Each MCP HTTP client should set:
 
 ```text
 PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id

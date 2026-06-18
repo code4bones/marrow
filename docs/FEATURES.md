@@ -407,8 +407,8 @@ Support multiple developers and agents sharing one project memory through a comm
 Expected behavior:
 
 * shared PostgreSQL database
-* gateway process exposing tool calls
-* local stdio clients can point at the gateway
+* gateway process exposing MCP Streamable HTTP tool calls
+* MCP HTTP clients can point at the gateway
 * all developers can read/write project memory
 * common knowledge is shared deliberately
 * append-only events preserve audit history

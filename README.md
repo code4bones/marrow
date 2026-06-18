@@ -2,9 +2,9 @@
 
 Local-first MCP server for structured project memory used by coding agents.
 
-The default stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
+The default local stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
 
-Shared gateway mode stores the same tool model in PostgreSQL and exposes it through an HTTP gateway plus a stdio MCP client proxy.
+Shared gateway mode stores the same tool model in PostgreSQL and exposes it through an HTTP gateway with a direct MCP Streamable HTTP endpoint.
 
 ## Current Status
 
@@ -145,15 +145,19 @@ PROJECT_MEMORY_GATEWAY_TOKEN=...
 
 `MCP_TOKEN` is also accepted as a token source for compatibility with existing `.env` files.
 
-Agents should connect to the stdio proxy, not directly to HTTP:
+Agents should connect directly to the MCP Streamable HTTP endpoint:
 
-```bash
-PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
+```text
+http://127.0.0.1:8765/mcp
 ```
 
-`API_ENDPOINT` is supported as a fallback for `PROJECT_MEMORY_GATEWAY_URL`, so an existing `.env` with `API_ENDPOINT=http://host:port` can drive the gateway client without another variable.
+If your launcher reads `API_ENDPOINT`, point it at the MCP endpoint:
 
-For shared teams, give each proxy a stable identity:
+```text
+API_ENDPOINT=http://127.0.0.1:8765/mcp
+```
+
+For shared teams, give each MCP HTTP client a stable identity:
 
 ```text
 PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
@@ -173,7 +177,7 @@ PROJECT_MEMORY_LOG_CONSOLE=true
 PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
 ```
 
-Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEMORY_LOG_CONSOLE=false` to disable console logging. Console logging uses stderr so it does not interfere with MCP stdio protocol output.
+Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEMORY_LOG_CONSOLE=false` to disable console logging. Console logging uses stderr.
 
 For nginx reverse proxy locations, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
@@ -199,7 +203,7 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:gateway
-npm run smoke:gateway:stdio
+npm run smoke:gateway:mcp-http
 npm run smoke:stdio
 npm run smoke:package
 ```
@@ -208,7 +212,7 @@ npm run smoke:package
 
 `smoke:gateway` requires PostgreSQL env vars and migrations. It starts the gateway on a random local port, creates a temporary project, checks HTTP tools/search/preflight, then removes the created project.
 
-`smoke:gateway:stdio` verifies the full agent path: MCP stdio client proxy -> HTTP gateway -> PostgreSQL.
+`smoke:gateway:mcp-http` verifies the full shared path: MCP Streamable HTTP client -> HTTP gateway -> PostgreSQL.
 
 ## Notes
 

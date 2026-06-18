@@ -21,8 +21,8 @@ Implemented capabilities:
 - MCP stdio server
 - PostgreSQL schema and Knex migrations for shared gateway mode
 - PostgreSQL gateway tool service
-- HTTP gateway routes: `GET /health`, `GET /tools`, `POST /call`
-- stdio MCP gateway client proxy
+- HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /tools`, `POST /call`
+- MCP Streamable HTTP gateway endpoint
 - gateway client registry through `gateway_clients`
 - gateway diagnostics: `gateway.status`, `gateway.clients`
 - tests, typecheck, lint, and build scripts
@@ -80,10 +80,15 @@ Gateway runtime commands:
 ```bash
 npm run build
 npm run gateway
-npm run gateway:client
 ```
 
-The gateway client reads `PROJECT_MEMORY_GATEWAY_URL` first and falls back to `.env` `API_ENDPOINT`. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
+Shared agents should connect to the MCP Streamable HTTP endpoint:
+
+```text
+http://127.0.0.1:8765/mcp
+```
+
+If a launcher reads `.env` `API_ENDPOINT`, set it to the MCP endpoint. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
 
 Gateway logging uses `pino`:
 
@@ -107,6 +112,7 @@ src/
 
   gateway/
     http-server.ts
+    mcp-server.ts
     pg-tool-service.ts
     tool-definitions.ts
 
@@ -217,7 +223,7 @@ Implemented tools:
 
 Tool handlers validate inputs with Zod, call services, and return structured success/error payloads.
 
-In gateway mode, the stdio client exposes the same tool names and schemas, then forwards calls to the HTTP gateway. This keeps agent tool chains compatible across local SQLite and shared PostgreSQL runtimes.
+In gateway mode, the HTTP MCP endpoint exposes the same core tool names and schemas plus gateway diagnostics. This keeps agent tool chains compatible across local SQLite and shared PostgreSQL runtimes.
 
 Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
 
@@ -305,7 +311,7 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:gateway
-npm run smoke:gateway:stdio
+npm run smoke:gateway:mcp-http
 npm run smoke:stdio
 npm run smoke:package
 ```

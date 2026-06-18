@@ -45,6 +45,7 @@ try {
   console.log("ok - project.set_current");
 
   const memory = await callGateway("memory.create", {
+    project: state.projectId,
     type: "failed_attempt",
     title: "Gateway smoke searchable failed attempt",
     body: "Smoke record used to verify PostgreSQL full text search.",
@@ -54,6 +55,7 @@ try {
   console.log("ok - memory.create");
 
   const task = await callGateway("task.create", {
+    project: state.projectId,
     title: "Gateway smoke task",
     scope: "Verify gateway task creation and preflight.",
     acceptance: "Preflight includes the smoke task and related memory.",
@@ -64,6 +66,7 @@ try {
 
   const search = await callGateway("memory.search", {
     query: "PostgreSQL full text smoke",
+    project: state.projectId,
     includeCommon: true
   });
   const searchData = expectData<{ results: { id: string }[] }>(search);

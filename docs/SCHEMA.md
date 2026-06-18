@@ -603,7 +603,7 @@ source_instance_id
 version
 ```
 
-The stdio gateway client sends:
+MCP HTTP clients send:
 
 ```text
 x-project-memory-client-id
