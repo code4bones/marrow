@@ -6,6 +6,13 @@ This document describes the initial MCP tools exposed by the Project Memory MCP 
 
 Tool names may be adapted to the MCP SDK naming conventions, but the concepts and behavior should remain stable.
 
+Local SQLite stdio mode exposes the core project-memory tools.
+
+PostgreSQL gateway client mode exposes the same core tools plus gateway diagnostics:
+
+* `gateway.status`
+* `gateway.clients`
+
 ## General response format
 
 All tools should return structured responses.
@@ -34,6 +41,82 @@ Failure:
 ```
 
 Avoid raw stack traces in tool responses.
+
+## Gateway tools
+
+Gateway tools are available only through the PostgreSQL gateway client.
+
+### `gateway.status`
+
+Return gateway health and record counts.
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "status": {
+    "mode": "gateway",
+    "storage": "postgresql",
+    "tools": 24,
+    "records": {
+      "projects": 1,
+      "items": 10,
+      "tasks": 2,
+      "decisions": 3,
+      "events": 20
+    },
+    "clients": 2
+  }
+}
+```
+
+Use this before shared collaboration workflows to confirm the agent is connected to the shared gateway and not the local SQLite server.
+
+---
+
+### `gateway.clients`
+
+List recently seen gateway clients.
+
+Input:
+
+```json
+{
+  "limit": 20
+}
+```
+
+Output:
+
+```json
+{
+  "clients": [
+    {
+      "id": "developer-or-agent-id",
+      "label": "Readable Developer Or Agent Name",
+      "lastSeenAt": "2026-06-18T20:00:00.000Z",
+      "metadata": {
+        "kind": "mcp-stdio"
+      }
+    }
+  ]
+}
+```
+
+Use this to inspect which developers or agents have touched the shared memory gateway recently.
+
+Each stdio gateway client should set:
+
+```text
+PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
+PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
+```
 
 ## Project tools
 
@@ -835,3 +918,4 @@ The MCP tool layer is acceptable when:
 * task status changes record events
 * decision recording records events
 * common seeding works
+* gateway mode reports status and recently seen clients

@@ -18,13 +18,15 @@ Configurable with:
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
 
-Shared gateway mode should use PostgreSQL.
+Shared gateway mode uses PostgreSQL.
 
-Planned gateway variable:
+Gateway connection variables:
 
 ```text
 PROJECT_MEMORY_DATABASE_URL=postgres://user:password@host:5432/project_memory
 ```
+
+or split `POSTGRES_*` variables.
 
 SQLite and PostgreSQL schemas should preserve the same logical model even when search implementation differs.
 
@@ -73,6 +75,11 @@ Core MVP tables:
 * `events`
 * `migrations`
 * `kv`
+
+Gateway tables:
+
+* `gateway_clients`
+* `sync_conflicts`
 
 Search tables:
 
@@ -558,9 +565,9 @@ project
 common
 ```
 
-## PostgreSQL Gateway Schema Direction
+## PostgreSQL Gateway Schema
 
-The shared gateway should use PostgreSQL as the primary database.
+The shared gateway uses PostgreSQL as the primary database.
 
 Logical tables remain:
 
@@ -573,15 +580,73 @@ Logical tables remain:
 * `kv`
 * `migrations`
 
-PostgreSQL-specific additions should include:
+PostgreSQL-specific additions include:
 
 * `jsonb` for JSON array/object fields where useful
 * `tsvector` search columns or dedicated search indexes for memory search
 * row versioning fields for conflict detection
 * provenance fields for shared use
 * indexes for project/status/type/tag filters
+* `gateway_clients` for recently seen MCP gateway clients
+* `sync_conflicts` reserved for future conflict reporting
 
 SQLite FTS5 should remain a local-mode implementation detail, not the shared gateway search design.
+
+### Gateway provenance fields
+
+PostgreSQL core record tables include provenance fields where practical:
+
+```text
+created_by
+updated_by
+source_instance_id
+version
+```
+
+The stdio gateway client sends:
+
+```text
+x-project-memory-client-id
+x-project-memory-client-label
+x-project-memory-client-kind
+```
+
+The gateway stores the client id in provenance fields and records automatic events with the same source.
+
+### `gateway_clients`
+
+Stores recently seen gateway clients.
+
+```sql
+CREATE TABLE gateway_clients (
+  id TEXT PRIMARY KEY,
+  label TEXT,
+  last_seen_at TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+```
+
+This table is updated when a client calls a gateway tool. It is exposed through `gateway.clients`.
+
+### `sync_conflicts`
+
+Reserved for future explicit conflict detection and resolution.
+
+```sql
+CREATE TABLE sync_conflicts (
+  id TEXT PRIMARY KEY,
+  record_table TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  local_record JSONB,
+  incoming_record JSONB,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL,
+  resolved_at TIMESTAMPTZ
+);
+```
 
 ## Future schema additions
 
@@ -591,11 +656,8 @@ Do not implement in MVP unless requested:
 * file references table
 * markdown export table
 * git commits table
-* provenance fields such as `created_by`, `updated_by`, `source`, `source_instance_id`, `imported_at`, `version`
-* PostgreSQL row versioning fields
-* gateway client/source tables
+* source/import fields such as `source`, `imported_at`
 * import/export tracking tables
-* sync conflict tracking tables
 * users table
 * remote sync table
 * permissions table
