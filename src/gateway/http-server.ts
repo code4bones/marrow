@@ -1,11 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
+import type { AppLogger } from "../shared/logging/logger.js";
 
 export interface GatewayServerOptions {
   host: string;
   port: number;
+  logger?: AppLogger;
   token?: string;
 }
 
@@ -46,35 +49,64 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse
 ): Promise<void> {
+  const startedAt = Date.now();
+  const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
+  const context = requestContext(request);
+
+  const send = (status: number, body: unknown) => {
+    sendJson(response, status, body, requestId);
+    logRequest(options, request, status, Date.now() - startedAt, requestId, context);
+  };
+
   try {
     if (!isAuthorized(options, request)) {
-      sendJson(response, 401, fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token.")));
+      send(401, fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token.")));
       return;
     }
 
     if (request.method === "GET" && request.url === "/health") {
-      sendJson(response, 200, { ok: true, service: "project-memory-gateway" });
+      send(200, { ok: true, service: "project-memory-gateway" });
       return;
     }
 
     if (request.method === "GET" && request.url === "/tools") {
-      sendJson(response, 200, { ok: true, tools: service.listTools() });
+      send(200, { ok: true, tools: service.listTools() });
       return;
     }
 
     if (request.method === "POST" && request.url === "/call") {
       const body = (await readJson(request)) as ToolCallBody;
       if (typeof body.tool !== "string") {
-        sendJson(response, 400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")));
+        send(400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")));
         return;
       }
-      sendJson(response, 200, await service.call(body.tool, body.input ?? {}, requestContext(request)));
+      const toolStartedAt = Date.now();
+      const result = await service.call(body.tool, body.input ?? {}, context);
+      options.logger?.debug(
+        {
+          requestId,
+          clientId: context.clientId,
+          tool: body.tool,
+          durationMs: Date.now() - toolStartedAt,
+          ok: result.ok
+        },
+        "gateway tool call completed"
+      );
+      send(200, result);
       return;
     }
 
-    sendJson(response, 404, fail(new AppError("NOT_FOUND", `Route ${request.method ?? "GET"} ${request.url ?? "/"} not found.`)));
+    send(404, fail(new AppError("NOT_FOUND", `Route ${request.method ?? "GET"} ${request.url ?? "/"} not found.`)));
   } catch (error) {
-    sendJson(response, 500, fail(error));
+    options.logger?.error(
+      {
+        requestId,
+        clientId: context.clientId,
+        error
+      },
+      "gateway request failed"
+    );
+    send(500, fail(error));
   }
 }
 
@@ -118,11 +150,34 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(raw);
 }
 
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
+function sendJson(response: ServerResponse, status: number, body: unknown, requestId: string): void {
   const payload = JSON.stringify(body);
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
+    "x-request-id": requestId,
     "content-length": Buffer.byteLength(payload)
   });
   response.end(payload);
+}
+
+function logRequest(
+  options: GatewayServerOptions,
+  request: IncomingMessage,
+  status: number,
+  durationMs: number,
+  requestId: string,
+  context: GatewayRequestContext
+): void {
+  const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
+  options.logger?.[level](
+    {
+      requestId,
+      method: request.method,
+      url: request.url,
+      status,
+      durationMs,
+      clientId: context.clientId
+    },
+    "gateway request completed"
+  );
 }

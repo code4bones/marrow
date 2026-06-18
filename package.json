@@ -12,6 +12,7 @@
   "files": [
     "dist/src",
     "dist/scripts",
+    "deploy",
     "docs",
     "migrations",
     "knexfile.cjs",
@@ -60,6 +61,7 @@
     "dotenv": "^17.4.2",
     "knex": "^3.2.10",
     "pg": "^8.21.0",
+    "pino": "^10.3.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

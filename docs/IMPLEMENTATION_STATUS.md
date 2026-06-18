@@ -38,6 +38,7 @@ The implementation intentionally does not include UI, complex auth/permissions, 
 - SQLite FTS5
 - PostgreSQL through `pg`
 - Knex for PostgreSQL migrations and gateway queries
+- Pino for gateway JSON logging
 - Zod for runtime validation
 - Vitest for tests
 - ESLint for linting
@@ -50,6 +51,7 @@ Included:
 
 - `dist/src`
 - `dist/scripts`
+- `deploy`
 - `docs`
 - `migrations`
 - `knexfile.cjs`
@@ -83,6 +85,16 @@ npm run gateway:client
 
 The gateway client reads `PROJECT_MEMORY_GATEWAY_URL` first and falls back to `.env` `API_ENDPOINT`. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
 
+Gateway logging uses `pino`:
+
+```text
+PROJECT_MEMORY_LOG_LEVEL=info
+PROJECT_MEMORY_LOG_CONSOLE=true
+PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
+```
+
+Console logs are written to stderr. File logs are disabled with `PROJECT_MEMORY_LOG_FILE=false`.
+
 ## Source Layout
 
 The code follows the feature-oriented structure described in `docs/ARCHITECTURE.md`.
@@ -112,6 +124,7 @@ src/
     ids/
     mcp/
     pg/
+    logging/
 ```
 
 Each feature is split into:

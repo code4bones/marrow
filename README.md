@@ -41,6 +41,8 @@ See [docs/AGENT_STATE_MACHINE.md](docs/AGENT_STATE_MACHINE.md) for the agent sta
 
 See [docs/COLLABORATION.md](docs/COLLABORATION.md) for how the local-first MVP is designed to evolve toward shared team knowledge.
 
+See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the shared gateway.
+
 ## Setup
 
 ```bash
@@ -163,12 +165,25 @@ Gateway-only MCP tools:
 - `gateway.status`
 - `gateway.clients`
 
+Gateway logging uses `pino` and writes JSON logs to console and file by default:
+
+```text
+PROJECT_MEMORY_LOG_LEVEL=info
+PROJECT_MEMORY_LOG_CONSOLE=true
+PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
+```
+
+Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEMORY_LOG_CONSOLE=false` to disable console logging. Console logging uses stderr so it does not interfere with MCP stdio protocol output.
+
+For nginx reverse proxy locations, see `deploy/nginx/project-memory-gateway.locations.conf`.
+
 ## Distribution Contents
 
 The npm package includes the built server, built helper scripts, migrations, and project documentation:
 
 - `dist/src`
 - `dist/scripts`
+- `deploy`
 - `migrations`
 - `knexfile.cjs`
 - `docs`
