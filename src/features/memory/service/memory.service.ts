@@ -25,7 +25,7 @@ export class MemoryService {
     const project = common ? undefined : this.projects.resolveProject(input.project);
     const prefix = project ? `I-${projectKeyFromId(project.id)}` : commonItemPrefix(input.type);
     const item: MemoryItem = {
-      id: nextId(this.db, "items", prefix),
+      id: input.id ?? nextId(this.db, "items", prefix),
       projectId: project?.id ?? null,
       type: input.type,
       title: input.title,

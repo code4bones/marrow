@@ -1,0 +1,106 @@
+# Project Memory MCP
+
+Local-first MCP server for structured project memory used by coding agents.
+
+The server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
+
+## Current Status
+
+Implemented core MVP tools:
+
+- `project.create`
+- `project.list`
+- `project.get`
+- `project.set_current`
+- `project.current`
+- `memory.create`
+- `memory.get`
+- `memory.search`
+- `memory.update`
+- `task.create`
+- `task.list`
+- `task.get`
+- `task.next`
+- `task.update_status`
+- `decision.record`
+- `decision.list`
+- `decision.get`
+- `event.record`
+- `event.list`
+- `link.create`
+- `link.list`
+- `preflight`
+
+## Setup
+
+```bash
+npm install
+npm run build
+```
+
+Default database path:
+
+```text
+.agent/project-memory.sqlite
+```
+
+Override it with:
+
+```bash
+PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
+```
+
+## Seed Common Memory
+
+```bash
+npm run seed:common
+```
+
+This creates the `project-memory-mcp` project if missing, sets it as current, and seeds common rules such as:
+
+- `C-AGENT-001`
+- `C-AGENT-002`
+- `C-AGENT-003`
+- `C-AGENT-004`
+- `C-TASK-001`
+- `C-TASK-002`
+- `C-ARCH-001`
+- `C-ARCH-002`
+
+## Run MCP Server
+
+Development:
+
+```bash
+npm run dev
+```
+
+Built server:
+
+```bash
+npm run build
+node dist/src/index.js
+```
+
+MCP clients should run the server over stdio.
+
+Example command:
+
+```bash
+node /absolute/path/to/project-memory-mcp/dist/src/index.js
+```
+
+## Validation
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+## Notes
+
+- The server is local-first.
+- There is no UI, auth, remote sync, cloud dependency, embeddings, or vector search in the MVP.
+- Project-specific memory and common memory are separate. Default search includes current project plus common knowledge.
+- `preflight` is the main workflow guardrail before editing project files.

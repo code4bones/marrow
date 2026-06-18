@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 export const itemStatusSchema = z.enum(["active", "draft", "archived", "superseded", "rejected"]);
 
 export const createMemorySchema = z.object({
+  id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
   common: z.boolean().optional(),
   type: z.string().min(1),

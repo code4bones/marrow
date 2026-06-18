@@ -13,6 +13,7 @@ export interface MemoryItem {
 }
 
 export interface CreateMemoryInput {
+  id?: string;
   project?: string | null;
   common?: boolean;
   type: string;
