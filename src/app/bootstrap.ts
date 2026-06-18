@@ -5,6 +5,9 @@ import { DecisionService } from "../features/decisions/service/decision.service.
 import { registerEventTools } from "../features/events/mcp/event.tools.js";
 import { EventRepo } from "../features/events/repo/event.repo.js";
 import { EventService } from "../features/events/service/event.service.js";
+import { registerLinkTools } from "../features/links/mcp/link.tools.js";
+import { LinkRepo } from "../features/links/repo/link.repo.js";
+import { LinkService } from "../features/links/service/link.service.js";
 import { registerMemoryTools } from "../features/memory/mcp/memory.tools.js";
 import { MemoryRepo } from "../features/memory/repo/memory.repo.js";
 import { MemoryService } from "../features/memory/service/memory.service.js";
@@ -28,6 +31,7 @@ export interface AppContext {
   events: EventService;
   tasks: TaskService;
   decisions: DecisionService;
+  links: LinkService;
   preflight: PreflightService;
 }
 
@@ -45,6 +49,8 @@ export function bootstrap(config: AppConfig): AppContext {
   const tasks = new TaskService(db, taskRepo, projects, events);
   const decisionRepo = new DecisionRepo(db);
   const decisions = new DecisionService(db, decisionRepo, projects, events);
+  const linkRepo = new LinkRepo(db);
+  const links = new LinkService(db, linkRepo, projects, events);
   const preflight = new PreflightService(projects, tasks, decisions, memory, events);
 
   const server = new McpServer({
@@ -57,6 +63,7 @@ export function bootstrap(config: AppConfig): AppContext {
   registerEventTools(server, events);
   registerTaskTools(server, tasks);
   registerDecisionTools(server, decisions);
+  registerLinkTools(server, links);
   registerPreflightTool(server, preflight);
 
   return {
@@ -67,6 +74,7 @@ export function bootstrap(config: AppConfig): AppContext {
     events,
     tasks,
     decisions,
+    links,
     preflight
   };
 }

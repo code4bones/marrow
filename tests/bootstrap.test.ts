@@ -140,4 +140,31 @@ describe("bootstrap", () => {
     expect(result.failedAttempts.map((item) => item.title)).toContain("FTS trigger mismatch");
     expect(result.recentEvents.map((event) => event.type)).toContain("task.created");
   });
+
+  it("creates and lists links between records", () => {
+    const project = app.projects.create({
+      slug: "project-memory-mcp",
+      title: "Project Memory MCP"
+    });
+    app.projects.setCurrent({ id: project.id });
+
+    const task = app.tasks.create({
+      title: "Implement link tools"
+    });
+    const decision = app.decisions.record({
+      title: "Links are lightweight",
+      decision: "Use a simple links table instead of graph database behavior."
+    });
+
+    const link = app.links.create({
+      fromId: task.id,
+      toId: decision.id,
+      relation: "depends_on"
+    });
+    const links = app.links.list({ id: task.id });
+
+    expect(link.id).toBe("L-MEMORY-001");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.toId).toBe(decision.id);
+  });
 });

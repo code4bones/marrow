@@ -3,6 +3,7 @@ export type ErrorCode =
   | "DB_ERROR"
   | "DECISION_NOT_FOUND"
   | "ITEM_NOT_FOUND"
+  | "LINK_NOT_FOUND"
   | "PROJECT_NOT_FOUND"
   | "TASK_NOT_FOUND"
   | "VALIDATION_ERROR";
