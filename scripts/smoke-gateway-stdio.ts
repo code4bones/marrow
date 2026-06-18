@@ -14,9 +14,11 @@ if (!existsSync(clientPath)) {
 
 const db = createPgKnex();
 const service = new PgToolService(db);
+const token = `gateway-stdio-smoke-token-${Date.now()}`;
 const started = await startGatewayServer(service, {
   host: "127.0.0.1",
-  port: 0
+  port: 0,
+  token
 });
 const clientId = `gateway-stdio-smoke-${Date.now()}`;
 
@@ -28,6 +30,7 @@ const transport = new StdioClientTransport({
     ...process.env,
     PROJECT_MEMORY_CLIENT_ID: clientId,
     PROJECT_MEMORY_CLIENT_LABEL: "Gateway Stdio Smoke",
+    PROJECT_MEMORY_GATEWAY_TOKEN: token,
     PROJECT_MEMORY_GATEWAY_URL: started.url
   },
   stderr: "pipe"

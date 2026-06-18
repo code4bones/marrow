@@ -5,9 +5,11 @@ import type { ToolResponse } from "../src/shared/mcp/tool-response.js";
 
 const db = createPgKnex();
 const service = new PgToolService(db);
+const token = `gateway-smoke-token-${Date.now()}`;
 const started = await startGatewayServer(service, {
   host: "127.0.0.1",
-  port: 0
+  port: 0,
+  token
 });
 
 const state: {
@@ -100,7 +102,11 @@ function expectData<T>(response: ToolResponse<unknown>): T {
 }
 
 async function getJson(url: string): Promise<unknown> {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
   assert(response.ok, `GET ${url} returned HTTP ${response.status}.`);
   return response.json();
 }
@@ -110,6 +116,7 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
     method: "POST",
     headers: {
       "content-type": "application/json",
+      authorization: `Bearer ${token}`,
       "x-project-memory-client-id": clientId,
       "x-project-memory-client-label": "Gateway HTTP Smoke",
       "x-project-memory-client-kind": "smoke"
