@@ -1,3 +1,5 @@
+import { ZodError } from "zod/v4";
+
 export type ErrorCode =
   | "CURRENT_PROJECT_NOT_SET"
   | "DB_ERROR"
@@ -22,6 +24,15 @@ export class AppError extends Error {
 export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) {
     return error;
+  }
+
+  if (error instanceof ZodError) {
+    return new AppError("VALIDATION_ERROR", "Tool input validation failed.", {
+      issues: error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message
+      }))
+    });
   }
 
   if (error instanceof Error) {

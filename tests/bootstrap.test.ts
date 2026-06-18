@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, type AppContext } from "../src/app/bootstrap.js";
+import { toAppError } from "../src/shared/errors.js";
+import { createTaskSchema } from "../src/features/tasks/model/schema.js";
 
 let tempDir: string;
 let app: AppContext;
@@ -190,5 +192,16 @@ describe("bootstrap", () => {
     expect(link.id).toBe("L-MEMORY-001");
     expect(links).toHaveLength(1);
     expect(links[0]?.toId).toBe(decision.id);
+  });
+
+  it("maps validation failures to structured validation errors", () => {
+    const parsed = createTaskSchema.safeParse({});
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const error = toAppError(parsed.error);
+      expect(error.code).toBe("VALIDATION_ERROR");
+      expect(error.details?.issues).toBeDefined();
+    }
   });
 });

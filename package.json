@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Local-first MCP server for project-oriented agent memory.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "bin": {
-    "project-memory-mcp": "dist/index.js"
+    "project-memory-mcp": "dist/src/index.js"
   },
   "directories": {
     "doc": "docs"
