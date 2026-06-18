@@ -43,8 +43,15 @@ export function bootstrap(config: AppConfig): AppContext {
   const projects = new ProjectService(projectRepo);
   const eventRepo = new EventRepo(db);
   const events = new EventService(db, eventRepo, projects);
+  projects.setProjectCreatedRecorder((project) => {
+    events.recordForProject(project.id, {
+      type: "project.created",
+      title: `Project created: ${project.title}`,
+      relatedId: project.id
+    });
+  });
   const memoryRepo = new MemoryRepo(db);
-  const memory = new MemoryService(db, memoryRepo, projects);
+  const memory = new MemoryService(db, memoryRepo, projects, events);
   const taskRepo = new TaskRepo(db);
   const tasks = new TaskService(db, taskRepo, projects, events);
   const decisionRepo = new DecisionRepo(db);

@@ -65,6 +65,30 @@ describe("bootstrap", () => {
     expect(results.map((item) => item.id)).toEqual([projectItem.id, common.id]);
   });
 
+  it("records documented project and memory write events", () => {
+    const project = app.projects.create({
+      slug: "project-memory-mcp",
+      title: "Project Memory MCP"
+    });
+    app.projects.setCurrent({ id: project.id });
+
+    const item = app.memory.create({
+      type: "note",
+      title: "Event coverage",
+      body: "Memory writes should record events."
+    });
+    app.memory.update({
+      id: item.id,
+      body: "Updated memory writes should record events."
+    });
+
+    const projectEvents = app.events.list({ project: project.id, relatedId: project.id });
+    const itemEvents = app.events.list({ project: project.id, relatedId: item.id });
+
+    expect(projectEvents.map((event) => event.type)).toContain("project.created");
+    expect(itemEvents.map((event) => event.type)).toEqual(["item.updated", "item.created"]);
+  });
+
   it("tracks task lifecycle events", () => {
     const project = app.projects.create({
       slug: "project-memory-mcp",

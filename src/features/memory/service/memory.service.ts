@@ -2,6 +2,7 @@ import type { Db } from "../../../shared/db/connection.js";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { commonItemPrefix, nextId, projectKeyFromId } from "../../../shared/ids/id.service.js";
+import type { EventService } from "../../events/service/event.service.js";
 import type { ProjectService } from "../../projects/service/project.service.js";
 import type {
   CreateMemoryInput,
@@ -16,7 +17,8 @@ export class MemoryService {
   constructor(
     private readonly db: Db,
     private readonly repo: MemoryRepo,
-    private readonly projects: ProjectService
+    private readonly projects: ProjectService,
+    private readonly events?: EventService
   ) {}
 
   create(input: CreateMemoryInput): MemoryItem {
@@ -36,7 +38,13 @@ export class MemoryService {
       updatedAt: now
     };
 
-    return this.repo.create(item);
+    this.repo.create(item);
+    this.events?.recordForProject(item.projectId, {
+      type: "item.created",
+      title: `Memory item created: ${item.title}`,
+      relatedId: item.id
+    });
+    return item;
   }
 
   get(id: string): MemoryItem {
@@ -50,7 +58,7 @@ export class MemoryService {
 
   update(input: UpdateMemoryInput): MemoryItem {
     const current = this.get(input.id);
-    return this.repo.update({
+    const updated = this.repo.update({
       ...current,
       title: input.title ?? current.title,
       body: input.body ?? current.body,
@@ -58,6 +66,12 @@ export class MemoryService {
       tags: input.tags ?? current.tags,
       updatedAt: nowIso()
     });
+    this.events?.recordForProject(updated.projectId, {
+      type: "item.updated",
+      title: `Memory item updated: ${updated.title}`,
+      relatedId: updated.id
+    });
+    return updated;
   }
 
   search(input: SearchMemoryInput): MemorySearchResult[] {

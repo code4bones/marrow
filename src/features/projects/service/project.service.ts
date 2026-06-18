@@ -4,17 +4,25 @@ import { createProjectId } from "../../../shared/ids/id.service.js";
 import type { CreateProjectInput, Project, ProjectLookup, ProjectStatus } from "../model/types.js";
 import { ProjectRepo } from "../repo/project.repo.js";
 
+export type ProjectCreatedRecorder = (project: Project) => void;
+
 export class ProjectService {
+  private projectCreatedRecorder: ProjectCreatedRecorder | undefined;
+
   constructor(
     private readonly repo: ProjectRepo,
     private readonly env: NodeJS.ProcessEnv = process.env
   ) {}
 
+  setProjectCreatedRecorder(recorder: ProjectCreatedRecorder): void {
+    this.projectCreatedRecorder = recorder;
+  }
+
   create(input: CreateProjectInput): Project {
     const now = nowIso();
     const baseId = createProjectId(input.slug);
     const id = this.uniqueProjectId(baseId);
-    return this.repo.create({
+    const project = this.repo.create({
       id,
       slug: input.slug,
       title: input.title,
@@ -24,6 +32,8 @@ export class ProjectService {
       createdAt: now,
       updatedAt: now
     });
+    this.projectCreatedRecorder?.(project);
+    return project;
   }
 
   list(status?: ProjectStatus): Project[] {
