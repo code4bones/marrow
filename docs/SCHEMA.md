@@ -556,6 +556,9 @@ Do not implement in MVP unless requested:
 * file references table
 * markdown export table
 * git commits table
+* provenance fields such as `created_by`, `updated_by`, `source`, `source_instance_id`, `imported_at`, `version`
+* import/export tracking tables
+* sync conflict tracking tables
 * users table
 * remote sync table
 * permissions table

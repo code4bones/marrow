@@ -163,6 +163,8 @@ Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
 
 The agent state machine and clarification triggers are documented in `docs/AGENT_STATE_MACHINE.md`.
 
+Collaboration readiness is documented in `docs/COLLABORATION.md`; collaboration is a design constraint, while remote sync remains outside the current MVP.
+
 ## Event Behavior
 
 The implementation records events for write operations that should leave project history.

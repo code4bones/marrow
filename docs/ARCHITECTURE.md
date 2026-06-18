@@ -352,7 +352,9 @@ Recommended library options:
 * `better-sqlite3` for synchronous simplicity
 * or `sqlite`/`sqlite3` if async is preferred
 
-For MVP, synchronous `better-sqlite3` is acceptable because the MCP server is local-first and single-user.
+For MVP, synchronous `better-sqlite3` is acceptable because the MCP server is local-first and runs as a local stdio tool.
+
+The data model should still be collaboration-ready. A single project may eventually be used by multiple developers and agents, so records should keep stable IDs, append-only events, and future-compatible provenance/sync paths. Do not add remote sync or auth in the MVP, but avoid local-only assumptions that would make export/import or later sync difficult.
 
 Use simple SQL.
 

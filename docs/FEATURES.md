@@ -396,6 +396,27 @@ Import structured Markdown into the memory database.
 
 Useful for bootstrapping existing projects.
 
+Also useful for collaboration: teams can review exported memory snapshots in Git and import them locally without requiring remote sync.
+
+---
+
+### NF-002A: Collaboration-ready export/import
+
+Support file-based sharing of project and common memory before adding network sync.
+
+Expected behavior:
+
+* export project memory snapshot
+* export common knowledge snapshot
+* import reviewed snapshot
+* detect duplicate IDs
+* preserve append-only events
+* record import/export events
+
+Purpose:
+
+Multiple developers may work on the same project. Knowledge should be shareable through reviewed files and Git before any remote service exists.
+
 ---
 
 ### NF-003: Better ID generation
@@ -498,11 +519,15 @@ The MCP tools and optional CLI are enough.
 
 No accounts, roles, or permissions in MVP.
 
+The MVP should still remain collaboration-ready through stable IDs, append-only events, human-readable docs, and future export/import paths.
+
 ---
 
 ### D-003: Remote sync
 
 No server sync in MVP.
+
+Prefer file-based export/import and Git-reviewed snapshots before introducing a network sync service.
 
 The first version is local-first.
 
