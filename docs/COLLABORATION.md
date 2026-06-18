@@ -20,7 +20,7 @@ The system should prevent knowledge from being trapped in one developer's local 
 
 ## Runtime Modes
 
-Project Memory MCP should support two runtime modes.
+Project Memory MCP supports two runtime modes.
 
 ### Local Mode
 
@@ -47,6 +47,22 @@ Use it for:
 - durable team audit history
 
 Gateway mode is the correct collaboration runtime. Do not use a shared SQLite file as the main team database.
+
+Current gateway commands:
+
+```bash
+npm run build
+npm run db:pg:migrate
+npm run gateway
+```
+
+Agents connect through the stdio gateway client:
+
+```bash
+PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
+```
+
+For existing `.env` compatibility, `API_ENDPOINT` is accepted as the gateway client URL fallback. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
 
 ## Collaboration-Ready Principles
 
@@ -171,7 +187,7 @@ Use PostgreSQL-native search for shared memory instead of SQLite FTS5.
 
 Expose a common gateway over HTTP for multiple clients.
 
-Initial endpoints can be minimal:
+Implemented endpoints are minimal:
 
 ```http
 GET /health
@@ -179,13 +195,15 @@ GET /tools
 POST /call
 ```
 
-The gateway should call the same feature services as stdio mode.
+The gateway exposes the same MCP tool concepts over `POST /call`, backed by PostgreSQL-specific tool service logic.
 
 ### Phase 4: Client access model
 
 Add a stdio proxy or local agent adapter that forwards tool calls to the gateway.
 
 This preserves agent compatibility while centralizing memory.
+
+Current implementation includes `project-memory-gateway-client`, a stdio MCP proxy that registers the same tool names and forwards calls to the gateway.
 
 ### Phase 5: Auth, permissions, and provenance
 

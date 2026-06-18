@@ -2,7 +2,9 @@
 
 Local-first MCP server for structured project memory used by coding agents.
 
-The server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
+The default stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
+
+Shared gateway mode stores the same tool model in PostgreSQL and exposes it through an HTTP gateway plus a stdio MCP client proxy.
 
 ## Current Status
 
@@ -116,6 +118,39 @@ Example command:
 node /absolute/path/to/project-memory-mcp/dist/src/index.js
 ```
 
+## Run Shared Gateway
+
+Build first, then start the PostgreSQL-backed gateway:
+
+```bash
+npm run build
+npm run db:pg:migrate
+npm run gateway
+```
+
+Gateway defaults:
+
+```text
+PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1
+PROJECT_MEMORY_GATEWAY_PORT=8765
+```
+
+Optional bearer auth:
+
+```text
+PROJECT_MEMORY_GATEWAY_TOKEN=...
+```
+
+`MCP_TOKEN` is also accepted as a token source for compatibility with existing `.env` files.
+
+Agents should connect to the stdio proxy, not directly to HTTP:
+
+```bash
+PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
+```
+
+`API_ENDPOINT` is supported as a fallback for `PROJECT_MEMORY_GATEWAY_URL`, so an existing `.env` with `API_ENDPOINT=http://host:port` can drive the gateway client without another variable.
+
 ## Distribution Contents
 
 The npm package includes the built server, built helper scripts, migrations, and project documentation:
@@ -136,11 +171,14 @@ npm run typecheck
 npm test
 npm run build
 npm run smoke
+npm run smoke:gateway
 npm run smoke:stdio
 npm run smoke:package
 ```
 
 `smoke:package` packs the npm tarball, extracts it into a temporary directory, verifies packaged docs/migrations, starts the packaged server over stdio, and calls MCP tools. It links the current `node_modules` into the extracted package so the check stays fast and does not rebuild native dependencies.
+
+`smoke:gateway` requires PostgreSQL env vars and migrations. It starts the gateway on a random local port, creates a temporary project, checks HTTP tools/search/preflight, then removes the created project.
 
 ## Notes
 

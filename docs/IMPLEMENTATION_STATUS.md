@@ -4,7 +4,7 @@ This document records what has been implemented so far and what remains after th
 
 ## Implemented Scope
 
-The repository now contains a working local-first TypeScript MCP server with SQLite persistence.
+The repository now contains a working local-first TypeScript MCP server with SQLite persistence and an initial PostgreSQL-backed shared gateway.
 
 Implemented capabilities:
 
@@ -19,9 +19,13 @@ Implemented capabilities:
 - preflight context
 - common seed script
 - MCP stdio server
+- PostgreSQL schema and Knex migrations for shared gateway mode
+- PostgreSQL gateway tool service
+- HTTP gateway routes: `GET /health`, `GET /tools`, `POST /call`
+- stdio MCP gateway client proxy
 - tests, typecheck, lint, and build scripts
 
-The implementation intentionally does not include UI, auth, remote sync, cloud dependencies, embeddings, vector search, or multi-user collaboration.
+The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted team environments; full conflict resolution and permissions remain follow-up work.
 
 ## Runtime Stack
 
@@ -30,6 +34,8 @@ The implementation intentionally does not include UI, auth, remote sync, cloud d
 - MCP SDK
 - SQLite through `better-sqlite3`
 - SQLite FTS5
+- PostgreSQL through `pg`
+- Knex for PostgreSQL migrations and gateway queries
 - Zod for runtime validation
 - Vitest for tests
 - ESLint for linting
@@ -65,6 +71,16 @@ npm run db:pg:migrate
 npm run db:pg:status
 ```
 
+Gateway runtime commands:
+
+```bash
+npm run build
+npm run gateway
+npm run gateway:client
+```
+
+The gateway client reads `PROJECT_MEMORY_GATEWAY_URL` first and falls back to `.env` `API_ENDPOINT`. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
+
 ## Source Layout
 
 The code follows the feature-oriented structure described in `docs/ARCHITECTURE.md`.
@@ -74,6 +90,11 @@ src/
   app/
     bootstrap.ts
     config.ts
+
+  gateway/
+    http-server.ts
+    pg-tool-service.ts
+    tool-definitions.ts
 
   features/
     projects/
@@ -88,6 +109,7 @@ src/
     db/
     ids/
     mcp/
+    pg/
 ```
 
 Each feature is split into:
@@ -138,6 +160,19 @@ Override:
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
 
+PostgreSQL gateway schema lives in:
+
+```text
+migrations/pg/001_init.cjs
+```
+
+It creates PostgreSQL equivalents for core records and adds gateway-specific collaboration metadata:
+
+- `gateway_clients`
+- `sync_conflicts`
+- JSONB fields for structured arrays/metadata
+- generated `tsvector` search for memory items
+
 ## MCP Tools
 
 Implemented tools:
@@ -166,6 +201,8 @@ Implemented tools:
 - `preflight`
 
 Tool handlers validate inputs with Zod, call services, and return structured success/error payloads.
+
+In gateway mode, the stdio client exposes the same tool names and schemas, then forwards calls to the HTTP gateway. This keeps agent tool chains compatible across local SQLite and shared PostgreSQL runtimes.
 
 Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
 
@@ -252,6 +289,7 @@ npm run typecheck
 npm test
 npm run build
 npm run smoke
+npm run smoke:gateway
 npm run smoke:stdio
 npm run smoke:package
 ```

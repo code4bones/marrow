@@ -5,6 +5,8 @@
   "type": "module",
   "main": "dist/src/index.js",
   "bin": {
+    "project-memory-gateway": "dist/src/gateway.js",
+    "project-memory-gateway-client": "dist/src/gateway-client.js",
     "project-memory-mcp": "dist/src/index.js"
   },
   "files": [
@@ -25,9 +27,12 @@
     "db:pg:rollback": "knex migrate:rollback --knexfile knexfile.cjs",
     "db:pg:status": "knex migrate:status --knexfile knexfile.cjs",
     "dev": "tsx src/index.ts",
+    "gateway": "node dist/src/gateway.js",
+    "gateway:client": "node dist/src/gateway-client.js",
     "lint": "eslint .",
     "seed:common": "node dist/scripts/seed-common.js",
     "smoke": "node dist/scripts/smoke.js",
+    "smoke:gateway": "node dist/scripts/smoke-gateway.js",
     "smoke:package": "node dist/scripts/smoke-package.js",
     "smoke:stdio": "node dist/scripts/smoke-stdio.js",
     "test": "vitest run",
