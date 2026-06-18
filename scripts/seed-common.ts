@@ -1,64 +1,6 @@
 import { bootstrap } from "../src/app/bootstrap.js";
 import { loadConfig } from "../src/app/config.js";
-
-const commonRecords = [
-  {
-    id: "C-AGENT-001",
-    type: "agent_rule",
-    title: "Always run preflight before task execution",
-    body: "Before starting an implementation task, call preflight to load task scope, decisions, common rules, failed attempts, and acceptance criteria.",
-    tags: ["common", "agent", "workflow"]
-  },
-  {
-    id: "C-AGENT-002",
-    type: "agent_rule",
-    title: "Keep diffs small and reviewable",
-    body: "Agents should prefer small, reviewable changes and avoid unrelated refactors unless explicitly requested.",
-    tags: ["common", "agent", "workflow"]
-  },
-  {
-    id: "C-AGENT-003",
-    type: "agent_rule",
-    title: "Do not expand scope without explicit request",
-    body: "If a task has explicit scope, do not add extra features or rewrite unrelated files without a direct request.",
-    tags: ["common", "agent", "scope"]
-  },
-  {
-    id: "C-AGENT-004",
-    type: "agent_rule",
-    title: "Record failed attempts",
-    body: "When an approach fails in a useful way, record what was tried, why it failed, and what should not be repeated.",
-    tags: ["common", "agent", "failed_attempt"]
-  },
-  {
-    id: "C-TASK-001",
-    type: "workflow_rule",
-    title: "Every task needs acceptance criteria",
-    body: "Executable tasks should state what done means so an agent can validate completion.",
-    tags: ["common", "task", "definition-of-done"]
-  },
-  {
-    id: "C-TASK-002",
-    type: "workflow_rule",
-    title: "Allowed and forbidden files should be explicit",
-    body: "When possible, tasks should identify files or areas that are allowed and forbidden for the implementation.",
-    tags: ["common", "task", "scope"]
-  },
-  {
-    id: "C-ARCH-001",
-    type: "architecture_note",
-    title: "Prefer feature-oriented architecture",
-    body: "Split code by business capability. Keep reusable infrastructure in shared and feature logic inside features.",
-    tags: ["common", "architecture"]
-  },
-  {
-    id: "C-ARCH-002",
-    type: "architecture_note",
-    title: "Shared code must be genuinely reusable",
-    body: "Do not turn shared into a dumping ground. Shared modules should be reusable infrastructure or small generic helpers.",
-    tags: ["common", "architecture"]
-  }
-];
+import { commonRecords } from "./common-records.js";
 
 const app = bootstrap(loadConfig());
 

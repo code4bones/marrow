@@ -138,6 +138,8 @@ Tool handlers validate inputs with Zod, call services, and return structured suc
 
 Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
 
+The agent state machine and clarification triggers are documented in `docs/AGENT_STATE_MACHINE.md`.
+
 ## Event Behavior
 
 The implementation records events for write operations that should leave project history.

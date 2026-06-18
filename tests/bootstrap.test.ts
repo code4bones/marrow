@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, type AppContext } from "../src/app/bootstrap.js";
 import { toAppError } from "../src/shared/errors.js";
 import { createTaskSchema } from "../src/features/tasks/model/schema.js";
+import { commonRecords } from "../scripts/common-records.js";
 
 let tempDir: string;
 let app: AppContext;
@@ -203,5 +204,29 @@ describe("bootstrap", () => {
       expect(error.code).toBe("VALIDATION_ERROR");
       expect(error.details?.issues).toBeDefined();
     }
+  });
+
+  it("can seed and search agent state machine rules", () => {
+    app.projects.create({
+      slug: "project-memory-mcp",
+      title: "Project Memory MCP"
+    });
+
+    for (const record of commonRecords) {
+      app.memory.create({
+        common: true,
+        ...record
+      });
+    }
+
+    const results = app.memory.search({
+      query: "state machine guard conflicts",
+      includeCommon: true,
+      type: "workflow_rule",
+      limit: 10
+    });
+
+    expect(results.map((item) => item.id)).toContain("C-AGENT-STATE-004");
+    expect(results.map((item) => item.id)).toContain("C-AGENT-STATE-005");
   });
 });
