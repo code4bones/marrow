@@ -172,6 +172,7 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:gateway
+npm run smoke:gateway:stdio
 npm run smoke:stdio
 npm run smoke:package
 ```
@@ -179,6 +180,8 @@ npm run smoke:package
 `smoke:package` packs the npm tarball, extracts it into a temporary directory, verifies packaged docs/migrations, starts the packaged server over stdio, and calls MCP tools. It links the current `node_modules` into the extracted package so the check stays fast and does not rebuild native dependencies.
 
 `smoke:gateway` requires PostgreSQL env vars and migrations. It starts the gateway on a random local port, creates a temporary project, checks HTTP tools/search/preflight, then removes the created project.
+
+`smoke:gateway:stdio` verifies the full agent path: MCP stdio client proxy -> HTTP gateway -> PostgreSQL.
 
 ## Notes
 

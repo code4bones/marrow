@@ -33,6 +33,7 @@
     "seed:common": "node dist/scripts/seed-common.js",
     "smoke": "node dist/scripts/smoke.js",
     "smoke:gateway": "node dist/scripts/smoke-gateway.js",
+    "smoke:gateway:stdio": "node dist/scripts/smoke-gateway-stdio.js",
     "smoke:package": "node dist/scripts/smoke-package.js",
     "smoke:stdio": "node dist/scripts/smoke-stdio.js",
     "test": "vitest run",

@@ -290,6 +290,7 @@ npm test
 npm run build
 npm run smoke
 npm run smoke:gateway
+npm run smoke:gateway:stdio
 npm run smoke:stdio
 npm run smoke:package
 ```
