@@ -7,7 +7,8 @@ export function registerDecisionTools(server: McpServer, decisions: DecisionServ
   server.registerTool(
     "decision.record",
     {
-      description: "Record a project or common decision.",
+      description:
+        "Record a project or common decision with context, rationale, consequences, tags, and optional supersedes id. Use for architecture/product/workflow choices that future agents must respect. Records decision.recorded event.",
       inputSchema: recordDecisionSchema.shape
     },
     async (input) => {
@@ -23,7 +24,8 @@ export function registerDecisionTools(server: McpServer, decisions: DecisionServ
   server.registerTool(
     "decision.list",
     {
-      description: "List project and common decisions.",
+      description:
+        "List decisions for the current/project scope and optionally common decisions. Use during planning or review to understand constraints before changing behavior.",
       inputSchema: listDecisionsSchema.shape
     },
     async (input) => {
@@ -39,7 +41,8 @@ export function registerDecisionTools(server: McpServer, decisions: DecisionServ
   server.registerTool(
     "decision.get",
     {
-      description: "Get a decision by id.",
+      description:
+        "Get a decision by id when preflight, links, or decision.list return a decision that needs full context/rationale/consequences.",
       inputSchema: getDecisionSchema.shape
     },
     async (input) => {

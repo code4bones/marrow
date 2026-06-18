@@ -12,7 +12,8 @@ export function registerMemoryTools(server: McpServer, memory: MemoryService): v
   server.registerTool(
     "memory.create",
     {
-      description: "Create a typed memory item.",
+      description:
+        "Create a typed memory item. Use project/common records for reusable context, notes, patterns, entities, failed_attempt records, and agent/workflow rules. Creates item.created event automatically.",
       inputSchema: createMemorySchema.shape
     },
     async (input) => {
@@ -28,7 +29,8 @@ export function registerMemoryTools(server: McpServer, memory: MemoryService): v
   server.registerTool(
     "memory.get",
     {
-      description: "Get a memory item by id.",
+      description:
+        "Get a memory item by id when search, preflight, or links return an item id and the full body/tags/status are needed.",
       inputSchema: getMemorySchema.shape
     },
     async (input) => {
@@ -45,7 +47,8 @@ export function registerMemoryTools(server: McpServer, memory: MemoryService): v
   server.registerTool(
     "memory.search",
     {
-      description: "Search memory items across the current project and common knowledge.",
+      description:
+        "Search typed memory items with FTS5. Default workflow is current project plus common knowledge. Use before planning or editing when you need relevant rules, notes, failed attempts, patterns, or project facts.",
       inputSchema: searchMemorySchema.shape
     },
     async (input) => {
@@ -61,7 +64,8 @@ export function registerMemoryTools(server: McpServer, memory: MemoryService): v
   server.registerTool(
     "memory.update",
     {
-      description: "Update a memory item.",
+      description:
+        "Update a memory item title/body/status/tags. Use to refine stale records, archive/supersede items, or add better context after work. Creates item.updated event automatically.",
       inputSchema: updateMemorySchema.shape
     },
     async (input) => {

@@ -7,7 +7,8 @@ export function registerPreflightTool(server: McpServer, preflight: PreflightSer
   server.registerTool(
     "preflight",
     {
-      description: "Return compact execution context for a task.",
+      description:
+        "Return compact execution context for a task. Use immediately before editing files. Typical chain: project.current -> task.next/task.get -> preflight -> implement within allowed scope -> task.update_status -> record memory/decision/event if needed.",
       inputSchema: preflightSchema.shape
     },
     async (input) => {

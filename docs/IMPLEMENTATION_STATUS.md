@@ -136,6 +136,8 @@ Implemented tools:
 
 Tool handlers validate inputs with Zod, call services, and return structured success/error payloads.
 
+Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
+
 ## Event Behavior
 
 The implementation records events for write operations that should leave project history.

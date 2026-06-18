@@ -40,6 +40,13 @@ describe("MCP server", () => {
     expect(toolNames).toContain("preflight");
     expect(toolNames).toContain("link.create");
 
+    const preflightTool = tools.tools.find((tool) => tool.name === "preflight");
+    const taskNextTool = tools.tools.find((tool) => tool.name === "task.next");
+    const memorySearchTool = tools.tools.find((tool) => tool.name === "memory.search");
+    expect(preflightTool?.description).toContain("Typical chain");
+    expect(taskNextTool?.description).toContain("project.current");
+    expect(memorySearchTool?.description).toContain("before planning or editing");
+
     const result = await client.callTool({
       name: "project.create",
       arguments: {

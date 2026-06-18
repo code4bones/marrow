@@ -11,7 +11,8 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
   server.registerTool(
     "project.create",
     {
-      description: "Create a new memory project.",
+      description:
+        "Create a durable project scope for project-specific memory. Use this during setup when the repository or work context is not registered yet. After creating it, call project.set_current before creating project tasks, decisions, or memory.",
       inputSchema: createProjectSchema.shape
     },
     async (input) => {
@@ -27,7 +28,8 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
   server.registerTool(
     "project.list",
     {
-      description: "List memory projects.",
+      description:
+        "List registered project scopes, optionally filtered by status. Use this when you need to discover available projects before choosing or setting the current project.",
       inputSchema: listProjectsSchema.shape
     },
     async (input) => {
@@ -43,7 +45,8 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
   server.registerTool(
     "project.get",
     {
-      description: "Get a memory project by id or slug.",
+      description:
+        "Get one project by id or slug. Use this to inspect project metadata before creating scoped records or when a tool response references a project id.",
       inputSchema: projectLookupSchema.shape
     },
     async (input) => {
@@ -59,7 +62,8 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
   server.registerTool(
     "project.set_current",
     {
-      description: "Set the current memory project.",
+      description:
+        "Set the current project used by tools when their optional project argument is omitted. Use this after project.create/project.list and before task, decision, memory, search, or preflight workflows.",
       inputSchema: projectLookupSchema.shape
     },
     async (input) => {
@@ -75,7 +79,8 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
   server.registerTool(
     "project.current",
     {
-      description: "Return the current memory project.",
+      description:
+        "Return the current project. Use this as the first check in an agent session; if it fails, call project.list or project.create, then project.set_current.",
       inputSchema: {}
     },
     async () => {

@@ -7,7 +7,8 @@ export function registerEventTools(server: McpServer, events: EventService): voi
   server.registerTool(
     "event.record",
     {
-      description: "Record an append-only project memory event.",
+      description:
+        "Record an append-only timeline event. Use for important manual history not already recorded automatically, such as notable bugs, failed attempts, migrations, or task milestones.",
       inputSchema: recordEventSchema.shape
     },
     async (input) => {
@@ -23,7 +24,8 @@ export function registerEventTools(server: McpServer, events: EventService): voi
   server.registerTool(
     "event.list",
     {
-      description: "List project memory events.",
+      description:
+        "List timeline events for a project or related record. Use to understand recent history, task lifecycle, prior changes, or what happened around a linked item.",
       inputSchema: listEventsSchema.shape
     },
     async (input) => {

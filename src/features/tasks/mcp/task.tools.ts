@@ -13,7 +13,8 @@ export function registerTaskTools(server: McpServer, tasks: TaskService): void {
   server.registerTool(
     "task.create",
     {
-      description: "Create an executable project task.",
+      description:
+        "Create an executable project task with scope, acceptance criteria, allowed files, forbidden files, and dependencies. Use before implementation work so agents can run preflight against a concrete task.",
       inputSchema: createTaskSchema.shape
     },
     async (input) => {
@@ -29,7 +30,8 @@ export function registerTaskTools(server: McpServer, tasks: TaskService): void {
   server.registerTool(
     "task.list",
     {
-      description: "List project tasks.",
+      description:
+        "List tasks for a project, optionally filtered by status or milestone. Use to inspect backlog or find active/todo work before choosing a task.",
       inputSchema: listTasksSchema.shape
     },
     async (input) => {
@@ -45,7 +47,8 @@ export function registerTaskTools(server: McpServer, tasks: TaskService): void {
   server.registerTool(
     "task.get",
     {
-      description: "Get a task by id.",
+      description:
+        "Get a task by id. Use when you already have a task id and need full scope, acceptance criteria, allowed/forbidden files, dependencies, notes, and status.",
       inputSchema: getTaskSchema.shape
     },
     async (input) => {
@@ -62,7 +65,8 @@ export function registerTaskTools(server: McpServer, tasks: TaskService): void {
   server.registerTool(
     "task.next",
     {
-      description: "Return the next todo task for a project.",
+      description:
+        "Return the next todo task for a project using priority and creation order. Typical chain: project.current -> task.next -> preflight -> implementation.",
       inputSchema: nextTaskSchema.shape
     },
     async (input) => {
@@ -78,7 +82,8 @@ export function registerTaskTools(server: McpServer, tasks: TaskService): void {
   server.registerTool(
     "task.update_status",
     {
-      description: "Update task status and record an event.",
+      description:
+        "Update task status after workflow transitions. Use doing when starting, blocked when blocked, done when acceptance criteria are met, cancelled when abandoned. Records task lifecycle events automatically.",
       inputSchema: updateTaskStatusSchema.shape
     },
     async (input) => {

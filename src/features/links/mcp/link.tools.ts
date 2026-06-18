@@ -7,7 +7,8 @@ export function registerLinkTools(server: McpServer, links: LinkService): void {
   server.registerTool(
     "link.create",
     {
-      description: "Create a lightweight relationship between two memory records.",
+      description:
+        "Create a lightweight relationship between records such as task depends_on decision, failed_attempt warns_against task, or item relates_to entity. Use links to preserve navigable context without duplicating records.",
       inputSchema: createLinkSchema.shape
     },
     async (input) => {
@@ -23,7 +24,8 @@ export function registerLinkTools(server: McpServer, links: LinkService): void {
   server.registerTool(
     "link.list",
     {
-      description: "List links for a record.",
+      description:
+        "List links for a record in from, to, or both directions. Use after task.get, decision.get, memory.get, or preflight to discover related constraints, dependencies, warnings, and context.",
       inputSchema: listLinksSchema.shape
     },
     async (input) => {
