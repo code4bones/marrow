@@ -21,7 +21,7 @@ Implemented capabilities:
 - MCP stdio server
 - PostgreSQL schema and Knex migrations for shared gateway mode
 - PostgreSQL gateway tool service
-- HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /tools`, `POST /call`
+- HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /ready`, `GET /tools`, `POST /call`
 - MCP Streamable HTTP gateway endpoint
 - gateway client registry through `gateway_clients`
 - gateway diagnostics: `gateway.status`, `gateway.clients`

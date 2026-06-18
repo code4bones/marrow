@@ -1,6 +1,6 @@
 # Project Memory Gateway — Nginx
 
-Use nginx as a reverse proxy in front of the PostgreSQL gateway when several developers or agents need a shared endpoint.
+Use this only for the internal nginx that sits in front of the local PostgreSQL gateway. External TLS, host routing, and certificates can stay in Nginx Proxy Manager.
 
 The gateway process should stay bound to localhost:
 
@@ -24,8 +24,16 @@ Exposed routes:
 ```text
 POST /project-memory/mcp
 GET  /project-memory/health
+GET  /project-memory/ready
 GET  /project-memory/tools
 POST /project-memory/call
+```
+
+Endpoint meaning:
+
+```text
+/health  process is alive
+/ready   PostgreSQL is reachable and gateway tables exist
 ```
 
 Point MCP Streamable HTTP clients at the proxied endpoint:
@@ -47,3 +55,5 @@ PROJECT_MEMORY_GATEWAY_TOKEN=...
 ```
 
 The nginx include forwards `X-Request-ID`, `X-Forwarded-*`, and client IP headers. The gateway logs request ids, status codes, durations, client ids, and tool call completion.
+
+In Nginx Proxy Manager, point the proxy host to the internal nginx service, then use `/project-memory/ready` for readiness checks where supported.

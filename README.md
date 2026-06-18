@@ -181,6 +181,13 @@ Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEM
 
 For nginx reverse proxy locations, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
+Gateway health endpoints:
+
+```text
+GET /health  process liveness
+GET /ready   PostgreSQL and migration-table readiness
+```
+
 ## Distribution Contents
 
 The npm package includes the built server, built helper scripts, migrations, and project documentation:

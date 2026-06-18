@@ -76,6 +76,12 @@ async function handleRequest(
       return;
     }
 
+    if (request.method === "GET" && request.url === "/ready") {
+      const readiness = await service.readiness();
+      send(readiness.ok ? 200 : 503, readiness);
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/tools") {
       send(200, { ok: true, tools: service.listTools() });
       return;

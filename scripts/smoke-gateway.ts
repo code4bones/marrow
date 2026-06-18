@@ -24,6 +24,10 @@ try {
   assert(health.ok === true, "Gateway health route did not return ok=true.");
   console.log("ok - gateway health");
 
+  const ready = (await getJson(`${started.url}/ready`)) as { ok?: boolean; missingTables?: string[] };
+  assert(ready.ok === true, `Gateway readiness failed: ${JSON.stringify(ready)}`);
+  console.log("ok - gateway ready");
+
   const tools = (await getJson(`${started.url}/tools`)) as { tools?: { name: string }[] };
   assert(tools.tools?.some((tool) => tool.name === "preflight"), "Gateway tools route did not expose preflight.");
   assert(tools.tools?.some((tool) => tool.name === "gateway.clients"), "Gateway tools route did not expose gateway.clients.");

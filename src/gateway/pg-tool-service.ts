@@ -101,6 +101,33 @@ export class PgToolService {
     await this.db.destroy();
   }
 
+  async readiness() {
+    const requiredTables = [
+      "projects",
+      "items",
+      "tasks",
+      "decisions",
+      "links",
+      "events",
+      "kv",
+      "gateway_clients",
+      "sync_conflicts"
+    ];
+    await this.db.raw("select 1");
+    const rows = await this.db("information_schema.tables")
+      .select("table_name")
+      .where({ table_schema: "public" })
+      .whereIn("table_name", requiredTables);
+    const present = new Set(rows.map((row) => String(row.table_name)));
+    const missingTables = requiredTables.filter((table) => !present.has(table));
+
+    return {
+      ok: missingTables.length === 0,
+      database: "postgresql",
+      missingTables
+    };
+  }
+
   private async gatewayStatus() {
     const [projects, items, tasks, decisions, events, clients] = await Promise.all([
       this.countRows("projects"),
