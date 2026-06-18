@@ -1,8 +1,10 @@
 export type ErrorCode =
   | "CURRENT_PROJECT_NOT_SET"
   | "DB_ERROR"
+  | "DECISION_NOT_FOUND"
   | "ITEM_NOT_FOUND"
   | "PROJECT_NOT_FOUND"
+  | "TASK_NOT_FOUND"
   | "VALIDATION_ERROR";
 
 export class AppError extends Error {

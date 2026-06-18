@@ -1,0 +1,26 @@
+import * as z from "zod/v4";
+
+export const decisionStatusSchema = z.enum(["draft", "active", "superseded", "rejected"]);
+
+export const recordDecisionSchema = z.object({
+  project: z.string().nullable().optional(),
+  title: z.string().min(1),
+  status: decisionStatusSchema.optional(),
+  context: z.string().optional(),
+  decision: z.string().min(1),
+  rationale: z.string().optional(),
+  consequences: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  supersedesId: z.string().nullable().optional()
+});
+
+export const listDecisionsSchema = z.object({
+  project: z.string().optional(),
+  includeCommon: z.boolean().optional(),
+  status: decisionStatusSchema.optional(),
+  limit: z.number().int().min(1).max(100).optional()
+});
+
+export const getDecisionSchema = z.object({
+  id: z.string().min(1)
+});
