@@ -215,6 +215,7 @@ npm run typecheck
 npm test
 npm run smoke
 npm run build
+npm run smoke:stdio
 ```
 
 Current test coverage includes:
@@ -230,6 +231,7 @@ Current test coverage includes:
 - validation error mapping
 - MCP protocol smoke test through in-memory transport
 - CLI smoke test through `npm run smoke`
+- built stdio server smoke test through `npm run smoke:stdio`
 
 ## Commit Checkpoints
 
@@ -248,7 +250,7 @@ Recent implementation checkpoints:
 
 The current implementation is useful as an MVP but still has several practical follow-ups:
 
-- exercise the server in a real MCP client configuration
+- exercise the server in the target MCP client configuration
 - include linked records in `preflight`
 - include task dependencies in richer form
 - add Markdown export snapshots under `docs/generated/`
@@ -260,4 +262,4 @@ The current implementation is useful as an MVP but still has several practical f
 
 ## Recommended Next Step
 
-Exercise the built server in a real MCP client configuration and verify that the client can list and call the implemented tools.
+Exercise the built server in the target MCP client configuration and verify that the client can list and call the implemented tools.

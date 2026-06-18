@@ -100,6 +100,7 @@ npm run typecheck
 npm test
 npm run smoke
 npm run build
+npm run smoke:stdio
 ```
 
 ## Notes
