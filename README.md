@@ -31,6 +31,8 @@ Implemented core MVP tools:
 - `link.list`
 - `preflight`
 
+See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the detailed implementation status, validation notes, and known follow-up work.
+
 ## Setup
 
 ```bash
@@ -93,6 +95,7 @@ node /absolute/path/to/project-memory-mcp/dist/src/index.js
 ## Validation
 
 ```bash
+npm run lint
 npm run typecheck
 npm test
 npm run build
