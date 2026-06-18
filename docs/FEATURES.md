@@ -400,22 +400,22 @@ Also useful for collaboration: teams can review exported memory snapshots in Git
 
 ---
 
-### NF-002A: Collaboration-ready export/import
+### NF-002A: Shared gateway mode
 
-Support file-based sharing of project and common memory before adding network sync.
+Support multiple developers and agents sharing one project memory through a common gateway.
 
 Expected behavior:
 
-* export project memory snapshot
-* export common knowledge snapshot
-* import reviewed snapshot
-* detect duplicate IDs
-* preserve append-only events
-* record import/export events
+* shared PostgreSQL database
+* gateway process exposing tool calls
+* local stdio clients can point at the gateway
+* all developers can read/write project memory
+* common knowledge is shared deliberately
+* append-only events preserve audit history
 
 Purpose:
 
-Multiple developers may work on the same project. Knowledge should be shareable through reviewed files and Git before any remote service exists.
+Multiple developers may work on the same project. Knowledge should be immediately available to the team instead of remaining in isolated local databases.
 
 ---
 

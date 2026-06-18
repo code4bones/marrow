@@ -345,16 +345,23 @@ Small boring utilities are better than clever abstractions.
 
 ## Data access approach
 
-Use SQLite directly.
+Use explicit SQL behind a storage boundary.
 
-Recommended library options:
+SQLite remains the local embedded backend:
 
 * `better-sqlite3` for synchronous simplicity
 * or `sqlite`/`sqlite3` if async is preferred
 
 For MVP, synchronous `better-sqlite3` is acceptable because the MCP server is local-first and runs as a local stdio tool.
 
-The data model should still be collaboration-ready. A single project may eventually be used by multiple developers and agents, so records should keep stable IDs, append-only events, and future-compatible provenance/sync paths. Do not add remote sync or auth in the MVP, but avoid local-only assumptions that would make export/import or later sync difficult.
+PostgreSQL is the primary target for shared gateway mode. A single project can be used by multiple developers and agents, so shared runtime needs a concurrent database, stable IDs, append-only events, future provenance fields, and PostgreSQL-native search.
+
+Feature services should not permanently depend on `better-sqlite3` details. The next architecture step is to introduce a database/repository boundary that can support both:
+
+```text
+local stdio mode -> SQLite
+shared gateway mode -> PostgreSQL
+```
 
 Use simple SQL.
 
@@ -364,7 +371,7 @@ Reasons:
 
 * schema is small
 * SQL should stay inspectable
-* fewer dependencies
+* dialect differences should be explicit
 * easier debugging
 * easier migrations
 * easier for agents to understand

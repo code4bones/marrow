@@ -4,7 +4,7 @@
 
 ## Storage
 
-The MVP uses SQLite.
+Local mode uses SQLite.
 
 Default local database path:
 
@@ -17,6 +17,16 @@ Configurable with:
 ```text
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
+
+Shared gateway mode should use PostgreSQL.
+
+Planned gateway variable:
+
+```text
+PROJECT_MEMORY_DATABASE_URL=postgres://user:password@host:5432/project_memory
+```
+
+SQLite and PostgreSQL schemas should preserve the same logical model even when search implementation differs.
 
 ## Schema principles
 
@@ -548,6 +558,31 @@ project
 common
 ```
 
+## PostgreSQL Gateway Schema Direction
+
+The shared gateway should use PostgreSQL as the primary database.
+
+Logical tables remain:
+
+* `projects`
+* `items`
+* `tasks`
+* `decisions`
+* `links`
+* `events`
+* `kv`
+* `migrations`
+
+PostgreSQL-specific additions should include:
+
+* `jsonb` for JSON array/object fields where useful
+* `tsvector` search columns or dedicated search indexes for memory search
+* row versioning fields for conflict detection
+* provenance fields for shared use
+* indexes for project/status/type/tag filters
+
+SQLite FTS5 should remain a local-mode implementation detail, not the shared gateway search design.
+
 ## Future schema additions
 
 Do not implement in MVP unless requested:
@@ -557,6 +592,8 @@ Do not implement in MVP unless requested:
 * markdown export table
 * git commits table
 * provenance fields such as `created_by`, `updated_by`, `source`, `source_instance_id`, `imported_at`, `version`
+* PostgreSQL row versioning fields
+* gateway client/source tables
 * import/export tracking tables
 * sync conflict tracking tables
 * users table

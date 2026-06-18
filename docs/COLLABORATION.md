@@ -1,6 +1,6 @@
-# Project Memory MCP — Collaboration Readiness
+# Project Memory MCP — Collaboration
 
-This document describes how Project Memory MCP should evolve toward team collaboration while preserving the MVP's local-first model.
+This document describes how Project Memory MCP supports team collaboration while preserving local-first operation.
 
 ## Goal
 
@@ -18,28 +18,43 @@ They need access to shared knowledge:
 
 The system should prevent knowledge from being trapped in one developer's local SQLite database.
 
-## MVP Boundary
+## Runtime Modes
 
-The current MVP does not implement:
+Project Memory MCP should support two runtime modes.
 
-- remote server mode
-- auth
-- permissions
-- cloud sync
-- multi-user runtime collaboration
-- conflict resolution service
+### Local Mode
 
-This boundary remains valid.
+Local mode runs over stdio and stores data in SQLite.
 
-However, the MVP must not make collaboration hard to add later.
+Use it for:
+
+- single-agent workflows
+- local development
+- tests
+- offline work
+- package smoke checks
+
+### Gateway Mode
+
+Gateway mode runs a shared service and stores data in PostgreSQL.
+
+Use it for:
+
+- multiple developers working on one project
+- multiple agents sharing project memory
+- shared common knowledge
+- centralized preflight context
+- durable team audit history
+
+Gateway mode is the correct collaboration runtime. Do not use a shared SQLite file as the main team database.
 
 ## Collaboration-Ready Principles
 
-### 1. Local-first remains the base
+### 1. Local-first remains supported
 
 Every developer should be able to run the MCP server locally with SQLite.
 
-Collaboration should add exchange/sync paths, not replace local operation.
+Collaboration adds gateway mode; it does not remove local operation.
 
 ### 2. Stable IDs matter
 
@@ -87,9 +102,24 @@ When common and project-specific records conflict, project records win for that 
 
 Preflight and search should continue to rank project records before common records.
 
-### 6. Provenance should be added before network sync
+### 6. PostgreSQL is the shared source of truth
 
-Before remote sync, records should gain provenance fields or metadata.
+For gateway mode, PostgreSQL should be the primary database.
+
+Reasons:
+
+- safe concurrent reads/writes
+- transactions and row locks
+- JSONB for structured fields
+- mature migrations and backup tooling
+- full-text search support
+- future permissions/provenance/audit support
+
+SQLite remains valid for embedded local operation.
+
+### 7. Provenance should be added before broad shared rollout
+
+Before broad shared rollout, records should gain provenance fields or metadata.
 
 Useful future fields:
 
@@ -108,84 +138,73 @@ These do not need to be implemented immediately, but future migrations should ac
 
 ## Recommended Evolution Path
 
-### Phase 1: Markdown/JSON export and import
+### Phase 1: Storage boundary
 
-Add local file exchange first.
+Introduce a storage boundary so feature services do not permanently depend on `better-sqlite3`.
 
 Capabilities:
 
-- export project memory snapshot
-- export common knowledge snapshot
-- import reviewed snapshot
-- detect duplicate IDs
-- preserve events
-- record import/export events
+- SQLite backend for local mode
+- PostgreSQL backend for gateway mode
+- explicit SQL per dialect where needed
+- shared repository/service contracts
+- migration runners per backend
 
-Suggested files:
+### Phase 2: PostgreSQL schema and migrations
 
-```text
-docs/generated/PROJECTS.md
-docs/generated/TASKS.md
-docs/generated/DECISIONS.md
-docs/generated/COMMON_RULES.md
-memory-export/project-memory.json
-memory-export/common.json
-```
-
-Why first:
-
-- works with Git
-- reviewable in pull requests
-- no auth required
-- no always-on server required
-- supports teams before network sync exists
-
-### Phase 2: Shared repository workflow
-
-Allow a project to keep memory snapshots in its Git repository.
-
-Typical workflow:
+Add PostgreSQL migrations that mirror the current core tables:
 
 ```text
-agent exports memory snapshot
-developer reviews diff
-snapshot is committed
-another developer imports snapshot
+projects
+items
+tasks
+decisions
+links
+events
+kv
+migrations
 ```
 
-This gives collaboration through Git without adding a hosted service.
+Use PostgreSQL-native search for shared memory instead of SQLite FTS5.
 
-### Phase 3: Optional sync backend
+### Phase 3: Common gateway API
 
-Only after export/import is stable, consider a sync backend.
+Expose a common gateway over HTTP for multiple clients.
 
-Possible options:
+Initial endpoints can be minimal:
 
-- shared SQLite file on a trusted local network
-- HTTP/SSE MCP server mode
-- small sync service with auth
-- Git-backed sync
+```http
+GET /health
+GET /tools
+POST /call
+```
 
-Do not add this until there is a concrete operational need.
+The gateway should call the same feature services as stdio mode.
 
-### Phase 4: Multi-user server mode
+### Phase 4: Client access model
 
-Add this only if teams need a shared live server.
+Add a stdio proxy or local agent adapter that forwards tool calls to the gateway.
 
-Required before this phase:
+This preserves agent compatibility while centralizing memory.
+
+### Phase 5: Auth, permissions, and provenance
+
+Add only after the shared gateway works in trusted environments.
+
+Required:
 
 - auth model
 - permissions
-- conflict handling
-- backup/restore story
-- migration compatibility
+- created_by/updated_by
+- source instance IDs
+- audit events
 - audit events
 
 ## Conflict Handling Direction
 
 MVP should not solve conflicts automatically.
 
-Future import/sync should detect:
+Gateway writes should eventually detect:
 
 - same ID with different content
 - superseded decision still referenced
@@ -203,28 +222,25 @@ Automatic merge can come later.
 
 ## Tooling Implications
 
-Future tools may include:
+Gateway-related tools may include:
 
 ```text
-memory.export
-memory.import
-common.export
-common.import
+gateway.health
+gateway.status
+gateway.list_clients
 sync.preview
-sync.apply
 sync.conflicts
-sync.resolve
 ```
 
 These should not replace the current tools. They should sit around the existing project/memory/task/decision/event/link model.
 
 ## Current Practical Rule
 
-For now, treat collaboration as a design constraint:
+For now, treat collaboration as an active architecture requirement:
 
 - keep records typed
 - keep IDs stable
 - keep docs human-readable
 - keep events append-only
 - avoid hidden local-only assumptions
-- prefer export/import before remote sync
+- implement PostgreSQL-backed gateway mode before adding advanced auth/permissions

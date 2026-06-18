@@ -26,7 +26,7 @@ Consequences:
 - package distributive must include migrations and docs
 - future collaboration must be added without breaking the local-first workflow
 
-## D-MEMORY-002: Design for future collaboration without implementing server sync in MVP
+## D-MEMORY-002: Collaboration is now an explicit product requirement
 
 Status: active
 
@@ -36,18 +36,45 @@ A single project may have multiple developers and agents. Project and common kno
 
 Decision:
 
-The MVP remains local-first, but the data model, documentation, IDs, and future feature plan must be collaboration-ready. Collaboration is a near-future capability, not an MVP runtime feature.
+Collaboration is no longer only a future concern. The system must support a shared team knowledge path through a common gateway while preserving local-first operation for individual agents.
 
 Rationale:
 
-Adding remote sync, auth, permissions, or multi-user server mode now would expand the MVP too much. Ignoring collaboration would create design debt around ownership, provenance, conflict handling, and export/import.
+Multiple developers can work on one project, and memory that affects decisions, failed attempts, and preflight should be available to all of them. Treating each local SQLite database as isolated would make the system unreliable for teams.
 
 Consequences:
 
 - records should keep stable human-readable ids
-- future schema should add author/source/provenance fields before remote sync
-- project and common knowledge should be exportable/importable
-- sync must preserve append-only events
+- schema should add author/source/provenance fields before broad rollout
+- common gateway mode should be supported as a first-class runtime
 - common knowledge should be shareable across projects and developers
 - project-specific knowledge must remain scoped and override common knowledge
-- future collaboration should support file-based exchange before networked server sync
+- append-only events remain required for auditability
+- local SQLite mode remains useful for development, tests, offline work, and single-agent operation
+
+## D-MEMORY-003: Use PostgreSQL as the primary shared gateway database
+
+Status: active
+
+Context:
+
+The common gateway must support multiple developers and agents reading and writing shared project memory. SQLite is excellent for embedded local operation, but it is not the right primary database for a shared concurrent service.
+
+Decision:
+
+Use PostgreSQL as the primary database backend for shared gateway mode. Keep SQLite as an embedded backend for local mode, tests, packaging smoke checks, and offline/single-agent workflows.
+
+Rationale:
+
+PostgreSQL gives the project a durable shared database with strong concurrency, transactions, row-level locking, JSONB, full-text search, migrations, backup/restore tooling, and a clear path to provenance, audit, and permissions. It matches the relational model better than document stores and avoids treating SQLite as a networked team database.
+
+Consequences:
+
+- gateway mode should default to PostgreSQL once implemented
+- SQLite support should remain behind a storage abstraction
+- repositories should stop depending directly on `better-sqlite3` as a permanent feature-layer detail
+- SQL should stay explicit and dialect-aware
+- PostgreSQL migrations should be introduced alongside or after the storage boundary
+- FTS5 remains SQLite-local; PostgreSQL search should use `tsvector`/`tsquery` or equivalent explicit search tables
+- shared deployments need operational settings for database URL, pool size, migration execution, and backups
+- auth/permissions can still be staged later, but database choice should not block them

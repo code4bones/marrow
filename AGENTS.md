@@ -270,7 +270,7 @@ The MVP should include:
 * basic CLI or seed script
 * MCP tools
 
-The MVP should not include:
+The MVP should not include until requested:
 
 * UI
 * remote server mode
@@ -279,8 +279,9 @@ The MVP should not include:
 * embeddings
 * vector search
 * cloud sync
-* multi-user collaboration
 * complex graph visualization
+* multi-user collaboration
+
 
 ## Expected MCP tools
 
