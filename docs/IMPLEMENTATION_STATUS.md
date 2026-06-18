@@ -23,6 +23,8 @@ Implemented capabilities:
 - PostgreSQL gateway tool service
 - HTTP gateway routes: `GET /health`, `GET /tools`, `POST /call`
 - stdio MCP gateway client proxy
+- gateway client registry through `gateway_clients`
+- gateway diagnostics: `gateway.status`, `gateway.clients`
 - tests, typecheck, lint, and build scripts
 
 The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted team environments; full conflict resolution and permissions remain follow-up work.
@@ -79,7 +81,7 @@ npm run gateway
 npm run gateway:client
 ```
 
-The gateway client reads `PROJECT_MEMORY_GATEWAY_URL` first and falls back to `.env` `API_ENDPOINT`. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
+The gateway client reads `PROJECT_MEMORY_GATEWAY_URL` first and falls back to `.env` `API_ENDPOINT`. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
 
 ## Source Layout
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { hostname } from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { AppError } from "./shared/errors.js";
@@ -10,6 +11,10 @@ async function main(): Promise<void> {
     process.env.PROJECT_MEMORY_GATEWAY_URL ?? process.env.API_ENDPOINT ?? "http://127.0.0.1:8765"
   );
   const token = process.env.PROJECT_MEMORY_GATEWAY_TOKEN ?? process.env.MCP_TOKEN;
+  const clientIdentity = {
+    id: process.env.PROJECT_MEMORY_CLIENT_ID ?? `gateway-client:${hostname()}`,
+    label: process.env.PROJECT_MEMORY_CLIENT_LABEL ?? "Project Memory Gateway Client"
+  };
   const server = new McpServer({
     name: "project-memory-gateway-client",
     version: "0.1.0"
@@ -24,7 +29,7 @@ async function main(): Promise<void> {
       },
       async (input) => {
         try {
-          return asMcpResult(await callGateway(gatewayUrl, token, spec.name, input));
+          return asMcpResult(await callGateway(gatewayUrl, token, clientIdentity, spec.name, input));
         } catch (error) {
           return asMcpResult(fail(error));
         }
@@ -40,6 +45,7 @@ async function main(): Promise<void> {
 async function callGateway(
   gatewayUrl: string,
   token: string | undefined,
+  clientIdentity: { id: string; label: string },
   tool: string,
   input: unknown
 ): Promise<ToolResponse<unknown>> {
@@ -47,6 +53,9 @@ async function callGateway(
     method: "POST",
     headers: {
       "content-type": "application/json",
+      "x-project-memory-client-id": clientIdentity.id,
+      "x-project-memory-client-label": clientIdentity.label,
+      "x-project-memory-client-kind": "mcp-stdio",
       ...(token ? { authorization: `Bearer ${token}` } : {})
     },
     body: JSON.stringify({ tool, input })

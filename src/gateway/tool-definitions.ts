@@ -1,4 +1,4 @@
-import type * as z from "zod/v4";
+import * as z from "zod/v4";
 import { getDecisionSchema, listDecisionsSchema, recordDecisionSchema } from "../features/decisions/model/schema.js";
 import { listEventsSchema, recordEventSchema } from "../features/events/model/schema.js";
 import { createLinkSchema, listLinksSchema } from "../features/links/model/schema.js";
@@ -24,7 +24,24 @@ export interface GatewayToolSpec {
   schema: z.ZodObject;
 }
 
+const emptySchema = z.object({});
+const listGatewayClientsSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional()
+});
+
 export const gatewayToolSpecs: GatewayToolSpec[] = [
+  {
+    name: "gateway.status",
+    description:
+      "Return PostgreSQL gateway status, registered client count, and core record counts. Use this to confirm the shared memory gateway is reachable before collaboration workflows.",
+    schema: emptySchema
+  },
+  {
+    name: "gateway.clients",
+    description:
+      "List recently seen gateway clients. Use this to inspect which agents or developers are sharing the project memory gateway.",
+    schema: listGatewayClientsSchema
+  },
   {
     name: "project.create",
     description:

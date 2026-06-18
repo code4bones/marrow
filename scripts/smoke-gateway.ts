@@ -15,6 +15,7 @@ const state: {
   taskId?: string;
   memoryId?: string;
 } = {};
+const clientId = `gateway-http-smoke-${Date.now()}`;
 
 try {
   const health = (await getJson(`${started.url}/health`)) as { ok?: boolean };
@@ -23,9 +24,14 @@ try {
 
   const tools = (await getJson(`${started.url}/tools`)) as { tools?: { name: string }[] };
   assert(tools.tools?.some((tool) => tool.name === "preflight"), "Gateway tools route did not expose preflight.");
+  assert(tools.tools?.some((tool) => tool.name === "gateway.clients"), "Gateway tools route did not expose gateway.clients.");
   console.log("ok - gateway tools");
 
   const unique = Date.now();
+  const status = await callGateway("gateway.status", {});
+  assert(expectData<{ status: { storage: string } }>(status).status.storage === "postgresql", "Gateway status did not report PostgreSQL storage.");
+  console.log("ok - gateway.status");
+
   const project = await callGateway("project.create", {
     slug: `gateway-smoke-${unique}`,
     title: `Gateway Smoke ${unique}`
@@ -68,12 +74,18 @@ try {
   assert(preflightData.project.id === state.projectId, "Gateway preflight returned wrong project.");
   console.log("ok - preflight");
 
+  const clients = await callGateway("gateway.clients", {});
+  const clientsData = expectData<{ clients: { id: string }[] }>(clients);
+  assert(clientsData.clients.some((client) => client.id === clientId), "Gateway clients did not include smoke client.");
+  console.log("ok - gateway.clients");
+
   console.log(`Gateway smoke test passed using ${started.url}`);
 } finally {
   if (state.projectId) {
     await db("kv").where({ key: "current_project_id", value: state.projectId }).del();
     await db("projects").where({ id: state.projectId }).del();
   }
+  await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolve) => started.server.close(() => resolve()));
   await service.close();
 }
@@ -97,7 +109,10 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      "content-type": "application/json"
+      "content-type": "application/json",
+      "x-project-memory-client-id": clientId,
+      "x-project-memory-client-label": "Gateway HTTP Smoke",
+      "x-project-memory-client-kind": "smoke"
     },
     body: JSON.stringify(body)
   });

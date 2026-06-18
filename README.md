@@ -151,6 +151,18 @@ PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
 
 `API_ENDPOINT` is supported as a fallback for `PROJECT_MEMORY_GATEWAY_URL`, so an existing `.env` with `API_ENDPOINT=http://host:port` can drive the gateway client without another variable.
 
+For shared teams, give each proxy a stable identity:
+
+```text
+PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
+PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
+```
+
+Gateway-only MCP tools:
+
+- `gateway.status`
+- `gateway.clients`
+
 ## Distribution Contents
 
 The npm package includes the built server, built helper scripts, migrations, and project documentation:

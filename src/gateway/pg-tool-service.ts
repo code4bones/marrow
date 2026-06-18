@@ -7,6 +7,18 @@ import { gatewayToolSpecs } from "./tool-definitions.js";
 
 type Row = Record<string, unknown>;
 
+export interface GatewayRequestContext {
+  clientId?: string;
+  clientLabel?: string;
+  metadata?: Row;
+}
+
+interface NormalizedGatewayRequestContext {
+  clientId: string;
+  clientLabel: string;
+  metadata: Row;
+}
+
 export class PgToolService {
   constructor(private readonly db: Knex) {}
 
@@ -14,17 +26,27 @@ export class PgToolService {
     return gatewayToolSpecs.map(({ name, description }) => ({ name, description }));
   }
 
-  async call(toolName: string, input: unknown): Promise<ToolResponse<unknown>> {
+  async call(
+    toolName: string,
+    input: unknown,
+    context: GatewayRequestContext = {}
+  ): Promise<ToolResponse<unknown>> {
     const spec = gatewayToolSpecs.find((tool) => tool.name === toolName);
     if (!spec) {
       return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not registered.`));
     }
 
     try {
+      const requestContext = normalizeContext(context);
+      await this.touchClient(requestContext);
       const parsed = spec.schema.parse(input ?? {}) as Row;
       switch (toolName) {
+        case "gateway.status":
+          return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
+        case "gateway.clients":
+          return ok("Gateway clients listed.", { clients: await this.listClients(parsed) });
         case "project.create":
-          return ok("Project created.", { project: await this.createProject(parsed) });
+          return ok("Project created.", { project: await this.createProject(parsed, requestContext) });
         case "project.list":
           return ok("Projects listed.", { projects: await this.listProjects(parsed) });
         case "project.get":
@@ -34,15 +56,15 @@ export class PgToolService {
         case "project.current":
           return ok("Current project loaded.", { project: await this.currentProject() });
         case "memory.create":
-          return ok("Memory item created.", { item: await this.createMemory(parsed) });
+          return ok("Memory item created.", { item: await this.createMemory(parsed, requestContext) });
         case "memory.get":
           return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id)) });
         case "memory.search":
           return ok("Memory searched.", { results: await this.searchMemory(parsed) });
         case "memory.update":
-          return ok("Memory item updated.", { item: await this.updateMemory(parsed) });
+          return ok("Memory item updated.", { item: await this.updateMemory(parsed, requestContext) });
         case "task.create":
-          return ok("Task created.", { task: await this.createTask(parsed) });
+          return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
           return ok("Tasks listed.", { tasks: await this.listTasks(parsed) });
         case "task.get":
@@ -50,19 +72,19 @@ export class PgToolService {
         case "task.next":
           return ok("Next task loaded.", { task: await this.nextTask(parsed) });
         case "task.update_status":
-          return ok("Task status updated.", { task: await this.updateTaskStatus(parsed) });
+          return ok("Task status updated.", { task: await this.updateTaskStatus(parsed, requestContext) });
         case "decision.record":
-          return ok("Decision recorded.", { decision: await this.recordDecision(parsed) });
+          return ok("Decision recorded.", { decision: await this.recordDecision(parsed, requestContext) });
         case "decision.list":
           return ok("Decisions listed.", { decisions: await this.listDecisions(parsed) });
         case "decision.get":
           return ok("Decision loaded.", { decision: await this.getDecision(String(parsed.id)) });
         case "event.record":
-          return ok("Event recorded.", { event: await this.recordEvent(parsed) });
+          return ok("Event recorded.", { event: await this.recordEvent(parsed, requestContext) });
         case "event.list":
           return ok("Events listed.", { events: await this.listEvents(parsed) });
         case "link.create":
-          return ok("Link created.", { link: await this.createLink(parsed) });
+          return ok("Link created.", { link: await this.createLink(parsed, requestContext) });
         case "link.list":
           return ok("Links listed.", { links: await this.listLinks(parsed) });
         case "preflight":
@@ -79,7 +101,40 @@ export class PgToolService {
     await this.db.destroy();
   }
 
-  private async createProject(input: Row) {
+  private async gatewayStatus() {
+    const [projects, items, tasks, decisions, events, clients] = await Promise.all([
+      this.countRows("projects"),
+      this.countRows("items"),
+      this.countRows("tasks"),
+      this.countRows("decisions"),
+      this.countRows("events"),
+      this.countRows("gateway_clients")
+    ]);
+
+    return {
+      mode: "gateway",
+      storage: "postgresql",
+      tools: this.listTools().length,
+      records: {
+        projects,
+        items,
+        tasks,
+        decisions,
+        events
+      },
+      clients
+    };
+  }
+
+  private async listClients(input: Row) {
+    const rows = await this.db("gateway_clients")
+      .select("*")
+      .orderBy("updated_at", "desc")
+      .limit(Number(input.limit ?? 50));
+    return rows.map(clientOut);
+  }
+
+  private async createProject(input: Row, context: NormalizedGatewayRequestContext) {
     const now = nowIso();
     const baseId = createProjectId(String(input.slug));
     const id = await this.uniqueProjectId(baseId);
@@ -89,7 +144,8 @@ export class PgToolService {
       title: String(input.title),
       description: stringOrNull(input.description),
       status: "active",
-      root_path: input.rootPath ?? null,
+      root_path: stringOrNull(input.rootPath),
+      ...writeActorFields(context),
       created_at: now,
       updated_at: now
     };
@@ -99,7 +155,7 @@ export class PgToolService {
       type: "project.created",
       title: `Project created: ${row.title}`,
       related_id: id
-    });
+    }, context);
     return projectOut(row);
   }
 
@@ -142,7 +198,7 @@ export class PgToolService {
     return this.currentProject();
   }
 
-  private async createMemory(input: Row) {
+  private async createMemory(input: Row, context: NormalizedGatewayRequestContext) {
     const common = input.common === true || input.project === null;
     const project = common ? null : await this.resolveProject(input.project);
     const prefix = project ? `I-${projectKeyFromId(project.id)}` : commonItemPrefix(String(input.type));
@@ -155,6 +211,7 @@ export class PgToolService {
       body: String(input.body),
       status: typeof input.status === "string" ? input.status : "active",
       tags: jsonStringArray(input.tags),
+      ...writeActorFields(context),
       created_at: now,
       updated_at: now
     };
@@ -164,7 +221,7 @@ export class PgToolService {
       type: "item.created",
       title: `Memory item created: ${row.title}`,
       related_id: row.id
-    });
+    }, context);
     return itemOut(row);
   }
 
@@ -220,7 +277,7 @@ export class PgToolService {
     return rows.map(searchOut);
   }
 
-  private async updateMemory(input: Row) {
+  private async updateMemory(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("items").where({ id }).first();
     if (!current) {
@@ -232,6 +289,8 @@ export class PgToolService {
       body: typeof input.body === "string" ? input.body : current.body,
       status: typeof input.status === "string" ? input.status : current.status,
       tags: Array.isArray(input.tags) ? jsonStringArray(input.tags) : current.tags,
+      updated_by: context.clientId,
+      source_instance_id: context.clientId,
       updated_at: nowIso(),
       version: Number(current.version ?? 1) + 1
     };
@@ -240,11 +299,11 @@ export class PgToolService {
       type: "item.updated",
       title: `Memory item updated: ${row.title}`,
       related_id: row.id
-    });
+    }, context);
     return itemOut(row);
   }
 
-  private async createTask(input: Row) {
+  private async createTask(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project);
     const now = nowIso();
     const row = {
@@ -260,6 +319,7 @@ export class PgToolService {
       forbidden_files: jsonStringArray(input.forbiddenFiles),
       depends_on: jsonStringArray(input.dependsOn),
       notes: stringOrNull(input.notes),
+      ...writeActorFields(context),
       created_at: now,
       updated_at: now
     };
@@ -268,7 +328,7 @@ export class PgToolService {
       type: "task.created",
       title: `Task created: ${row.title}`,
       related_id: row.id
-    });
+    }, context);
     return taskOut(row);
   }
 
@@ -302,7 +362,7 @@ export class PgToolService {
     return row ? taskOut(row) : null;
   }
 
-  private async updateTaskStatus(input: Row) {
+  private async updateTaskStatus(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("tasks").where({ id }).first();
     if (!current) {
@@ -315,6 +375,8 @@ export class PgToolService {
       .update({
         status: String(input.status),
         notes,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
         updated_at: nowIso(),
         version: Number(current.version ?? 1) + 1
       })
@@ -324,11 +386,11 @@ export class PgToolService {
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id
-    });
+    }, context);
     return taskOut(row);
   }
 
-  private async recordDecision(input: Row) {
+  private async recordDecision(input: Row, context: NormalizedGatewayRequestContext) {
     const project = input.project === null ? null : await this.resolveProject(input.project);
     const now = nowIso();
     const row = {
@@ -342,6 +404,7 @@ export class PgToolService {
       consequences: stringOrNull(input.consequences),
       tags: jsonStringArray(input.tags),
       supersedes_id: stringOrNull(input.supersedesId),
+      ...writeActorFields(context),
       created_at: now,
       updated_at: now
     };
@@ -353,7 +416,7 @@ export class PgToolService {
       type: "decision.recorded",
       title: `Decision recorded: ${row.title}`,
       related_id: row.id
-    });
+    }, context);
     return decisionOut(row);
   }
 
@@ -384,14 +447,14 @@ export class PgToolService {
     return decisionOut(row);
   }
 
-  private async recordEvent(input: Row) {
+  private async recordEvent(input: Row, context: NormalizedGatewayRequestContext) {
     const project = input.project === null ? null : await this.resolveProject(input.project);
     return this.recordEventForProject(project?.id ?? null, {
       type: String(input.type),
       title: asNullableString(input.title),
       body: asNullableString(input.body),
       related_id: asNullableString(input.relatedId)
-    });
+    }, context);
   }
 
   private async listEvents(input: Row) {
@@ -410,7 +473,7 @@ export class PgToolService {
     return (await query.orderBy("created_at", "desc").limit(Number(input.limit ?? 20))).map(eventOut);
   }
 
-  private async createLink(input: Row) {
+  private async createLink(input: Row, context: NormalizedGatewayRequestContext) {
     await this.assertRecordExists(String(input.fromId));
     await this.assertRecordExists(String(input.toId));
     const project = input.project === null ? null : await this.resolveProject(input.project);
@@ -420,6 +483,8 @@ export class PgToolService {
       from_id: String(input.fromId),
       to_id: String(input.toId),
       relation: String(input.relation),
+      created_by: context.clientId,
+      source_instance_id: context.clientId,
       created_at: nowIso()
     };
     await this.db("links").insert(row);
@@ -427,7 +492,7 @@ export class PgToolService {
       type: "link.created",
       title: `Link created: ${row.from_id} ${row.relation} ${row.to_id}`,
       related_id: row.id
-    });
+    }, context);
     return linkOut(row);
   }
 
@@ -497,7 +562,11 @@ export class PgToolService {
     };
   }
 
-  private async recordEventForProject(projectId: string | null, input: Row) {
+  private async recordEventForProject(
+    projectId: string | null,
+    input: Row,
+    context: NormalizedGatewayRequestContext
+  ) {
     const row = {
       id: await this.nextId("events", `E-${projectId ? projectKeyFromId(projectId) : "COMMON"}`),
       project_id: projectId,
@@ -505,10 +574,37 @@ export class PgToolService {
       title: input.title ?? null,
       body: input.body ?? null,
       related_id: input.related_id ?? null,
+      created_by: context.clientId,
+      source_instance_id: context.clientId,
       created_at: nowIso()
     };
     await this.db("events").insert(row);
     return eventOut(row);
+  }
+
+  private async touchClient(context: NormalizedGatewayRequestContext): Promise<void> {
+    const now = nowIso();
+    await this.db("gateway_clients")
+      .insert({
+        id: context.clientId,
+        label: context.clientLabel,
+        last_seen_at: now,
+        metadata: JSON.stringify(context.metadata),
+        created_at: now,
+        updated_at: now
+      })
+      .onConflict("id")
+      .merge({
+        label: context.clientLabel,
+        last_seen_at: now,
+        metadata: JSON.stringify(context.metadata),
+        updated_at: now
+      });
+  }
+
+  private async countRows(table: string): Promise<number> {
+    const [row] = await this.db(table).count<{ count: string | number }[]>({ count: "*" });
+    return Number(row?.count ?? 0);
   }
 
   private async uniqueProjectId(baseId: string): Promise<string> {
@@ -580,6 +676,17 @@ function projectOut(row: Row) {
     description: stringOrNull(row.description),
     status: String(row.status),
     rootPath: stringOrNull(row.root_path),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at)
+  };
+}
+
+function clientOut(row: Row) {
+  return {
+    id: String(row.id),
+    label: stringOrNull(row.label),
+    lastSeenAt: stringOrNull(row.last_seen_at),
+    metadata: jsonObject(row.metadata),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -700,6 +807,38 @@ function stringArray(value: unknown): string[] {
 
 function jsonStringArray(value: unknown): string {
   return JSON.stringify(stringArray(value));
+}
+
+function jsonObject(value: unknown): Row {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Row;
+  }
+  if (typeof value === "string" && value.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return jsonObject(parsed);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizeContext(context: GatewayRequestContext): NormalizedGatewayRequestContext {
+  const clientId = context.clientId && context.clientId.length > 0 ? context.clientId : "anonymous";
+  return {
+    clientId,
+    clientLabel: context.clientLabel && context.clientLabel.length > 0 ? context.clientLabel : clientId,
+    metadata: context.metadata ?? {}
+  };
+}
+
+function writeActorFields(context: NormalizedGatewayRequestContext) {
+  return {
+    created_by: context.clientId,
+    updated_by: context.clientId,
+    source_instance_id: context.clientId
+  };
 }
 
 function eventTypeForStatus(status: string): string {

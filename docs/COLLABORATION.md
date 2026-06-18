@@ -64,6 +64,15 @@ PROJECT_MEMORY_GATEWAY_URL=http://127.0.0.1:8765 npm run gateway:client
 
 For existing `.env` compatibility, `API_ENDPOINT` is accepted as the gateway client URL fallback. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
 
+Each stdio gateway client should set a stable identity:
+
+```text
+PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
+PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
+```
+
+The gateway records clients in `gateway_clients` and exposes them through `gateway.clients`. `gateway.status` reports shared gateway health and record counts.
+
 ## Collaboration-Ready Principles
 
 ### 1. Local-first remains supported
@@ -203,7 +212,7 @@ Add a stdio proxy or local agent adapter that forwards tool calls to the gateway
 
 This preserves agent compatibility while centralizing memory.
 
-Current implementation includes `project-memory-gateway-client`, a stdio MCP proxy that registers the same tool names and forwards calls to the gateway.
+Current implementation includes `project-memory-gateway-client`, a stdio MCP proxy that registers the memory tools plus gateway diagnostics and forwards calls to the gateway.
 
 ### Phase 5: Auth, permissions, and provenance
 

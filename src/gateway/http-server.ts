@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
-import type { PgToolService } from "./pg-tool-service.js";
+import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 
 export interface GatewayServerOptions {
   host: string;
@@ -68,7 +68,7 @@ async function handleRequest(
         sendJson(response, 400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")));
         return;
       }
-      sendJson(response, 200, await service.call(body.tool, body.input ?? {}));
+      sendJson(response, 200, await service.call(body.tool, body.input ?? {}, requestContext(request)));
       return;
     }
 
@@ -76,6 +76,27 @@ async function handleRequest(
   } catch (error) {
     sendJson(response, 500, fail(error));
   }
+}
+
+function requestContext(request: IncomingMessage): GatewayRequestContext {
+  const clientId = headerString(request, "x-project-memory-client-id") ?? "anonymous";
+  const clientLabel = headerString(request, "x-project-memory-client-label") ?? clientId;
+  return {
+    clientId,
+    clientLabel,
+    metadata: {
+      kind: headerString(request, "x-project-memory-client-kind") ?? "http",
+      userAgent: headerString(request, "user-agent")
+    }
+  };
+}
+
+function headerString(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name];
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
 }
 
 function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): boolean {

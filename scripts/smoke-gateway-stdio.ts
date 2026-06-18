@@ -18,6 +18,7 @@ const started = await startGatewayServer(service, {
   host: "127.0.0.1",
   port: 0
 });
+const clientId = `gateway-stdio-smoke-${Date.now()}`;
 
 const transport = new StdioClientTransport({
   command: process.execPath,
@@ -25,6 +26,8 @@ const transport = new StdioClientTransport({
   cwd: process.cwd(),
   env: {
     ...process.env,
+    PROJECT_MEMORY_CLIENT_ID: clientId,
+    PROJECT_MEMORY_CLIENT_LABEL: "Gateway Stdio Smoke",
     PROJECT_MEMORY_GATEWAY_URL: started.url
   },
   stderr: "pipe"
@@ -45,10 +48,28 @@ try {
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
+  assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
+  assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway stdio client listed ${toolNames.length} tools`);
+
+  const statusResult = await client.callTool({
+    name: "gateway.status",
+    arguments: {}
+  });
+  assertOk(statusResult.structuredContent, "gateway.status failed.");
+
+  const clientsResult = await client.callTool({
+    name: "gateway.clients",
+    arguments: {}
+  });
+  assertOk(clientsResult.structuredContent, "gateway.clients failed.");
+  const clientIds = readNestedArray(clientsResult.structuredContent, ["data", "clients"])
+    .map((item) => (isRecord(item) ? item.id : undefined));
+  assert(clientIds.includes(clientId), "gateway.clients did not include the stdio smoke client.");
+  console.log("ok - gateway status and clients");
 
   const unique = Date.now();
   const projectResult = await client.callTool({
@@ -108,6 +129,7 @@ try {
     await db("kv").where({ key: "current_project_id", value: state.projectId }).del();
     await db("projects").where({ id: state.projectId }).del();
   }
+  await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolveServerClose) => started.server.close(() => resolveServerClose()));
   await service.close();
 }
@@ -135,6 +157,22 @@ function readNestedString(value: unknown, path: string[]): string {
 
   if (typeof current !== "string") {
     throw new Error(`Expected string at ${path.join(".")}.`);
+  }
+
+  return current;
+}
+
+function readNestedArray(value: unknown, path: string[]): unknown[] {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) {
+      throw new Error(`Expected object while reading ${path.join(".")}.`);
+    }
+    current = current[key];
+  }
+
+  if (!Array.isArray(current)) {
+    throw new Error(`Expected array at ${path.join(".")}.`);
   }
 
   return current;
