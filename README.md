@@ -58,6 +58,24 @@ Override it with:
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
 
+Shared gateway mode uses PostgreSQL. Configure either `PROJECT_MEMORY_DATABASE_URL`/`DATABASE_URL` or the split variables:
+
+```bash
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_DB=project_memory
+POSTGRES_USER=project_memory
+POSTGRES_PASSWORD=...
+POSTGRES_SSL=false
+```
+
+Run PostgreSQL migrations:
+
+```bash
+npm run db:pg:migrate
+npm run db:pg:status
+```
+
 ## Seed Common Memory
 
 ```bash
@@ -105,6 +123,7 @@ The npm package includes the built server, built helper scripts, migrations, and
 - `dist/src`
 - `dist/scripts`
 - `migrations`
+- `knexfile.cjs`
 - `docs`
 - `README.md`
 - `AGENTS.md`

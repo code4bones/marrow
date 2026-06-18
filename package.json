@@ -12,6 +12,7 @@
     "dist/scripts",
     "docs",
     "migrations",
+    "knexfile.cjs",
     "README.md",
     "AGENTS.md"
   ],
@@ -20,6 +21,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "db:pg:migrate": "knex migrate:latest --knexfile knexfile.cjs",
+    "db:pg:rollback": "knex migrate:rollback --knexfile knexfile.cjs",
+    "db:pg:status": "knex migrate:status --knexfile knexfile.cjs",
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
     "seed:common": "node dist/scripts/seed-common.js",
@@ -47,6 +51,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",
+    "dotenv": "^17.4.2",
+    "knex": "^3.2.10",
+    "pg": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

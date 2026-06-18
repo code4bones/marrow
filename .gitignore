@@ -1,6 +1,7 @@
 .git
 .tellymcp
 .mcpsession.json
+.env
 node_modules
 dist
 .agent

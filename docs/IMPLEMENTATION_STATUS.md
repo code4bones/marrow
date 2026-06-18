@@ -44,6 +44,7 @@ Included:
 - `dist/scripts`
 - `docs`
 - `migrations`
+- `knexfile.cjs`
 - `README.md`
 - `AGENTS.md`
 
@@ -56,6 +57,13 @@ Excluded:
 - build and lint configuration
 
 Runtime migration discovery uses the nearest package root instead of assuming the current working directory, so the built server can run after package installation.
+
+PostgreSQL shared gateway migrations are managed through Knex:
+
+```bash
+npm run db:pg:migrate
+npm run db:pg:status
+```
 
 ## Source Layout
 
