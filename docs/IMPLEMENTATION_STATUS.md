@@ -34,6 +34,29 @@ The implementation intentionally does not include UI, auth, remote sync, cloud d
 - Vitest for tests
 - ESLint for linting
 
+## Distribution Contents
+
+The package distributive is intentionally limited through `package.json` `files`.
+
+Included:
+
+- `dist/src`
+- `dist/scripts`
+- `docs`
+- `migrations`
+- `README.md`
+- `AGENTS.md`
+
+Excluded:
+
+- TypeScript source files
+- tests
+- local SQLite data
+- local MCP environment files
+- build and lint configuration
+
+Runtime migration discovery uses the nearest package root instead of assuming the current working directory, so the built server can run after package installation.
+
 ## Source Layout
 
 The code follows the feature-oriented structure described in `docs/ARCHITECTURE.md`.
@@ -217,8 +240,8 @@ Current validation commands:
 npm run lint
 npm run typecheck
 npm test
-npm run smoke
 npm run build
+npm run smoke
 npm run smoke:stdio
 ```
 

@@ -96,14 +96,25 @@ Example command:
 node /absolute/path/to/project-memory-mcp/dist/src/index.js
 ```
 
+## Distribution Contents
+
+The npm package includes the built server, built helper scripts, migrations, and project documentation:
+
+- `dist/src`
+- `dist/scripts`
+- `migrations`
+- `docs`
+- `README.md`
+- `AGENTS.md`
+
 ## Validation
 
 ```bash
 npm run lint
 npm run typecheck
 npm test
-npm run smoke
 npm run build
+npm run smoke
 npm run smoke:stdio
 ```
 

@@ -7,16 +7,24 @@
   "bin": {
     "project-memory-mcp": "dist/src/index.js"
   },
+  "files": [
+    "dist/src",
+    "dist/scripts",
+    "docs",
+    "migrations",
+    "README.md",
+    "AGENTS.md"
+  ],
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
-    "seed:common": "tsx scripts/seed-common.ts",
-    "smoke": "tsx scripts/smoke.ts",
-    "smoke:stdio": "tsx scripts/smoke-stdio.ts",
+    "seed:common": "node dist/scripts/seed-common.js",
+    "smoke": "node dist/scripts/smoke.js",
+    "smoke:stdio": "node dist/scripts/smoke-stdio.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
