@@ -1,0 +1,47 @@
+{
+  "name": "project-memory-mcp",
+  "version": "1.0.0",
+  "description": "Local-first MCP server for project-oriented agent memory.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "project-memory-mcp": "dist/index.js"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "seed:common": "tsx scripts/seed-common.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/prj/mcp/project_mem.git"
+  },
+  "keywords": [
+    "mcp",
+    "memory",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://gitlab.com/prj/mcp/project_mem/issues"
+  },
+  "homepage": "https://gitlab.com/prj/mcp/project_mem#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
