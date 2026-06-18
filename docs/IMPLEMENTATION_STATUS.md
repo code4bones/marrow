@@ -213,6 +213,7 @@ Current validation commands:
 npm run lint
 npm run typecheck
 npm test
+npm run smoke
 npm run build
 ```
 
@@ -228,6 +229,7 @@ Current test coverage includes:
 - link creation/listing
 - validation error mapping
 - MCP protocol smoke test through in-memory transport
+- CLI smoke test through `npm run smoke`
 
 ## Commit Checkpoints
 
@@ -246,7 +248,6 @@ Recent implementation checkpoints:
 
 The current implementation is useful as an MVP but still has several practical follow-ups:
 
-- add a CLI smoke script for end-to-end local verification without an MCP client
 - exercise the server in a real MCP client configuration
 - include linked records in `preflight`
 - include task dependencies in richer form
@@ -259,15 +260,4 @@ The current implementation is useful as an MVP but still has several practical f
 
 ## Recommended Next Step
 
-Add a `scripts/smoke.ts` command that runs a full local workflow against a temporary SQLite database:
-
-1. create project
-2. seed common records
-3. create task
-4. record decision
-5. create memory item
-6. create link
-7. run preflight
-8. verify expected records and events
-
-This gives a fast end-to-end check before connecting the server to real MCP clients.
+Exercise the built server in a real MCP client configuration and verify that the client can list and call the implemented tools.

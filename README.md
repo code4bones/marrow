@@ -98,6 +98,7 @@ node /absolute/path/to/project-memory-mcp/dist/src/index.js
 npm run lint
 npm run typecheck
 npm test
+npm run smoke
 npm run build
 ```
 

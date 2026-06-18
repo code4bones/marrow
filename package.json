@@ -15,6 +15,7 @@
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
     "seed:common": "tsx scripts/seed-common.ts",
+    "smoke": "tsx scripts/smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
