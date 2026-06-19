@@ -184,6 +184,40 @@ codex mcp add project-memory \
   --bearer-token-env-var PMEM_MCP_TOKEN
 ```
 
+Some MCP clients support Streamable HTTP URLs but do not yet pass custom HTTP
+headers. For those clients, run the packaged stdio bridge locally. The bridge
+accepts stdio from the MCP client and forwards to the HTTP gateway with the
+required bearer header:
+
+```bash
+export PMEM_MCP_TOKEN="<token>"
+export PMEM_MCP_URL="https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
+
+project-memory-http-stdio-bridge
+```
+
+Example CodeWhale entry:
+
+```json
+{
+  "servers": {
+    "project-memory": {
+      "command": "project-memory-http-stdio-bridge",
+      "args": [],
+      "env": {
+        "PMEM_MCP_URL": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
+        "PMEM_MCP_TOKEN": "<token or wrapper-provided env>"
+      },
+      "disabled": false
+    }
+  }
+}
+```
+
+If the client does not expand env placeholders in MCP config, use a local shell
+wrapper that sources a private `.env` and then executes
+`project-memory-http-stdio-bridge`.
+
 Gateway-only MCP tools:
 
 - `gateway.about`

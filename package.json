@@ -6,6 +6,7 @@
   "main": "dist/src/index.js",
   "bin": {
     "project-memory-gateway": "dist/src/gateway.js",
+    "project-memory-http-stdio-bridge": "dist/scripts/pmem-http-stdio-bridge.js",
     "project-memory-mcp": "dist/src/index.js"
   },
   "files": [

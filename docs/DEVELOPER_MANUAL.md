@@ -111,6 +111,43 @@ Restart the agent after changing MCP configuration.
 The `client_id` should be stable for the developer or machine. This makes
 `gateway.clients` useful for collaboration and audit trails.
 
+### Clients Without HTTP Header Support
+
+Some MCP clients can connect to a remote Streamable HTTP URL but cannot send
+custom HTTP headers. CodeWhale v0.8.x is one example: direct URL registration
+works, but authenticated gateways return `401` because the bearer header is not
+sent.
+
+Use the packaged stdio bridge for these clients:
+
+```bash
+export PMEM_MCP_TOKEN="<gateway-token>"
+export PMEM_MCP_URL="https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
+
+project-memory-http-stdio-bridge
+```
+
+The MCP client should register it as a stdio server:
+
+```json
+{
+  "servers": {
+    "project-memory": {
+      "command": "project-memory-http-stdio-bridge",
+      "args": [],
+      "env": {
+        "PMEM_MCP_URL": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
+        "PMEM_MCP_TOKEN": "<token or wrapper-provided env>"
+      }
+    }
+  }
+}
+```
+
+If the client does not expand environment placeholders, keep secrets out of MCP
+JSON and use a local wrapper script that sources a private `.env`, exports
+`PMEM_MCP_TOKEN`, and executes `project-memory-http-stdio-bridge`.
+
 ## First Smoke Test
 
 After connecting an agent, ask:
