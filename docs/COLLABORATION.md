@@ -62,7 +62,7 @@ For long-running shared deployments, PM2 can run the gateway from `.env`:
 pm2 startOrReload ecosystem.config.cjs --env production
 ```
 
-`ecosystem.config.cjs` accepts both `PROJECT_MEMORY_GATEWAY_HOST`/`PROJECT_MEMORY_GATEWAY_PORT` and existing `BIND`/`PORT` variables.
+`ecosystem.config.cjs` uses the gateway-specific `BIND` and `PORT` variables.
 
 Agents connect directly to the MCP Streamable HTTP endpoint:
 
@@ -70,14 +70,9 @@ Agents connect directly to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-For existing `.env` compatibility, `GW_ENDPOINT` can point to the MCP endpoint. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
+Keep gateway runtime and client connection variables separate. Gateway-specific variables such as `BIND`, `PORT`, `API_ENDPOINT`, and `MCP_TOKEN` describe how the shared service runs. Client-specific variables such as `GW_ENDPOINT` and `MCP_CLIENT_AUTH` describe how agents connect to it. `GW_ENDPOINT` is the public gateway base URL; MCP clients use `${GW_ENDPOINT}/mcp`.
 
-Each MCP HTTP client should set a stable identity:
-
-```text
-PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
-PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
-```
+Each MCP HTTP client should send stable `X-Project-Memory-Client-*` headers when client identity matters.
 
 The gateway records clients in `gateway_clients` and exposes them through `gateway.clients`. `gateway.status` reports shared gateway health and record counts.
 

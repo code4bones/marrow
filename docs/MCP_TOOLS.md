@@ -111,11 +111,12 @@ Output:
 
 Use this to inspect which developers or agents have touched the shared memory gateway recently.
 
-Each MCP HTTP client should set:
+Each MCP HTTP client should send stable identity headers when available:
 
 ```text
-PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
-PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
+X-Project-Memory-Client-ID: developer-or-agent-id
+X-Project-Memory-Client-Label: Readable Developer Or Agent Name
+X-Project-Memory-Client-Kind: mcp-http
 ```
 
 ## Project tools

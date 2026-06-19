@@ -82,7 +82,7 @@ npm run build
 npm run gateway
 ```
 
-PM2 deployment is supported through `ecosystem.config.cjs`. It loads `.env`, supports `BIND`/`PORT` compatibility, watches `dist/src`, migrations, `knexfile.cjs`, and `.env`, and runs the built gateway:
+PM2 deployment is supported through `ecosystem.config.cjs`. It loads `.env`, uses `BIND`/`PORT`, watches `dist/src`, migrations, `knexfile.cjs`, and `.env`, and runs the built gateway:
 
 ```bash
 pm2 startOrReload ecosystem.config.cjs --env production
@@ -94,17 +94,17 @@ Shared agents should connect to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-If a launcher reads `.env` `GW_ENDPOINT`, set it to the MCP endpoint. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
+Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, and optional `MCP_TOKEN`. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
 
 Gateway logging uses `pino`:
 
 ```text
-PROJECT_MEMORY_LOG_LEVEL=info
-PROJECT_MEMORY_LOG_CONSOLE=true
-PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
+LOG_LEVEL=info
+LOG_CONSOLE=true
+LOG_FILE=.agent/project-memory-gateway.log
 ```
 
-Console logs are written to stderr. File logs are disabled with `PROJECT_MEMORY_LOG_FILE=false`.
+Console logs are written to stderr. File logs are disabled with `LOG_FILE=false`.
 
 ## Source Layout
 

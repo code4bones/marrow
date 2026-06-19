@@ -3,7 +3,7 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 
 const gatewayPath = path.resolve(__dirname, "..", "dist", "src", "gateway.js");
-const waitMs = Number(process.env.PROJECT_MEMORY_PM2_GATEWAY_WAIT_MS ?? 30000);
+const waitMs = Number(process.env.PM2_GATEWAY_WAIT_MS ?? 30000);
 const pollMs = 250;
 
 async function waitForGateway() {

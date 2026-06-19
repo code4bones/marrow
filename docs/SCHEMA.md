@@ -18,15 +18,7 @@ Configurable with:
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
 
-Shared gateway mode uses PostgreSQL.
-
-Gateway connection variables:
-
-```text
-PROJECT_MEMORY_DATABASE_URL=postgres://user:password@host:5432/project_memory
-```
-
-or split `POSTGRES_*` variables.
+Shared gateway mode uses PostgreSQL through `POSTGRES_*` connection variables.
 
 SQLite and PostgreSQL schemas should preserve the same logical model even when search implementation differs.
 

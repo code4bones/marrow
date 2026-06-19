@@ -2,12 +2,15 @@
 
 Use this only for the internal nginx that sits in front of the local PostgreSQL gateway. External TLS, host routing, and certificates can stay in Nginx Proxy Manager.
 
-The gateway process should stay bound to localhost:
+The gateway process should usually stay bound to localhost:
 
 ```text
-PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1
-PROJECT_MEMORY_GATEWAY_PORT=8765
+BIND=127.0.0.1
+PORT=8765
+API_ENDPOINT=/project-memory
 ```
+
+The Node gateway itself exposes unprefixed internal routes such as `/mcp`, `/health`, and `/ready`; nginx maps the public `API_ENDPOINT` prefix to those routes.
 
 Use the ready-made internal server template:
 
@@ -55,16 +58,19 @@ Point MCP Streamable HTTP clients at the proxied endpoint:
 https://memory.example.internal/project-memory/mcp
 ```
 
-If your launcher uses `GW_ENDPOINT`, set it to the MCP endpoint:
+Client launchers should use `GW_ENDPOINT` for the public gateway base URL:
 
 ```text
-GW_ENDPOINT=https://memory.example.internal/project-memory/mcp
+GW_ENDPOINT=https://memory.example.internal/project-memory
 ```
 
-If bearer auth is enabled on the gateway, every client must use the same token:
+Clients append concrete routes such as `${GW_ENDPOINT}/mcp`, `${GW_ENDPOINT}/health`, and `${GW_ENDPOINT}/ready`.
+
+If bearer auth is enabled on the gateway, the gateway runtime and clients must agree on the same token:
 
 ```text
-PROJECT_MEMORY_GATEWAY_TOKEN=...
+MCP_TOKEN=...
+MCP_CLIENT_AUTH=...
 ```
 
 The nginx include forwards `X-Request-ID`, `X-Forwarded-*`, and client IP headers. The gateway logs request ids, status codes, durations, client ids, and tool call completion.

@@ -6,21 +6,21 @@ import { createPgKnex } from "./shared/pg/knex.js";
 
 async function main(): Promise<void> {
   const logger = createGatewayLogger({
-    level: process.env.PROJECT_MEMORY_LOG_LEVEL ?? "info",
-    console: envFlag(process.env.PROJECT_MEMORY_LOG_CONSOLE, true),
-    filePath: envFilePath(process.env.PROJECT_MEMORY_LOG_FILE, ".agent/project-memory-gateway.log")
+    level: process.env.LOG_LEVEL ?? "info",
+    console: envFlag(process.env.LOG_CONSOLE, true),
+    filePath: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log")
   });
   const db = createPgKnex();
   const service = new PgToolService(db);
-  const host = process.env.PROJECT_MEMORY_GATEWAY_HOST ?? process.env.BIND ?? "127.0.0.1";
-  const port = Number(process.env.PROJECT_MEMORY_GATEWAY_PORT ?? process.env.PORT ?? 8765);
-  const token = process.env.PROJECT_MEMORY_GATEWAY_TOKEN ?? process.env.MCP_TOKEN;
+  const host = process.env.BIND ?? "127.0.0.1";
+  const port = Number(process.env.PORT ?? 8765);
+  const token = process.env.MCP_TOKEN;
   const started = await startGatewayServer(service, { host, port, token, logger });
 
   logger.info(
     {
       url: started.url,
-      logFile: envFilePath(process.env.PROJECT_MEMORY_LOG_FILE, ".agent/project-memory-gateway.log") || null
+      logFile: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log") || null
     },
     "project memory gateway listening"
   );
@@ -42,9 +42,9 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   const logger = createGatewayLogger({
-    level: process.env.PROJECT_MEMORY_LOG_LEVEL ?? "info",
-    console: envFlag(process.env.PROJECT_MEMORY_LOG_CONSOLE, true),
-    filePath: envFilePath(process.env.PROJECT_MEMORY_LOG_FILE, ".agent/project-memory-gateway.log")
+    level: process.env.LOG_LEVEL ?? "info",
+    console: envFlag(process.env.LOG_CONSOLE, true),
+    filePath: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log")
   });
   logger.fatal({ error }, "project memory gateway failed to start");
   logger.flush();

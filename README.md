@@ -62,7 +62,7 @@ Override it with:
 PROJECT_MEMORY_DB=/path/to/project-memory.sqlite
 ```
 
-Shared gateway mode uses PostgreSQL. Configure either `PROJECT_MEMORY_DATABASE_URL`/`DATABASE_URL` or the split variables:
+Shared gateway mode uses PostgreSQL. Configure it through `POSTGRES_*` variables:
 
 ```bash
 POSTGRES_HOST=127.0.0.1
@@ -130,12 +130,16 @@ npm run db:pg:migrate
 npm run gateway
 ```
 
-Gateway defaults:
+Gateway-specific runtime variables:
 
 ```text
-PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1  # or BIND for existing .env compatibility
-PROJECT_MEMORY_GATEWAY_PORT=8765       # or PORT for existing .env compatibility
+BIND=127.0.0.1
+PORT=8765
+API_ENDPOINT=/api
+MCP_TOKEN=...
 ```
+
+The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
 
 For PM2 deployments, use the included ecosystem file. It loads `.env`, watches the built gateway files and migrations, and maps `BIND`/`PORT` into the gateway runtime:
 
@@ -144,32 +148,26 @@ npm run build
 pm2 startOrReload ecosystem.config.cjs --env production
 ```
 
-Optional bearer auth:
+`MCP_TOKEN` enables bearer auth for gateway routes.
+
+Client-specific variables point agents at the public gateway base URL:
 
 ```text
-PROJECT_MEMORY_GATEWAY_TOKEN=...
+GW_ENDPOINT=https://pmem.undoo.ru/api
+MCP_CLIENT_AUTH=...
 ```
 
-`MCP_TOKEN` is also accepted as a token source for compatibility with existing `.env` files.
+Clients append the concrete route they need, for example `${GW_ENDPOINT}/mcp` for MCP Streamable HTTP or `${GW_ENDPOINT}/ready` for readiness.
 
-Agents should connect directly to the MCP Streamable HTTP endpoint:
+For local direct testing without nginx, `GW_ENDPOINT` can point at the internal gateway base URL:
 
 ```text
-http://127.0.0.1:8765/mcp
+GW_ENDPOINT=http://127.0.0.1:8765
 ```
 
-If your launcher reads `GW_ENDPOINT`, point it at the MCP endpoint:
+`MCP_CLIENT_AUTH` should provide the bearer token value expected by the gateway.
 
-```text
-GW_ENDPOINT=http://127.0.0.1:8765/mcp
-```
-
-For shared teams, give each MCP HTTP client a stable identity:
-
-```text
-PROJECT_MEMORY_CLIENT_ID=developer-or-agent-id
-PROJECT_MEMORY_CLIENT_LABEL=Readable Developer Or Agent Name
-```
+For shared teams, MCP HTTP clients may also send `X-Project-Memory-Client-*` headers for stable client identity.
 
 Gateway-only MCP tools:
 
@@ -179,12 +177,12 @@ Gateway-only MCP tools:
 Gateway logging uses `pino` and writes JSON logs to console and file by default:
 
 ```text
-PROJECT_MEMORY_LOG_LEVEL=info
-PROJECT_MEMORY_LOG_CONSOLE=true
-PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
+LOG_LEVEL=info
+LOG_CONSOLE=true
+LOG_FILE=.agent/project-memory-gateway.log
 ```
 
-Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEMORY_LOG_CONSOLE=false` to disable console logging. Console logging uses stderr.
+Set `LOG_FILE=false` to disable file logging, or set `LOG_CONSOLE=false` to disable console logging. Console logging uses stderr.
 
 For the internal nginx server template, see `deploy/nginx/project-memory-gateway.server.conf`. For reusable locations only, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
