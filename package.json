@@ -1,14 +1,11 @@
 {
-  "name": "project-memory-mcp",
+  "name": "@deadragdoll/pm3m",
   "version": "1.0.0",
   "description": "Local-first MCP server for project-oriented agent memory.",
   "type": "module",
   "main": "dist/src/index.js",
   "bin": {
-    "project-memory-gateway-migrate": "dist/scripts/gateway-migrate.js",
-    "project-memory-gateway-pm2": "dist/scripts/gateway-pm2.js",
-    "project-memory-gateway": "dist/src/gateway.js",
-    "project-memory-mcp": "dist/src/index.js"
+    "pm3m": "dist/scripts/pm3m.js"
   },
   "files": [
     "dist/src",

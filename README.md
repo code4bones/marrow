@@ -157,21 +157,21 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./project-memory-mcp-1.0.0.tgz
+npm install -g ./deadragdoll-pm3m-1.0.0.tgz
 
-mkdir -p /opt/project-memory-gateway
-cd /opt/project-memory-gateway
+mkdir -p /opt/pm3m
+cd /opt/pm3m
 $EDITOR .env
 
-project-memory-gateway-migrate latest
-project-memory-gateway-migrate status
-project-memory-gateway-pm2
+pm3m migrate
+pm3m status
+pm3m start
 pm2 save
 ```
 
 There is intentionally no `postinstall` side effect. Installing the package
 does not start or reload PM2 automatically; service changes should happen only
-through explicit deploy commands.
+through explicit deploy commands such as `pm3m start`.
 
 `MCP_TOKEN` enables bearer auth for gateway routes.
 

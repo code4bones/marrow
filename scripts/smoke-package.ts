@@ -34,12 +34,8 @@ try {
   assert(existsSync(join(installedPackageRoot, "migrations", "001_init.sql")), "migrations were not packaged.");
   assert(existsSync(join(installedPackageRoot, "dist", "src", "index.js")), "server entrypoint was not packaged.");
   assert(
-    existsSync(join(installedPackageRoot, "dist", "scripts", "gateway-migrate.js")),
-    "gateway migration helper was not packaged."
-  );
-  assert(
-    existsSync(join(installedPackageRoot, "dist", "scripts", "gateway-pm2.js")),
-    "gateway PM2 helper was not packaged."
+    existsSync(join(installedPackageRoot, "dist", "scripts", "pm3m.js")),
+    "pm3m CLI was not packaged."
   );
 
   await runInstalledServerSmoke(installedPackageRoot);
