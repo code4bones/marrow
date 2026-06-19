@@ -148,6 +148,31 @@ const preflightByQuerySchema = z.object({
     })
     .optional()
 });
+const handoffCreateSchema = z
+  .object({
+    project: z.string().nullable().optional(),
+    title: z.string().min(1),
+    taskId: z.string().min(1).optional(),
+    workCompleted: z.array(z.string()).optional(),
+    filesTouched: z.array(z.string()).optional(),
+    blockers: z.array(z.string()).optional(),
+    validation: z.array(z.string()).optional(),
+    nextSteps: z.array(z.string()).optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .refine(
+    (value) =>
+      Boolean(
+        value.workCompleted?.length ||
+          value.filesTouched?.length ||
+          value.blockers?.length ||
+          value.validation?.length ||
+          value.nextSteps?.length
+      ),
+    {
+      message: "At least one handoff section is required."
+    }
+  );
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -364,5 +389,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, failed attempts, artifacts, and recent events.",
     schema: preflightByQuerySchema
+  },
+  {
+    name: "handoff.create",
+    description:
+      "Create a compact shared handoff for another agent: work completed, files touched, blockers, validation, and next steps.",
+    schema: handoffCreateSchema
   }
 ];

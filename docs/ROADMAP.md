@@ -66,7 +66,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
     - Return preflight-like context for ad-hoc work before a task exists.
     - Include decisions, failed attempts, common rules, and matching artifacts.
 
-13. `handoff.create`
+13. `handoff.create` — implemented
     - Let an agent leave a compact handoff: work completed, files touched,
       blockers, validation, and next steps.
 
@@ -86,6 +86,7 @@ Start with:
 10. `artifact.list` — implemented
 11. Extend onboarding output — implemented
 12. `preflight.by_query` — implemented
+13. `handoff.create` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

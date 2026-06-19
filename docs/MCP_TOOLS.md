@@ -22,6 +22,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `decision.supersede`
 * `project.resolve`
 * `preflight.by_query`
+* `handoff.create`
 * `artifact.put`
 * `artifact.search`
 * `artifact.list`
@@ -151,7 +152,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 40,
+    "tools": 41,
     "node": {
       "version": "v24.16.0"
     },
@@ -191,7 +192,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 40
+      "tools": 41
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -241,7 +242,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 40
+      "tools": 41
     },
     "database": {
       "engine": "postgresql",
@@ -356,7 +357,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 40,
+    "tools": 41,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1716,6 +1717,70 @@ Output:
 
 Use this when an agent is asked to explore or start ad-hoc work before a formal
 task exists. Once scope becomes executable, create a task and use `preflight`.
+
+---
+
+### `handoff.create`
+
+Create a compact shared handoff for another agent.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "taskId": "T-MEMORY-003",
+  "title": "Artifact lifecycle implementation handoff",
+  "workCompleted": [
+    "Added artifact archive lifecycle migration.",
+    "Added artifact.list navigation tool."
+  ],
+  "filesTouched": [
+    "src/gateway/pg-tool-service.ts",
+    "migrations/pg/003_artifact_lifecycle.cjs"
+  ],
+  "blockers": [],
+  "validation": [
+    "npm run typecheck",
+    "npm run smoke:gateway:mcp-http"
+  ],
+  "nextSteps": [
+    "Run pm3m migrate latest before deploying the updated gateway package."
+  ],
+  "tags": ["handoff", "artifacts"]
+}
+```
+
+Output:
+
+```json
+{
+  "handoff": {
+    "id": "I-MEMORY-010",
+    "type": "handoff",
+    "title": "Artifact lifecycle implementation handoff"
+  },
+  "event": {
+    "type": "handoff.created",
+    "relatedId": "I-MEMORY-010"
+  },
+  "link": {
+    "relation": "relates_to",
+    "toId": "T-MEMORY-003"
+  }
+}
+```
+
+Behavior:
+
+* stores the handoff as `type="handoff"` memory
+* formats sections for completed work, files touched, blockers, validation, and
+  next steps
+* records a `handoff.created` event
+* links to `taskId` with `relates_to` when provided
+
+Use this before switching agents, pausing work, or leaving a compact continuation
+point after meaningful changes.
 * allowed files
 * forbidden files
 * acceptance criteria

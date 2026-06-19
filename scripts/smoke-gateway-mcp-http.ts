@@ -63,6 +63,7 @@ try {
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
+  assert(toolNames.includes("handoff.create"), "handoff.create tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
 
   const aboutResult = await client.callTool({
@@ -502,6 +503,29 @@ try {
     }
   });
   assertOk(preflightResult.structuredContent, "preflight failed.");
+
+  const handoffResult = await client.callTool({
+    name: "handoff.create",
+    arguments: {
+      project: state.projectId,
+      taskId: state.taskId,
+      title: "Gateway MCP HTTP smoke handoff",
+      workCompleted: ["Verified gateway MCP HTTP smoke workflow."],
+      filesTouched: ["scripts/smoke-gateway-mcp-http.ts"],
+      validation: ["npm run smoke:gateway:mcp-http"],
+      nextSteps: ["Remove smoke data during cleanup."],
+      tags: ["smoke", "handoff"]
+    }
+  });
+  assertOk(handoffResult.structuredContent, "handoff.create failed.");
+  assert(
+    readNestedString(handoffResult.structuredContent, ["data", "handoff", "type"]) === "handoff",
+    "handoff.create did not create a handoff memory item."
+  );
+  assert(
+    readNestedString(handoffResult.structuredContent, ["data", "link", "relation"]) === "relates_to",
+    "handoff.create did not link the handoff to the task."
+  );
 
   console.log(`ok - gateway MCP HTTP workflow completed for ${state.taskId}`);
   console.log(`Gateway MCP HTTP smoke test passed using ${started.url}/mcp`);

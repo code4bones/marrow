@@ -152,6 +152,8 @@ export class PgToolService {
           return ok("Preflight context loaded.", await this.preflight(parsed));
         case "preflight.by_query":
           return ok("Preflight query context loaded.", await this.preflightByQuery(parsed));
+        case "handoff.create":
+          return ok("Handoff created.", await this.createHandoff(parsed, requestContext));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
@@ -1479,6 +1481,62 @@ export class PgToolService {
     };
   }
 
+  private async createHandoff(input: Row, context: NormalizedGatewayRequestContext) {
+    const tags = Array.from(new Set(["handoff", ...stringArray(input.tags)]));
+    const item = await this.createMemory(
+      {
+        project: input.project,
+        type: "handoff",
+        title: input.title,
+        body: handoffBody(input),
+        status: "active",
+        tags
+      },
+      context
+    );
+    const event = await this.recordEventForProject(item.projectId, {
+      type: "handoff.created",
+      title: `Handoff created: ${item.title}`,
+      body: item.body,
+      related_id: item.id
+    }, context);
+    const link = input.taskId
+      ? await this.createHandoffTaskLink(item.id, String(input.taskId), item.projectId, context)
+      : null;
+
+    return {
+      handoff: item,
+      event,
+      link
+    };
+  }
+
+  private async createHandoffTaskLink(
+    fromId: string,
+    toId: string,
+    projectId: string | null,
+    context: NormalizedGatewayRequestContext
+  ) {
+    await this.assertRecordExists(toId);
+    const row = {
+      id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
+      project_id: projectId,
+      from_id: fromId,
+      to_id: toId,
+      relation: "relates_to",
+      created_by: context.clientId,
+      source_instance_id: context.clientId,
+      created_at: nowIso()
+    };
+    await this.db("links").insert(row);
+    await this.recordEventForProject(projectId, {
+      type: "link.created",
+      title: `Link created: ${fromId} relates_to ${toId}`,
+      related_id: row.id
+    }, context);
+    return linkOut(row);
+  }
+
   private async recordEventForProject(
     projectId: string | null,
     input: Row,
@@ -1877,6 +1935,21 @@ function failedAttemptBody(input: Row): string {
   }
 
   return sections.map(([title, body]) => `${title}:\n${body}`).join("\n\n");
+}
+
+function handoffBody(input: Row): string {
+  const sections: Array<[string, string[]]> = [
+    ["Work completed", stringArray(input.workCompleted)],
+    ["Files touched", stringArray(input.filesTouched)],
+    ["Blockers", stringArray(input.blockers)],
+    ["Validation", stringArray(input.validation)],
+    ["Next steps", stringArray(input.nextSteps)]
+  ];
+
+  return sections
+    .filter(([, values]) => values.length > 0)
+    .map(([title, values]) => `${title}:\n${values.map((value) => `- ${value}`).join("\n")}`)
+    .join("\n\n");
 }
 
 function excerpt(body: string): string {
