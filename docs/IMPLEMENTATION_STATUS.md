@@ -27,6 +27,7 @@ Implemented capabilities:
 - per-client current project state in shared gateway mode
 - temporary anonymous gateway client scopes for requests without `client_id`
 - configurable cleanup for temporary anonymous gateway clients and their current-project keys
+- operator client management through `gateway.client_get`, `gateway.client_forget`, and `gateway.client_prune`
 - gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.status`, `gateway.clients`
 - gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
@@ -35,7 +36,7 @@ Implemented capabilities:
 - compact continuation records through `handoff.create`
 - tests, typecheck, lint, and build scripts
 
-The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted team environments; full conflict resolution and permissions remain follow-up work.
+The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted internal team environments. Authorization is a shared bearer token; any client with the configured token can use the gateway. Full conflict resolution and permissions remain follow-up work.
 
 ## Runtime Stack
 

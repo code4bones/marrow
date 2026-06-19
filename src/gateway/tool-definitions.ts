@@ -49,7 +49,21 @@ const failedAttemptRecordSchema = z.object({
   match: z.enum(["id", "scope_type_title"]).optional()
 });
 const listGatewayClientsSchema = z.object({
+  anonymous: z.boolean().optional(),
+  staleOlderThanSeconds: z.number().int().min(0).optional(),
   limit: z.number().int().min(1).max(100).optional()
+});
+const gatewayClientGetSchema = z.object({
+  id: z.string().min(1)
+});
+const gatewayClientForgetSchema = z.object({
+  id: z.string().min(1)
+});
+const gatewayClientPruneSchema = z.object({
+  anonymousOnly: z.boolean().optional(),
+  olderThanSeconds: z.number().int().min(0).optional(),
+  dryRun: z.boolean().optional(),
+  limit: z.number().int().min(1).max(1000).optional()
 });
 const projectResolveSchema = z
   .object({
@@ -214,8 +228,25 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.clients",
     description:
-      "List recently seen gateway clients. Use this to inspect which agents or developers are sharing the project memory gateway.",
+      "List recently seen gateway clients. Filter anonymous or stale clients when inspecting shared gateway activity.",
     schema: listGatewayClientsSchema
+  },
+  {
+    name: "gateway.client_get",
+    description: "Get one gateway client by id, including metadata and current project key if present.",
+    schema: gatewayClientGetSchema
+  },
+  {
+    name: "gateway.client_forget",
+    description:
+      "Forget one gateway client and remove its current-project key. Use this for stale or renamed internal clients.",
+    schema: gatewayClientForgetSchema
+  },
+  {
+    name: "gateway.client_prune",
+    description:
+      "Prune stale gateway clients and matching current-project keys. Defaults to dry-run and anonymous-only cleanup.",
+    schema: gatewayClientPruneSchema
   },
   {
     name: "project.create",

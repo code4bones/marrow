@@ -17,6 +17,9 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `gateway.manuals`
 * `gateway.status`
 * `gateway.clients`
+* `gateway.client_get`
+* `gateway.client_forget`
+* `gateway.client_prune`
 * `memory.upsert`
 * `failed_attempt.record`
 * `decision.supersede`
@@ -149,10 +152,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.1.3",
+    "packageVersion": "1.2.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 41,
+    "tools": 44,
     "node": {
       "version": "v24.16.0"
     },
@@ -192,7 +195,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 41
+      "tools": 44
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -244,8 +247,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.1.3",
-      "tools": 41
+      "packageVersion": "1.2.0",
+      "tools": 44
     },
     "database": {
       "engine": "postgresql",
@@ -360,7 +363,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 41,
+    "tools": 44,
     "records": {
       "projects": 1,
       "items": 10,
@@ -385,6 +388,8 @@ Input:
 
 ```json
 {
+  "anonymous": false,
+  "staleOlderThanSeconds": 86400,
   "limit": 20
 }
 ```
@@ -406,7 +411,101 @@ Output:
 }
 ```
 
-Use this to inspect which developers or agents have touched the shared memory gateway recently.
+Use this to inspect which developers or agents have touched the shared memory
+gateway recently. `anonymous` filters temporary anonymous clients; omit it to
+list all clients. `staleOlderThanSeconds` filters clients whose `lastSeenAt` is
+older than the requested age.
+
+---
+
+### `gateway.client_get`
+
+Get one gateway client and its current project key.
+
+Input:
+
+```json
+{
+  "id": "developer-or-agent-id"
+}
+```
+
+Output:
+
+```json
+{
+  "client": {
+    "id": "developer-or-agent-id",
+    "label": "Readable Developer Or Agent Name",
+    "lastSeenAt": "2026-06-18T20:00:00.000Z",
+    "metadata": {
+      "kind": "mcp-http"
+    },
+    "currentProjectId": "P-MEMORY"
+  }
+}
+```
+
+---
+
+### `gateway.client_forget`
+
+Remove one gateway client and its `current_project_id:<client_id>` key.
+
+Input:
+
+```json
+{
+  "id": "old-client-id"
+}
+```
+
+Output:
+
+```json
+{
+  "client": {},
+  "forgotten": true,
+  "removedCurrentProjectKey": true
+}
+```
+
+Use this for stale or renamed internal clients. It does not remove records that
+the client created.
+
+---
+
+### `gateway.client_prune`
+
+Dry-run or prune stale gateway clients and matching current-project keys.
+
+Input:
+
+```json
+{
+  "anonymousOnly": true,
+  "olderThanSeconds": 86400,
+  "dryRun": true,
+  "limit": 100
+}
+```
+
+Output:
+
+```json
+{
+  "dryRun": true,
+  "anonymousOnly": true,
+  "olderThanSeconds": 86400,
+  "matched": 2,
+  "pruned": 0,
+  "clients": []
+}
+```
+
+Defaults are conservative: `anonymousOnly=true`, `dryRun=true`, and
+`olderThanSeconds=GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`. Set `dryRun=false` to
+delete matched clients.
 
 Each MCP HTTP client should send stable identity headers when available:
 

@@ -92,6 +92,11 @@ filesystem under `ARTIFACT_DIR`.
 
 Developers usually connect agents to the shared HTTP gateway.
 
+The gateway is intended for trusted internal company use. Authorization is a
+shared bearer token: any client with the configured token can use the gateway.
+Per-user roles, ACLs, and project permissions are not part of the current
+product stage.
+
 Set the bearer token in the shell that starts the agent:
 
 ```bash
@@ -200,8 +205,16 @@ The gateway should report:
 
 - `mode: gateway`
 - `storage: postgresql`
-- `tools: 41` for pm3m 1.1.x
+- `tools: 44` for pm3m 1.2.x
 - recent clients
+
+Operators can also inspect or clean stale client registrations with:
+
+```text
+gateway.client_get
+gateway.client_forget
+gateway.client_prune
+```
 
 If the agent only sees local SQLite state, it is not connected to the shared
 gateway.
@@ -432,7 +445,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.3.tgz
+npm install -g ./deadragdoll-pm3m-1.2.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

@@ -1,92 +1,98 @@
 # Project Memory MCP — Roadmap
 
-This roadmap records the next implementation priorities for the shared gateway.
+This roadmap starts after the PostgreSQL gateway 1.1 line.
 
-The guiding rule is to add tools that make pmem safer and more reliable for
-multiple developers and agents, not to grow the tool list for its own sake.
+The product is an internal company tool. Gateway authorization is intentionally
+simple for now: every developer or agent with the configured bearer token can
+use the shared gateway. Do not add roles, ACLs, project permissions, or
+multi-tenant auth until there is a concrete product need.
 
-## Priority 1 — Operations
+## vNext Priorities
 
-1. `gateway.version`
-   - Return package name, package version, tool count, storage mode, and runtime
-     identity.
-   - Help agents and operators confirm which gateway build they are using.
+### 1. Gateway Operations
 
-2. `gateway.diagnostics`
-   - Return a safe runtime summary: mode, storage, readiness, migrations,
-     record counts, artifact configuration, logging configuration, and package
-     version.
-   - Never return secrets such as `MCP_TOKEN`, PostgreSQL password, or bearer
-     credentials.
+Goal: make the shared gateway easier to inspect and maintain.
 
-3. `gateway.backup_manifest` — implemented
-   - Return the operational backup surface: PostgreSQL database, artifact
-     directory, artifact counts/sizes, and schema migration state.
-   - This should not perform backup itself.
+Implemented:
 
-## Priority 2 — Memory Quality
+- `gateway.version`
+- `gateway.diagnostics`
+- `gateway.backup_manifest`
+- `gateway.clients`
+- `gateway.client_get`
+- `gateway.client_forget`
+- `gateway.client_prune`
+- per-client current project state
+- temporary anonymous client scope
+- automatic anonymous client TTL cleanup
 
-4. `memory.upsert` — implemented
-   - Make memory creation idempotent by `id` or a stable natural key.
-   - Reduce duplicate common/project records created by agents.
+Next:
 
-5. `failed_attempt.record` — implemented
-   - First-class tool for failed attempts instead of relying on
-     `memory.create(type="failed_attempt")`.
-   - Include what was tried, why it failed, what not to repeat, and better next
-     approach.
+- backup and restore runbook for PostgreSQL plus artifact bytes
+- production verification checklist after `pm3m start`
 
-6. `decision.supersede` — implemented
-   - Create a replacement decision, mark the old decision as `superseded`, and
-     add the appropriate link/event records in one operation.
+### 2. Artifact Templates
 
-7. `project.resolve` — implemented
-   - Resolve a likely project from repository path, slug, title, or remote URL.
-   - Return candidates instead of guessing when ambiguous.
+Goal: make shared files useful immediately for agents.
 
-## Priority 3 — Artifacts
+Next:
 
-8. `artifact.update_metadata` — implemented
-   - Update title, description, and tags without re-uploading bytes.
+- add common `AGENTS.md` templates for frontend, backend, DevOps, and generic repos
+- document recommended artifact hierarchy:
 
-9. `artifact.archive` — implemented
-   - Prefer lifecycle archival over hard delete for shared files.
+```text
+/{project}/...
+common/templates/...
+common/agents/...
+```
 
-10. `artifact.list` — implemented
-    - List artifacts by project/common scope, path prefix, and tags.
-    - Search remains for fuzzy lookup; list is for navigation.
+- add seed/import flow for bundled templates
+- add smoke coverage for finding and downloading a template artifact
 
-## Priority 4 — Agent UX
+### 3. Agent UX
 
-11. Extend onboarding output — implemented
-    - `gateway.about` or a separate onboarding tool should return connection
-      snippets for Codex, Claude, CodeWhale, and generic Streamable HTTP clients.
+Goal: make agents operate pmem as a predictable state machine.
 
-12. `preflight.by_query` — implemented
-    - Return preflight-like context for ad-hoc work before a task exists.
-    - Include decisions, failed attempts, common rules, and matching artifacts.
+Implemented:
 
-13. `handoff.create` — implemented
-    - Let an agent leave a compact handoff: work completed, files touched,
-      blockers, validation, and next steps.
+- `gateway.about`
+- `gateway.manuals`
+- `preflight.by_query`
+- `handoff.create`
+- tool workflow and state-machine documentation
 
-## Current Implementation Order
+Next:
 
-Start with:
+- tighten tool descriptions around clarification triggers
+- document when agents should use project-specific vs common records
+- add examples for multi-agent handoff workflows
 
-1. `gateway.version` — implemented
-2. `gateway.diagnostics` — implemented
-3. `gateway.backup_manifest` — implemented
-4. `memory.upsert` — implemented
-5. `failed_attempt.record` — implemented
-6. `decision.supersede` — implemented
-7. `project.resolve` — implemented
-8. `artifact.update_metadata` — implemented
-9. `artifact.archive` — implemented
-10. `artifact.list` — implemented
-11. Extend onboarding output — implemented
-12. `preflight.by_query` — implemented
-13. `handoff.create` — implemented
+### 4. Memory Quality
 
-These deliver operational visibility first, then reduce duplicate and low-quality
-memory records.
+Goal: reduce duplicate, stale, or low-value memory.
+
+Implemented:
+
+- `memory.upsert`
+- `failed_attempt.record`
+- `decision.supersede`
+- `project.resolve`
+
+Next:
+
+- add examples and smoke coverage for idempotent common memory seeding
+- consider a lint/diagnostic tool for duplicate common records
+- document archival rules for stale memory items
+
+## Not Planned Yet
+
+These are intentionally deferred:
+
+- public SaaS or multi-tenant mode
+- user roles and permissions
+- OAuth/OIDC
+- embeddings or vector search
+- web UI
+- remote sync protocol beyond the shared gateway
+
+Revisit these only when the internal trusted gateway model is no longer enough.

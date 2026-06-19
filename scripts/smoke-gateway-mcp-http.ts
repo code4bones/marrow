@@ -70,6 +70,9 @@ try {
   assert(toolNames.includes("gateway.manuals"), "gateway.manuals tool was not listed.");
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
+  assert(toolNames.includes("gateway.client_get"), "gateway.client_get tool was not listed.");
+  assert(toolNames.includes("gateway.client_forget"), "gateway.client_forget tool was not listed.");
+  assert(toolNames.includes("gateway.client_prune"), "gateway.client_prune tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("project.resolve"), "project.resolve tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");

@@ -72,9 +72,16 @@ http://127.0.0.1:8765/mcp
 
 Keep gateway runtime and client connection variables separate. Gateway-specific variables such as `BIND`, `PORT`, `API_ENDPOINT`, and `MCP_TOKEN` describe how the shared service runs. Client-specific variables such as `GW_ENDPOINT` and `MCP_CLIENT_AUTH` describe how agents connect to it. `GW_ENDPOINT` is the public gateway base URL; MCP clients use `${GW_ENDPOINT}/mcp`.
 
+Authorization is intentionally simple for the current internal product stage:
+any developer or agent with the configured bearer token can use the shared
+gateway. Do not assume per-user roles, ACLs, or project permissions exist.
+
 Each MCP HTTP client should send stable `X-Project-Memory-Client-*` headers when client identity matters.
 
-The gateway records clients in `gateway_clients` and exposes them through `gateway.clients`. `gateway.status` reports shared gateway health and record counts.
+The gateway records clients in `gateway_clients` and exposes them through
+`gateway.clients`, `gateway.client_get`, `gateway.client_forget`, and
+`gateway.client_prune`. `gateway.status` reports shared gateway health and
+record counts.
 
 In gateway mode, `project.set_current` is scoped to the requesting client id.
 One developer or agent changing current project must not change another

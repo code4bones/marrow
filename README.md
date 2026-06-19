@@ -34,7 +34,7 @@ Implemented local/core MCP tools:
 - `preflight`
 
 Shared PostgreSQL gateway mode exposes the same core model plus gateway and
-collaboration tools. Current gateway smoke coverage expects 41 tools, including:
+collaboration tools. Current gateway smoke coverage expects 44 tools, including:
 
 - `gateway.about`
 - `gateway.version`
@@ -43,6 +43,9 @@ collaboration tools. Current gateway smoke coverage expects 41 tools, including:
 - `gateway.manuals`
 - `gateway.status`
 - `gateway.clients`
+- `gateway.client_get`
+- `gateway.client_forget`
+- `gateway.client_prune`
 - `project.resolve`
 - `memory.upsert`
 - `failed_attempt.record`
@@ -170,6 +173,10 @@ GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
 
 The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
 
+Gateway authorization is intentionally simple for trusted internal deployments:
+any client with the configured bearer token can use the shared gateway. Per-user
+roles, ACLs, and project permissions are not part of the current product stage.
+
 For PM2 deployments, use the included ecosystem file. It loads `.env`, watches the built gateway files and migrations, and maps `BIND`/`PORT` into the gateway runtime:
 
 ```bash
@@ -181,7 +188,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.3.tgz
+npm install -g ./deadragdoll-pm3m-1.2.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -282,6 +289,9 @@ Gateway-only MCP tools:
 - `gateway.manuals`
 - `gateway.status`
 - `gateway.clients`
+- `gateway.client_get`
+- `gateway.client_forget`
+- `gateway.client_prune`
 - `project.resolve`
 - `memory.upsert`
 - `failed_attempt.record`

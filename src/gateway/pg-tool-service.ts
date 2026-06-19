@@ -70,8 +70,8 @@ export class PgToolService {
 
     try {
       const requestContext = normalizeContext(context);
-      await this.touchClient(requestContext);
       const parsed = spec.schema.parse(input ?? {}) as Row;
+      await this.touchClient(requestContext, { cleanupAnonymous: toolName !== "gateway.client_prune" });
       switch (toolName) {
         case "gateway.about":
           return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
@@ -87,6 +87,12 @@ export class PgToolService {
           return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
         case "gateway.clients":
           return ok("Gateway clients listed.", { clients: await this.listClients(parsed) });
+        case "gateway.client_get":
+          return ok("Gateway client loaded.", { client: await this.getClient(parsed) });
+        case "gateway.client_forget":
+          return ok("Gateway client forgotten.", await this.forgetClient(parsed));
+        case "gateway.client_prune":
+          return ok("Gateway clients pruned.", await this.pruneClients(parsed));
         case "project.create":
           return ok("Project created.", { project: await this.createProject(parsed, requestContext) });
         case "project.list":
@@ -496,11 +502,78 @@ export class PgToolService {
   }
 
   private async listClients(input: Row) {
-    const rows = await this.db("gateway_clients")
-      .select("*")
-      .orderBy("updated_at", "desc")
-      .limit(Number(input.limit ?? 50));
+    let query = this.db("gateway_clients").select("*").orderBy("updated_at", "desc");
+    if (typeof input.anonymous === "boolean") {
+      query = input.anonymous
+        ? query.where("id", "like", `${anonymousClientPrefix}%`)
+        : query.where("id", "not like", `${anonymousClientPrefix}%`);
+    }
+    if (typeof input.staleOlderThanSeconds === "number") {
+      query = query.andWhere("last_seen_at", "<", cutoffFromSeconds(input.staleOlderThanSeconds));
+    }
+    const rows = await query.limit(Number(input.limit ?? 50));
     return rows.map(clientOut);
+  }
+
+  private async getClient(input: Row) {
+    const row = await this.clientRow(String(input.id));
+    return {
+      ...clientOut(row),
+      currentProjectId: await this.getKv(currentProjectKey(String(row.id)))
+    };
+  }
+
+  private async forgetClient(input: Row) {
+    const id = String(input.id);
+    const row = await this.clientRow(id);
+    await this.db.transaction(async (trx) => {
+      await trx("kv").where({ key: currentProjectKey(id) }).del();
+      await trx("gateway_clients").where({ id }).del();
+    });
+    return {
+      client: clientOut(row),
+      forgotten: true,
+      removedCurrentProjectKey: true
+    };
+  }
+
+  private async pruneClients(input: Row) {
+    const anonymousOnly = input.anonymousOnly !== false;
+    const olderThanSeconds =
+      typeof input.olderThanSeconds === "number" ? Number(input.olderThanSeconds) : anonymousClientTtlSeconds();
+    const dryRun = input.dryRun !== false;
+    const limit = Number(input.limit ?? 100);
+    let query = this.db("gateway_clients")
+      .select("*")
+      .where("last_seen_at", "<", cutoffFromSeconds(olderThanSeconds))
+      .orderBy("last_seen_at");
+    if (anonymousOnly) {
+      query = query.andWhere("id", "like", `${anonymousClientPrefix}%`);
+    }
+    const rows = await query.limit(limit);
+    const clientIds = rows.map((row) => String(row.id));
+    if (!dryRun && clientIds.length > 0) {
+      await this.db.transaction(async (trx) => {
+        await trx("kv").whereIn("key", clientIds.map(currentProjectKey)).del();
+        await trx("gateway_clients").whereIn("id", clientIds).del();
+      });
+    }
+    return {
+      dryRun,
+      anonymousOnly,
+      olderThanSeconds,
+      matched: rows.length,
+      pruned: dryRun ? 0 : rows.length,
+      clients: rows.map(clientOut)
+    };
+  }
+
+  private async clientRow(id: string): Promise<Row> {
+    const row = await this.db("gateway_clients").where({ id }).first();
+    if (!row) {
+      throw new AppError("NOT_FOUND", `Gateway client ${id} does not exist.`, { id });
+    }
+    return row;
   }
 
   private async createProject(input: Row, context: NormalizedGatewayRequestContext) {
@@ -1572,9 +1645,14 @@ export class PgToolService {
     return eventOut(row);
   }
 
-  private async touchClient(context: NormalizedGatewayRequestContext): Promise<void> {
+  private async touchClient(
+    context: NormalizedGatewayRequestContext,
+    options: { cleanupAnonymous?: boolean } = {}
+  ): Promise<void> {
     const now = nowIso();
-    await this.cleanupExpiredAnonymousClients(now);
+    if (options.cleanupAnonymous !== false) {
+      await this.cleanupExpiredAnonymousClients();
+    }
     await this.db("gateway_clients")
       .insert({
         id: context.clientId,
@@ -1593,17 +1671,16 @@ export class PgToolService {
       });
   }
 
-  private async cleanupExpiredAnonymousClients(now: string): Promise<void> {
+  private async cleanupExpiredAnonymousClients(): Promise<void> {
     const ttlSeconds = anonymousClientTtlSeconds();
     if (ttlSeconds <= 0) {
       return;
     }
 
-    const cutoff = new Date(new Date(now).getTime() - ttlSeconds * 1000).toISOString();
     const rows = await this.db("gateway_clients")
       .select("id")
       .where("id", "like", `${anonymousClientPrefix}%`)
-      .andWhere("last_seen_at", "<", cutoff);
+      .andWhere("last_seen_at", "<", cutoffFromSeconds(ttlSeconds));
     const clientIds = rows.map((row) => String(row.id));
     if (clientIds.length === 0) {
       return;
@@ -1807,6 +1884,10 @@ function anonymousClientTtlSeconds(): number {
   }
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : defaultAnonymousClientTtlSeconds;
+}
+
+function cutoffFromSeconds(seconds: number): string {
+  return new Date(Date.now() - Math.max(0, seconds) * 1000).toISOString();
 }
 
 function scoreProjectCandidate(row: Row, input: Row) {

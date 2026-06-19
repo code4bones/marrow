@@ -17,6 +17,8 @@ const state: {
   anonymousProjectId?: string;
   anonymousClientIds: string[];
   staleAnonymousClientId?: string;
+  pruneAnonymousClientId?: string;
+  forgetClientId?: string;
   taskId?: string;
   memoryId?: string;
 } = {
@@ -36,6 +38,9 @@ try {
   const tools = (await getJson(`${started.url}/tools`)) as { tools?: { name: string }[] };
   assert(tools.tools?.some((tool) => tool.name === "preflight"), "Gateway tools route did not expose preflight.");
   assert(tools.tools?.some((tool) => tool.name === "gateway.clients"), "Gateway tools route did not expose gateway.clients.");
+  assert(tools.tools?.some((tool) => tool.name === "gateway.client_get"), "Gateway tools route did not expose gateway.client_get.");
+  assert(tools.tools?.some((tool) => tool.name === "gateway.client_forget"), "Gateway tools route did not expose gateway.client_forget.");
+  assert(tools.tools?.some((tool) => tool.name === "gateway.client_prune"), "Gateway tools route did not expose gateway.client_prune.");
   console.log("ok - gateway tools");
 
   const unique = Date.now();
@@ -62,6 +67,73 @@ try {
   assert(!staleCurrentProject, "Gateway did not clean up the stale anonymous current project key.");
   console.log("ok - anonymous client cleanup");
   console.log("ok - gateway.status");
+
+  const clientGet = await callGateway("gateway.client_get", { id: clientId });
+  assert(expectData<{ client: { id: string } }>(clientGet).client.id === clientId, "gateway.client_get returned wrong client.");
+  console.log("ok - gateway.client_get");
+
+  state.forgetClientId = `gateway-http-smoke-forget-${unique}`;
+  await db("gateway_clients").insert({
+    id: state.forgetClientId,
+    label: "Gateway Smoke Forget",
+    last_seen_at: new Date(0).toISOString(),
+    metadata: "{}",
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  });
+  await db("kv").insert({
+    key: `current_project_id:${state.forgetClientId}`,
+    value: "P-GATEWAY-SMOKE-FORGET",
+    updated_at: new Date(0).toISOString()
+  });
+  const forget = await callGateway("gateway.client_forget", { id: state.forgetClientId });
+  assert(expectData<{ forgotten: boolean }>(forget).forgotten === true, "gateway.client_forget did not report forgotten=true.");
+  assert(!(await db("gateway_clients").where({ id: state.forgetClientId }).first()), "gateway.client_forget did not remove client.");
+  assert(
+    !(await db("kv").where({ key: `current_project_id:${state.forgetClientId}` }).first()),
+    "gateway.client_forget did not remove current project key."
+  );
+  console.log("ok - gateway.client_forget");
+
+  state.pruneAnonymousClientId = `anonymous:gateway-smoke-prune-${unique}`;
+  await db("gateway_clients").insert({
+    id: state.pruneAnonymousClientId,
+    label: "Gateway Smoke Prune Anonymous",
+    last_seen_at: new Date(0).toISOString(),
+    metadata: "{}",
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  });
+  await db("kv").insert({
+    key: `current_project_id:${state.pruneAnonymousClientId}`,
+    value: "P-GATEWAY-SMOKE-PRUNE",
+    updated_at: new Date(0).toISOString()
+  });
+  const pruneDryRun = await callGateway("gateway.client_prune", {
+    anonymousOnly: true,
+    olderThanSeconds: 1,
+    dryRun: true
+  });
+  assert(
+    expectData<{ matched: number; pruned: number }>(pruneDryRun).matched >= 1 &&
+      expectData<{ matched: number; pruned: number }>(pruneDryRun).pruned === 0,
+    "gateway.client_prune dry-run did not report a stale anonymous client."
+  );
+  const prune = await callGateway("gateway.client_prune", {
+    anonymousOnly: true,
+    olderThanSeconds: 1,
+    dryRun: false
+  });
+  assert(expectData<{ pruned: number }>(prune).pruned >= 1, "gateway.client_prune did not prune stale anonymous clients.");
+  assert(
+    !(await db("gateway_clients").where({ id: state.pruneAnonymousClientId }).first()),
+    "gateway.client_prune did not remove stale anonymous client."
+  );
+  assert(
+    !(await db("kv").where({ key: `current_project_id:${state.pruneAnonymousClientId}` }).first()),
+    "gateway.client_prune did not remove current project key."
+  );
+  console.log("ok - gateway.client_prune");
 
   const project = await callGateway("project.create", {
     slug: `gateway-smoke-${unique}`,
@@ -166,6 +238,14 @@ try {
   if (state.staleAnonymousClientId) {
     await db("kv").where({ key: `current_project_id:${state.staleAnonymousClientId}` }).del();
     await db("gateway_clients").where({ id: state.staleAnonymousClientId }).del();
+  }
+  if (state.pruneAnonymousClientId) {
+    await db("kv").where({ key: `current_project_id:${state.pruneAnonymousClientId}` }).del();
+    await db("gateway_clients").where({ id: state.pruneAnonymousClientId }).del();
+  }
+  if (state.forgetClientId) {
+    await db("kv").where({ key: `current_project_id:${state.forgetClientId}` }).del();
+    await db("gateway_clients").where({ id: state.forgetClientId }).del();
   }
   await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolve) => started.server.close(() => resolve()));
