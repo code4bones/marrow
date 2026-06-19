@@ -73,6 +73,8 @@ See [docs/COLLABORATION.md](docs/COLLABORATION.md) for how the local-first MVP i
 
 See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the shared gateway.
 
+See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for the PostgreSQL plus artifact backup and restore runbook.
+
 ## Setup
 
 ```bash

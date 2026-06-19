@@ -34,6 +34,7 @@ Implemented capabilities:
 - artifact metadata update, archival lifecycle, and deterministic listing
 - ad-hoc preflight context through `preflight.by_query`
 - compact continuation records through `handoff.create`
+- backup and restore runbook for PostgreSQL plus artifact bytes
 - tests, typecheck, lint, and build scripts
 
 The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted internal team environments. Authorization is a shared bearer token; any client with the configured token can use the gateway. Full conflict resolution and permissions remain follow-up work.

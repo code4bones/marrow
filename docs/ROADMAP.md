@@ -25,10 +25,10 @@ Implemented:
 - per-client current project state
 - temporary anonymous client scope
 - automatic anonymous client TTL cleanup
+- backup and restore runbook for PostgreSQL plus artifact bytes
 
 Next:
 
-- backup and restore runbook for PostgreSQL plus artifact bytes
 - production verification checklist after `pm3m start`
 
 ### 2. Artifact Templates

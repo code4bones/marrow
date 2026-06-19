@@ -479,6 +479,9 @@ Operators and agents can inspect the expected backup surface with:
 gateway.backup_manifest
 ```
 
+Use [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for the full backup, restore, and
+post-restore validation runbook.
+
 ## Related Docs
 
 - [MCP_TOOLS.md](MCP_TOOLS.md) describes every tool contract.
