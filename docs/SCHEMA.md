@@ -384,8 +384,55 @@ task.blocked
 decision.recorded
 attempt.failed
 item.created
+artifact.created
+artifact.updated
+artifact.metadata_updated
+artifact.archived
 migration.applied
 ```
+
+## `artifacts`
+
+Stores metadata for shared files. File bytes live on the gateway filesystem under
+`ARTIFACT_DIR`.
+
+```sql
+CREATE TABLE artifacts (
+  id TEXT PRIMARY KEY,
+  project_id TEXT,
+  path TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  content_type TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  archived_at TEXT,
+  archived_by TEXT,
+  archive_reason TEXT,
+  tags JSONB NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+```
+
+Allowed statuses:
+
+```text
+active
+archived
+```
+
+Artifact path is unique inside project/common scope:
+
+```text
+coalesce(project_id, '__common__') + path
+```
+
+Default artifact search should return only active artifacts. Archived artifacts
+remain retrievable by explicit id/path and can be searched when requested.
 
 ## `kv`
 
@@ -461,6 +508,10 @@ CREATE INDEX idx_events_created_at ON events(created_at);
 
 CREATE INDEX idx_links_from_id ON links(from_id);
 CREATE INDEX idx_links_to_id ON links(to_id);
+
+CREATE INDEX idx_artifacts_project_id ON artifacts(project_id);
+CREATE INDEX idx_artifacts_status ON artifacts(status);
+CREATE INDEX idx_artifacts_created_at ON artifacts(created_at);
 ```
 
 ## ID conventions

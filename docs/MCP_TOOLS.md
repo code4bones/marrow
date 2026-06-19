@@ -25,6 +25,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.search`
 * `artifact.get`
 * `artifact.update_metadata`
+* `artifact.archive`
 
 ## General response format
 
@@ -136,7 +137,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 37,
+    "tools": 38,
     "node": {
       "version": "v24.16.0"
     },
@@ -176,7 +177,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 37
+      "tools": 38
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -226,7 +227,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 37
+      "tools": 38
     },
     "database": {
       "engine": "postgresql",
@@ -341,7 +342,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 37,
+    "tools": 38,
     "records": {
       "projects": 1,
       "items": 10,
@@ -458,6 +459,7 @@ Input:
 {
   "query": "frontend AGENTS template",
   "includeCommon": true,
+  "includeArchived": false,
   "tags": ["agents"],
   "limit": 10
 }
@@ -486,6 +488,9 @@ https://pmem.undoo.ru/api/artifacts/A-COMMON-001/download
 ```
 
 Bearer auth is still required.
+
+Archived artifacts are hidden by default. Pass `includeArchived=true` or
+`status="archived"` when searching archived records intentionally.
 
 ---
 
@@ -571,6 +576,58 @@ Behavior:
 
 Use this when an uploaded artifact is good but its search metadata needs to be
 cleaned up.
+
+---
+
+### `artifact.archive`
+
+Archive an artifact without deleting bytes.
+
+Input by id:
+
+```json
+{
+  "id": "A-COMMON-001",
+  "reason": "Superseded by a newer frontend template."
+}
+```
+
+Input by path:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "templates/frontend/AGENTS.md"
+}
+```
+
+Output:
+
+```json
+{
+  "action": "archived",
+  "artifact": {
+    "id": "A-COMMON-001",
+    "status": "archived",
+    "archivedAt": "2026-06-19T23:10:00.000+03:00",
+    "archiveReason": "Superseded by a newer frontend template."
+  },
+  "event": {
+    "type": "artifact.archived",
+    "relatedId": "A-COMMON-001"
+  }
+}
+```
+
+Behavior:
+
+* marks the artifact as `archived`
+* keeps file bytes and metadata available by id/path
+* hides the artifact from default `artifact.search`
+* records an `artifact.archived` event
+
+Use this instead of deleting shared files. Agents can still retrieve archived
+artifacts when they have an explicit id/path or search with `includeArchived`.
 
 ## Project tools
 

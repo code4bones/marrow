@@ -80,6 +80,8 @@ const artifactSearchSchema = z.object({
   query: z.string().min(1).optional(),
   project: z.string().optional(),
   includeCommon: z.boolean().optional(),
+  includeArchived: z.boolean().optional(),
+  status: z.enum(["active", "archived"]).optional(),
   tags: z.array(z.string()).optional(),
   limit: z.number().int().min(1).max(100).optional()
 });
@@ -112,6 +114,16 @@ const artifactUpdateMetadataSchema = z
       message: "At least one metadata field is required."
     }
   );
+const artifactArchiveSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    project: z.string().nullable().optional(),
+    path: z.string().min(1).optional(),
+    reason: z.string().optional()
+  })
+  .refine((value) => Boolean(value.id || value.path), {
+    message: "Either id or path is required."
+  });
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -241,6 +253,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "artifact.update_metadata",
     description: "Update artifact title, description, and tags without re-uploading bytes.",
     schema: artifactUpdateMetadataSchema
+  },
+  {
+    name: "artifact.archive",
+    description: "Archive an artifact without deleting bytes. Archived artifacts are hidden from default search.",
+    schema: artifactArchiveSchema
   },
   {
     name: "task.create",

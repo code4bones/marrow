@@ -49,7 +49,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
 8. `artifact.update_metadata` — implemented
    - Update title, description, and tags without re-uploading bytes.
 
-9. `artifact.archive`
+9. `artifact.archive` — implemented
    - Prefer lifecycle archival over hard delete for shared files.
 
 10. `artifact.list`
@@ -82,6 +82,7 @@ Start with:
 6. `decision.supersede` — implemented
 7. `project.resolve` — implemented
 8. `artifact.update_metadata` — implemented
+9. `artifact.archive` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

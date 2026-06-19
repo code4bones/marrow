@@ -118,6 +118,8 @@ export class PgToolService {
           return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed) });
         case "artifact.update_metadata":
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
+        case "artifact.archive":
+          return ok("Artifact archived.", await this.archiveArtifact(parsed, requestContext));
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
@@ -839,6 +841,10 @@ export class PgToolService {
       size_bytes: content.byteLength,
       sha256: createHash("sha256").update(content).digest("hex"),
       storage_path: storagePath,
+      status: existing?.status ?? "active",
+      archived_at: existing?.archived_at ?? null,
+      archived_by: existing?.archived_by ?? null,
+      archive_reason: existing?.archive_reason ?? null,
       tags: jsonStringArray(input.tags),
       created_by: existing?.created_by ?? context.clientId,
       updated_by: context.clientId,
@@ -895,6 +901,11 @@ export class PgToolService {
     if (Array.isArray(input.tags) && input.tags.length > 0) {
       query = query.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
     }
+    if (input.status) {
+      query = query.andWhere("status", String(input.status));
+    } else if (input.includeArchived !== true) {
+      query = query.andWhere("status", "active");
+    }
 
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
@@ -950,6 +961,44 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return artifactOut(row);
+  }
+
+  private async archiveArtifact(input: Row, context: NormalizedGatewayRequestContext) {
+    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+    if (String(current.status) === "archived") {
+      return {
+        action: "already_archived",
+        artifact: artifactOut(current),
+        event: null
+      };
+    }
+
+    const now = nowIso();
+    const [row] = await this.db("artifacts")
+      .where({ id: String(current.id) })
+      .update({
+        status: "archived",
+        archived_at: now,
+        archived_by: context.clientId,
+        archive_reason: stringOrNull(input.reason),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: now,
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    const event = await this.recordEventForProject(stringOrNull(row.project_id), {
+      type: "artifact.archived",
+      title: `Artifact archived: ${String(row.path)}`,
+      body: stringOrNull(input.reason),
+      related_id: row.id
+    }, context);
+
+    return {
+      action: "archived",
+      artifact: artifactOut(row),
+      event
+    };
   }
 
   private async artifactRowById(id: string): Promise<Row> {
@@ -1464,11 +1513,15 @@ function artifactOut(row: Row) {
     path: String(row.path),
     title: String(row.title),
     description: stringOrNull(row.description),
+    status: typeof row.status === "string" ? row.status : "active",
     contentType: String(row.content_type),
     sizeBytes: Number(row.size_bytes ?? 0),
     sha256: String(row.sha256),
     tags: stringArray(row.tags),
     downloadPath: `/artifacts/${encodeURIComponent(String(row.id))}/download`,
+    archivedAt: stringOrNull(row.archived_at),
+    archivedBy: stringOrNull(row.archived_by),
+    archiveReason: stringOrNull(row.archive_reason),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };

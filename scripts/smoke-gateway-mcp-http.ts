@@ -58,6 +58,7 @@ try {
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
   assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
+  assert(toolNames.includes("artifact.archive"), "artifact.archive tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -351,6 +352,48 @@ try {
   });
   assert(downloadResponse.ok, `artifact download failed with ${downloadResponse.status}`);
   assert((await downloadResponse.text()) === artifactContent, "artifact download content mismatch.");
+
+  const archiveArtifactResult = await client.callTool({
+    name: "artifact.archive",
+    arguments: {
+      id: state.artifactId,
+      reason: "Archive smoke artifact after validating download."
+    }
+  });
+  assertOk(archiveArtifactResult.structuredContent, "artifact.archive failed.");
+  assert(
+    readNestedString(archiveArtifactResult.structuredContent, ["data", "artifact", "status"]) === "archived",
+    "artifact.archive did not mark the artifact as archived."
+  );
+
+  const archivedSearchResult = await client.callTool({
+    name: "artifact.search",
+    arguments: {
+      query: "Gateway smoke AGENTS template updated",
+      includeCommon: true,
+      includeArchived: true,
+      limit: 5
+    }
+  });
+  assertOk(archivedSearchResult.structuredContent, "artifact.search includeArchived failed.");
+  const archivedArtifactIds = readNestedArray(archivedSearchResult.structuredContent, ["data", "results"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(archivedArtifactIds.includes(state.artifactId), "artifact.search includeArchived did not include archived artifact.");
+
+  const activeSearchResult = await client.callTool({
+    name: "artifact.search",
+    arguments: {
+      query: "Gateway smoke AGENTS template updated",
+      includeCommon: true,
+      limit: 5
+    }
+  });
+  assertOk(activeSearchResult.structuredContent, "artifact.search active-only failed.");
+  const activeArtifactIds = readNestedArray(activeSearchResult.structuredContent, ["data", "results"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(!activeArtifactIds.includes(state.artifactId), "artifact.search returned archived artifact by default.");
 
   const taskResult = await client.callTool({
     name: "task.create",
