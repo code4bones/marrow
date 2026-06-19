@@ -419,8 +419,8 @@ pm2 save
 ```
 
 Run these commands from the directory that contains the gateway `.env`.
-`pm3m start` generates a local `.pm3m.ecosystem.cjs` file that reads `.env` and
-starts or reloads the `pm3m-gateway` PM2 process.
+`pm3m start` generates a local `.pm3m.ecosystem.config.js` file that reads
+`.env` and starts or reloads the `pm3m-gateway` PM2 process.
 
 The package intentionally has no `postinstall` that starts PM2. Installing or
 upgrading a package should not mutate a running service without an explicit

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import dotenv from "dotenv";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createPgKnex } from "../src/shared/pg/knex.js";
@@ -45,10 +45,11 @@ try {
 function startPm2(): void {
   const deployDir = process.cwd();
   const gatewayScript = path.resolve(packageRoot, "dist", "src", "gateway.js");
-  const ecosystemPath = path.resolve(deployDir, ".pm3m.ecosystem.cjs");
+  const envPath = path.resolve(deployDir, ".env");
+  const ecosystemPath = path.resolve(deployDir, ".pm3m.ecosystem.config.js");
   const processName = process.env.PM2_NAME ?? "pm3m-gateway";
 
-  if (!existsSync(path.resolve(deployDir, ".env"))) {
+  if (!existsSync(envPath)) {
     throw new Error(`.env not found in ${deployDir}. Run "pm3m start" from the gateway deployment directory.`);
   }
 
@@ -57,10 +58,27 @@ function startPm2(): void {
   }
 
   writeFileSync(ecosystemPath, ecosystemFile(gatewayScript, processName));
-  execFileSync("pm2", ["startOrReload", ecosystemPath, "--env", "production"], {
-    stdio: "inherit"
-  });
-  console.log(`pm3m gateway process configured from ${ecosystemPath}.`);
+  const runtimeEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...parseEnvFile(envPath),
+    NODE_ENV: "production"
+  };
+  runtimeEnv.BIND = runtimeEnv.BIND || "127.0.0.1";
+  runtimeEnv.PORT = runtimeEnv.PORT || "8765";
+
+  try {
+    execFileSync("pm2", ["startOrReload", ecosystemPath, "--env", "production"], {
+      stdio: "inherit",
+      env: runtimeEnv
+    });
+    console.log(`pm3m gateway process configured from ${ecosystemPath}.`);
+  } catch (error) {
+    console.warn("pm2 startOrReload failed; falling back to direct pm2 start.");
+    if (error instanceof Error) {
+      console.warn(error.message);
+    }
+    startPm2Direct(gatewayScript, processName, deployDir, runtimeEnv);
+  }
 }
 
 async function runMigrations(action: string): Promise<void> {
@@ -192,6 +210,81 @@ module.exports = {
   ]
 };
 `;
+}
+
+function startPm2Direct(
+  gatewayScript: string,
+  processName: string,
+  deployDir: string,
+  runtimeEnv: NodeJS.ProcessEnv
+): void {
+  try {
+    execFileSync("pm2", ["delete", processName], {
+      stdio: "ignore",
+      env: runtimeEnv
+    });
+  } catch {
+    // Process did not exist.
+  }
+
+  execFileSync(
+    "pm2",
+    [
+      "start",
+      gatewayScript,
+      "--name",
+      processName,
+      "--cwd",
+      deployDir,
+      "--update-env",
+      "--watch",
+      ".env",
+      "--ignore-watch",
+      "node_modules",
+      "--ignore-watch",
+      ".git",
+      "--ignore-watch",
+      ".agent",
+      "--ignore-watch",
+      "logs",
+      "--ignore-watch",
+      "artifacts",
+      "--max-memory-restart",
+      "256M",
+      "--restart-delay",
+      "2000",
+      "--max-restarts",
+      "10",
+      "--exp-backoff-restart-delay",
+      "200"
+    ],
+    {
+      stdio: "inherit",
+      env: runtimeEnv
+    }
+  );
+  console.log(`pm3m gateway process started as ${processName}.`);
+}
+
+function parseEnvFile(filePath: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const index = trimmed.indexOf("=");
+    if (index <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
 }
 
 function printHelp(): void {
