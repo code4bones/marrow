@@ -94,7 +94,7 @@ Shared agents should connect to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-If a launcher reads `.env` `API_ENDPOINT`, set it to the MCP endpoint. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
+If a launcher reads `.env` `GW_ENDPOINT`, set it to the MCP endpoint. Token auth is optional and reads `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`. Client identity uses `PROJECT_MEMORY_CLIENT_ID` and `PROJECT_MEMORY_CLIENT_LABEL`.
 
 Gateway logging uses `pino`:
 

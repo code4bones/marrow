@@ -70,7 +70,7 @@ Agents connect directly to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-For existing `.env` compatibility, `API_ENDPOINT` can point to the MCP endpoint. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
+For existing `.env` compatibility, `GW_ENDPOINT` can point to the MCP endpoint. Optional bearer auth uses `PROJECT_MEMORY_GATEWAY_TOKEN` or `MCP_TOKEN`.
 
 Each MCP HTTP client should set a stable identity:
 

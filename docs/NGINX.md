@@ -55,10 +55,10 @@ Point MCP Streamable HTTP clients at the proxied endpoint:
 https://memory.example.internal/project-memory/mcp
 ```
 
-If your launcher uses `API_ENDPOINT`, set it to the MCP endpoint:
+If your launcher uses `GW_ENDPOINT`, set it to the MCP endpoint:
 
 ```text
-API_ENDPOINT=https://memory.example.internal/project-memory/mcp
+GW_ENDPOINT=https://memory.example.internal/project-memory/mcp
 ```
 
 If bearer auth is enabled on the gateway, every client must use the same token:

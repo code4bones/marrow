@@ -158,10 +158,10 @@ Agents should connect directly to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-If your launcher reads `API_ENDPOINT`, point it at the MCP endpoint:
+If your launcher reads `GW_ENDPOINT`, point it at the MCP endpoint:
 
 ```text
-API_ENDPOINT=http://127.0.0.1:8765/mcp
+GW_ENDPOINT=http://127.0.0.1:8765/mcp
 ```
 
 For shared teams, give each MCP HTTP client a stable identity:
