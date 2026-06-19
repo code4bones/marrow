@@ -13,14 +13,15 @@ const started = await startGatewayServer(service, {
   token
 });
 const clientId = `gateway-mcp-http-smoke-${Date.now()}`;
+const endpoint = new URL(`${started.url}/mcp`);
+endpoint.searchParams.set("client_id", clientId);
+endpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke");
+endpoint.searchParams.set("client_kind", "mcp-http");
 
-const transport = new StreamableHTTPClientTransport(new URL(`${started.url}/mcp`), {
+const transport = new StreamableHTTPClientTransport(endpoint, {
   requestInit: {
     headers: {
-      authorization: `Bearer ${token}`,
-      "x-project-memory-client-id": clientId,
-      "x-project-memory-client-label": "Gateway MCP HTTP Smoke",
-      "x-project-memory-client-kind": "mcp-http"
+      authorization: `Bearer ${token}`
     }
   }
 });

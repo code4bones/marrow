@@ -169,6 +169,16 @@ GW_ENDPOINT=http://127.0.0.1:8765
 
 For shared teams, MCP HTTP clients may also send `X-Project-Memory-Client-*` headers for stable client identity.
 
+Codex CLI streamable HTTP MCP config does not currently expose custom headers, so pass client identity through URL query parameters:
+
+```bash
+export PMEM_MCP_TOKEN="<token>"
+
+codex mcp add project-memory \
+  --url "https://pmem.undoo.ru/api/mcp?client_id=${USER}@$(hostname -s)&client_label=${USER}@$(hostname -s)&client_kind=codex" \
+  --bearer-token-env-var PMEM_MCP_TOKEN
+```
+
 Gateway-only MCP tools:
 
 - `gateway.status`

@@ -53,6 +53,8 @@ async function handleRequest(
 ): Promise<void> {
   const startedAt = Date.now();
   const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
+  const requestUrl = parseRequestUrl(request);
+  const requestPath = requestUrl.pathname;
   const context = requestContext(request);
 
   const send = (status: number, body: unknown) => {
@@ -66,28 +68,28 @@ async function handleRequest(
       return;
     }
 
-    if (request.url === "/mcp") {
+    if (requestPath === "/mcp") {
       await handleMcpRequest(service, options, request, response, requestId, context, startedAt);
       return;
     }
 
-    if (request.method === "GET" && request.url === "/health") {
+    if (request.method === "GET" && requestPath === "/health") {
       send(200, { ok: true, service: "project-memory-gateway" });
       return;
     }
 
-    if (request.method === "GET" && request.url === "/ready") {
+    if (request.method === "GET" && requestPath === "/ready") {
       const readiness = await service.readiness();
       send(readiness.ok ? 200 : 503, readiness);
       return;
     }
 
-    if (request.method === "GET" && request.url === "/tools") {
+    if (request.method === "GET" && requestPath === "/tools") {
       send(200, { ok: true, tools: service.listTools() });
       return;
     }
 
-    if (request.method === "POST" && request.url === "/call") {
+    if (request.method === "POST" && requestPath === "/call") {
       const body = (await readJson(request)) as ToolCallBody;
       if (typeof body.tool !== "string") {
         send(400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")));
@@ -184,16 +186,28 @@ async function handleMcpRequest(
 }
 
 function requestContext(request: IncomingMessage): GatewayRequestContext {
-  const clientId = headerString(request, "x-project-memory-client-id") ?? "anonymous";
-  const clientLabel = headerString(request, "x-project-memory-client-label") ?? clientId;
+  const requestUrl = parseRequestUrl(request);
+  const clientId =
+    headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id") ?? "anonymous";
+  const clientLabel =
+    headerString(request, "x-project-memory-client-label") ?? queryString(requestUrl, "client_label") ?? clientId;
   return {
     clientId,
     clientLabel,
     metadata: {
-      kind: headerString(request, "x-project-memory-client-kind") ?? "http",
+      kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
     }
   };
+}
+
+function parseRequestUrl(request: IncomingMessage): URL {
+  return new URL(request.url ?? "/", "http://gateway.local");
+}
+
+function queryString(url: URL, name: string): string | undefined {
+  const value = url.searchParams.get(name)?.trim();
+  return value && value.length > 0 ? value : undefined;
 }
 
 function headerString(request: IncomingMessage, name: string): string | undefined {

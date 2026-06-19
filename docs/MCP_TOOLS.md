@@ -119,6 +119,12 @@ X-Project-Memory-Client-Label: Readable Developer Or Agent Name
 X-Project-Memory-Client-Kind: mcp-http
 ```
 
+Clients that cannot send custom headers, such as Codex CLI streamable HTTP MCP config, can use query parameters on the MCP URL:
+
+```text
+https://pmem.undoo.ru/api/mcp?client_id=developer@host&client_label=Developer%20Host&client_kind=codex
+```
+
 ## Project tools
 
 ### `project.create`
