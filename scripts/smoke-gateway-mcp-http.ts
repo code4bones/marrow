@@ -77,6 +77,15 @@ try {
     readNestedString(aboutResult.structuredContent, ["data", "about", "manuals", "tool"]) === "gateway.manuals",
     "gateway.about did not point at gateway.manuals."
   );
+  const connectionSnippets = readNestedArray(aboutResult.structuredContent, ["data", "about", "connectionSnippets"]);
+  assert(
+    connectionSnippets.some((snippet) => isRecord(snippet) && snippet.client === "codex"),
+    "gateway.about did not include Codex connection snippet."
+  );
+  assert(
+    connectionSnippets.some((snippet) => isRecord(snippet) && snippet.client === "codewhale"),
+    "gateway.about did not include CodeWhale connection snippet."
+  );
 
   const manualsResult = await client.callTool({
     name: "gateway.manuals",

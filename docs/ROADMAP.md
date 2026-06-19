@@ -58,7 +58,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
 
 ## Priority 4 — Agent UX
 
-11. Extend onboarding output
+11. Extend onboarding output — implemented
     - `gateway.about` or a separate onboarding tool should return connection
       snippets for Codex, Claude, CodeWhale, and generic Streamable HTTP clients.
 
@@ -84,6 +84,7 @@ Start with:
 8. `artifact.update_metadata` — implemented
 9. `artifact.archive` — implemented
 10. `artifact.list` — implemented
+11. Extend onboarding output — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

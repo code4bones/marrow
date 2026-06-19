@@ -108,12 +108,24 @@ Output:
       "Call gateway.about if the agent has not used pmem before.",
       "Call gateway.status to confirm shared gateway mode.",
       "Call memory.search with the task topic and include common knowledge."
+    ],
+    "connectionSnippets": [
+      {
+        "client": "codex",
+        "transport": "streamable-http",
+        "url": "https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=<client-kind>"
+      },
+      {
+        "client": "codewhale",
+        "configPath": ".deepseek/mcp.json"
+      }
     ]
   }
 }
 ```
 
-Use this when a developer or agent asks what `project-memory` / `pmem` is, how to start, or which tools to call first.
+Use this when a developer or agent asks what `project-memory` / `pmem` is, how
+to start, which tools to call first, or how to connect another MCP client.
 
 ---
 

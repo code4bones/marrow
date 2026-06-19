@@ -260,7 +260,8 @@ export class PgToolService {
         intent:
           "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them.",
         tools: ["artifact.put", "artifact.search", "artifact.get"]
-      }
+      },
+      connectionSnippets: connectionSnippets()
     };
   }
 
@@ -1589,6 +1590,58 @@ function projectOut(row: Row) {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function connectionSnippets() {
+  const baseUrl = "https://<gateway-host>/api";
+  const mcpUrl = `${baseUrl}/mcp?client_id=\${PMEM_CLIENT_ID}&client_label=\${PMEM_CLIENT_LABEL}&client_kind=<client-kind>`;
+  return [
+    {
+      client: "codex",
+      transport: "streamable-http",
+      config: {
+        serverName: "project-memory",
+        url: mcpUrl,
+        headers: {
+          Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+        }
+      },
+      notes: [
+        "Set PMEM_CLIENT_ID to a stable developer/agent id such as USER@HOSTNAME.",
+        "Set PMEM_CLIENT_LABEL to a readable label.",
+        "Set PMEM_MCP_TOKEN to the gateway bearer token."
+      ]
+    },
+    {
+      client: "claude",
+      transport: "streamable-http",
+      cli: "claude mcp add --transport http project-memory \"https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=claude-code\" --header \"Authorization: Bearer ${PMEM_MCP_TOKEN}\""
+    },
+    {
+      client: "codewhale",
+      transport: "streamable-http",
+      configPath: ".deepseek/mcp.json",
+      config: {
+        mcpServers: {
+          "project-memory": {
+            url: "https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=codewhale",
+            headers: {
+              Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+            }
+          }
+        }
+      },
+      notes: ["Use config file headers when the CodeWhale CLI does not accept --headers."]
+    },
+    {
+      client: "generic-streamable-http",
+      transport: "streamable-http",
+      url: mcpUrl,
+      headers: {
+        Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+      }
+    }
+  ];
 }
 
 function scoreProjectCandidate(row: Row, input: Row) {
