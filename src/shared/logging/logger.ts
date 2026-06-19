@@ -33,7 +33,7 @@ export function createGatewayLogger(options: GatewayLoggerOptions = {}): AppLogg
           mkdir: true,
           sync: false
         }),
-        { pretty, includeTime }
+        { pretty: false, includeTime: true }
       )
     });
   }
@@ -48,7 +48,7 @@ export function createGatewayLogger(options: GatewayLoggerOptions = {}): AppLogg
       base: {
         service: "project-memory-gateway"
       },
-      timestamp: includeTime ? pino.stdTimeFunctions.isoTime : false
+      timestamp: pino.stdTimeFunctions.isoTime
     },
     pino.multistream(streams)
   );

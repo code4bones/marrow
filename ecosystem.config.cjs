@@ -28,8 +28,7 @@ module.exports = {
       autorestart: true,
       restart_delay: 2000,
       max_restarts: 10,
-      exp_backoff_restart_delay: 200,
-      log_date_format: "HH:mm:ss",
+      exp_backoff_restart_delay: 200
     }
   ]
 };

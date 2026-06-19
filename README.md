@@ -183,7 +183,7 @@ LOG_PRETTY=false
 LOG_INCLUDE_TIME=true
 ```
 
-The gateway writes to stderr and to `${LOG_DIR}/project-memory-gateway.log`. Set `LOG_DIR=false` to disable file logging. `LOG_PRETTY=true` formats both console and file output for humans; otherwise pino writes JSON lines.
+The gateway writes pretty logs to stderr when `LOG_PRETTY=true`; `LOG_INCLUDE_TIME` controls the pretty console timestamp. The file `${LOG_DIR}/project-memory-gateway.log` always uses pino JSON lines for monitoring ingestion. Set `LOG_DIR=false` to disable file logging.
 
 For the internal nginx server template, see `deploy/nginx/project-memory-gateway.server.conf`. For reusable locations only, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
