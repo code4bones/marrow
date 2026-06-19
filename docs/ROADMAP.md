@@ -40,7 +40,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
    - Create a replacement decision, mark the old decision as `superseded`, and
      add the appropriate link/event records in one operation.
 
-7. `project.resolve`
+7. `project.resolve` — implemented
    - Resolve a likely project from repository path, slug, title, or remote URL.
    - Return candidates instead of guessing when ambiguous.
 

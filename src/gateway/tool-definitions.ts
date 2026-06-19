@@ -51,6 +51,19 @@ const failedAttemptRecordSchema = z.object({
 const listGatewayClientsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
+const projectResolveSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    slug: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    rootPath: z.string().min(1).optional(),
+    remoteUrl: z.string().min(1).optional(),
+    query: z.string().min(1).optional(),
+    limit: z.number().int().min(1).max(20).optional()
+  })
+  .refine((value) => Boolean(value.id || value.slug || value.title || value.rootPath || value.remoteUrl || value.query), {
+    message: "At least one resolver field is required."
+  });
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -140,6 +153,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "project.get",
     description: "Get a shared project by id or slug.",
     schema: projectLookupSchema
+  },
+  {
+    name: "project.resolve",
+    description:
+      "Resolve a likely project from id, slug, title, repository path, remote URL, or query. Returns candidates instead of guessing when ambiguous.",
+    schema: projectResolveSchema
   },
   {
     name: "project.set_current",

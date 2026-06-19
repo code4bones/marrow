@@ -20,6 +20,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `memory.upsert`
 * `failed_attempt.record`
 * `decision.supersede`
+* `project.resolve`
 * `artifact.put`
 * `artifact.search`
 * `artifact.get`
@@ -134,7 +135,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 35,
+    "tools": 36,
     "node": {
       "version": "v24.16.0"
     },
@@ -174,7 +175,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 35
+      "tools": 36
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -224,7 +225,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 35
+      "tools": 36
     },
     "database": {
       "engine": "postgresql",
@@ -339,7 +340,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 35,
+    "tools": 36,
     "records": {
       "projects": 1,
       "items": 10,
@@ -614,6 +615,68 @@ Output:
   "project": {}
 }
 ```
+
+---
+
+### `project.resolve`
+
+Resolve a likely project from repository context.
+
+Input examples:
+
+```json
+{
+  "rootPath": "/home/user/dev/project-memory-mcp/src"
+}
+```
+
+```json
+{
+  "remoteUrl": "git@github.com:deadragdoll/project-memory-mcp.git",
+  "query": "project memory"
+}
+```
+
+Output:
+
+```json
+{
+  "resolved": {
+    "id": "P-MEMORY",
+    "slug": "project-memory-mcp",
+    "title": "Project Memory MCP"
+  },
+  "ambiguous": false,
+  "candidates": [
+    {
+      "project": {
+        "id": "P-MEMORY",
+        "slug": "project-memory-mcp",
+        "rootPath": "/home/user/dev/project-memory-mcp"
+      },
+      "score": 80,
+      "reasons": ["rootPathParent"]
+    }
+  ]
+}
+```
+
+Fields:
+
+* `id`, `slug`, `title`, `rootPath`, `remoteUrl`, or `query`; at least one is
+  required
+* `limit` defaults to 10
+
+Behavior:
+
+* scores active projects by exact id, slug, title, root path, parent root path,
+  remote repository name, and query match
+* returns `resolved` only when there is a single best candidate
+* returns `resolved: null` with candidates when the result is ambiguous
+* does not change current project
+
+Use this when an agent connects from a repository and needs to discover the
+right shared project scope before recording memory or running preflight.
 
 ---
 

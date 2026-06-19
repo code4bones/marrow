@@ -53,6 +53,7 @@ try {
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
+  assert(toolNames.includes("project.resolve"), "project.resolve tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
@@ -163,11 +164,24 @@ try {
     name: "project.create",
     arguments: {
       slug: `gateway-mcp-http-smoke-${unique}`,
-      title: `Gateway MCP HTTP Smoke ${unique}`
+      title: `Gateway MCP HTTP Smoke ${unique}`,
+      rootPath: `/tmp/gateway-mcp-http-smoke-${unique}`
     }
   });
   assertOk(projectResult.structuredContent, "project.create failed.");
   state.projectId = readNestedString(projectResult.structuredContent, ["data", "project", "id"]);
+
+  const projectResolveResult = await client.callTool({
+    name: "project.resolve",
+    arguments: {
+      rootPath: `/tmp/gateway-mcp-http-smoke-${unique}/src`
+    }
+  });
+  assertOk(projectResolveResult.structuredContent, "project.resolve failed.");
+  assert(
+    readNestedString(projectResolveResult.structuredContent, ["data", "resolved", "id"]) === state.projectId,
+    "project.resolve did not resolve the project by child rootPath."
+  );
 
   const currentResult = await client.callTool({
     name: "project.set_current",

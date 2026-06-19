@@ -90,6 +90,8 @@ export class PgToolService {
           return ok("Projects listed.", { projects: await this.listProjects(parsed) });
         case "project.get":
           return ok("Project loaded.", { project: await this.getProject(parsed) });
+        case "project.resolve":
+          return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed));
         case "project.set_current":
           return ok("Current project set.", { currentProject: await this.setCurrentProject(parsed) });
         case "project.current":
@@ -525,6 +527,24 @@ export class PgToolService {
       throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.", { ...input });
     }
     return projectOut(row);
+  }
+
+  private async resolveProjectCandidates(input: Row) {
+    const rows = await this.db("projects").select("*").where({ status: "active" });
+    const candidates = rows
+      .map((row) => scoreProjectCandidate(row, input))
+      .filter((candidate) => candidate.score > 0)
+      .sort((left, right) => right.score - left.score || left.project.slug.localeCompare(right.project.slug))
+      .slice(0, Number(input.limit ?? 10));
+    const top = candidates[0];
+    const second = candidates[1];
+    const resolved = top && (!second || top.score > second.score) ? top.project : null;
+
+    return {
+      resolved,
+      ambiguous: Boolean(top && second && top.score === second.score),
+      candidates
+    };
   }
 
   private async setCurrentProject(input: Row) {
@@ -1443,6 +1463,74 @@ function projectOut(row: Row) {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function scoreProjectCandidate(row: Row, input: Row) {
+  let score = 0;
+  const reasons: string[] = [];
+  const project = projectOut(row);
+  const slug = project.slug.toLowerCase();
+  const title = project.title.toLowerCase();
+  const id = project.id.toLowerCase();
+  const rootPath = normalizeComparablePath(project.rootPath);
+  const inputRootPath = normalizeComparablePath(stringOrNull(input.rootPath));
+  const remoteSlug = typeof input.remoteUrl === "string" ? slugFromRemoteUrl(input.remoteUrl) : null;
+  const query = typeof input.query === "string" ? input.query.toLowerCase() : null;
+
+  if (typeof input.id === "string" && input.id.toLowerCase() === id) {
+    score += 120;
+    reasons.push("id");
+  }
+  if (typeof input.slug === "string" && input.slug.toLowerCase() === slug) {
+    score += 100;
+    reasons.push("slug");
+  }
+  if (typeof input.title === "string" && input.title.toLowerCase() === title) {
+    score += 85;
+    reasons.push("title");
+  }
+  if (inputRootPath && rootPath && inputRootPath === rootPath) {
+    score += 95;
+    reasons.push("rootPath");
+  } else if (inputRootPath && rootPath && inputRootPath.startsWith(`${rootPath}${path.sep}`)) {
+    score += 80;
+    reasons.push("rootPathParent");
+  }
+  if (remoteSlug && remoteSlug === slug) {
+    score += 70;
+    reasons.push("remoteUrlRepoName");
+  }
+  if (query) {
+    if (query === id || query === slug || query === title) {
+      score += 75;
+      reasons.push("queryExact");
+    } else if (slug.includes(query) || title.includes(query) || id.includes(query)) {
+      score += 35;
+      reasons.push("queryPartial");
+    }
+  }
+
+  return {
+    project,
+    score,
+    reasons
+  };
+}
+
+function normalizeComparablePath(value: string | null): string | null {
+  return value ? path.resolve(value) : null;
+}
+
+function slugFromRemoteUrl(value: string): string | null {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return null;
+  }
+  const lastSegment = trimmed.split(/[/:]/).filter(Boolean).at(-1);
+  if (!lastSegment) {
+    return null;
+  }
+  return lastSegment.replace(/\.git$/i, "").toLowerCase();
 }
 
 function clientOut(row: Row) {
