@@ -99,6 +99,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: emptySchema
   },
   {
+    name: "gateway.backup_manifest",
+    description:
+      "Return the safe backup surface for operators: PostgreSQL identity, required tables, artifact directory, counts, sizes, and migration state without exposing secrets.",
+    schema: emptySchema
+  },
+  {
     name: "gateway.manuals",
     description:
       "Return Project Memory Markdown manuals for developers/users and agents. Set includeContent=true when the caller needs the actual .md text.",

@@ -48,6 +48,7 @@ try {
   assert(toolNames.includes("gateway.about"), "gateway.about tool was not listed.");
   assert(toolNames.includes("gateway.version"), "gateway.version tool was not listed.");
   assert(toolNames.includes("gateway.diagnostics"), "gateway.diagnostics tool was not listed.");
+  assert(toolNames.includes("gateway.backup_manifest"), "gateway.backup_manifest tool was not listed.");
   assert(toolNames.includes("gateway.manuals"), "gateway.manuals tool was not listed.");
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
@@ -128,6 +129,21 @@ try {
     readNestedString(diagnosticsResult.structuredContent, ["data", "diagnostics", "version", "packageName"]) ===
       "@deadragdoll/pm3m",
     "gateway.diagnostics did not include version metadata."
+  );
+
+  const backupManifestResult = await client.callTool({
+    name: "gateway.backup_manifest",
+    arguments: {}
+  });
+  assertOk(backupManifestResult.structuredContent, "gateway.backup_manifest failed.");
+  assert(
+    readNestedString(backupManifestResult.structuredContent, ["data", "manifest", "database", "engine"]) ===
+      "postgresql",
+    "gateway.backup_manifest did not include PostgreSQL backup scope."
+  );
+  assert(
+    !JSON.stringify(backupManifestResult.structuredContent).includes("password"),
+    "gateway.backup_manifest exposed password metadata."
   );
 
   const clientsResult = await client.callTool({

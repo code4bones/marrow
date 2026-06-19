@@ -19,7 +19,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
    - Never return secrets such as `MCP_TOKEN`, PostgreSQL password, or bearer
      credentials.
 
-3. `gateway.backup_manifest`
+3. `gateway.backup_manifest` — implemented
    - Return the operational backup surface: PostgreSQL database, artifact
      directory, artifact counts/sizes, and schema migration state.
    - This should not perform backup itself.
@@ -76,8 +76,9 @@ Start with:
 
 1. `gateway.version` — implemented
 2. `gateway.diagnostics` — implemented
-3. `memory.upsert` — implemented
-4. `failed_attempt.record` — implemented
+3. `gateway.backup_manifest` — implemented
+4. `memory.upsert` — implemented
+5. `failed_attempt.record` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

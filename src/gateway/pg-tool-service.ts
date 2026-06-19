@@ -76,6 +76,8 @@ export class PgToolService {
           return ok("Gateway version loaded.", { version: await this.gatewayVersion() });
         case "gateway.diagnostics":
           return ok("Gateway diagnostics loaded.", { diagnostics: await this.gatewayDiagnostics() });
+        case "gateway.backup_manifest":
+          return ok("Gateway backup manifest loaded.", { manifest: await this.gatewayBackupManifest() });
         case "gateway.manuals":
           return ok("Project Memory manuals loaded.", { manuals: await this.gatewayManuals(parsed) });
         case "gateway.status":
@@ -340,6 +342,68 @@ export class PgToolService {
       security: {
         bearerAuth: Boolean(process.env.MCP_TOKEN)
       }
+    };
+  }
+
+  private async gatewayBackupManifest() {
+    const [version, migrations, artifacts] = await Promise.all([
+      this.gatewayVersion(),
+      this.migrationStatus(),
+      this.artifactBackupStats()
+    ]);
+
+    const tables = [
+      "projects",
+      "items",
+      "tasks",
+      "decisions",
+      "links",
+      "events",
+      "artifacts",
+      "kv",
+      "gateway_clients",
+      "sync_conflicts",
+      "knex_migrations",
+      "knex_migrations_lock"
+    ];
+    const tableCounts = Object.fromEntries(
+      await Promise.all(tables.map(async (table) => [table, await this.safeCountRows(table)] as const))
+    );
+    const artifactDir = path.resolve(process.env.ARTIFACT_DIR ?? "artifacts");
+
+    return {
+      generatedAt: nowIso(),
+      version,
+      database: {
+        engine: "postgresql",
+        host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+        port: Number(process.env.POSTGRES_PORT ?? 5432),
+        database: process.env.POSTGRES_DB ?? "project_memory",
+        user: process.env.POSTGRES_USER ?? "project_memory",
+        ssl: process.env.POSTGRES_SSL === "true" || process.env.POSTGRES_SSL === "require",
+        backupRequired: true,
+        tables,
+        tableCounts
+      },
+      artifacts: {
+        backupRequired: true,
+        dir: artifactDir,
+        exists: existsSync(artifactDir),
+        count: artifacts.count,
+        totalBytes: artifacts.totalBytes,
+        maxBytes: Number(process.env.ARTIFACT_MAX_BYTES ?? 10 * 1024 * 1024)
+      },
+      migrations,
+      excludes: [
+        "MCP_TOKEN",
+        "POSTGRES_PASSWORD",
+        "Authorization headers",
+        "PM2 runtime logs unless required by operator policy"
+      ],
+      notes: [
+        "Back up PostgreSQL and ARTIFACT_DIR together to keep artifact metadata and bytes consistent.",
+        "This tool reports backup scope only; it does not perform a backup."
+      ]
     };
   }
 
@@ -1161,6 +1225,27 @@ export class PgToolService {
   private async countRows(table: string): Promise<number> {
     const [row] = await this.db(table).count<{ count: string | number }[]>({ count: "*" });
     return Number(row?.count ?? 0);
+  }
+
+  private async safeCountRows(table: string): Promise<number | null> {
+    try {
+      return await this.countRows(table);
+    } catch {
+      return null;
+    }
+  }
+
+  private async artifactBackupStats(): Promise<{ count: number; totalBytes: number }> {
+    const row = await this.db("artifacts")
+      .select(
+        this.db.raw("count(*)::int as count"),
+        this.db.raw("coalesce(sum(size_bytes), 0)::bigint as total_bytes")
+      )
+      .first();
+    return {
+      count: Number(row?.count ?? 0),
+      totalBytes: Number(row?.total_bytes ?? 0)
+    };
   }
 
   private async uniqueProjectId(baseId: string): Promise<string> {

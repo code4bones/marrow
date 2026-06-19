@@ -13,6 +13,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `gateway.about`
 * `gateway.version`
 * `gateway.diagnostics`
+* `gateway.backup_manifest`
 * `gateway.manuals`
 * `gateway.status`
 * `gateway.clients`
@@ -132,7 +133,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 33,
+    "tools": 34,
     "node": {
       "version": "v24.16.0"
     },
@@ -172,7 +173,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 33
+      "tools": 34
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -200,6 +201,67 @@ Output:
 
 This tool must not return `MCP_TOKEN`, database passwords, bearer values, or
 other credentials.
+
+---
+
+### `gateway.backup_manifest`
+
+Return the safe backup surface for operators.
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "manifest": {
+    "generatedAt": "2026-06-19T22:59:00.000+03:00",
+    "version": {
+      "packageName": "@deadragdoll/pm3m",
+      "packageVersion": "1.0.0",
+      "tools": 34
+    },
+    "database": {
+      "engine": "postgresql",
+      "host": "127.0.0.1",
+      "port": 5432,
+      "database": "project_memory",
+      "user": "project_memory",
+      "ssl": false,
+      "backupRequired": true,
+      "tables": ["projects", "items", "tasks", "decisions", "artifacts"],
+      "tableCounts": {
+        "projects": 1,
+        "items": 10
+      }
+    },
+    "artifacts": {
+      "backupRequired": true,
+      "dir": "/var/lib/pm3m/artifacts",
+      "exists": true,
+      "count": 12,
+      "totalBytes": 49152,
+      "maxBytes": 10485760
+    },
+    "migrations": {
+      "completed": ["001_init.cjs", "002_artifacts.cjs"],
+      "pending": []
+    },
+    "excludes": ["MCP_TOKEN", "POSTGRES_PASSWORD", "Authorization headers"],
+    "notes": [
+      "Back up PostgreSQL and ARTIFACT_DIR together to keep artifact metadata and bytes consistent."
+    ]
+  }
+}
+```
+
+This tool does not perform a backup. It exists so an operator or agent can see
+which state must be included in an external backup plan without exposing
+credentials.
 
 ---
 
@@ -276,7 +338,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 33,
+    "tools": 34,
     "records": {
       "projects": 1,
       "items": 10,
