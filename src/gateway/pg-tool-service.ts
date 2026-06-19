@@ -1,5 +1,6 @@
 import type { Knex } from "knex";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,6 +72,10 @@ export class PgToolService {
       switch (toolName) {
         case "gateway.about":
           return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
+        case "gateway.version":
+          return ok("Gateway version loaded.", { version: await this.gatewayVersion() });
+        case "gateway.diagnostics":
+          return ok("Gateway diagnostics loaded.", { diagnostics: await this.gatewayDiagnostics() });
         case "gateway.manuals":
           return ok("Project Memory manuals loaded.", { manuals: await this.gatewayManuals(parsed) });
         case "gateway.status":
@@ -276,6 +281,72 @@ export class PgToolService {
         return output;
       })
     );
+  }
+
+  private async gatewayVersion() {
+    const packageMetadata = await readPackageMetadata();
+    return {
+      name: "Project Memory",
+      shortName: "pmem",
+      packageName: packageMetadata.name,
+      packageVersion: packageMetadata.version,
+      mode: "gateway",
+      storage: "postgresql",
+      tools: this.listTools().length,
+      node: {
+        version: process.version
+      },
+      runtime: {
+        processName: process.env.PM2_NAME ?? "pm3m-gateway"
+      }
+    };
+  }
+
+  private async gatewayDiagnostics() {
+    const [version, readiness, status, migrations] = await Promise.all([
+      this.gatewayVersion(),
+      this.readiness(),
+      this.gatewayStatus(),
+      this.migrationStatus()
+    ]);
+
+    return {
+      version,
+      readiness,
+      status,
+      migrations,
+      runtime: {
+        bind: process.env.BIND ?? "127.0.0.1",
+        port: Number(process.env.PORT ?? 8765),
+        apiEndpoint: process.env.API_ENDPOINT ?? null,
+        nodeEnv: process.env.NODE_ENV ?? null
+      },
+      artifacts: {
+        dir: process.env.ARTIFACT_DIR ?? "artifacts",
+        maxBytes: Number(process.env.ARTIFACT_MAX_BYTES ?? 10 * 1024 * 1024)
+      },
+      logging: {
+        level: process.env.LOG_LEVEL ?? "info",
+        dir: process.env.LOG_DIR ?? ".agent",
+        pretty: process.env.LOG_PRETTY ?? "false",
+        includeTime: process.env.LOG_INCLUDE_TIME ?? "true"
+      },
+      security: {
+        bearerAuth: Boolean(process.env.MCP_TOKEN)
+      }
+    };
+  }
+
+  private async migrationStatus() {
+    const [completed, pending] = await this.db.migrate.list({
+      directory: path.resolve(packageRoot(), "migrations", "pg"),
+      tableName: "knex_migrations"
+    });
+
+    return {
+      completed: completed.map((migration: unknown) => migrationField(migration, "name")),
+      pending: pending.map((migration: unknown) => migrationField(migration, "file"))
+    };
   }
 
   async readiness() {
@@ -1289,6 +1360,39 @@ function manualPathCandidates(relativePath: string): string[] {
       path.resolve(process.cwd(), relativePath)
     ])
   );
+}
+
+async function readPackageMetadata(): Promise<{ name: string; version: string }> {
+  const packagePath = path.resolve(packageRoot(), "package.json");
+  const parsed = JSON.parse(await readFile(packagePath, "utf8")) as Row;
+  return {
+    name: typeof parsed.name === "string" ? parsed.name : "unknown",
+    version: typeof parsed.version === "string" ? parsed.version : "unknown"
+  };
+}
+
+function migrationField(migration: unknown, key: "name" | "file"): string {
+  if (typeof migration === "object" && migration !== null && key in migration) {
+    const value = (migration as Record<string, unknown>)[key];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return String(migration);
+}
+
+function packageRoot(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    process.cwd(),
+    path.resolve(moduleDir, "../.."),
+    path.resolve(moduleDir, "../../..")
+  ]) {
+    if (existsSync(path.resolve(candidate, "package.json"))) {
+      return candidate;
+    }
+  }
+  return process.cwd();
 }
 
 function jsonObject(value: unknown): Row {

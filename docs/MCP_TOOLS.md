@@ -11,6 +11,8 @@ Local SQLite stdio mode exposes the core project-memory tools.
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 
 * `gateway.about`
+* `gateway.version`
+* `gateway.diagnostics`
 * `gateway.manuals`
 * `gateway.status`
 * `gateway.clients`
@@ -107,6 +109,98 @@ Use this when a developer or agent asks what `project-memory` / `pmem` is, how t
 
 ---
 
+### `gateway.version`
+
+Return package and runtime identity for the connected gateway.
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "version": {
+    "name": "Project Memory",
+    "shortName": "pmem",
+    "packageName": "@deadragdoll/pm3m",
+    "packageVersion": "1.0.0",
+    "mode": "gateway",
+    "storage": "postgresql",
+    "tools": 31,
+    "node": {
+      "version": "v24.16.0"
+    },
+    "runtime": {
+      "processName": "pm3m-gateway"
+    }
+  }
+}
+```
+
+Use this when an agent or operator needs to confirm which pmem build is
+connected.
+
+---
+
+### `gateway.diagnostics`
+
+Return safe operational diagnostics without secrets.
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "diagnostics": {
+    "version": {},
+    "readiness": {
+      "ok": true,
+      "database": "postgresql",
+      "missingTables": []
+    },
+    "status": {
+      "mode": "gateway",
+      "storage": "postgresql",
+      "tools": 31
+    },
+    "migrations": {
+      "completed": ["001_init.cjs", "002_artifacts.cjs"],
+      "pending": []
+    },
+    "runtime": {
+      "bind": "127.0.0.1",
+      "port": 7000,
+      "apiEndpoint": "/api"
+    },
+    "artifacts": {
+      "dir": "/var/lib/pm3m/artifacts",
+      "maxBytes": 10485760
+    },
+    "logging": {
+      "level": "info",
+      "dir": "/var/log/pm3m"
+    },
+    "security": {
+      "bearerAuth": true
+    }
+  }
+}
+```
+
+This tool must not return `MCP_TOKEN`, database passwords, bearer values, or
+other credentials.
+
+---
+
 ### `gateway.manuals`
 
 Return bundled Project Memory Markdown manuals.
@@ -180,7 +274,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 29,
+    "tools": 31,
     "records": {
       "projects": 1,
       "items": 10,

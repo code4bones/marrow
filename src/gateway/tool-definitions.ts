@@ -71,6 +71,18 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: emptySchema
   },
   {
+    name: "gateway.version",
+    description:
+      "Return package version, storage mode, tool count, and gateway runtime identity. Use this to confirm which pmem build is connected.",
+    schema: emptySchema
+  },
+  {
+    name: "gateway.diagnostics",
+    description:
+      "Return safe gateway diagnostics including readiness, migrations, record counts, artifact settings, and logging settings without exposing secrets.",
+    schema: emptySchema
+  },
+  {
     name: "gateway.manuals",
     description:
       "Return Project Memory Markdown manuals for developers/users and agents. Set includeContent=true when the caller needs the actual .md text.",

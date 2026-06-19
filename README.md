@@ -246,6 +246,8 @@ codewhale-tui mcp tools project-memory
 Gateway-only MCP tools:
 
 - `gateway.about`
+- `gateway.version`
+- `gateway.diagnostics`
 - `gateway.manuals`
 - `gateway.status`
 - `gateway.clients`

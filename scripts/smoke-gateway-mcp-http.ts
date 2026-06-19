@@ -46,6 +46,8 @@ try {
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
   assert(toolNames.includes("gateway.about"), "gateway.about tool was not listed.");
+  assert(toolNames.includes("gateway.version"), "gateway.version tool was not listed.");
+  assert(toolNames.includes("gateway.diagnostics"), "gateway.diagnostics tool was not listed.");
   assert(toolNames.includes("gateway.manuals"), "gateway.manuals tool was not listed.");
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
@@ -104,6 +106,27 @@ try {
     arguments: {}
   });
   assertOk(statusResult.structuredContent, "gateway.status failed.");
+
+  const versionResult = await client.callTool({
+    name: "gateway.version",
+    arguments: {}
+  });
+  assertOk(versionResult.structuredContent, "gateway.version failed.");
+  assert(
+    readNestedString(versionResult.structuredContent, ["data", "version", "packageName"]) === "@deadragdoll/pm3m",
+    "gateway.version returned the wrong package name."
+  );
+
+  const diagnosticsResult = await client.callTool({
+    name: "gateway.diagnostics",
+    arguments: {}
+  });
+  assertOk(diagnosticsResult.structuredContent, "gateway.diagnostics failed.");
+  assert(
+    readNestedString(diagnosticsResult.structuredContent, ["data", "diagnostics", "version", "packageName"]) ===
+      "@deadragdoll/pm3m",
+    "gateway.diagnostics did not include version metadata."
+  );
 
   const clientsResult = await client.callTool({
     name: "gateway.clients",
