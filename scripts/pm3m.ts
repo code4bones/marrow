@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createPgKnex } from "../src/shared/pg/knex.js";
+import { seedBundledTemplates } from "./seed-templates.js";
 
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
 const command = process.argv[2] ?? "help";
@@ -16,6 +17,9 @@ try {
       break;
     case "migrate":
       await runMigrations(process.argv[3] ?? "latest");
+      break;
+    case "seed":
+      await runSeed(process.argv[3] ?? "templates");
       break;
     case "status":
       await runMigrations("status");
@@ -101,6 +105,7 @@ async function runMigrations(action: string): Promise<void> {
             console.log(`- ${migration}`);
           }
         }
+        await seedBundledTemplates({ db, packageRoot, log: console.log });
         break;
       }
       case "rollback": {
@@ -137,6 +142,18 @@ async function runMigrations(action: string): Promise<void> {
     }
   } finally {
     await db.destroy();
+  }
+}
+
+async function runSeed(target: string): Promise<void> {
+  dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
+
+  switch (target) {
+    case "templates":
+      await seedBundledTemplates({ packageRoot, log: console.log });
+      break;
+    default:
+      throw new Error(`Unknown seed target "${target}". Use templates.`);
   }
 }
 
@@ -293,6 +310,7 @@ function printHelp(): void {
 Usage:
   pm3m start              Start or reload the PM2 gateway from the current .env directory
   pm3m migrate [latest]   Apply PostgreSQL migrations using .env from the current directory
+  pm3m seed templates     Seed or update bundled common artifact templates
   pm3m status             Show PostgreSQL migration status
   pm3m rollback           Roll back the latest PostgreSQL migration batch
   pm3m gateway            Run the gateway directly without PM2

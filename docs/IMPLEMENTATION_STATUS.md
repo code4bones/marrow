@@ -339,6 +339,24 @@ It creates the `project-memory-mcp` project if missing, sets it as current, and 
 - `C-ARCH-001`
 - `C-ARCH-002`
 
+Bundled artifact templates live in `docs/templates` and are synced to common
+gateway artifacts by `pm3m migrate latest`. Operators can repeat only the
+template sync with:
+
+```bash
+pm3m seed templates
+npm run seed:templates
+```
+
+Current template artifact paths:
+
+- `templates/agents/generic/AGENTS.md`
+- `templates/agents/frontend/AGENTS.md`
+- `templates/agents/backend/AGENTS.md`
+- `templates/agents/devops/AGENTS.md`
+- `templates/review/REVIEW_CHECKLIST.md`
+- `templates/deploy/DEPLOY_CHECKLIST.md`
+
 ## Validation
 
 Current validation commands:

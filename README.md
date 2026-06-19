@@ -192,7 +192,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.2.1.tgz
+npm install -g ./deadragdoll-pm3m-1.3.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -203,6 +203,13 @@ pm3m status
 pm3m start
 pm2 save
 ```
+
+`pm3m migrate` is a gateway-side operation: it applies PostgreSQL migrations
+and then seeds or updates bundled common artifact templates from the installed
+package into PostgreSQL plus `ARTIFACT_DIR`. Clients do not seed templates
+locally; they discover gateway templates with `artifact.search`,
+`artifact.list`, and `artifact.get`. Run `pm3m seed templates` on the gateway
+only when you need to repeat just the template sync.
 
 There is intentionally no `postinstall` side effect. Installing the package
 does not start or reload PM2 automatically; service changes should happen only
@@ -308,6 +315,15 @@ Gateway-only MCP tools:
 - `artifact.archive`
 - `preflight.by_query`
 - `handoff.create`
+
+Bundled gateway templates are seeded as common artifacts under:
+
+- `templates/agents/generic/AGENTS.md`
+- `templates/agents/frontend/AGENTS.md`
+- `templates/agents/backend/AGENTS.md`
+- `templates/agents/devops/AGENTS.md`
+- `templates/review/REVIEW_CHECKLIST.md`
+- `templates/deploy/DEPLOY_CHECKLIST.md`
 
 Gateway logging uses `pino` and writes JSON logs to console and file by default:
 

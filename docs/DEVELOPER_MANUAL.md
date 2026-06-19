@@ -205,7 +205,7 @@ The gateway should report:
 
 - `mode: gateway`
 - `storage: postgresql`
-- `tools: 44` for pm3m 1.2.x
+- `tools: 44` for pm3m 1.3.x
 - recent clients
 
 Operators can also inspect or clean stale client registrations with:
@@ -318,7 +318,7 @@ Agents upload artifact bytes as base64:
 ```json
 {
   "project": "project-memory-mcp",
-  "path": "templates/frontend/AGENTS.md",
+  "path": "templates/agents/frontend/AGENTS.md",
   "title": "Frontend AGENTS.md",
   "description": "Reusable frontend agent instructions.",
   "contentType": "text/markdown; charset=utf-8",
@@ -333,7 +333,7 @@ For common artifacts, use:
 ```json
 {
   "common": true,
-  "path": "templates/frontend/AGENTS.md"
+  "path": "templates/agents/frontend/AGENTS.md"
 }
 ```
 
@@ -344,6 +344,28 @@ description, or tags need cleanup.
 
 Use `artifact.archive` when a file is superseded. Archived files are hidden from
 default search but remain available by id/path and with `includeArchived=true`.
+
+## Bundled Templates
+
+The package includes useful starter templates under `docs/templates`. They are
+seeded on the gateway as common artifacts after `pm3m migrate latest`.
+Client agents do not seed these files locally; they search and download the
+gateway source of truth.
+
+Current bundled artifact paths:
+
+- `templates/agents/generic/AGENTS.md`
+- `templates/agents/frontend/AGENTS.md`
+- `templates/agents/backend/AGENTS.md`
+- `templates/agents/devops/AGENTS.md`
+- `templates/review/REVIEW_CHECKLIST.md`
+- `templates/deploy/DEPLOY_CHECKLIST.md`
+
+Operators can repeat only the template sync on the gateway:
+
+```bash
+pm3m seed templates
+```
 
 ## Guardrails
 
@@ -446,7 +468,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.2.1.tgz
+npm install -g ./deadragdoll-pm3m-1.3.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -459,6 +481,10 @@ pm2 save
 ```
 
 Run these commands from the directory that contains the gateway `.env`.
+`pm3m migrate` applies PostgreSQL migrations and then seeds or updates bundled
+common artifact templates from the installed package into the gateway database
+and `ARTIFACT_DIR`.
+
 `pm3m start` generates a local `.pm3m.ecosystem.config.js` file that reads
 `.env` and starts or reloads the `pm3m-gateway` PM2 process.
 

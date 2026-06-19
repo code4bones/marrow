@@ -152,7 +152,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.2.1",
+    "packageVersion": "1.3.0",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -247,7 +247,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.2.1",
+      "packageVersion": "1.3.0",
       "tools": 44
     },
     "database": {
@@ -532,7 +532,7 @@ Input:
 ```json
 {
   "project": "project-memory-mcp",
-  "path": "templates/frontend/AGENTS.md",
+  "path": "templates/agents/frontend/AGENTS.md",
   "title": "Frontend AGENTS.md",
   "description": "Reusable frontend agent instructions.",
   "contentType": "text/markdown; charset=utf-8",
@@ -551,7 +551,7 @@ Output:
   "artifact": {
     "id": "A-MEMORY-001",
     "scope": "project",
-    "path": "templates/frontend/AGENTS.md",
+    "path": "templates/agents/frontend/AGENTS.md",
     "title": "Frontend AGENTS.md",
     "contentType": "text/markdown; charset=utf-8",
     "sizeBytes": 1234,
@@ -590,7 +590,7 @@ Output:
     {
       "id": "A-COMMON-001",
       "scope": "common",
-      "path": "templates/frontend/AGENTS.md",
+      "path": "templates/agents/frontend/AGENTS.md",
       "title": "Frontend AGENTS.md",
       "downloadPath": "/artifacts/A-COMMON-001/download"
     }
@@ -621,7 +621,7 @@ Input:
 {
   "project": "project-memory-mcp",
   "includeCommon": true,
-  "pathPrefix": "templates/frontend",
+  "pathPrefix": "templates/agents/frontend",
   "tags": ["agents"],
   "status": "active",
   "limit": 50
@@ -646,7 +646,7 @@ Output:
     {
       "id": "A-COMMON-001",
       "scope": "common",
-      "path": "templates/frontend/AGENTS.md",
+      "path": "templates/agents/frontend/AGENTS.md",
       "title": "Frontend AGENTS.md",
       "status": "active",
       "downloadPath": "/artifacts/A-COMMON-001/download"
@@ -686,7 +686,7 @@ Input by path:
 ```json
 {
   "project": "project-memory-mcp",
-  "path": "templates/frontend/AGENTS.md"
+  "path": "templates/agents/frontend/AGENTS.md"
 }
 ```
 
@@ -724,7 +724,7 @@ Input by path:
 ```json
 {
   "project": "project-memory-mcp",
-  "path": "templates/frontend/AGENTS.md",
+  "path": "templates/agents/frontend/AGENTS.md",
   "tags": ["agents", "frontend", "updated"]
 }
 ```
@@ -772,7 +772,7 @@ Input by path:
 ```json
 {
   "project": "project-memory-mcp",
-  "path": "templates/frontend/AGENTS.md"
+  "path": "templates/agents/frontend/AGENTS.md"
 }
 ```
 
@@ -1929,8 +1929,13 @@ Recommended scripts:
 
 ```bash
 npm run seed:common
-npm run seed:demo
+npm run seed:templates
+pm3m seed templates
 ```
+
+`pm3m migrate latest` runs the bundled template seed automatically on the
+gateway after PostgreSQL migrations. Client agents do not seed templates
+locally; they search the gateway artifact store.
 
 Common seed records:
 

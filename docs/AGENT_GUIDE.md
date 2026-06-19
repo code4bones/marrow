@@ -173,8 +173,17 @@ Use common artifacts for reusable cross-project files:
 ```json
 {
   "common": true,
-  "path": "templates/frontend/AGENTS.md"
+  "path": "templates/agents/frontend/AGENTS.md"
 }
+```
+
+Bundled templates are seeded on the gateway after `pm3m migrate latest`.
+Clients do not have local template state; agents should search the gateway
+before creating a new shared template:
+
+```text
+artifact.search query="frontend AGENTS template" includeCommon=true
+artifact.get id=<selected artifact id> includeContent=true
 ```
 
 Use project artifacts for files specific to one project:

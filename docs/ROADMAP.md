@@ -35,19 +35,25 @@ Next:
 
 Goal: make shared files useful immediately for agents.
 
-Next:
+Done:
 
 - add common `AGENTS.md` templates for frontend, backend, DevOps, and generic repos
-- document recommended artifact hierarchy:
+- add deploy and review checklist templates
+- seed/update bundled templates after `pm3m migrate latest`
+- add manual `pm3m seed templates`
+
+Recommended artifact hierarchy:
 
 ```text
 /{project}/...
-common/templates/...
-common/agents/...
+templates/...
+agents/...
 ```
 
-- add seed/import flow for bundled templates
-- add smoke coverage for finding and downloading a template artifact
+Next:
+
+- add smoke coverage for finding and downloading a template artifact through a
+  running gateway
 
 ### 3. Agent UX
 
