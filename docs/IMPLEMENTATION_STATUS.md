@@ -100,11 +100,12 @@ Gateway logging uses `pino`:
 
 ```text
 LOG_LEVEL=info
-LOG_CONSOLE=true
-LOG_FILE=.agent/project-memory-gateway.log
+LOG_DIR=./logs/
+LOG_PRETTY=false
+LOG_INCLUDE_TIME=true
 ```
 
-Console logs are written to stderr. File logs are disabled with `LOG_FILE=false`.
+Console logs are written to stderr. File logs are written to `${LOG_DIR}/project-memory-gateway.log` unless `LOG_DIR=false`.
 
 ## Source Layout
 

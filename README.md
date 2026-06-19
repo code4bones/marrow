@@ -178,11 +178,12 @@ Gateway logging uses `pino` and writes JSON logs to console and file by default:
 
 ```text
 LOG_LEVEL=info
-LOG_CONSOLE=true
-LOG_FILE=.agent/project-memory-gateway.log
+LOG_DIR=./logs/
+LOG_PRETTY=false
+LOG_INCLUDE_TIME=true
 ```
 
-Set `LOG_FILE=false` to disable file logging, or set `LOG_CONSOLE=false` to disable console logging. Console logging uses stderr.
+The gateway writes to stderr and to `${LOG_DIR}/project-memory-gateway.log`. Set `LOG_DIR=false` to disable file logging. `LOG_PRETTY=true` formats both console and file output for humans; otherwise pino writes JSON lines.
 
 For the internal nginx server template, see `deploy/nginx/project-memory-gateway.server.conf`. For reusable locations only, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
