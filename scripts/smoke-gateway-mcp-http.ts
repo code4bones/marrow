@@ -62,6 +62,7 @@ try {
   assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
+  assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
 
   const aboutResult = await client.callTool({
@@ -252,6 +253,28 @@ try {
   assert(
     readNestedString(upsertUpdateResult.structuredContent, ["data", "item", "id"]) === upsertedItemId,
     "memory.upsert created a duplicate instead of updating the existing item."
+  );
+
+  const preflightByQueryResult = await client.callTool({
+    name: "preflight.by_query",
+    arguments: {
+      project: state.projectId,
+      query: "Gateway MCP HTTP smoke",
+      limits: {
+        items: 5,
+        decisions: 5,
+        artifacts: 5
+      }
+    }
+  });
+  assertOk(preflightByQueryResult.structuredContent, "preflight.by_query failed.");
+  assert(
+    readNestedString(preflightByQueryResult.structuredContent, ["data", "project", "id"]) === state.projectId,
+    "preflight.by_query returned the wrong project."
+  );
+  assert(
+    readNestedString(preflightByQueryResult.structuredContent, ["data", "query"]) === "Gateway MCP HTTP smoke",
+    "preflight.by_query returned the wrong query."
   );
 
   const originalDecisionResult = await client.callTool({

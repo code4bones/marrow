@@ -62,7 +62,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
     - `gateway.about` or a separate onboarding tool should return connection
       snippets for Codex, Claude, CodeWhale, and generic Streamable HTTP clients.
 
-12. `preflight.by_query`
+12. `preflight.by_query` — implemented
     - Return preflight-like context for ad-hoc work before a task exists.
     - Include decisions, failed attempts, common rules, and matching artifacts.
 
@@ -85,6 +85,7 @@ Start with:
 9. `artifact.archive` — implemented
 10. `artifact.list` — implemented
 11. Extend onboarding output — implemented
+12. `preflight.by_query` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

@@ -21,6 +21,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `failed_attempt.record`
 * `decision.supersede`
 * `project.resolve`
+* `preflight.by_query`
 * `artifact.put`
 * `artifact.search`
 * `artifact.list`
@@ -150,7 +151,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 39,
+    "tools": 40,
     "node": {
       "version": "v24.16.0"
     },
@@ -190,7 +191,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 39
+      "tools": 40
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -240,7 +241,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 39
+      "tools": 40
     },
     "database": {
       "engine": "postgresql",
@@ -355,7 +356,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 39,
+    "tools": 40,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1670,6 +1671,51 @@ Preflight should include:
 * failed attempts matching task title/scope
 * recent events for the project
 * dependencies if any
+
+---
+
+### `preflight.by_query`
+
+Return preflight-like context before a task exists.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "query": "add artifact lifecycle archive support",
+  "includeCommon": true,
+  "limits": {
+    "decisions": 10,
+    "items": 10,
+    "failedAttempts": 5,
+    "artifacts": 5,
+    "events": 10
+  }
+}
+```
+
+Output:
+
+```json
+{
+  "project": {
+    "id": "P-MEMORY",
+    "slug": "project-memory-mcp"
+  },
+  "query": "add artifact lifecycle archive support",
+  "relevantDecisions": [],
+  "commonRules": [],
+  "relatedItems": [],
+  "failedAttempts": [],
+  "artifacts": [],
+  "recentEvents": [],
+  "summary": "Use this shared query context before creating a task or editing files."
+}
+```
+
+Use this when an agent is asked to explore or start ad-hoc work before a formal
+task exists. Once scope becomes executable, create a task and use `preflight`.
 * allowed files
 * forbidden files
 * acceptance criteria

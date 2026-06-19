@@ -150,6 +150,8 @@ export class PgToolService {
           return ok("Links listed.", { links: await this.listLinks(parsed) });
         case "preflight":
           return ok("Preflight context loaded.", await this.preflight(parsed));
+        case "preflight.by_query":
+          return ok("Preflight query context loaded.", await this.preflightByQuery(parsed));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
@@ -1420,6 +1422,60 @@ export class PgToolService {
         limit: limits.events ?? 10
       }),
       summary: "Use this shared gateway context before editing files. Respect allowed and forbidden scope."
+    };
+  }
+
+  private async preflightByQuery(input: Row) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "preflight.by_query requires a project or includeCommon=true.");
+    }
+    const query = String(input.query);
+    const limits = (input.limits ?? {}) as Row;
+
+    return {
+      project: project ?? null,
+      query,
+      relevantDecisions: await this.listDecisions({
+        project: project?.id,
+        includeCommon,
+        status: "active",
+        limit: limits.decisions ?? 10
+      }),
+      commonRules: await this.searchMemory({
+        query: "preflight task scope acceptance diffs failed attempts",
+        project: project?.id,
+        includeCommon: true,
+        status: "active",
+        limit: limits.items ?? 10
+      }),
+      relatedItems: await this.searchMemory({
+        query,
+        project: project?.id,
+        includeCommon,
+        status: "active",
+        limit: limits.items ?? 10
+      }),
+      failedAttempts: await this.searchMemory({
+        query,
+        project: project?.id,
+        includeCommon,
+        type: "failed_attempt",
+        status: "active",
+        limit: limits.failedAttempts ?? 5
+      }),
+      artifacts: await this.searchArtifacts({
+        query,
+        project: project?.id,
+        includeCommon,
+        limit: limits.artifacts ?? 5
+      }),
+      recentEvents: project
+        ? await this.listEvents({ project: project.id, limit: limits.events ?? 10 })
+        : await this.listEvents({ project: null, limit: limits.events ?? 10 }),
+      summary:
+        "Use this shared query context before creating a task or editing files. Create a task when scope becomes executable."
     };
   }
 

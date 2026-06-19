@@ -134,6 +134,20 @@ const artifactArchiveSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const preflightByQuerySchema = z.object({
+  query: z.string().min(1),
+  project: z.string().optional(),
+  includeCommon: z.boolean().optional(),
+  limits: z
+    .object({
+      decisions: z.number().int().min(1).max(50).optional(),
+      items: z.number().int().min(1).max(50).optional(),
+      failedAttempts: z.number().int().min(1).max(50).optional(),
+      artifacts: z.number().int().min(1).max(50).optional(),
+      events: z.number().int().min(1).max(50).optional()
+    })
+    .optional()
+});
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -344,5 +358,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "preflight",
     description: "Return shared preflight context for a task before editing files.",
     schema: preflightSchema
+  },
+  {
+    name: "preflight.by_query",
+    description:
+      "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, failed attempts, artifacts, and recent events.",
+    schema: preflightByQuerySchema
   }
 ];
