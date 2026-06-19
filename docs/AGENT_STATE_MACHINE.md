@@ -23,20 +23,21 @@ S8_RECORDING_MEMORY
 | State | Condition | Tool Chain | Next State | Ask User When |
 | --- | --- | --- | --- | --- |
 | `S0_NO_PROJECT` | Current project may exist | `project.current` | `S1_PROJECT_SELECTED` | Never, if current project exists |
+| `S0_NO_PROJECT` | Repository path, slug, title, or remote URL is known | `project.resolve` | `S1_PROJECT_SELECTED` if one clear match exists | Multiple candidates tie or no candidate matches |
 | `S0_NO_PROJECT` | No current project | `project.list` | `S0_NO_PROJECT` | Multiple plausible projects exist and none is clearly the target |
 | `S0_NO_PROJECT` | Project missing and repository identity is clear | `project.create -> project.set_current` | `S1_PROJECT_SELECTED` | Repository identity or project title is unclear |
 | `S1_PROJECT_SELECTED` | Agent needs next queued work | `task.next` | `S2_TASK_SELECTED` | No todo task exists and user did not provide a task |
 | `S1_PROJECT_SELECTED` | User referenced a task id | `task.get` | `S2_TASK_SELECTED` | Task does not exist |
-| `S1_PROJECT_SELECTED` | User asks broad research/planning | `memory.search -> decision.list -> event.list` | `S1_PROJECT_SELECTED` | Found decisions or failed attempts conflict with user request |
+| `S1_PROJECT_SELECTED` | User asks broad research/planning | `preflight.by_query -> memory.search -> decision.list -> event.list` | `S1_PROJECT_SELECTED` | Found decisions or failed attempts conflict with user request |
 | `S2_TASK_SELECTED` | Task scope is usable | `preflight` | `S3_PREFLIGHT_READY` | Task has missing or contradictory scope/acceptance criteria |
 | `S2_TASK_SELECTED` | Task has dependencies | `task.get -> link.list -> preflight` | `S3_PREFLIGHT_READY` | Dependency is blocked, missing, or contradicts requested work |
 | `S3_PREFLIGHT_READY` | Scope is clear and no conflicts | `task.update_status(status="doing")` | `S4_EXECUTING` | Preflight shows forbidden scope, conflicting decisions, or relevant failed attempts that make the requested approach unsafe |
 | `S4_EXECUTING` | Implementation proceeds normally | Local edits and validation commands | `S5_VALIDATING` | Required file changes exceed allowed scope |
-| `S4_EXECUTING` | Approach fails in a reusable way | `memory.create(type="failed_attempt") -> event.record(type="attempt.failed")` | `S7_BLOCKED` or `S4_EXECUTING` | Need user decision between alternative approaches |
+| `S4_EXECUTING` | Approach fails in a reusable way | `failed_attempt.record` | `S7_BLOCKED` or `S4_EXECUTING` | Need user decision between alternative approaches |
 | `S5_VALIDATING` | Validation passes | `task.update_status(status="done")` | `S6_COMPLETED` | Never |
 | `S5_VALIDATING` | Validation fails and fix is in scope | Local edits and validation commands | `S4_EXECUTING` | Fix requires forbidden files, new scope, or architecture decision |
 | `S5_VALIDATING` | Validation fails and fix is out of scope | `task.update_status(status="blocked")` | `S7_BLOCKED` | Always include concise blocker details |
-| `S6_COMPLETED` | New durable knowledge exists | `memory.create / decision.record / event.record / link.create` | `S8_RECORDING_MEMORY` | Only if deciding what should become durable memory is ambiguous |
+| `S6_COMPLETED` | New durable knowledge exists | `memory.upsert / decision.record / decision.supersede / event.record / handoff.create / link.create` | `S8_RECORDING_MEMORY` | Only if deciding what should become durable memory is ambiguous |
 | `S8_RECORDING_MEMORY` | Memory recorded | `event.list` if verification is needed | `S6_COMPLETED` | Never |
 | `S7_BLOCKED` | User gives direction | `task.get -> preflight` | `S3_PREFLIGHT_READY` | Direction is still ambiguous or conflicts with project decisions |
 
@@ -99,15 +100,22 @@ Use `decision.record` for:
 - workflow decisions
 - rejected or superseded decisions with rationale
 
+Use `decision.supersede` when replacing an existing decision.
+
 Use `memory.create` for:
 
 - reusable notes
-- failed attempts
 - patterns
 - snippets
 - entities
 - workflow rules
 - common project facts
+
+Use `memory.upsert` when the reusable note may already exist.
+
+Use `failed_attempt.record` for failed attempts that future agents should avoid.
+
+Use `handoff.create` when work should be resumable by another agent.
 
 Use `event.record` for:
 

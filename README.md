@@ -8,7 +8,7 @@ Shared gateway mode stores the same tool model in PostgreSQL and exposes it thro
 
 ## Current Status
 
-Implemented core MVP tools:
+Implemented local/core MCP tools:
 
 - `project.create`
 - `project.list`
@@ -32,6 +32,29 @@ Implemented core MVP tools:
 - `link.create`
 - `link.list`
 - `preflight`
+
+Shared PostgreSQL gateway mode exposes the same core model plus gateway and
+collaboration tools. Current gateway smoke coverage expects 41 tools, including:
+
+- `gateway.about`
+- `gateway.version`
+- `gateway.diagnostics`
+- `gateway.backup_manifest`
+- `gateway.manuals`
+- `gateway.status`
+- `gateway.clients`
+- `project.resolve`
+- `memory.upsert`
+- `failed_attempt.record`
+- `decision.supersede`
+- `artifact.put`
+- `artifact.search`
+- `artifact.list`
+- `artifact.get`
+- `artifact.update_metadata`
+- `artifact.archive`
+- `preflight.by_query`
+- `handoff.create`
 
 See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the detailed implementation status, validation notes, and known follow-up work.
 
@@ -248,12 +271,22 @@ Gateway-only MCP tools:
 - `gateway.about`
 - `gateway.version`
 - `gateway.diagnostics`
+- `gateway.backup_manifest`
 - `gateway.manuals`
 - `gateway.status`
 - `gateway.clients`
+- `project.resolve`
+- `memory.upsert`
+- `failed_attempt.record`
+- `decision.supersede`
 - `artifact.put`
 - `artifact.search`
+- `artifact.list`
 - `artifact.get`
+- `artifact.update_metadata`
+- `artifact.archive`
+- `preflight.by_query`
+- `handoff.create`
 
 Gateway logging uses `pino` and writes JSON logs to console and file by default:
 

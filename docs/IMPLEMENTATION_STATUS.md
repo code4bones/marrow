@@ -24,8 +24,12 @@ Implemented capabilities:
 - HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /ready`, `GET /tools`, `POST /call`
 - MCP Streamable HTTP gateway endpoint
 - gateway client registry through `gateway_clients`
-- gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.manuals`, `gateway.status`, `gateway.clients`
+- gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.status`, `gateway.clients`
+- gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
+- artifact metadata update, archival lifecycle, and deterministic listing
+- ad-hoc preflight context through `preflight.by_query`
+- compact continuation records through `handoff.create`
 - tests, typecheck, lint, and build scripts
 
 The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted team environments; full conflict resolution and permissions remain follow-up work.
@@ -211,18 +215,22 @@ Implemented tools:
 - `project.create`
 - `project.list`
 - `project.get`
+- `project.resolve` (gateway)
 - `project.set_current`
 - `project.current`
 - `memory.create`
 - `memory.get`
 - `memory.search`
 - `memory.update`
+- `memory.upsert` (gateway)
+- `failed_attempt.record` (gateway)
 - `task.create`
 - `task.list`
 - `task.get`
 - `task.next`
 - `task.update_status`
 - `decision.record`
+- `decision.supersede` (gateway)
 - `decision.list`
 - `decision.get`
 - `event.record`
@@ -230,10 +238,25 @@ Implemented tools:
 - `link.create`
 - `link.list`
 - `preflight`
+- `preflight.by_query` (gateway)
+- `handoff.create` (gateway)
+- `artifact.put` (gateway)
+- `artifact.search` (gateway)
+- `artifact.list` (gateway)
+- `artifact.get` (gateway)
+- `artifact.update_metadata` (gateway)
+- `artifact.archive` (gateway)
+- `gateway.about` (gateway)
+- `gateway.version` (gateway)
+- `gateway.diagnostics` (gateway)
+- `gateway.backup_manifest` (gateway)
+- `gateway.manuals` (gateway)
+- `gateway.status` (gateway)
+- `gateway.clients` (gateway)
 
 Tool handlers validate inputs with Zod, call services, and return structured success/error payloads.
 
-In gateway mode, the HTTP MCP endpoint exposes the same core tool names and schemas plus gateway diagnostics. This keeps agent tool chains compatible across local SQLite and shared PostgreSQL runtimes.
+In gateway mode, the HTTP MCP endpoint exposes the same core tool names and schemas plus gateway diagnostics, artifact storage, collaboration, and memory-quality tools. Local SQLite stdio remains the compact core tool surface.
 
 Recommended tool chains are documented in `docs/TOOL_WORKFLOWS.md`.
 

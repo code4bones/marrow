@@ -79,6 +79,7 @@ Do not use pmem for:
 For normal coding work:
 
 ```text
+project.resolve, when repository identity is available
 project.current
 task.next or task.get
 preflight
@@ -93,10 +94,9 @@ memory.create / decision.record, only for durable knowledge
 If no task exists but the user gave a concrete request:
 
 ```text
+project.resolve, when repository identity is available
 project.current
-memory.search
-decision.list
-preflight, if a task can be identified or created by local convention
+preflight.by_query
 implement
 validate
 record durable memory if needed
@@ -165,6 +165,7 @@ Search before creating:
 
 ```text
 artifact.search
+artifact.list, when browsing by path or tags
 ```
 
 Use common artifacts for reusable cross-project files:
@@ -195,6 +196,13 @@ replacement.
 
 Ask when multiple artifacts are plausible matches.
 
+Use `artifact.update_metadata` when the bytes are correct but title,
+description, or tags need cleanup.
+
+Use `artifact.archive` instead of deleting shared files. Archived artifacts are
+hidden from default search but remain retrievable by explicit id/path or
+`includeArchived=true`.
+
 ## Recording Rules
 
 Use `decision.record` for:
@@ -205,13 +213,23 @@ Use `decision.record` for:
 - rejected options with rationale
 - decisions that supersede older decisions
 
+Use `decision.supersede` when replacing an existing decision. Prefer it over
+manually recording a new decision and separately updating the old status.
+
 Use `memory.create` for:
 
 - reusable implementation notes
-- failed attempts
 - patterns
 - entities
 - snippets that are likely to be reused
+
+Use `memory.upsert` when the durable note may already exist.
+
+Use `failed_attempt.record` when an approach failed and future agents should not
+repeat it.
+
+Use `handoff.create` when another agent or future session needs a compact
+continuation point.
 
 Use `event.record` for:
 
@@ -219,7 +237,10 @@ Use `event.record` for:
 - important milestones
 - migrations
 - task lifecycle events not already captured elsewhere
-- failed attempts that should appear in project history
+
+`failed_attempt.record` already records the failed-attempt event; use
+`event.record` separately only for additional history that is not captured by a
+first-class tool.
 
 Use `link.create` when records have a durable relationship:
 
@@ -324,15 +345,14 @@ Find shared files:
 
 ```text
 artifact.search
+artifact.list
 artifact.get
 ```
 
 Record failed approach:
 
 ```text
-memory.create(type="failed_attempt")
-event.record(type="attempt.failed")
-link.create(relation="warns_against")
+failed_attempt.record
 ```
 
 Finish task:
@@ -341,7 +361,9 @@ Finish task:
 task.update_status(status="done")
 event.record, if important
 decision.record, if a durable decision was made
+decision.supersede, if replacing an old decision
 artifact.put, if a reusable file should be shared
+handoff.create, if another agent may continue the work
 ```
 
 ## Source Of Truth

@@ -9,6 +9,7 @@ The tools are intentionally small. Agents should combine them into predictable w
 Use this when an agent starts work in a repository.
 
 ```text
+project.resolve, when repository path/slug/remote is known
 project.current
 ```
 
@@ -71,8 +72,10 @@ After implementation:
 ```text
 task.update_status(status="done")
 event.record, if important history is not already captured
-memory.create, if new reusable context or a failed attempt should be preserved
+memory.upsert, if new reusable context should be preserved
+failed_attempt.record, if a failed attempt should be preserved
 decision.record, if an architectural/product/workflow decision was made
+handoff.create, if another agent may continue the work
 ```
 
 Purpose:
@@ -87,6 +90,7 @@ Use this before changing design or implementation strategy.
 
 ```text
 project.current
+preflight.by_query, when no task exists yet
 memory.search
 decision.list
 event.list
@@ -113,9 +117,7 @@ Purpose:
 Use this when an approach fails in a way future agents should not repeat.
 
 ```text
-memory.create(type="failed_attempt")
-link.create(relation="warns_against")
-event.record(type="attempt.failed")
+failed_attempt.record
 ```
 
 Recommended failed attempt body:
@@ -146,8 +148,8 @@ event.list, if history is needed
 For replaced decisions:
 
 ```text
-decision.record(supersedesId="D-...")
-decision.get
+decision.supersede
+decision.get, if full replacement details are needed
 ```
 
 Purpose:
@@ -169,7 +171,7 @@ link.create(relation="depends_on")
 ```
 
 ```text
-memory.create(type="failed_attempt")
+failed_attempt.record
 task.get
 link.create(relation="warns_against")
 ```
@@ -218,11 +220,41 @@ Bad common records:
 - one-off debugging notes
 - temporary ideas for a single project
 
+## Artifact Navigation
+
+Use this when browsing shared files by hierarchy or tags:
+
+```text
+artifact.list
+artifact.get
+```
+
+Use this when searching by meaning:
+
+```text
+artifact.search
+artifact.get
+```
+
+After upload:
+
+```text
+artifact.update_metadata, if title/description/tags need cleanup
+artifact.archive, if a shared file is superseded but should remain retrievable
+```
+
+Purpose:
+
+- keep reusable files discoverable
+- avoid overwriting shared artifacts accidentally
+- preserve old files through archival instead of deletion
+
 ## Default Agent Chain
 
 For most implementation tasks, use:
 
 ```text
+project.resolve, if repository identity is available
 project.current
 task.next
 preflight
@@ -232,13 +264,13 @@ decision.get or memory.get, if ids from preflight need full detail
 implement
 npm run lint / typecheck / test / build, as appropriate
 task.update_status(status="done")
-memory.create / decision.record / event.record, if new durable knowledge exists
+memory.upsert / decision.record / decision.supersede / event.record, if new durable knowledge exists
+handoff.create, if another agent or later session may continue the work
 ```
 
 If anything blocks completion:
 
 ```text
 task.update_status(status="blocked", note="...")
-memory.create(type="failed_attempt"), if an approach should not be repeated
-event.record(type="attempt.failed")
+failed_attempt.record, if an approach should not be repeated
 ```

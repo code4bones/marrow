@@ -185,6 +185,8 @@ Expected tool flow:
 
 ```text
 gateway.status
+gateway.version
+gateway.diagnostics
 gateway.clients
 ```
 
@@ -192,7 +194,7 @@ The gateway should report:
 
 - `mode: gateway`
 - `storage: postgresql`
-- available project-memory tools
+- `tools: 41` for pm3m 1.1.x
 - recent clients
 
 If the agent only sees local SQLite state, it is not connected to the shared
@@ -211,9 +213,9 @@ Ask the agent to check memory before non-trivial work:
 Expected flow:
 
 ```text
+project.resolve, when repository identity is available
 project.current
-memory.search
-decision.list
+preflight.by_query, if no task exists yet
 task.next or task.get
 preflight
 ```
@@ -232,8 +234,10 @@ Record only durable knowledge:
 
 - use `event.record` for important history
 - use `decision.record` for decisions that should constrain future work
-- use `memory.create(type="failed_attempt")` when an approach failed and should
-  not be repeated
+- use `decision.supersede` when replacing an older decision
+- use `memory.upsert` for reusable notes that may already exist
+- use `failed_attempt.record` when an approach failed and should not be repeated
+- use `handoff.create` when another agent or later session may continue the work
 - use `artifact.put` when a reusable file should be shared with the team
 
 Do not record every tiny observation.
@@ -261,6 +265,9 @@ Expected tool:
   }
 }
 ```
+
+Use `artifact.list` when browsing a folder-like hierarchy by `pathPrefix` or
+tags.
 
 If several templates match, the agent should ask which one to use.
 
@@ -311,6 +318,12 @@ For common artifacts, use:
 ```
 
 Use `overwrite: true` only when the replacement is intentional.
+
+Use `artifact.update_metadata` when bytes are correct but the title,
+description, or tags need cleanup.
+
+Use `artifact.archive` when a file is superseded. Archived files are hidden from
+default search but remain available by id/path and with `includeArchived=true`.
 
 ## Guardrails
 
@@ -369,6 +382,12 @@ Record a failed attempt:
 
 ```text
 Запиши failed attempt в pmem: что пробовали, почему не сработало, что не повторять.
+```
+
+Leave a handoff:
+
+```text
+Создай handoff в pmem: что сделано, какие файлы трогали, что проверено и что дальше.
 ```
 
 ## Operations Notes
@@ -433,6 +452,12 @@ Back up both:
 
 The database contains artifact metadata. The artifact directory contains the
 actual file bytes. Losing either side breaks artifact retrieval.
+
+Operators and agents can inspect the expected backup surface with:
+
+```text
+gateway.backup_manifest
+```
 
 ## Related Docs
 
