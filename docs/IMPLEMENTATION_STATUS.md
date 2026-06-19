@@ -24,7 +24,7 @@ Implemented capabilities:
 - HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /ready`, `GET /tools`, `POST /call`
 - MCP Streamable HTTP gateway endpoint
 - gateway client registry through `gateway_clients`
-- gateway diagnostics: `gateway.status`, `gateway.clients`
+- gateway diagnostics and onboarding: `gateway.about`, `gateway.status`, `gateway.clients`
 - tests, typecheck, lint, and build scripts
 
 The implementation intentionally does not include UI, complex auth/permissions, remote sync, cloud dependencies, embeddings, or vector search. Gateway mode provides shared storage for trusted team environments; full conflict resolution and permissions remain follow-up work.

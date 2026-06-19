@@ -41,12 +41,23 @@ try {
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
+  assert(toolNames.includes("gateway.about"), "gateway.about tool was not listed.");
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
+
+  const aboutResult = await client.callTool({
+    name: "gateway.about",
+    arguments: {}
+  });
+  assertOk(aboutResult.structuredContent, "gateway.about failed.");
+  assert(
+    readNestedString(aboutResult.structuredContent, ["data", "about", "shortName"]) === "pmem",
+    "gateway.about did not describe pmem."
+  );
 
   const statusResult = await client.callTool({
     name: "gateway.status",

@@ -31,6 +31,12 @@ const listGatewayClientsSchema = z.object({
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
+    name: "gateway.about",
+    description:
+      "Explain what Project Memory (pmem) is, how agents should use it, and which first tools to call after connecting.",
+    schema: emptySchema
+  },
+  {
     name: "gateway.status",
     description:
       "Return PostgreSQL gateway status, registered client count, and core record counts. Use this to confirm the shared memory gateway is reachable before collaboration workflows.",

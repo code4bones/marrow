@@ -41,6 +41,8 @@ export class PgToolService {
       await this.touchClient(requestContext);
       const parsed = spec.schema.parse(input ?? {}) as Row;
       switch (toolName) {
+        case "gateway.about":
+          return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
         case "gateway.status":
           return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
         case "gateway.clients":
@@ -99,6 +101,66 @@ export class PgToolService {
 
   async close(): Promise<void> {
     await this.db.destroy();
+  }
+
+  private gatewayAbout() {
+    return {
+      name: "Project Memory",
+      shortName: "pmem",
+      summary:
+        "Project Memory is a shared MCP memory gateway for coding agents. It keeps project knowledge, common reusable rules, tasks, decisions, events, links, and preflight context in one PostgreSQL-backed place so multiple developers and agents can collaborate without losing context.",
+      useCases: [
+        "Find reusable project and common knowledge before starting work.",
+        "Run preflight on a task to collect scope, decisions, related memory, and known failed attempts.",
+        "Record decisions, tasks, events, and memory items so future agents do not repeat context gathering.",
+        "Inspect which agents or developers are connected to the shared gateway."
+      ],
+      firstCalls: [
+        {
+          tool: "gateway.status",
+          reason: "Confirm that the agent is connected to the shared PostgreSQL gateway."
+        },
+        {
+          tool: "gateway.clients",
+          reason: "See recently connected agents and developers."
+        },
+        {
+          tool: "project.list",
+          reason: "Discover existing project scopes."
+        },
+        {
+          tool: "memory.search",
+          reason: "Search common and project-specific knowledge before editing files."
+        },
+        {
+          tool: "preflight",
+          reason: "Load task-specific safety context before implementation work."
+        }
+      ],
+      operatingModel: {
+        commonLayer:
+          "Common memory is reusable knowledge shared across projects, such as workflow rules, templates, conventions, and implementation patterns.",
+        projectLayer:
+          "Project memory belongs to a concrete project and should override common knowledge when there is a conflict.",
+        decisions:
+          "Decisions are first-class records with rationale, consequences, status, and supersession semantics.",
+        events: "Events are append-only timeline records used for audit history and agent handoff context."
+      },
+      recommendedAgentFlow: [
+        "Call gateway.about if the agent has not used pmem before.",
+        "Call gateway.status to confirm shared gateway mode.",
+        "Call project.current or project.list to identify the active project.",
+        "Call memory.search with the task topic and include common knowledge.",
+        "Call task.next or task.get when working from a recorded task.",
+        "Call preflight before editing files.",
+        "Record decisions, failed attempts, events, and useful memory after meaningful work."
+      ],
+      artifactStorage: {
+        status: "planned",
+        intent:
+          "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them."
+      }
+    };
   }
 
   async readiness() {

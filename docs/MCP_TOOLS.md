@@ -10,6 +10,7 @@ Local SQLite stdio mode exposes the core project-memory tools.
 
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics over MCP Streamable HTTP:
 
+* `gateway.about`
 * `gateway.status`
 * `gateway.clients`
 
@@ -46,6 +47,43 @@ Avoid raw stack traces in tool responses.
 
 Gateway tools are available only through PostgreSQL gateway mode.
 
+### `gateway.about`
+
+Explain what Project Memory (`pmem`) is and how an agent should use it after connecting.
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "about": {
+    "name": "Project Memory",
+    "shortName": "pmem",
+    "summary": "Project Memory is a shared MCP memory gateway...",
+    "firstCalls": [
+      {
+        "tool": "gateway.status",
+        "reason": "Confirm that the agent is connected to the shared PostgreSQL gateway."
+      }
+    ],
+    "recommendedAgentFlow": [
+      "Call gateway.about if the agent has not used pmem before.",
+      "Call gateway.status to confirm shared gateway mode.",
+      "Call memory.search with the task topic and include common knowledge."
+    ]
+  }
+}
+```
+
+Use this when a developer or agent asks what `project-memory` / `pmem` is, how to start, or which tools to call first.
+
+---
+
 ### `gateway.status`
 
 Return gateway health and record counts.
@@ -63,7 +101,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 24,
+    "tools": 25,
     "records": {
       "projects": 1,
       "items": 10,
