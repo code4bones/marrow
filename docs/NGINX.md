@@ -9,10 +9,23 @@ PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1
 PROJECT_MEMORY_GATEWAY_PORT=8765
 ```
 
-Then include:
+Use the ready-made internal server template:
+
+```text
+deploy/nginx/project-memory-gateway.server.conf
+```
+
+It listens on:
+
+```text
+127.0.0.1:8088
+```
+
+If you prefer to embed only the locations in an existing internal nginx `server {}` block, include:
 
 ```nginx
 server {
+  listen 127.0.0.1:8088;
   server_name memory.example.internal;
 
   include /absolute/path/to/project-memory-mcp/deploy/nginx/project-memory-gateway.locations.conf;
@@ -56,4 +69,12 @@ PROJECT_MEMORY_GATEWAY_TOKEN=...
 
 The nginx include forwards `X-Request-ID`, `X-Forwarded-*`, and client IP headers. The gateway logs request ids, status codes, durations, client ids, and tool call completion.
 
-In Nginx Proxy Manager, point the proxy host to the internal nginx service, then use `/project-memory/ready` for readiness checks where supported.
+In Nginx Proxy Manager, point the proxy host to the internal nginx service:
+
+```text
+Forward Hostname / IP: <internal-nginx-host>
+Forward Port: 8088
+Scheme: http
+```
+
+Use `/project-memory/ready` for readiness checks where supported.

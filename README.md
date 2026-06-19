@@ -179,7 +179,7 @@ PROJECT_MEMORY_LOG_FILE=.agent/project-memory-gateway.log
 
 Set `PROJECT_MEMORY_LOG_FILE=false` to disable file logging, or set `PROJECT_MEMORY_LOG_CONSOLE=false` to disable console logging. Console logging uses stderr.
 
-For nginx reverse proxy locations, see `deploy/nginx/project-memory-gateway.locations.conf`.
+For the internal nginx server template, see `deploy/nginx/project-memory-gateway.server.conf`. For reusable locations only, see `deploy/nginx/project-memory-gateway.locations.conf`.
 
 Gateway health endpoints:
 
