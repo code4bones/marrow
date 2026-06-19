@@ -105,7 +105,7 @@ LOG_PRETTY=false
 LOG_INCLUDE_TIME=true
 ```
 
-Console logs are written to stderr and can be formatted with `LOG_PRETTY=true`; `LOG_INCLUDE_TIME` controls the pretty console timestamp. File logs are written as pino JSON lines to `${LOG_DIR}/project-memory-gateway.log` unless `LOG_DIR=false`.
+Console logs are written to stderr and can be formatted with `LOG_PRETTY=true`; `LOG_INCLUDE_TIME` controls the pretty console timestamp. File logs are written as pino JSON lines with local timestamps to `${LOG_DIR}/project-memory-gateway.log` unless `LOG_DIR=false`.
 
 ## Source Layout
 

@@ -48,10 +48,30 @@ export function createGatewayLogger(options: GatewayLoggerOptions = {}): AppLogg
       base: {
         service: "project-memory-gateway"
       },
-      timestamp: pino.stdTimeFunctions.isoTime
+      timestamp: pinoLocalTime
     },
     pino.multistream(streams)
   );
+}
+
+function pinoLocalTime(): string {
+  return `,"time":"${formatLocalTimestamp(new Date())}"`;
+}
+
+function formatLocalTimestamp(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(
+    date.getHours()
+  )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.${pad3(
+    date.getMilliseconds()
+  )}`;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function pad3(value: number): string {
+  return String(value).padStart(3, "0");
 }
 
 function createLogStream(
