@@ -14,9 +14,13 @@ const started = await startGatewayServer(service, {
 
 const state: {
   projectId?: string;
+  anonymousProjectId?: string;
+  anonymousClientIds: string[];
   taskId?: string;
   memoryId?: string;
-} = {};
+} = {
+  anonymousClientIds: []
+};
 const clientId = `gateway-http-smoke-${Date.now()}`;
 
 try {
@@ -54,6 +58,31 @@ try {
     "Gateway current project did not use the smoke client scope."
   );
   console.log("ok - project.current");
+
+  const anonymousProject = await callGateway("project.create", {
+    slug: `gateway-smoke-anonymous-${unique}`,
+    title: `Gateway Smoke Anonymous ${unique}`
+  });
+  state.anonymousProjectId = expectData<{ project: { id: string } }>(anonymousProject).project.id;
+
+  await callGatewayWithoutClient("project.set_current", { id: state.projectId });
+  await callGatewayWithoutClient("project.set_current", { id: state.anonymousProjectId });
+  const anonymousCurrentKeys = await db("kv")
+    .select("key", "value")
+    .whereLike("key", "current_project_id:anonymous:%")
+    .whereIn("value", [state.projectId, state.anonymousProjectId]);
+  state.anonymousClientIds = anonymousCurrentKeys.map((row) =>
+    String(row.key).replace(/^current_project_id:/, "")
+  );
+  assert(
+    new Set(anonymousCurrentKeys.map((row) => String(row.key))).size === 2,
+    "Anonymous gateway requests shared one current project key."
+  );
+  assert(
+    new Set(anonymousCurrentKeys.map((row) => String(row.value))).size === 2,
+    "Anonymous gateway requests did not keep separate project values."
+  );
+  console.log("ok - anonymous project.current scope");
 
   const memory = await callGateway("memory.create", {
     project: state.projectId,
@@ -101,6 +130,18 @@ try {
     await db("kv").where({ key: `current_project_id:${clientId}` }).del();
     await db("projects").where({ id: state.projectId }).del();
   }
+  if (state.anonymousProjectId) {
+    await db("projects").where({ id: state.anonymousProjectId }).del();
+  }
+  if (state.anonymousClientIds.length > 0) {
+    await db("kv")
+      .whereIn(
+        "key",
+        state.anonymousClientIds.map((anonymousClientId) => `current_project_id:${anonymousClientId}`)
+      )
+      .del();
+    await db("gateway_clients").whereIn("id", state.anonymousClientIds).del();
+  }
   await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolve) => started.server.close(() => resolve()));
   await service.close();
@@ -108,6 +149,10 @@ try {
 
 async function callGateway(tool: string, input: unknown): Promise<ToolResponse<unknown>> {
   return (await postJson(`${started.url}/call`, { tool, input })) as ToolResponse<unknown>;
+}
+
+async function callGatewayWithoutClient(tool: string, input: unknown): Promise<ToolResponse<unknown>> {
+  return (await postJsonWithoutClient(`${started.url}/call`, { tool, input })) as ToolResponse<unknown>;
 }
 
 function expectData<T>(response: ToolResponse<unknown>): T {
@@ -134,6 +179,19 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
       "x-project-memory-client-id": clientId,
       "x-project-memory-client-label": "Gateway HTTP Smoke",
       "x-project-memory-client-kind": "smoke"
+    },
+    body: JSON.stringify(body)
+  });
+  assert(response.ok, `POST ${url} returned HTTP ${response.status}.`);
+  return response.json();
+}
+
+async function postJsonWithoutClient(url: string, body: unknown): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`
     },
     body: JSON.stringify(body)
   });

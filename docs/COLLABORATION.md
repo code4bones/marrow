@@ -81,6 +81,11 @@ One developer or agent changing current project must not change another
 client's implicit project scope. The legacy global `current_project_id` key is
 kept only as a fallback for older deployments.
 
+Requests without a client id are assigned temporary `anonymous:<request-id>`
+identity. This avoids one shared anonymous current project, but those requests
+should not be treated as durable agent sessions. Configure a stable `client_id`
+for normal collaboration.
+
 ## Collaboration-Ready Principles
 
 ### 1. Local-first remains supported

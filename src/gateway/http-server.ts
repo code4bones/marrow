@@ -58,7 +58,7 @@ async function handleRequest(
   const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
   const requestUrl = parseRequestUrl(request);
   const requestPath = requestUrl.pathname;
-  const context = requestContext(request);
+  const context = requestContext(request, requestId);
 
   const send = (status: number, body: unknown) => {
     sendJson(response, status, body, requestId);
@@ -222,16 +222,19 @@ async function handleMcpRequest(
   }
 }
 
-function requestContext(request: IncomingMessage): GatewayRequestContext {
+function requestContext(request: IncomingMessage, requestId: string): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
-  const clientId =
-    headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id") ?? "anonymous";
+  const explicitClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
+  const clientId = explicitClientId ?? `anonymous:${requestId}`;
   const clientLabel =
-    headerString(request, "x-project-memory-client-label") ?? queryString(requestUrl, "client_label") ?? clientId;
+    headerString(request, "x-project-memory-client-label") ??
+    queryString(requestUrl, "client_label") ??
+    (explicitClientId ? clientId : "anonymous");
   return {
     clientId,
     clientLabel,
     metadata: {
+      anonymous: explicitClientId ? false : true,
       kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
     }
@@ -249,10 +252,9 @@ function queryString(url: URL, name: string): string | undefined {
 
 function headerString(request: IncomingMessage, name: string): string | undefined {
   const value = request.headers[name];
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return value;
+  const raw = Array.isArray(value) ? value[0] : value;
+  const normalized = raw?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): boolean {

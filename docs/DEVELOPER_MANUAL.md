@@ -111,6 +111,9 @@ Restart the agent after changing MCP configuration.
 The `client_id` should be stable for the developer or machine. This makes
 `gateway.clients` useful for collaboration and audit trails. Gateway current
 project state is also scoped to this client id, so avoid random client ids.
+If a gateway request omits `client_id`, pmem assigns a temporary anonymous
+client id for that request. This prevents shared anonymous state, but it also
+means implicit current project state is not durable.
 
 ### CodeWhale
 
@@ -426,7 +429,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.1.tgz
+npm install -g ./deadragdoll-pm3m-1.1.2.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

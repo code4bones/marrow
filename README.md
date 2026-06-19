@@ -180,7 +180,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.1.tgz
+npm install -g ./deadragdoll-pm3m-1.1.2.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -216,6 +216,9 @@ GW_ENDPOINT=http://127.0.0.1:8765
 `MCP_CLIENT_AUTH` should provide the bearer token value expected by the gateway.
 
 For shared teams, MCP HTTP clients may also send `X-Project-Memory-Client-*` headers for stable client identity.
+The gateway scopes implicit current project state to this client id. Requests
+without a client id get a temporary `anonymous:<request-id>` scope, which is
+isolated but not durable.
 
 Codex CLI streamable HTTP MCP config does not currently expose custom headers, so pass client identity through URL query parameters:
 
