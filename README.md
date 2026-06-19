@@ -157,7 +157,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.0.0.tgz
+npm install -g ./deadragdoll-pm3m-1.1.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
