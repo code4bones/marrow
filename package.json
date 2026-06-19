@@ -11,9 +11,12 @@
   "files": [
     "dist/src",
     "dist/scripts",
-    "deploy",
+    "deploy/nginx/project-memory-gateway.locations.conf",
+    "deploy/nginx/project-memory-gateway.server.conf",
     "docs",
     "migrations",
+    "ecosystem.config.cjs",
+    "scripts/pm2-gateway.cjs",
     "knexfile.cjs",
     "README.md",
     "AGENTS.md"

@@ -82,6 +82,12 @@ npm run build
 npm run gateway
 ```
 
+PM2 deployment is supported through `ecosystem.config.cjs`. It loads `.env`, supports `BIND`/`PORT` compatibility, watches `dist/src`, migrations, `knexfile.cjs`, and `.env`, and runs the built gateway:
+
+```bash
+pm2 startOrReload ecosystem.config.cjs --env production
+```
+
 Shared agents should connect to the MCP Streamable HTTP endpoint:
 
 ```text

@@ -133,8 +133,15 @@ npm run gateway
 Gateway defaults:
 
 ```text
-PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1
-PROJECT_MEMORY_GATEWAY_PORT=8765
+PROJECT_MEMORY_GATEWAY_HOST=127.0.0.1  # or BIND for existing .env compatibility
+PROJECT_MEMORY_GATEWAY_PORT=8765       # or PORT for existing .env compatibility
+```
+
+For PM2 deployments, use the included ecosystem file. It loads `.env`, watches the built gateway files and migrations, and maps `BIND`/`PORT` into the gateway runtime:
+
+```bash
+npm run build
+pm2 startOrReload ecosystem.config.cjs --env production
 ```
 
 Optional bearer auth:

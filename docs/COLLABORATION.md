@@ -56,6 +56,14 @@ npm run db:pg:migrate
 npm run gateway
 ```
 
+For long-running shared deployments, PM2 can run the gateway from `.env`:
+
+```bash
+pm2 startOrReload ecosystem.config.cjs --env production
+```
+
+`ecosystem.config.cjs` accepts both `PROJECT_MEMORY_GATEWAY_HOST`/`PROJECT_MEMORY_GATEWAY_PORT` and existing `BIND`/`PORT` variables.
+
 Agents connect directly to the MCP Streamable HTTP endpoint:
 
 ```text

@@ -12,10 +12,13 @@ export default tseslint.config(
     languageOptions: {
       sourceType: "commonjs",
       globals: {
+        __dirname: "readonly",
+        console: "readonly",
         exports: "writable",
         module: "writable",
         process: "readonly",
-        require: "readonly"
+        require: "readonly",
+        setTimeout: "readonly"
       }
     },
     rules: {

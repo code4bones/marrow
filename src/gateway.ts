@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   });
   const db = createPgKnex();
   const service = new PgToolService(db);
-  const host = process.env.PROJECT_MEMORY_GATEWAY_HOST ?? "127.0.0.1";
+  const host = process.env.PROJECT_MEMORY_GATEWAY_HOST ?? process.env.BIND ?? "127.0.0.1";
   const port = Number(process.env.PROJECT_MEMORY_GATEWAY_PORT ?? process.env.PORT ?? 8765);
   const token = process.env.PROJECT_MEMORY_GATEWAY_TOKEN ?? process.env.MCP_TOKEN;
   const started = await startGatewayServer(service, { host, port, token, logger });
