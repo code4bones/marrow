@@ -35,6 +35,10 @@ Implemented core MVP tools:
 
 See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the detailed implementation status, validation notes, and known follow-up work.
 
+See [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md) for a practical developer guide covering purpose, setup, safe usage, artifacts, and operations.
+
+See [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for the operational guide agents should follow when deciding whether and how to use pmem.
+
 See [docs/TOOL_WORKFLOWS.md](docs/TOOL_WORKFLOWS.md) for recommended tool chains agents should follow.
 
 See [docs/AGENT_STATE_MACHINE.md](docs/AGENT_STATE_MACHINE.md) for the agent state machine and clarification triggers.
