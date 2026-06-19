@@ -15,6 +15,15 @@ gateway.about
 
 Then summarize the result in human language.
 
+If the user asks for manuals, docs, instructions, onboarding, or Markdown files
+explaining pmem, call:
+
+```text
+gateway.manuals
+```
+
+Use `includeContent=true` when the user wants the actual `.md` text.
+
 ## Confirm Shared Gateway Mode
 
 When collaboration or shared knowledge matters, call:
@@ -279,6 +288,12 @@ Explain pmem:
 
 ```text
 gateway.about
+```
+
+Get bundled manuals:
+
+```text
+gateway.manuals
 ```
 
 Confirm collaboration:

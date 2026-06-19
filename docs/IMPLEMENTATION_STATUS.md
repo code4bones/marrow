@@ -24,7 +24,7 @@ Implemented capabilities:
 - HTTP gateway routes: `POST /mcp`, `GET /health`, `GET /ready`, `GET /tools`, `POST /call`
 - MCP Streamable HTTP gateway endpoint
 - gateway client registry through `gateway_clients`
-- gateway diagnostics and onboarding: `gateway.about`, `gateway.status`, `gateway.clients`
+- gateway diagnostics and onboarding: `gateway.about`, `gateway.manuals`, `gateway.status`, `gateway.clients`
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
 - tests, typecheck, lint, and build scripts
 

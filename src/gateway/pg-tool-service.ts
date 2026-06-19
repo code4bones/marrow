@@ -2,6 +2,7 @@ import type { Knex } from "knex";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { nowIso } from "../shared/dates.js";
 import { AppError } from "../shared/errors.js";
 import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/ids/id.service.js";
@@ -27,6 +28,25 @@ interface NormalizedGatewayRequestContext {
   metadata: Row;
 }
 
+const manualSpecs = [
+  {
+    id: "developer",
+    audience: "developer",
+    aliases: ["user"],
+    title: "Project Memory MCP Developer Manual",
+    description: "Purpose, setup, safe usage, artifact workflows, guardrails, and gateway operations.",
+    path: "docs/DEVELOPER_MANUAL.md"
+  },
+  {
+    id: "agent",
+    audience: "agent",
+    aliases: [],
+    title: "Project Memory MCP Agent Guide",
+    description: "Operational rules for agents: when to use pmem, tool chains, preflight, artifacts, and clarification triggers.",
+    path: "docs/AGENT_GUIDE.md"
+  }
+] as const;
+
 export class PgToolService {
   constructor(private readonly db: Knex) {}
 
@@ -51,6 +71,8 @@ export class PgToolService {
       switch (toolName) {
         case "gateway.about":
           return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
+        case "gateway.manuals":
+          return ok("Project Memory manuals loaded.", { manuals: await this.gatewayManuals(parsed) });
         case "gateway.status":
           return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
         case "gateway.clients":
@@ -139,6 +161,11 @@ export class PgToolService {
       ],
       firstCalls: [
         {
+          tool: "gateway.manuals",
+          reason:
+            "Load Markdown manuals for developers/users and agents. Use includeContent=true when the caller wants the .md files inline."
+        },
+        {
           tool: "gateway.status",
           reason: "Confirm that the agent is connected to the shared PostgreSQL gateway."
         },
@@ -168,8 +195,36 @@ export class PgToolService {
           "Decisions are first-class records with rationale, consequences, status, and supersession semantics.",
         events: "Events are append-only timeline records used for audit history and agent handoff context."
       },
+      manuals: {
+        tool: "gateway.manuals",
+        recommendedCalls: [
+          {
+            audience: "developer",
+            includeContent: true,
+            reason: "Return the user/developer manual as Markdown."
+          },
+          {
+            audience: "agent",
+            includeContent: true,
+            reason: "Return the agent operating guide as Markdown."
+          },
+          {
+            audience: "all",
+            includeContent: true,
+            reason: "Return every bundled Markdown manual."
+          }
+        ],
+        bundledFiles: manualSpecs.map((manual) => ({
+          id: manual.id,
+          audience: manual.audience,
+          title: manual.title,
+          path: manual.path,
+          contentType: "text/markdown; charset=utf-8"
+        }))
+      },
       recommendedAgentFlow: [
         "Call gateway.about if the agent has not used pmem before.",
+        "Call gateway.manuals with includeContent=true when the developer or agent needs the bundled Markdown manuals.",
         "Call gateway.status to confirm shared gateway mode.",
         "Call project.current or project.list to identify the active project.",
         "Call memory.search with the task topic and include common knowledge.",
@@ -178,11 +233,49 @@ export class PgToolService {
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
       artifactStorage: {
-        status: "planned",
+        status: "available",
         intent:
-          "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them."
+          "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them.",
+        tools: ["artifact.put", "artifact.search", "artifact.get"]
       }
     };
+  }
+
+  private async gatewayManuals(input: Row) {
+    const audience = typeof input.audience === "string" ? input.audience : "all";
+    const includeContent = input.includeContent === true;
+    const selected = manualSpecs.filter((manual) => {
+      if (audience === "all") {
+        return true;
+      }
+      return manual.audience === audience || manual.aliases.some((alias) => alias === audience);
+    });
+
+    return Promise.all(
+      selected.map(async (manual) => {
+        const output: Row = {
+          id: manual.id,
+          audience: manual.audience,
+          aliases: [...manual.aliases],
+          title: manual.title,
+          description: manual.description,
+          path: manual.path,
+          contentType: "text/markdown; charset=utf-8",
+          retrieval: {
+            preferredTool: "gateway.manuals",
+            preferredInput: {
+              audience: manual.audience,
+              includeContent: true
+            },
+            packagePath: manual.path
+          }
+        };
+        if (includeContent) {
+          output.content = await readBundledManual(manual.path);
+        }
+        return output;
+      })
+    );
   }
 
   async readiness() {
@@ -1171,6 +1264,32 @@ function inferContentType(artifactPath: string): string {
   }
 }
 
+async function readBundledManual(relativePath: string): Promise<string> {
+  const attemptedPaths: string[] = [];
+  for (const candidate of manualPathCandidates(relativePath)) {
+    attemptedPaths.push(candidate);
+    try {
+      return await readFile(candidate, "utf8");
+    } catch {
+      // Try the next layout. Source runs from src/, package runs from dist/.
+    }
+  }
+  throw new AppError("NOT_FOUND", `Bundled manual ${relativePath} could not be read.`, {
+    path: relativePath,
+    attemptedPaths
+  });
+}
+
+function manualPathCandidates(relativePath: string): string[] {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return Array.from(
+    new Set([
+      path.resolve(moduleDir, "../..", relativePath),
+      path.resolve(moduleDir, "../../..", relativePath),
+      path.resolve(process.cwd(), relativePath)
+    ])
+  );
+}
 
 function jsonObject(value: unknown): Row {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {

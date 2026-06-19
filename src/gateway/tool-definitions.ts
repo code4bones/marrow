@@ -25,6 +25,10 @@ export interface GatewayToolSpec {
 }
 
 const emptySchema = z.object({});
+const gatewayManualsSchema = z.object({
+  audience: z.enum(["developer", "user", "agent", "all"]).optional(),
+  includeContent: z.boolean().optional()
+});
 const listGatewayClientsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
@@ -65,6 +69,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Explain what Project Memory (pmem) is, how agents should use it, and which first tools to call after connecting.",
     schema: emptySchema
+  },
+  {
+    name: "gateway.manuals",
+    description:
+      "Return Project Memory Markdown manuals for developers/users and agents. Set includeContent=true when the caller needs the actual .md text.",
+    schema: gatewayManualsSchema
   },
   {
     name: "gateway.status",

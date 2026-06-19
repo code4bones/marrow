@@ -11,6 +11,7 @@ Local SQLite stdio mode exposes the core project-memory tools.
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 
 * `gateway.about`
+* `gateway.manuals`
 * `gateway.status`
 * `gateway.clients`
 * `artifact.put`
@@ -68,7 +69,26 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "summary": "Project Memory is a shared MCP memory gateway...",
+    "manuals": {
+      "tool": "gateway.manuals",
+      "recommendedCalls": [
+        {
+          "audience": "developer",
+          "includeContent": true,
+          "reason": "Return the user/developer manual as Markdown."
+        },
+        {
+          "audience": "agent",
+          "includeContent": true,
+          "reason": "Return the agent operating guide as Markdown."
+        }
+      ]
+    },
     "firstCalls": [
+      {
+        "tool": "gateway.manuals",
+        "reason": "Load Markdown manuals for developers/users and agents."
+      },
       {
         "tool": "gateway.status",
         "reason": "Confirm that the agent is connected to the shared PostgreSQL gateway."
@@ -84,6 +104,62 @@ Output:
 ```
 
 Use this when a developer or agent asks what `project-memory` / `pmem` is, how to start, or which tools to call first.
+
+---
+
+### `gateway.manuals`
+
+Return bundled Project Memory Markdown manuals.
+
+Use this after `gateway.about` when a developer or agent wants the actual
+`.md` documentation files on their side.
+
+Input:
+
+```json
+{
+  "audience": "developer",
+  "includeContent": true
+}
+```
+
+`audience` may be:
+
+* `developer`
+* `user`
+* `agent`
+* `all`
+
+`user` is an alias for the developer manual.
+
+Output:
+
+```json
+{
+  "manuals": [
+    {
+      "id": "developer",
+      "audience": "developer",
+      "aliases": ["user"],
+      "title": "Project Memory MCP Developer Manual",
+      "description": "Purpose, setup, safe usage...",
+      "path": "docs/DEVELOPER_MANUAL.md",
+      "contentType": "text/markdown; charset=utf-8",
+      "retrieval": {
+        "preferredTool": "gateway.manuals",
+        "preferredInput": {
+          "audience": "developer",
+          "includeContent": true
+        },
+        "packagePath": "docs/DEVELOPER_MANUAL.md"
+      },
+      "content": "# Project Memory MCP — Developer Manual\n..."
+    }
+  ]
+}
+```
+
+Call with `"includeContent": false` or omit it when only metadata is needed.
 
 ---
 
@@ -104,7 +180,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 28,
+    "tools": 29,
     "records": {
       "projects": 1,
       "items": 10,

@@ -187,6 +187,7 @@ codex mcp add project-memory \
 Gateway-only MCP tools:
 
 - `gateway.about`
+- `gateway.manuals`
 - `gateway.status`
 - `gateway.clients`
 - `artifact.put`

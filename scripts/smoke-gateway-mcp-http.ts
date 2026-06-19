@@ -46,6 +46,7 @@ try {
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
   assert(toolNames.includes("gateway.about"), "gateway.about tool was not listed.");
+  assert(toolNames.includes("gateway.manuals"), "gateway.manuals tool was not listed.");
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
@@ -61,6 +62,41 @@ try {
   assert(
     readNestedString(aboutResult.structuredContent, ["data", "about", "shortName"]) === "pmem",
     "gateway.about did not describe pmem."
+  );
+  assert(
+    readNestedString(aboutResult.structuredContent, ["data", "about", "manuals", "tool"]) === "gateway.manuals",
+    "gateway.about did not point at gateway.manuals."
+  );
+
+  const manualsResult = await client.callTool({
+    name: "gateway.manuals",
+    arguments: {
+      audience: "all",
+      includeContent: true
+    }
+  });
+  assertOk(manualsResult.structuredContent, "gateway.manuals failed.");
+  const manuals = readNestedArray(manualsResult.structuredContent, ["data", "manuals"]);
+  assert(manuals.length >= 2, "gateway.manuals did not return both manuals.");
+  assert(
+    manuals.some(
+      (manual) =>
+        isRecord(manual) &&
+        manual.id === "developer" &&
+        typeof manual.content === "string" &&
+        manual.content.includes("Developer Manual")
+    ),
+    "gateway.manuals did not return developer Markdown content."
+  );
+  assert(
+    manuals.some(
+      (manual) =>
+        isRecord(manual) &&
+        manual.id === "agent" &&
+        typeof manual.content === "string" &&
+        manual.content.includes("Agent Guide")
+    ),
+    "gateway.manuals did not return agent Markdown content."
   );
 
   const statusResult = await client.callTool({

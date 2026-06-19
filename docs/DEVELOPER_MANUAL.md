@@ -121,6 +121,19 @@ After connecting an agent, ask:
 
 The agent should call `gateway.about`.
 
+To receive the bundled Markdown manuals directly through MCP, ask:
+
+```text
+Дай мне manuals по pmem в Markdown: user/developer и agent.
+```
+
+Expected tool flow:
+
+```text
+gateway.about
+gateway.manuals(audience="all", includeContent=true)
+```
+
 Then ask it to check the shared gateway:
 
 ```text
