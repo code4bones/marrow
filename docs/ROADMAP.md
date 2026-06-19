@@ -36,7 +36,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
    - Include what was tried, why it failed, what not to repeat, and better next
      approach.
 
-6. `decision.supersede`
+6. `decision.supersede` — implemented
    - Create a replacement decision, mark the old decision as `superseded`, and
      add the appropriate link/event records in one operation.
 

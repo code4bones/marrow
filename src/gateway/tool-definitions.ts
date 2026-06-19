@@ -32,6 +32,9 @@ const gatewayManualsSchema = z.object({
 const memoryUpsertSchema = createMemorySchema.extend({
   match: z.enum(["id", "scope_type_title"]).optional()
 });
+const decisionSupersedeSchema = recordDecisionSchema.extend({
+  supersedesId: z.string().min(1)
+});
 const failedAttemptRecordSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -226,6 +229,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "decision.record",
     description: "Record a shared project or common decision.",
     schema: recordDecisionSchema
+  },
+  {
+    name: "decision.supersede",
+    description:
+      "Create a replacement decision in the same scope, mark the old decision as superseded, and record link/event history.",
+    schema: decisionSupersedeSchema
   },
   {
     name: "decision.list",

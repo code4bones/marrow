@@ -55,6 +55,7 @@ try {
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
+  assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -225,6 +226,44 @@ try {
   assert(
     readNestedString(upsertUpdateResult.structuredContent, ["data", "item", "id"]) === upsertedItemId,
     "memory.upsert created a duplicate instead of updating the existing item."
+  );
+
+  const originalDecisionResult = await client.callTool({
+    name: "decision.record",
+    arguments: {
+      project: state.projectId,
+      title: "Gateway MCP HTTP smoke original decision",
+      decision: "Original smoke decision.",
+      rationale: "The supersede smoke test needs an active source decision.",
+      tags: ["smoke", "decision"]
+    }
+  });
+  assertOk(originalDecisionResult.structuredContent, "decision.record failed.");
+  const originalDecisionId = readNestedString(originalDecisionResult.structuredContent, ["data", "decision", "id"]);
+
+  const supersedeDecisionResult = await client.callTool({
+    name: "decision.supersede",
+    arguments: {
+      supersedesId: originalDecisionId,
+      title: "Gateway MCP HTTP smoke replacement decision",
+      decision: "Replacement smoke decision.",
+      rationale: "The gateway should provide an explicit decision supersede workflow.",
+      tags: ["smoke", "decision", "supersede"]
+    }
+  });
+  assertOk(supersedeDecisionResult.structuredContent, "decision.supersede failed.");
+  assert(
+    readNestedString(supersedeDecisionResult.structuredContent, ["data", "decision", "supersedesId"]) ===
+      originalDecisionId,
+    "decision.supersede did not link the replacement to the old decision."
+  );
+  assert(
+    readNestedString(supersedeDecisionResult.structuredContent, ["data", "superseded", "status"]) === "superseded",
+    "decision.supersede did not mark the old decision as superseded."
+  );
+  assert(
+    readNestedString(supersedeDecisionResult.structuredContent, ["data", "link", "relation"]) === "supersedes",
+    "decision.supersede did not create a supersedes link."
   );
 
   state.artifactPath = `gateway-smoke/AGENTS-${unique}.md`;

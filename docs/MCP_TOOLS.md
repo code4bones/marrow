@@ -19,6 +19,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `gateway.clients`
 * `memory.upsert`
 * `failed_attempt.record`
+* `decision.supersede`
 * `artifact.put`
 * `artifact.search`
 * `artifact.get`
@@ -133,7 +134,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 34,
+    "tools": 35,
     "node": {
       "version": "v24.16.0"
     },
@@ -173,7 +174,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 34
+      "tools": 35
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -223,7 +224,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 34
+      "tools": 35
     },
     "database": {
       "engine": "postgresql",
@@ -338,7 +339,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 34,
+    "tools": 35,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1147,6 +1148,63 @@ Behavior:
 
 * record `decision.recorded` event
 * if `supersedesId` is provided, optionally mark old decision as `superseded`
+
+---
+
+### `decision.supersede`
+
+Create a replacement decision and supersede the old one in one explicit
+workflow.
+
+Input:
+
+```json
+{
+  "supersedesId": "D-MEMORY-001",
+  "title": "Use PostgreSQL for shared gateway storage",
+  "context": "The project now supports multi-developer collaboration through a shared gateway.",
+  "decision": "Use PostgreSQL for gateway mode.",
+  "rationale": "Multiple agents need a shared durable database instead of local-only SQLite.",
+  "consequences": "Local stdio mode remains separate; shared deployments must back up PostgreSQL and artifacts together.",
+  "tags": ["gateway", "storage"]
+}
+```
+
+Output:
+
+```json
+{
+  "decision": {
+    "id": "D-MEMORY-002",
+    "status": "active",
+    "supersedesId": "D-MEMORY-001"
+  },
+  "superseded": {
+    "id": "D-MEMORY-001",
+    "status": "superseded"
+  },
+  "link": {
+    "relation": "supersedes",
+    "fromId": "D-MEMORY-002",
+    "toId": "D-MEMORY-001"
+  },
+  "event": {
+    "type": "decision.superseded",
+    "relatedId": "D-MEMORY-002"
+  }
+}
+```
+
+Behavior:
+
+* creates the replacement decision in the same project/common scope as the old
+  decision unless the caller explicitly passes the same scope
+* marks the old decision as `superseded`
+* records a `supersedes` link from the new decision to the old one
+* records `decision.superseded` and `link.created` events
+
+Use this when project guidance changes. Agents should prefer this over manually
+recording a new decision and separately updating the old status.
 
 ---
 

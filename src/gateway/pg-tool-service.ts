@@ -126,6 +126,8 @@ export class PgToolService {
           return ok("Task status updated.", { task: await this.updateTaskStatus(parsed, requestContext) });
         case "decision.record":
           return ok("Decision recorded.", { decision: await this.recordDecision(parsed, requestContext) });
+        case "decision.supersede":
+          return ok("Decision superseded.", await this.supersedeDecision(parsed, requestContext));
         case "decision.list":
           return ok("Decisions listed.", { decisions: await this.listDecisions(parsed) });
         case "decision.get":
@@ -1038,6 +1040,102 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return decisionOut(row);
+  }
+
+  private async supersedeDecision(input: Row, context: NormalizedGatewayRequestContext) {
+    const oldRow = await this.db("decisions").where({ id: String(input.supersedesId) }).first();
+    if (!oldRow) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${String(input.supersedesId)} does not exist.`, {
+        id: input.supersedesId
+      });
+    }
+
+    const projectId = await this.resolveDecisionProjectId(input, oldRow);
+    if (projectId !== stringOrNull(oldRow.project_id)) {
+      throw new AppError("VALIDATION_ERROR", "Replacement decision must stay in the same project/common scope.", {
+        oldDecisionId: oldRow.id,
+        oldProjectId: stringOrNull(oldRow.project_id),
+        replacementProjectId: projectId
+      });
+    }
+
+    const now = nowIso();
+    const row = {
+      id: await this.nextId("decisions", projectId ? `D-${projectKeyFromId(projectId)}` : "D-COMMON"),
+      project_id: projectId,
+      title: String(input.title),
+      status: typeof input.status === "string" ? input.status : "active",
+      context: stringOrNull(input.context),
+      decision: String(input.decision),
+      rationale: stringOrNull(input.rationale),
+      consequences: stringOrNull(input.consequences),
+      tags: jsonStringArray(input.tags),
+      supersedes_id: String(input.supersedesId),
+      ...writeActorFields(context),
+      created_at: now,
+      updated_at: now
+    };
+
+    await this.db("decisions").insert(row);
+    const [superseded] = await this.db("decisions")
+      .where({ id: String(oldRow.id) })
+      .update({
+        status: "superseded",
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: now,
+        version: Number(oldRow.version ?? 1) + 1
+      })
+      .returning("*");
+    const link = await this.createSupersedesLink(String(row.id), String(oldRow.id), projectId, context);
+    const event = await this.recordEventForProject(projectId, {
+      type: "decision.superseded",
+      title: `Decision superseded: ${String(oldRow.title)}`,
+      body: `${String(row.id)} supersedes ${String(oldRow.id)}.`,
+      related_id: row.id
+    }, context);
+
+    return {
+      decision: decisionOut(row),
+      superseded: decisionOut(superseded),
+      link,
+      event
+    };
+  }
+
+  private async resolveDecisionProjectId(input: Row, oldRow: Row): Promise<string | null> {
+    if (input.project === undefined) {
+      return stringOrNull(oldRow.project_id);
+    }
+    if (input.project === null) {
+      return null;
+    }
+    return (await this.resolveProject(input.project)).id;
+  }
+
+  private async createSupersedesLink(
+    fromId: string,
+    toId: string,
+    projectId: string | null,
+    context: NormalizedGatewayRequestContext
+  ) {
+    const row = {
+      id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
+      project_id: projectId,
+      from_id: fromId,
+      to_id: toId,
+      relation: "supersedes",
+      created_by: context.clientId,
+      source_instance_id: context.clientId,
+      created_at: nowIso()
+    };
+    await this.db("links").insert(row);
+    await this.recordEventForProject(projectId, {
+      type: "link.created",
+      title: `Link created: ${fromId} supersedes ${toId}`,
+      related_id: row.id
+    }, context);
+    return linkOut(row);
   }
 
   private async listDecisions(input: Row) {
