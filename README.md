@@ -184,39 +184,44 @@ codex mcp add project-memory \
   --bearer-token-env-var PMEM_MCP_TOKEN
 ```
 
-Some MCP clients support Streamable HTTP URLs but do not yet pass custom HTTP
-headers. For those clients, run the packaged stdio bridge locally. The bridge
-accepts stdio from the MCP client and forwards to the HTTP gateway with the
-required bearer header:
+CodeWhale v0.8.x can add the Streamable HTTP URL from CLI, but its `mcp add`
+command does not expose a `--headers` option. Add the URL first:
 
 ```bash
 export PMEM_MCP_TOKEN="<token>"
-export PMEM_MCP_URL="https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
 
-project-memory-http-stdio-bridge
+codewhale-tui mcp add project-memory \
+  --url "https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
 ```
 
-Example CodeWhale entry:
+Then edit the CodeWhale MCP config and add the bearer header manually. Current
+versions may use `~/.codewhale/mcp.json` or the legacy `~/.deepseek/mcp.json`.
+The resulting entry should look like:
 
 ```json
 {
   "servers": {
     "project-memory": {
-      "command": "project-memory-http-stdio-bridge",
+      "command": null,
       "args": [],
-      "env": {
-        "PMEM_MCP_URL": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
-        "PMEM_MCP_TOKEN": "<token or wrapper-provided env>"
-      },
-      "disabled": false
+      "env": {},
+      "url": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
+      "disabled": false,
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
     }
   }
 }
 ```
 
-If the client does not expand env placeholders in MCP config, use a local shell
-wrapper that sources a private `.env` and then executes
-`project-memory-http-stdio-bridge`.
+Validate it with:
+
+```bash
+codewhale-tui mcp validate
+codewhale-tui mcp tools project-memory
+```
 
 Gateway-only MCP tools:
 

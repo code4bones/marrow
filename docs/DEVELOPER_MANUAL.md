@@ -111,42 +111,46 @@ Restart the agent after changing MCP configuration.
 The `client_id` should be stable for the developer or machine. This makes
 `gateway.clients` useful for collaboration and audit trails.
 
-### Clients Without HTTP Header Support
+### CodeWhale
 
-Some MCP clients can connect to a remote Streamable HTTP URL but cannot send
-custom HTTP headers. CodeWhale v0.8.x is one example: direct URL registration
-works, but authenticated gateways return `401` because the bearer header is not
-sent.
-
-Use the packaged stdio bridge for these clients:
+CodeWhale v0.8.x can add the Streamable HTTP URL from CLI, but its `mcp add`
+command does not expose a `--headers` option. Add the URL first:
 
 ```bash
 export PMEM_MCP_TOKEN="<gateway-token>"
-export PMEM_MCP_URL="https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
 
-project-memory-http-stdio-bridge
+codewhale-tui mcp add project-memory \
+  --url "https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
 ```
 
-The MCP client should register it as a stdio server:
+Then edit the CodeWhale MCP config and add the bearer header manually. Current
+versions may use `~/.codewhale/mcp.json` or the legacy `~/.deepseek/mcp.json`.
+The resulting entry should look like:
 
 ```json
 {
   "servers": {
     "project-memory": {
-      "command": "project-memory-http-stdio-bridge",
+      "command": null,
       "args": [],
-      "env": {
-        "PMEM_MCP_URL": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
-        "PMEM_MCP_TOKEN": "<token or wrapper-provided env>"
+      "env": {},
+      "url": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
+      "disabled": false,
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer <token>"
       }
     }
   }
 }
 ```
 
-If the client does not expand environment placeholders, keep secrets out of MCP
-JSON and use a local wrapper script that sources a private `.env`, exports
-`PMEM_MCP_TOKEN`, and executes `project-memory-http-stdio-bridge`.
+Validate it with:
+
+```bash
+codewhale-tui mcp validate
+codewhale-tui mcp tools project-memory
+```
 
 ## First Smoke Test
 
