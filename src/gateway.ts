@@ -1,14 +1,17 @@
 #!/usr/bin/env node
+import path from "node:path";
 import { startGatewayServer } from "./gateway/http-server.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 
 async function main(): Promise<void> {
+  const logFile = envLogFile(process.env.LOG_DIR, "project-memory-gateway.log");
   const logger = createGatewayLogger({
     level: process.env.LOG_LEVEL ?? "info",
-    console: envFlag(process.env.LOG_CONSOLE, true),
-    filePath: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log")
+    filePath: logFile,
+    pretty: envFlag(process.env.LOG_PRETTY, false),
+    includeTime: envFlag(process.env.LOG_INCLUDE_TIME, true)
   });
   const db = createPgKnex();
   const service = new PgToolService(db);
@@ -20,7 +23,7 @@ async function main(): Promise<void> {
   logger.info(
     {
       url: started.url,
-      logFile: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log") || null
+      logFile: logFile || null
     },
     "project memory gateway listening"
   );
@@ -41,10 +44,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+  const logFile = envLogFile(process.env.LOG_DIR, "project-memory-gateway.log");
   const logger = createGatewayLogger({
     level: process.env.LOG_LEVEL ?? "info",
-    console: envFlag(process.env.LOG_CONSOLE, true),
-    filePath: envFilePath(process.env.LOG_FILE, ".agent/project-memory-gateway.log")
+    filePath: logFile,
+    pretty: envFlag(process.env.LOG_PRETTY, false),
+    includeTime: envFlag(process.env.LOG_INCLUDE_TIME, true)
   });
   logger.fatal({ error }, "project memory gateway failed to start");
   logger.flush();
@@ -58,12 +63,9 @@ function envFlag(value: string | undefined, defaultValue: boolean): boolean {
   return !["0", "false", "no", "off"].includes(value.toLowerCase());
 }
 
-function envFilePath(value: string | undefined, defaultValue: string): string | false {
-  if (value === undefined || value.length === 0) {
-    return defaultValue;
-  }
-  if (["0", "false", "no", "off"].includes(value.toLowerCase())) {
+function envLogFile(value: string | undefined, fileName: string): string | false {
+  if (value !== undefined && ["0", "false", "no", "off"].includes(value.toLowerCase())) {
     return false;
   }
-  return value;
+  return path.join(value && value.length > 0 ? value : ".agent", fileName);
 }
