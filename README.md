@@ -137,6 +137,7 @@ BIND=127.0.0.1
 PORT=8765
 API_ENDPOINT=/api
 MCP_TOKEN=...
+ARTIFACT_DIR=./artifacts
 ```
 
 The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
@@ -184,6 +185,9 @@ Gateway-only MCP tools:
 - `gateway.about`
 - `gateway.status`
 - `gateway.clients`
+- `artifact.put`
+- `artifact.search`
+- `artifact.get`
 
 Gateway logging uses `pino` and writes JSON logs to console and file by default:
 

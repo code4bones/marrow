@@ -1,5 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { rm } from "node:fs/promises";
+import { resolve } from "node:path";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
 import { createPgKnex } from "../src/shared/pg/knex.js";
@@ -34,6 +36,8 @@ const client = new Client({
 const state: {
   projectId?: string;
   taskId?: string;
+  artifactId?: string;
+  artifactPath?: string;
 } = {};
 
 try {
@@ -107,6 +111,61 @@ try {
   });
   assertOk(memoryResult.structuredContent, "memory.create failed.");
 
+  state.artifactPath = `gateway-smoke/AGENTS-${unique}.md`;
+  const artifactContent = "# Gateway Smoke AGENTS\n\nUse preflight before editing files.\n";
+  const artifactResult = await client.callTool({
+    name: "artifact.put",
+    arguments: {
+      common: true,
+      path: state.artifactPath,
+      title: "Gateway smoke AGENTS template",
+      description: "Smoke test artifact for gateway file storage.",
+      contentType: "text/markdown; charset=utf-8",
+      contentBase64: Buffer.from(artifactContent, "utf8").toString("base64"),
+      tags: ["smoke", "agents-template"],
+      overwrite: true
+    }
+  });
+  assertOk(artifactResult.structuredContent, "artifact.put failed.");
+  state.artifactId = readNestedString(artifactResult.structuredContent, ["data", "artifact", "id"]);
+
+  const artifactSearchResult = await client.callTool({
+    name: "artifact.search",
+    arguments: {
+      query: "Gateway Smoke AGENTS",
+      includeCommon: true,
+      limit: 5
+    }
+  });
+  assertOk(artifactSearchResult.structuredContent, "artifact.search failed.");
+  const artifactIds = readNestedArray(artifactSearchResult.structuredContent, ["data", "results"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(artifactIds.includes(state.artifactId), "artifact.search did not include smoke artifact.");
+
+  const artifactGetResult = await client.callTool({
+    name: "artifact.get",
+    arguments: {
+      id: state.artifactId,
+      includeContent: true
+    }
+  });
+  assertOk(artifactGetResult.structuredContent, "artifact.get failed.");
+  assert(
+    readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "contentBase64"]) ===
+      Buffer.from(artifactContent, "utf8").toString("base64"),
+    "artifact.get did not return expected inline content."
+  );
+
+  const downloadPath = readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "downloadPath"]);
+  const downloadResponse = await fetch(`${started.url}${downloadPath}`, {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
+  assert(downloadResponse.ok, `artifact download failed with ${downloadResponse.status}`);
+  assert((await downloadResponse.text()) === artifactContent, "artifact download content mismatch.");
+
   const taskResult = await client.callTool({
     name: "task.create",
     arguments: {
@@ -135,6 +194,12 @@ try {
   if (state.projectId) {
     await db("kv").where({ key: "current_project_id", value: state.projectId }).del();
     await db("projects").where({ id: state.projectId }).del();
+  }
+  if (state.artifactId) {
+    await db("artifacts").where({ id: state.artifactId }).del();
+  }
+  if (state.artifactPath) {
+    await rm(resolve(process.env.ARTIFACT_DIR ?? "artifacts", "common", state.artifactPath), { force: true });
   }
   await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolveServerClose) => started.server.close(() => resolveServerClose()));

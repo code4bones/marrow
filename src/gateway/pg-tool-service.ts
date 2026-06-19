@@ -1,4 +1,7 @@
 import type { Knex } from "knex";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { nowIso } from "../shared/dates.js";
 import { AppError } from "../shared/errors.js";
 import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/ids/id.service.js";
@@ -11,6 +14,11 @@ export interface GatewayRequestContext {
   clientId?: string;
   clientLabel?: string;
   metadata?: Row;
+}
+
+export interface ArtifactDownload {
+  artifact: ReturnType<typeof artifactOut>;
+  absolutePath: string;
 }
 
 interface NormalizedGatewayRequestContext {
@@ -65,6 +73,12 @@ export class PgToolService {
           return ok("Memory searched.", { results: await this.searchMemory(parsed) });
         case "memory.update":
           return ok("Memory item updated.", { item: await this.updateMemory(parsed, requestContext) });
+        case "artifact.put":
+          return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
+        case "artifact.search":
+          return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed) });
+        case "artifact.get":
+          return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed) });
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
@@ -101,6 +115,14 @@ export class PgToolService {
 
   async close(): Promise<void> {
     await this.db.destroy();
+  }
+
+  async artifactDownload(id: string): Promise<ArtifactDownload> {
+    const row = await this.artifactRowById(id);
+    return {
+      artifact: artifactOut(row),
+      absolutePath: artifactAbsolutePath(String(row.storage_path))
+    };
   }
 
   private gatewayAbout() {
@@ -171,6 +193,7 @@ export class PgToolService {
       "decisions",
       "links",
       "events",
+      "artifacts",
       "kv",
       "gateway_clients",
       "sync_conflicts"
@@ -191,12 +214,13 @@ export class PgToolService {
   }
 
   private async gatewayStatus() {
-    const [projects, items, tasks, decisions, events, clients] = await Promise.all([
+    const [projects, items, tasks, decisions, events, artifacts, clients] = await Promise.all([
       this.countRows("projects"),
       this.countRows("items"),
       this.countRows("tasks"),
       this.countRows("decisions"),
       this.countRows("events"),
+      this.countRows("artifacts"),
       this.countRows("gateway_clients")
     ]);
 
@@ -209,7 +233,8 @@ export class PgToolService {
         items,
         tasks,
         decisions,
-        events
+        events,
+        artifacts
       },
       clients
     };
@@ -390,6 +415,156 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return itemOut(row);
+  }
+
+  private async putArtifact(input: Row, context: NormalizedGatewayRequestContext) {
+    const common = input.common === true || input.project === null;
+    const project = common ? null : await this.resolveProject(input.project);
+    const artifactPath = normalizeArtifactPath(String(input.path));
+    const content = decodeBase64(String(input.contentBase64));
+    const maxBytes = Number(process.env.ARTIFACT_MAX_BYTES ?? 10 * 1024 * 1024);
+    if (content.byteLength > maxBytes) {
+      throw new AppError("VALIDATION_ERROR", `Artifact exceeds ARTIFACT_MAX_BYTES (${maxBytes}).`, {
+        sizeBytes: content.byteLength,
+        maxBytes
+      });
+    }
+
+    const existing = await this.db("artifacts")
+      .where({ project_id: project?.id ?? null, path: artifactPath })
+      .first();
+    if (existing && input.overwrite !== true) {
+      throw new AppError("VALIDATION_ERROR", "Artifact already exists. Set overwrite=true to replace it.", {
+        id: existing.id,
+        path: artifactPath
+      });
+    }
+
+    const now = nowIso();
+    const id = existing?.id ? String(existing.id) : String(input.id ?? (await this.nextId("artifacts", `A-${project ? projectKeyFromId(project.id) : "COMMON"}`)));
+    const title = typeof input.title === "string" ? input.title : path.posix.basename(artifactPath);
+    const contentType = typeof input.contentType === "string" ? input.contentType : inferContentType(artifactPath);
+    const storagePath = artifactStoragePath(project?.slug ?? null, artifactPath);
+    const absolutePath = artifactAbsolutePath(storagePath);
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, content);
+
+    const row = {
+      id,
+      project_id: project?.id ?? null,
+      path: artifactPath,
+      title,
+      description: stringOrNull(input.description),
+      content_type: contentType,
+      size_bytes: content.byteLength,
+      sha256: createHash("sha256").update(content).digest("hex"),
+      storage_path: storagePath,
+      tags: jsonStringArray(input.tags),
+      created_by: existing?.created_by ?? context.clientId,
+      updated_by: context.clientId,
+      source_instance_id: context.clientId,
+      version: Number(existing?.version ?? 0) + 1,
+      created_at: existing?.created_at ?? now,
+      updated_at: now
+    };
+
+    if (existing) {
+      await this.db("artifacts").where({ id }).update(row);
+    } else {
+      await this.db("artifacts").insert(row);
+    }
+
+    await this.recordEventForProject(
+      project?.id ?? null,
+      {
+        type: existing ? "artifact.updated" : "artifact.created",
+        title: existing ? `Artifact updated: ${artifactPath}` : `Artifact created: ${artifactPath}`,
+        body: `Stored ${content.byteLength} bytes as ${contentType}.`,
+        related_id: id
+      },
+      context
+    );
+
+    return artifactOut(row);
+  }
+
+  private async searchArtifacts(input: Row) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact search requires a project or includeCommon=true.");
+    }
+
+    let query = this.db("artifacts").select("*");
+    const queryText = typeof input.query === "string" ? input.query : null;
+    if (queryText) {
+      query = query
+        .select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]))
+        .whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    }
+
+    query = query.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+
+    if (Array.isArray(input.tags) && input.tags.length > 0) {
+      query = query.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
+    }
+
+    const rows = await query
+      .orderByRaw("case when project_id is null then 1 else 0 end asc")
+      .orderBy(queryText ? "rank" : "created_at", "desc")
+      .limit(Number(input.limit ?? 10));
+    return rows.map(artifactSearchOut);
+  }
+
+  private async getArtifact(input: Row) {
+    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+    const output = artifactOut(row);
+    if (input.includeContent === true) {
+      const maxBytes = Number(input.maxBytes ?? 1024 * 1024);
+      const sizeBytes = Number(row.size_bytes ?? 0);
+      if (sizeBytes > maxBytes) {
+        throw new AppError("VALIDATION_ERROR", `Artifact is too large for inline content. Use downloadPath instead.`, {
+          sizeBytes,
+          maxBytes,
+          downloadPath: output.downloadPath
+        });
+      }
+      const content = await readFile(artifactAbsolutePath(String(row.storage_path)));
+      return {
+        ...output,
+        contentBase64: content.toString("base64")
+      };
+    }
+    return output;
+  }
+
+  private async artifactRowById(id: string): Promise<Row> {
+    const row = await this.db("artifacts").where({ id }).first();
+    if (!row) {
+      throw new AppError("ARTIFACT_NOT_FOUND", `Artifact ${id} does not exist.`, { id });
+    }
+    return row;
+  }
+
+  private async artifactRowByPath(input: Row): Promise<Row> {
+    const common = input.project === null;
+    const project = common ? null : await this.resolveProject(input.project);
+    const artifactPath = normalizeArtifactPath(String(input.path));
+    const row = await this.db("artifacts").where({ project_id: project?.id ?? null, path: artifactPath }).first();
+    if (!row) {
+      throw new AppError("ARTIFACT_NOT_FOUND", `Artifact ${artifactPath} does not exist.`, {
+        project: project?.id ?? null,
+        path: artifactPath
+      });
+    }
+    return row;
   }
 
   private async createTask(input: Row, context: NormalizedGatewayRequestContext) {
@@ -725,7 +900,7 @@ export class PgToolService {
   }
 
   private async assertRecordExists(id: string): Promise<void> {
-    for (const table of ["projects", "items", "tasks", "decisions", "events", "links"]) {
+    for (const table of ["projects", "items", "tasks", "decisions", "events", "links", "artifacts"]) {
       if (await this.exists(table, id)) {
         return;
       }
@@ -755,6 +930,31 @@ export class PgToolService {
       throw error;
     }
   }
+}
+
+function artifactOut(row: Row) {
+  return {
+    id: String(row.id),
+    projectId: stringOrNull(row.project_id),
+    scope: row.project_id ? "project" : "common",
+    path: String(row.path),
+    title: String(row.title),
+    description: stringOrNull(row.description),
+    contentType: String(row.content_type),
+    sizeBytes: Number(row.size_bytes ?? 0),
+    sha256: String(row.sha256),
+    tags: stringArray(row.tags),
+    downloadPath: `/artifacts/${encodeURIComponent(String(row.id))}/download`,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at)
+  };
+}
+
+function artifactSearchOut(row: Row) {
+  return {
+    ...artifactOut(row),
+    rank: Number(row.rank ?? 0)
+  };
 }
 
 function projectOut(row: Row) {
@@ -897,6 +1097,80 @@ function stringArray(value: unknown): string[] {
 function jsonStringArray(value: unknown): string {
   return JSON.stringify(stringArray(value));
 }
+
+function normalizeArtifactPath(value: string): string {
+  const withoutLeadingSlash = value.replace(/^\/+/, "");
+  if (withoutLeadingSlash.includes("\0") || withoutLeadingSlash.includes("\\")) {
+    throw new AppError("VALIDATION_ERROR", "Artifact path contains invalid characters.", { path: value });
+  }
+  const normalized = path.posix.normalize(withoutLeadingSlash);
+  if (
+    normalized === "." ||
+    normalized.length === 0 ||
+    normalized.startsWith("../") ||
+    normalized === ".." ||
+    path.posix.isAbsolute(normalized)
+  ) {
+    throw new AppError("VALIDATION_ERROR", "Artifact path must be a safe relative path.", { path: value });
+  }
+  return normalized;
+}
+
+function artifactStoragePath(projectSlug: string | null, artifactPath: string): string {
+  return path.posix.join(projectSlug ?? "common", artifactPath);
+}
+
+function artifactAbsolutePath(storagePath: string): string {
+  const root = path.resolve(process.env.ARTIFACT_DIR ?? "artifacts");
+  const absolutePath = path.resolve(root, storagePath);
+  if (!absolutePath.startsWith(`${root}${path.sep}`) && absolutePath !== root) {
+    throw new AppError("VALIDATION_ERROR", "Artifact storage path escaped artifact root.", { storagePath });
+  }
+  return absolutePath;
+}
+
+function decodeBase64(value: string): Buffer {
+  const compact = value.replace(/\s/g, "");
+  const decoded = Buffer.from(compact, "base64");
+  if (decoded.length === 0 || decoded.toString("base64").replace(/=+$/, "") !== compact.replace(/=+$/, "")) {
+    throw new AppError("VALIDATION_ERROR", "contentBase64 must be valid base64.");
+  }
+  return decoded;
+}
+
+function inferContentType(artifactPath: string): string {
+  const extension = path.posix.extname(artifactPath).toLowerCase();
+  switch (extension) {
+    case ".md":
+      return "text/markdown; charset=utf-8";
+    case ".txt":
+      return "text/plain; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".svg":
+      return "image/svg+xml";
+    case ".pdf":
+      return "application/pdf";
+    case ".zip":
+      return "application/zip";
+    default:
+      return "application/octet-stream";
+  }
+}
+
 
 function jsonObject(value: unknown): Row {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {

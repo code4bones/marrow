@@ -43,6 +43,7 @@ GET  /project-memory/health
 GET  /project-memory/ready
 GET  /project-memory/tools
 POST /project-memory/call
+GET  /project-memory/artifacts/<id>/download
 ```
 
 Endpoint meaning:
@@ -64,7 +65,7 @@ Client launchers should use `GW_ENDPOINT` for the public gateway base URL:
 GW_ENDPOINT=https://memory.example.internal/project-memory
 ```
 
-Clients append concrete routes such as `${GW_ENDPOINT}/mcp`, `${GW_ENDPOINT}/health`, and `${GW_ENDPOINT}/ready`.
+Clients append concrete routes such as `${GW_ENDPOINT}/mcp`, `${GW_ENDPOINT}/health`, `${GW_ENDPOINT}/ready`, and `${GW_ENDPOINT}/artifacts/<id>/download`.
 
 If bearer auth is enabled on the gateway, the gateway runtime and clients must agree on the same token:
 

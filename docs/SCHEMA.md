@@ -65,6 +65,7 @@ Core MVP tables:
 * `decisions`
 * `links`
 * `events`
+* `artifacts`
 * `migrations`
 * `kv`
 
@@ -72,6 +73,8 @@ Gateway tables:
 
 * `gateway_clients`
 * `sync_conflicts`
+
+Artifact bytes are stored on the gateway filesystem under `ARTIFACT_DIR`; PostgreSQL stores artifact metadata and search indexes.
 
 Search tables:
 

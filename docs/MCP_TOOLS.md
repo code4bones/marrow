@@ -8,11 +8,14 @@ Tool names may be adapted to the MCP SDK naming conventions, but the concepts an
 
 Local SQLite stdio mode exposes the core project-memory tools.
 
-PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics over MCP Streamable HTTP:
+PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 
 * `gateway.about`
 * `gateway.status`
 * `gateway.clients`
+* `artifact.put`
+* `artifact.search`
+* `artifact.get`
 
 ## General response format
 
@@ -101,7 +104,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 25,
+    "tools": 28,
     "records": {
       "projects": 1,
       "items": 10,
@@ -162,6 +165,125 @@ Clients that cannot send custom headers, such as Codex CLI streamable HTTP MCP c
 ```text
 https://pmem.undoo.ru/api/mcp?client_id=developer@host&client_label=Developer%20Host&client_kind=codex
 ```
+
+---
+
+### `artifact.put`
+
+Store or update a shared artifact file on the gateway.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "templates/frontend/AGENTS.md",
+  "title": "Frontend AGENTS.md",
+  "description": "Reusable frontend agent instructions.",
+  "contentType": "text/markdown; charset=utf-8",
+  "contentBase64": "IyBBR0VOVFMubWQK",
+  "tags": ["agents", "frontend", "template"],
+  "overwrite": true
+}
+```
+
+For common artifacts, pass `"common": true` instead of `project`.
+
+Output:
+
+```json
+{
+  "artifact": {
+    "id": "A-MEMORY-001",
+    "scope": "project",
+    "path": "templates/frontend/AGENTS.md",
+    "title": "Frontend AGENTS.md",
+    "contentType": "text/markdown; charset=utf-8",
+    "sizeBytes": 1234,
+    "sha256": "...",
+    "downloadPath": "/artifacts/A-MEMORY-001/download",
+    "tags": ["agents", "frontend", "template"]
+  }
+}
+```
+
+Agents upload content as base64 so this works for Markdown and binary files. The gateway stores bytes on disk under `ARTIFACT_DIR` and metadata in PostgreSQL.
+
+---
+
+### `artifact.search`
+
+Search shared artifact metadata.
+
+Input:
+
+```json
+{
+  "query": "frontend AGENTS template",
+  "includeCommon": true,
+  "tags": ["agents"],
+  "limit": 10
+}
+```
+
+Output:
+
+```json
+{
+  "results": [
+    {
+      "id": "A-COMMON-001",
+      "scope": "common",
+      "path": "templates/frontend/AGENTS.md",
+      "title": "Frontend AGENTS.md",
+      "downloadPath": "/artifacts/A-COMMON-001/download"
+    }
+  ]
+}
+```
+
+To download an artifact, append `downloadPath` to `GW_ENDPOINT`, for example:
+
+```text
+https://pmem.undoo.ru/api/artifacts/A-COMMON-001/download
+```
+
+Bearer auth is still required.
+
+---
+
+### `artifact.get`
+
+Get artifact metadata by id or project/path.
+
+Input by id:
+
+```json
+{
+  "id": "A-COMMON-001"
+}
+```
+
+Input by path:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "templates/frontend/AGENTS.md"
+}
+```
+
+For small files, agents may request inline base64 content:
+
+```json
+{
+  "id": "A-COMMON-001",
+  "includeContent": true,
+  "maxBytes": 1048576
+}
+```
+
+Use direct download for larger files and binaries.
 
 ## Project tools
 

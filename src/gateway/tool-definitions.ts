@@ -28,6 +28,36 @@ const emptySchema = z.object({});
 const listGatewayClientsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
+const artifactPutSchema = z.object({
+  id: z.string().min(1).optional(),
+  project: z.string().nullable().optional(),
+  common: z.boolean().optional(),
+  path: z.string().min(1),
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  contentType: z.string().min(1).optional(),
+  contentBase64: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+  overwrite: z.boolean().optional()
+});
+const artifactSearchSchema = z.object({
+  query: z.string().min(1).optional(),
+  project: z.string().optional(),
+  includeCommon: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+});
+const artifactGetSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    project: z.string().optional(),
+    path: z.string().min(1).optional(),
+    includeContent: z.boolean().optional(),
+    maxBytes: z.number().int().min(1).max(5 * 1024 * 1024).optional()
+  })
+  .refine((value) => Boolean(value.id || value.path), {
+    message: "Either id or path is required."
+  });
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -93,6 +123,23 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "memory.update",
     description: "Update a shared memory item and record an event.",
     schema: updateMemorySchema
+  },
+  {
+    name: "artifact.put",
+    description:
+      "Store or update a shared artifact file on the gateway. Content is base64 so agents can upload text files and binaries.",
+    schema: artifactPutSchema
+  },
+  {
+    name: "artifact.search",
+    description: "Search shared artifact metadata and return download paths for matching files.",
+    schema: artifactSearchSchema
+  },
+  {
+    name: "artifact.get",
+    description:
+      "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
+    schema: artifactGetSchema
   },
   {
     name: "task.create",

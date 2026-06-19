@@ -1,5 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
@@ -89,6 +92,12 @@ async function handleRequest(
       return;
     }
 
+    const artifactDownloadMatch = requestPath.match(/^\/artifacts\/([^/]+)\/download$/);
+    if (request.method === "GET" && artifactDownloadMatch) {
+      await sendArtifactDownload(service, options, request, response, requestId, startedAt, context, artifactDownloadMatch[1]);
+      return;
+    }
+
     if (request.method === "POST" && requestPath === "/call") {
       const body = (await readJson(request)) as ToolCallBody;
       if (typeof body.tool !== "string") {
@@ -123,6 +132,34 @@ async function handleRequest(
     );
     send(500, fail(error));
   }
+}
+
+async function sendArtifactDownload(
+  service: PgToolService,
+  options: GatewayServerOptions,
+  request: IncomingMessage,
+  response: ServerResponse,
+  requestId: string,
+  startedAt: number,
+  context: GatewayRequestContext,
+  encodedId: string
+): Promise<void> {
+  const id = decodeURIComponent(encodedId);
+  const download = await service.artifactDownload(id);
+  const fileStat = await stat(download.absolutePath);
+  const filename = path.posix.basename(download.artifact.path).replace(/["\\]/g, "_");
+  response.writeHead(200, {
+    "content-type": download.artifact.contentType,
+    "content-length": fileStat.size,
+    "content-disposition": `attachment; filename="${filename}"`,
+    "x-request-id": requestId,
+    "x-artifact-id": download.artifact.id,
+    "x-artifact-sha256": download.artifact.sha256
+  });
+  createReadStream(download.absolutePath).pipe(response);
+  response.on("finish", () => {
+    logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
+  });
 }
 
 async function handleMcpRequest(
