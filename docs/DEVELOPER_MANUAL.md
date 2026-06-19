@@ -109,7 +109,8 @@ codex mcp add project-memory \
 Restart the agent after changing MCP configuration.
 
 The `client_id` should be stable for the developer or machine. This makes
-`gateway.clients` useful for collaboration and audit trails.
+`gateway.clients` useful for collaboration and audit trails. Gateway current
+project state is also scoped to this client id, so avoid random client ids.
 
 ### CodeWhale
 
@@ -425,7 +426,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.0.tgz
+npm install -g ./deadragdoll-pm3m-1.1.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

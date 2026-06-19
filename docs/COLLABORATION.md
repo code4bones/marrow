@@ -76,6 +76,11 @@ Each MCP HTTP client should send stable `X-Project-Memory-Client-*` headers when
 
 The gateway records clients in `gateway_clients` and exposes them through `gateway.clients`. `gateway.status` reports shared gateway health and record counts.
 
+In gateway mode, `project.set_current` is scoped to the requesting client id.
+One developer or agent changing current project must not change another
+client's implicit project scope. The legacy global `current_project_id` key is
+kept only as a fallback for older deployments.
+
 ## Collaboration-Ready Principles
 
 ### 1. Local-first remains supported

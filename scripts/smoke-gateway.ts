@@ -48,6 +48,13 @@ try {
   await callGateway("project.set_current", { id: state.projectId });
   console.log("ok - project.set_current");
 
+  const currentProject = await callGateway("project.current", {});
+  assert(
+    expectData<{ project: { id: string } }>(currentProject).project.id === state.projectId,
+    "Gateway current project did not use the smoke client scope."
+  );
+  console.log("ok - project.current");
+
   const memory = await callGateway("memory.create", {
     project: state.projectId,
     type: "failed_attempt",
@@ -91,7 +98,7 @@ try {
   console.log(`Gateway smoke test passed using ${started.url}`);
 } finally {
   if (state.projectId) {
-    await db("kv").where({ key: "current_project_id", value: state.projectId }).del();
+    await db("kv").where({ key: `current_project_id:${clientId}` }).del();
     await db("projects").where({ id: state.projectId }).del();
   }
   await db("gateway_clients").where({ id: clientId }).del();

@@ -15,12 +15,24 @@ const started = await startGatewayServer(service, {
   token
 });
 const clientId = `gateway-mcp-http-smoke-${Date.now()}`;
+const secondClientId = `gateway-mcp-http-smoke-second-${Date.now()}`;
 const endpoint = new URL(`${started.url}/mcp`);
 endpoint.searchParams.set("client_id", clientId);
 endpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke");
 endpoint.searchParams.set("client_kind", "mcp-http");
+const secondEndpoint = new URL(`${started.url}/mcp`);
+secondEndpoint.searchParams.set("client_id", secondClientId);
+secondEndpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke Second");
+secondEndpoint.searchParams.set("client_kind", "mcp-http");
 
 const transport = new StreamableHTTPClientTransport(endpoint, {
+  requestInit: {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  }
+});
+const secondTransport = new StreamableHTTPClientTransport(secondEndpoint, {
   requestInit: {
     headers: {
       authorization: `Bearer ${token}`
@@ -32,9 +44,14 @@ const client = new Client({
   name: "project-memory-gateway-mcp-http-smoke",
   version: "0.1.0"
 });
+const secondClient = new Client({
+  name: "project-memory-gateway-mcp-http-smoke-second",
+  version: "0.1.0"
+});
 
 const state: {
   projectId?: string;
+  secondProjectId?: string;
   taskId?: string;
   artifactId?: string;
   artifactPath?: string;
@@ -42,6 +59,7 @@ const state: {
 
 try {
   await client.connect(transport);
+  await secondClient.connect(secondTransport);
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
@@ -204,6 +222,45 @@ try {
     }
   });
   assertOk(currentResult.structuredContent, "project.set_current failed.");
+
+  const secondProjectResult = await secondClient.callTool({
+    name: "project.create",
+    arguments: {
+      slug: `gateway-mcp-http-smoke-second-${unique}`,
+      title: `Gateway MCP HTTP Smoke Second ${unique}`,
+      rootPath: `/tmp/gateway-mcp-http-smoke-second-${unique}`
+    }
+  });
+  assertOk(secondProjectResult.structuredContent, "second project.create failed.");
+  state.secondProjectId = readNestedString(secondProjectResult.structuredContent, ["data", "project", "id"]);
+
+  const secondCurrentResult = await secondClient.callTool({
+    name: "project.set_current",
+    arguments: {
+      id: state.secondProjectId
+    }
+  });
+  assertOk(secondCurrentResult.structuredContent, "second project.set_current failed.");
+
+  const firstCurrentResult = await client.callTool({
+    name: "project.current",
+    arguments: {}
+  });
+  assertOk(firstCurrentResult.structuredContent, "first project.current failed.");
+  assert(
+    readNestedString(firstCurrentResult.structuredContent, ["data", "project", "id"]) === state.projectId,
+    "first client current project was changed by the second client."
+  );
+
+  const secondCurrentCheckResult = await secondClient.callTool({
+    name: "project.current",
+    arguments: {}
+  });
+  assertOk(secondCurrentCheckResult.structuredContent, "second project.current failed.");
+  assert(
+    readNestedString(secondCurrentCheckResult.structuredContent, ["data", "project", "id"]) === state.secondProjectId,
+    "second client current project did not stay client-scoped."
+  );
 
   const memoryResult = await client.callTool({
     name: "memory.create",
@@ -531,9 +588,13 @@ try {
   console.log(`Gateway MCP HTTP smoke test passed using ${started.url}/mcp`);
 } finally {
   await client.close();
+  await secondClient.close();
   if (state.projectId) {
-    await db("kv").where({ key: "current_project_id", value: state.projectId }).del();
+    await db("kv").whereIn("key", [`current_project_id:${clientId}`, `current_project_id:${secondClientId}`]).del();
     await db("projects").where({ id: state.projectId }).del();
+  }
+  if (state.secondProjectId) {
+    await db("projects").where({ id: state.secondProjectId }).del();
   }
   if (state.artifactId) {
     await db("artifacts").where({ id: state.artifactId }).del();
@@ -542,6 +603,7 @@ try {
     await rm(resolve(process.env.ARTIFACT_DIR ?? "artifacts", "common", state.artifactPath), { force: true });
   }
   await db("gateway_clients").where({ id: clientId }).del();
+  await db("gateway_clients").where({ id: secondClientId }).del();
   await new Promise<void>((resolveServerClose) => started.server.close(() => resolveServerClose()));
   await service.close();
 }

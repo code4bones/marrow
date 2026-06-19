@@ -149,7 +149,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.1.0",
+    "packageVersion": "1.1.1",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 41,
@@ -241,7 +241,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.1.0",
+      "packageVersion": "1.1.1",
       "tools": 41
     },
     "database": {
@@ -892,8 +892,9 @@ Output:
 Behavior:
 
 * validate project exists
-* store current project in config or `kv`
-* environment variable may override stored current project
+* in gateway mode, store current project per client id
+* legacy global `kv.current_project_id` may be used only as a fallback
+* local mode may store current project in local config or `kv`
 
 ---
 
@@ -922,6 +923,10 @@ CURRENT_PROJECT_NOT_SET
 ```
 
 if no current project is configured.
+
+In shared gateway mode, current project is scoped to the requesting client. One
+developer or agent changing current project must not change another client's
+implicit project scope.
 
 ## Memory tools
 

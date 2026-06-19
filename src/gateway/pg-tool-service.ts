@@ -93,9 +93,9 @@ export class PgToolService {
         case "project.resolve":
           return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed));
         case "project.set_current":
-          return ok("Current project set.", { currentProject: await this.setCurrentProject(parsed) });
+          return ok("Current project set.", { currentProject: await this.setCurrentProject(parsed, requestContext) });
         case "project.current":
-          return ok("Current project loaded.", { project: await this.currentProject() });
+          return ok("Current project loaded.", { project: await this.currentProject(requestContext) });
         case "memory.create":
           return ok("Memory item created.", { item: await this.createMemory(parsed, requestContext) });
         case "memory.upsert": {
@@ -107,17 +107,17 @@ export class PgToolService {
         case "memory.get":
           return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id)) });
         case "memory.search":
-          return ok("Memory searched.", { results: await this.searchMemory(parsed) });
+          return ok("Memory searched.", { results: await this.searchMemory(parsed, requestContext) });
         case "memory.update":
           return ok("Memory item updated.", { item: await this.updateMemory(parsed, requestContext) });
         case "artifact.put":
           return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
         case "artifact.search":
-          return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed) });
+          return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed, requestContext) });
         case "artifact.list":
-          return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed) });
+          return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed, requestContext) });
         case "artifact.get":
-          return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed) });
+          return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed, requestContext) });
         case "artifact.update_metadata":
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "artifact.archive":
@@ -125,11 +125,11 @@ export class PgToolService {
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
-          return ok("Tasks listed.", { tasks: await this.listTasks(parsed) });
+          return ok("Tasks listed.", { tasks: await this.listTasks(parsed, requestContext) });
         case "task.get":
           return ok("Task loaded.", { task: await this.getTask(String(parsed.id)) });
         case "task.next":
-          return ok("Next task loaded.", { task: await this.nextTask(parsed) });
+          return ok("Next task loaded.", { task: await this.nextTask(parsed, requestContext) });
         case "task.update_status":
           return ok("Task status updated.", { task: await this.updateTaskStatus(parsed, requestContext) });
         case "decision.record":
@@ -137,13 +137,13 @@ export class PgToolService {
         case "decision.supersede":
           return ok("Decision superseded.", await this.supersedeDecision(parsed, requestContext));
         case "decision.list":
-          return ok("Decisions listed.", { decisions: await this.listDecisions(parsed) });
+          return ok("Decisions listed.", { decisions: await this.listDecisions(parsed, requestContext) });
         case "decision.get":
           return ok("Decision loaded.", { decision: await this.getDecision(String(parsed.id)) });
         case "event.record":
           return ok("Event recorded.", { event: await this.recordEvent(parsed, requestContext) });
         case "event.list":
-          return ok("Events listed.", { events: await this.listEvents(parsed) });
+          return ok("Events listed.", { events: await this.listEvents(parsed, requestContext) });
         case "link.create":
           return ok("Link created.", { link: await this.createLink(parsed, requestContext) });
         case "link.list":
@@ -151,7 +151,7 @@ export class PgToolService {
         case "preflight":
           return ok("Preflight context loaded.", await this.preflight(parsed));
         case "preflight.by_query":
-          return ok("Preflight query context loaded.", await this.preflightByQuery(parsed));
+          return ok("Preflight query context loaded.", await this.preflightByQuery(parsed, requestContext));
         case "handoff.create":
           return ok("Handoff created.", await this.createHandoff(parsed, requestContext));
         default:
@@ -558,30 +558,32 @@ export class PgToolService {
     };
   }
 
-  private async setCurrentProject(input: Row) {
+  private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input);
-    await this.setKv("current_project_id", project.id);
+    await this.setKv(currentProjectKey(context.clientId), project.id);
     return project;
   }
 
-  private async currentProject() {
-    const currentProjectId = await this.getKv("current_project_id");
+  private async currentProject(context?: NormalizedGatewayRequestContext) {
+    const currentProjectId = context
+      ? (await this.getKv(currentProjectKey(context.clientId))) ?? (await this.getKv("current_project_id"))
+      : await this.getKv("current_project_id");
     if (!currentProjectId) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Current project is not configured.");
     }
     return this.getProject({ id: currentProjectId });
   }
 
-  private async resolveProject(project?: unknown) {
+  private async resolveProject(project?: unknown, context?: NormalizedGatewayRequestContext) {
     if (typeof project === "string" && project.length > 0) {
       return project.startsWith("P-") ? this.getProject({ id: project }) : this.getProject({ slug: project });
     }
-    return this.currentProject();
+    return this.currentProject(context);
   }
 
   private async createMemory(input: Row, context: NormalizedGatewayRequestContext) {
     const common = input.common === true || input.project === null;
-    const project = common ? null : await this.resolveProject(input.project);
+    const project = common ? null : await this.resolveProject(input.project, context);
     const prefix = project ? `I-${projectKeyFromId(project.id)}` : commonItemPrefix(String(input.type));
     const now = nowIso();
     const row = {
@@ -607,7 +609,7 @@ export class PgToolService {
   }
 
   private async upsertMemory(input: Row, context: NormalizedGatewayRequestContext) {
-    const existing = await this.findExistingMemoryForUpsert(input);
+    const existing = await this.findExistingMemoryForUpsert(input, context);
     if (!existing) {
       return {
         action: "created",
@@ -637,7 +639,10 @@ export class PgToolService {
     };
   }
 
-  private async findExistingMemoryForUpsert(input: Row): Promise<Row | undefined> {
+  private async findExistingMemoryForUpsert(
+    input: Row,
+    context: NormalizedGatewayRequestContext
+  ): Promise<Row | undefined> {
     const match = typeof input.match === "string" ? input.match : undefined;
     if ((match === "id" || !match) && typeof input.id === "string") {
       const byId = await this.db("items").where({ id: input.id }).first();
@@ -647,7 +652,7 @@ export class PgToolService {
     }
 
     const common = input.common === true || input.project === null;
-    const project = common ? null : await this.resolveProject(input.project);
+    const project = common ? null : await this.resolveProject(input.project, context);
     return this.db("items")
       .where({ type: String(input.type), title: String(input.title) })
       .andWhere((builder) => {
@@ -736,9 +741,9 @@ export class PgToolService {
     return itemOut(row);
   }
 
-  private async searchMemory(input: Row) {
+  private async searchMemory(input: Row, context?: NormalizedGatewayRequestContext) {
     const includeCommon = input.includeCommon !== false;
-    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
     if (!project && !includeCommon) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Search requires a project or includeCommon=true.");
     }
@@ -808,7 +813,7 @@ export class PgToolService {
 
   private async putArtifact(input: Row, context: NormalizedGatewayRequestContext) {
     const common = input.common === true || input.project === null;
-    const project = common ? null : await this.resolveProject(input.project);
+    const project = common ? null : await this.resolveProject(input.project, context);
     const artifactPath = normalizeArtifactPath(String(input.path));
     const content = decodeBase64(String(input.contentBase64));
     const maxBytes = Number(process.env.ARTIFACT_MAX_BYTES ?? 10 * 1024 * 1024);
@@ -881,9 +886,9 @@ export class PgToolService {
     return artifactOut(row);
   }
 
-  private async searchArtifacts(input: Row) {
+  private async searchArtifacts(input: Row, context?: NormalizedGatewayRequestContext) {
     const includeCommon = input.includeCommon !== false;
-    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
     if (!project && !includeCommon) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact search requires a project or includeCommon=true.");
     }
@@ -921,14 +926,14 @@ export class PgToolService {
     return rows.map(artifactSearchOut);
   }
 
-  private async listArtifacts(input: Row) {
+  private async listArtifacts(input: Row, context?: NormalizedGatewayRequestContext) {
     const commonOnly = input.common === true || input.project === null;
     const includeCommon = commonOnly ? true : input.includeCommon !== false;
     const project = commonOnly
       ? null
       : input.project
-        ? await this.resolveProject(input.project)
-        : await this.tryCurrentProject();
+        ? await this.resolveProject(input.project, context)
+        : await this.tryCurrentProject(context);
     if (!project && !includeCommon) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact list requires a project or includeCommon=true.");
     }
@@ -963,8 +968,8 @@ export class PgToolService {
     return rows.map(artifactOut);
   }
 
-  private async getArtifact(input: Row) {
-    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+  private async getArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
+    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
     if (input.includeContent === true) {
       const maxBytes = Number(input.maxBytes ?? 1024 * 1024);
@@ -986,7 +991,7 @@ export class PgToolService {
   }
 
   private async updateArtifactMetadata(input: Row, context: NormalizedGatewayRequestContext) {
-    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
     const [row] = await this.db("artifacts")
       .where({ id: String(current.id) })
       .update({
@@ -1013,7 +1018,7 @@ export class PgToolService {
   }
 
   private async archiveArtifact(input: Row, context: NormalizedGatewayRequestContext) {
-    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
     if (String(current.status) === "archived") {
       return {
         action: "already_archived",
@@ -1058,9 +1063,9 @@ export class PgToolService {
     return row;
   }
 
-  private async artifactRowByPath(input: Row): Promise<Row> {
+  private async artifactRowByPath(input: Row, context?: NormalizedGatewayRequestContext): Promise<Row> {
     const common = input.project === null;
-    const project = common ? null : await this.resolveProject(input.project);
+    const project = common ? null : await this.resolveProject(input.project, context);
     const artifactPath = normalizeArtifactPath(String(input.path));
     const row = await this.db("artifacts").where({ project_id: project?.id ?? null, path: artifactPath }).first();
     if (!row) {
@@ -1073,7 +1078,7 @@ export class PgToolService {
   }
 
   private async createTask(input: Row, context: NormalizedGatewayRequestContext) {
-    const project = await this.resolveProject(input.project);
+    const project = await this.resolveProject(input.project, context);
     const now = nowIso();
     const row = {
       id: await this.nextId("tasks", `T-${projectKeyFromId(project.id)}`),
@@ -1101,8 +1106,8 @@ export class PgToolService {
     return taskOut(row);
   }
 
-  private async listTasks(input: Row) {
-    const project = await this.resolveProject(input.project);
+  private async listTasks(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
     let query = this.db("tasks").select("*").where("project_id", project.id);
     if (input.status) {
       query = query.andWhere("status", String(input.status));
@@ -1121,8 +1126,8 @@ export class PgToolService {
     return taskOut(row);
   }
 
-  private async nextTask(input: Row) {
-    const project = await this.resolveProject(input.project);
+  private async nextTask(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
     const row = await this.db("tasks")
       .where({ project_id: project.id, status: "todo" })
       .orderBy("priority")
@@ -1160,7 +1165,7 @@ export class PgToolService {
   }
 
   private async recordDecision(input: Row, context: NormalizedGatewayRequestContext) {
-    const project = input.project === null ? null : await this.resolveProject(input.project);
+    const project = input.project === null ? null : await this.resolveProject(input.project, context);
     const now = nowIso();
     const row = {
       id: await this.nextId("decisions", project ? `D-${projectKeyFromId(project.id)}` : "D-COMMON"),
@@ -1197,7 +1202,7 @@ export class PgToolService {
       });
     }
 
-    const projectId = await this.resolveDecisionProjectId(input, oldRow);
+    const projectId = await this.resolveDecisionProjectId(input, oldRow, context);
     if (projectId !== stringOrNull(oldRow.project_id)) {
       throw new AppError("VALIDATION_ERROR", "Replacement decision must stay in the same project/common scope.", {
         oldDecisionId: oldRow.id,
@@ -1250,14 +1255,18 @@ export class PgToolService {
     };
   }
 
-  private async resolveDecisionProjectId(input: Row, oldRow: Row): Promise<string | null> {
+  private async resolveDecisionProjectId(
+    input: Row,
+    oldRow: Row,
+    context: NormalizedGatewayRequestContext
+  ): Promise<string | null> {
     if (input.project === undefined) {
       return stringOrNull(oldRow.project_id);
     }
     if (input.project === null) {
       return null;
     }
-    return (await this.resolveProject(input.project)).id;
+    return (await this.resolveProject(input.project, context)).id;
   }
 
   private async createSupersedesLink(
@@ -1285,9 +1294,9 @@ export class PgToolService {
     return linkOut(row);
   }
 
-  private async listDecisions(input: Row) {
+  private async listDecisions(input: Row, context?: NormalizedGatewayRequestContext) {
     const includeCommon = input.includeCommon !== false;
-    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
     let query = this.db("decisions").select("*");
     query = query.where((builder) => {
       if (project) {
@@ -1313,7 +1322,7 @@ export class PgToolService {
   }
 
   private async recordEvent(input: Row, context: NormalizedGatewayRequestContext) {
-    const project = input.project === null ? null : await this.resolveProject(input.project);
+    const project = input.project === null ? null : await this.resolveProject(input.project, context);
     return this.recordEventForProject(project?.id ?? null, {
       type: String(input.type),
       title: asNullableString(input.title),
@@ -1322,13 +1331,13 @@ export class PgToolService {
     }, context);
   }
 
-  private async listEvents(input: Row) {
+  private async listEvents(input: Row, context?: NormalizedGatewayRequestContext) {
     let query = this.db("events").select("*");
     if (input.project !== undefined) {
       if (input.project === null) {
         query = query.whereNull("project_id");
       } else {
-        const project = await this.resolveProject(input.project);
+        const project = await this.resolveProject(input.project, context);
         query = query.where("project_id", project.id);
       }
     }
@@ -1341,7 +1350,7 @@ export class PgToolService {
   private async createLink(input: Row, context: NormalizedGatewayRequestContext) {
     await this.assertRecordExists(String(input.fromId));
     await this.assertRecordExists(String(input.toId));
-    const project = input.project === null ? null : await this.resolveProject(input.project);
+    const project = input.project === null ? null : await this.resolveProject(input.project, context);
     const row = {
       id: await this.nextId("links", project ? `L-${projectKeyFromId(project.id)}` : "L-COMMON"),
       project_id: project?.id ?? null,
@@ -1427,9 +1436,9 @@ export class PgToolService {
     };
   }
 
-  private async preflightByQuery(input: Row) {
+  private async preflightByQuery(input: Row, context?: NormalizedGatewayRequestContext) {
     const includeCommon = input.includeCommon !== false;
-    const project = input.project ? await this.resolveProject(input.project) : await this.tryCurrentProject();
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
     if (!project && !includeCommon) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "preflight.by_query requires a project or includeCommon=true.");
     }
@@ -1652,9 +1661,9 @@ export class PgToolService {
     return row?.value ?? null;
   }
 
-  private async tryCurrentProject() {
+  private async tryCurrentProject(context?: NormalizedGatewayRequestContext) {
     try {
-      return await this.currentProject();
+      return await this.currentProject(context);
     } catch (error) {
       if (error instanceof AppError && error.code === "CURRENT_PROJECT_NOT_SET") {
         return null;
@@ -1756,6 +1765,10 @@ function connectionSnippets() {
       }
     }
   ];
+}
+
+function currentProjectKey(clientId: string): string {
+  return `current_project_id:${clientId}`;
 }
 
 function scoreProjectCandidate(row: Row, input: Row) {
