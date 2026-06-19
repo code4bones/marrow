@@ -23,6 +23,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `project.resolve`
 * `artifact.put`
 * `artifact.search`
+* `artifact.list`
 * `artifact.get`
 * `artifact.update_metadata`
 * `artifact.archive`
@@ -137,7 +138,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 38,
+    "tools": 39,
     "node": {
       "version": "v24.16.0"
     },
@@ -177,7 +178,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 38
+      "tools": 39
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -227,7 +228,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 38
+      "tools": 39
     },
     "database": {
       "engine": "postgresql",
@@ -342,7 +343,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 38,
+    "tools": 39,
     "records": {
       "projects": 1,
       "items": 10,
@@ -491,6 +492,64 @@ Bearer auth is still required.
 
 Archived artifacts are hidden by default. Pass `includeArchived=true` or
 `status="archived"` when searching archived records intentionally.
+
+---
+
+### `artifact.list`
+
+List artifacts for navigation by scope, path prefix, tags, and lifecycle status.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "includeCommon": true,
+  "pathPrefix": "templates/frontend",
+  "tags": ["agents"],
+  "status": "active",
+  "limit": 50
+}
+```
+
+For common-only artifact navigation:
+
+```json
+{
+  "common": true,
+  "pathPrefix": "templates",
+  "includeArchived": true
+}
+```
+
+Output:
+
+```json
+{
+  "artifacts": [
+    {
+      "id": "A-COMMON-001",
+      "scope": "common",
+      "path": "templates/frontend/AGENTS.md",
+      "title": "Frontend AGENTS.md",
+      "status": "active",
+      "downloadPath": "/artifacts/A-COMMON-001/download"
+    }
+  ]
+}
+```
+
+Behavior:
+
+* defaults to current project plus common artifacts
+* supports common-only listing with `common=true` or `project=null`
+* filters by safe relative `pathPrefix`
+* filters by JSON tags
+* hides archived artifacts unless `includeArchived=true` or `status="archived"`
+* sorts by project artifacts first, then common, then path
+
+Use this when an agent needs to browse a folder-like artifact hierarchy. Use
+`artifact.search` when the agent needs fuzzy full-text lookup.
 
 ---
 

@@ -59,6 +59,7 @@ try {
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
   assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
   assert(toolNames.includes("artifact.archive"), "artifact.archive tool was not listed.");
+  assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -344,6 +345,21 @@ try {
     "artifact.update_metadata did not update the artifact title."
   );
 
+  const artifactListResult = await client.callTool({
+    name: "artifact.list",
+    arguments: {
+      common: true,
+      pathPrefix: "gateway-smoke",
+      tags: ["metadata"],
+      limit: 5
+    }
+  });
+  assertOk(artifactListResult.structuredContent, "artifact.list failed.");
+  const listedArtifactIds = readNestedArray(artifactListResult.structuredContent, ["data", "artifacts"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(listedArtifactIds.includes(state.artifactId), "artifact.list did not include active smoke artifact.");
+
   const downloadPath = readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "downloadPath"]);
   const downloadResponse = await fetch(`${started.url}${downloadPath}`, {
     headers: {
@@ -394,6 +410,22 @@ try {
     isRecord(item) ? item.id : undefined
   );
   assert(!activeArtifactIds.includes(state.artifactId), "artifact.search returned archived artifact by default.");
+
+  const archivedListResult = await client.callTool({
+    name: "artifact.list",
+    arguments: {
+      common: true,
+      pathPrefix: "gateway-smoke",
+      status: "archived",
+      includeArchived: true,
+      limit: 5
+    }
+  });
+  assertOk(archivedListResult.structuredContent, "artifact.list archived failed.");
+  const archivedListArtifactIds = readNestedArray(archivedListResult.structuredContent, ["data", "artifacts"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(archivedListArtifactIds.includes(state.artifactId), "artifact.list did not include archived smoke artifact.");
 
   const taskResult = await client.callTool({
     name: "task.create",

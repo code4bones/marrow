@@ -85,6 +85,16 @@ const artifactSearchSchema = z.object({
   tags: z.array(z.string()).optional(),
   limit: z.number().int().min(1).max(100).optional()
 });
+const artifactListSchema = z.object({
+  project: z.string().nullable().optional(),
+  common: z.boolean().optional(),
+  includeCommon: z.boolean().optional(),
+  pathPrefix: z.string().min(1).optional(),
+  tags: z.array(z.string()).optional(),
+  includeArchived: z.boolean().optional(),
+  status: z.enum(["active", "archived"]).optional(),
+  limit: z.number().int().min(1).max(200).optional()
+});
 const artifactGetSchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -242,6 +252,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "artifact.search",
     description: "Search shared artifact metadata and return download paths for matching files.",
     schema: artifactSearchSchema
+  },
+  {
+    name: "artifact.list",
+    description: "List artifacts by project/common scope, path prefix, tags, and lifecycle status for navigation.",
+    schema: artifactListSchema
   },
   {
     name: "artifact.get",

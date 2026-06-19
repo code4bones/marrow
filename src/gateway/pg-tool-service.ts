@@ -114,6 +114,8 @@ export class PgToolService {
           return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
         case "artifact.search":
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed) });
+        case "artifact.list":
+          return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed) });
         case "artifact.get":
           return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed) });
         case "artifact.update_metadata":
@@ -912,6 +914,48 @@ export class PgToolService {
       .orderBy(queryText ? "rank" : "created_at", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(artifactSearchOut);
+  }
+
+  private async listArtifacts(input: Row) {
+    const commonOnly = input.common === true || input.project === null;
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project)
+        : await this.tryCurrentProject();
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact list requires a project or includeCommon=true.");
+    }
+
+    let query = this.db("artifacts").select("*");
+    query = query.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+
+    if (typeof input.pathPrefix === "string") {
+      const prefix = normalizeArtifactPath(input.pathPrefix);
+      query = query.andWhere("path", "like", `${prefix}%`);
+    }
+    if (Array.isArray(input.tags) && input.tags.length > 0) {
+      query = query.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
+    }
+    if (input.status) {
+      query = query.andWhere("status", String(input.status));
+    } else if (input.includeArchived !== true) {
+      query = query.andWhere("status", "active");
+    }
+
+    const rows = await query
+      .orderByRaw("case when project_id is null then 1 else 0 end asc")
+      .orderBy("path", "asc")
+      .limit(Number(input.limit ?? 50));
+    return rows.map(artifactOut);
   }
 
   private async getArtifact(input: Row) {

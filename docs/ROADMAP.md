@@ -52,7 +52,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
 9. `artifact.archive` — implemented
    - Prefer lifecycle archival over hard delete for shared files.
 
-10. `artifact.list`
+10. `artifact.list` — implemented
     - List artifacts by project/common scope, path prefix, and tags.
     - Search remains for fuzzy lookup; list is for navigation.
 
@@ -83,6 +83,7 @@ Start with:
 7. `project.resolve` — implemented
 8. `artifact.update_metadata` — implemented
 9. `artifact.archive` — implemented
+10. `artifact.list` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.
