@@ -46,7 +46,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
 
 ## Priority 3 — Artifacts
 
-8. `artifact.update_metadata`
+8. `artifact.update_metadata` — implemented
    - Update title, description, and tags without re-uploading bytes.
 
 9. `artifact.archive`
@@ -79,6 +79,9 @@ Start with:
 3. `gateway.backup_manifest` — implemented
 4. `memory.upsert` — implemented
 5. `failed_attempt.record` — implemented
+6. `decision.supersede` — implemented
+7. `project.resolve` — implemented
+8. `artifact.update_metadata` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.

@@ -116,6 +116,8 @@ export class PgToolService {
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed) });
         case "artifact.get":
           return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed) });
+        case "artifact.update_metadata":
+          return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
@@ -921,6 +923,33 @@ export class PgToolService {
       };
     }
     return output;
+  }
+
+  private async updateArtifactMetadata(input: Row, context: NormalizedGatewayRequestContext) {
+    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input);
+    const [row] = await this.db("artifacts")
+      .where({ id: String(current.id) })
+      .update({
+        title: typeof input.title === "string" ? input.title : current.title,
+        description:
+          input.description === null
+            ? null
+            : typeof input.description === "string"
+              ? input.description
+              : current.description,
+        tags: Array.isArray(input.tags) ? jsonStringArray(input.tags) : current.tags,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    await this.recordEventForProject(stringOrNull(row.project_id), {
+      type: "artifact.metadata_updated",
+      title: `Artifact metadata updated: ${String(row.path)}`,
+      related_id: row.id
+    }, context);
+    return artifactOut(row);
   }
 
   private async artifactRowById(id: string): Promise<Row> {

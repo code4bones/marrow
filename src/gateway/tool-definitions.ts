@@ -94,6 +94,24 @@ const artifactGetSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const artifactUpdateMetadataSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    project: z.string().nullable().optional(),
+    path: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .refine((value) => Boolean(value.id || value.path), {
+    message: "Either id or path is required."
+  })
+  .refine(
+    (value) => value.title !== undefined || value.description !== undefined || value.tags !== undefined,
+    {
+      message: "At least one metadata field is required."
+    }
+  );
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -218,6 +236,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
     schema: artifactGetSchema
+  },
+  {
+    name: "artifact.update_metadata",
+    description: "Update artifact title, description, and tags without re-uploading bytes.",
+    schema: artifactUpdateMetadataSchema
   },
   {
     name: "task.create",

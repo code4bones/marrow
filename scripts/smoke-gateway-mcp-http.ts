@@ -57,6 +57,7 @@ try {
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
+  assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -324,6 +325,22 @@ try {
     readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "contentBase64"]) ===
       Buffer.from(artifactContent, "utf8").toString("base64"),
     "artifact.get did not return expected inline content."
+  );
+
+  const artifactMetadataResult = await client.callTool({
+    name: "artifact.update_metadata",
+    arguments: {
+      id: state.artifactId,
+      title: "Gateway smoke AGENTS template updated",
+      description: "Updated smoke test artifact metadata.",
+      tags: ["smoke", "agents-template", "metadata"]
+    }
+  });
+  assertOk(artifactMetadataResult.structuredContent, "artifact.update_metadata failed.");
+  assert(
+    readNestedString(artifactMetadataResult.structuredContent, ["data", "artifact", "title"]) ===
+      "Gateway smoke AGENTS template updated",
+    "artifact.update_metadata did not update the artifact title."
   );
 
   const downloadPath = readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "downloadPath"]);

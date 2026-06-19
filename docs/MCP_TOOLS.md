@@ -24,6 +24,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.put`
 * `artifact.search`
 * `artifact.get`
+* `artifact.update_metadata`
 
 ## General response format
 
@@ -135,7 +136,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 36,
+    "tools": 37,
     "node": {
       "version": "v24.16.0"
     },
@@ -175,7 +176,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 36
+      "tools": 37
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -225,7 +226,7 @@ Output:
     "version": {
       "packageName": "@deadragdoll/pm3m",
       "packageVersion": "1.0.0",
-      "tools": 36
+      "tools": 37
     },
     "database": {
       "engine": "postgresql",
@@ -340,7 +341,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 36,
+    "tools": 37,
     "records": {
       "projects": 1,
       "items": 10,
@@ -520,6 +521,56 @@ For small files, agents may request inline base64 content:
 ```
 
 Use direct download for larger files and binaries.
+
+---
+
+### `artifact.update_metadata`
+
+Update artifact metadata without re-uploading bytes.
+
+Input by id:
+
+```json
+{
+  "id": "A-COMMON-001",
+  "title": "Frontend AGENTS.md template",
+  "description": "Reusable frontend instructions for agents.",
+  "tags": ["agents", "frontend", "template"]
+}
+```
+
+Input by path:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "templates/frontend/AGENTS.md",
+  "tags": ["agents", "frontend", "updated"]
+}
+```
+
+Output:
+
+```json
+{
+  "artifact": {
+    "id": "A-COMMON-001",
+    "title": "Frontend AGENTS.md template",
+    "description": "Reusable frontend instructions for agents.",
+    "sha256": "...",
+    "downloadPath": "/artifacts/A-COMMON-001/download"
+  }
+}
+```
+
+Behavior:
+
+* updates `title`, `description`, and/or `tags`
+* does not change file bytes, `contentType`, `sizeBytes`, or `sha256`
+* records an `artifact.metadata_updated` event
+
+Use this when an uploaded artifact is good but its search metadata needs to be
+cleaned up.
 
 ## Project tools
 
