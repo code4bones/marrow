@@ -29,6 +29,9 @@ const gatewayManualsSchema = z.object({
   audience: z.enum(["developer", "user", "agent", "all"]).optional(),
   includeContent: z.boolean().optional()
 });
+const memoryUpsertSchema = createMemorySchema.extend({
+  match: z.enum(["id", "scope_type_title"]).optional()
+});
 const listGatewayClientsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
@@ -130,6 +133,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "memory.create",
     description: "Create a project or common memory item in the shared gateway database.",
     schema: createMemorySchema
+  },
+  {
+    name: "memory.upsert",
+    description:
+      "Create or update a memory item idempotently. Match by id when provided, otherwise by scope + type + title to avoid duplicate shared records.",
+    schema: memoryUpsertSchema
   },
   {
     name: "memory.get",

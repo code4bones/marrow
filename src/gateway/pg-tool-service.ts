@@ -94,6 +94,10 @@ export class PgToolService {
           return ok("Current project loaded.", { project: await this.currentProject() });
         case "memory.create":
           return ok("Memory item created.", { item: await this.createMemory(parsed, requestContext) });
+        case "memory.upsert": {
+          const result = await this.upsertMemory(parsed, requestContext);
+          return ok(`Memory item ${result.action}.`, result);
+        }
         case "memory.get":
           return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id)) });
         case "memory.search":
@@ -501,6 +505,60 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return itemOut(row);
+  }
+
+  private async upsertMemory(input: Row, context: NormalizedGatewayRequestContext) {
+    const existing = await this.findExistingMemoryForUpsert(input);
+    if (!existing) {
+      return {
+        action: "created",
+        item: await this.createMemory(input, context)
+      };
+    }
+
+    const patch = {
+      title: String(input.title),
+      body: String(input.body),
+      status: typeof input.status === "string" ? input.status : existing.status,
+      tags: Array.isArray(input.tags) ? jsonStringArray(input.tags) : existing.tags,
+      updated_by: context.clientId,
+      source_instance_id: context.clientId,
+      updated_at: nowIso(),
+      version: Number(existing.version ?? 1) + 1
+    };
+    const [row] = await this.db("items").where({ id: String(existing.id) }).update(patch).returning("*");
+    await this.recordEventForProject(row.project_id, {
+      type: "item.updated",
+      title: `Memory item upserted: ${row.title}`,
+      related_id: row.id
+    }, context);
+    return {
+      action: "updated",
+      item: itemOut(row)
+    };
+  }
+
+  private async findExistingMemoryForUpsert(input: Row): Promise<Row | undefined> {
+    const match = typeof input.match === "string" ? input.match : undefined;
+    if ((match === "id" || !match) && typeof input.id === "string") {
+      const byId = await this.db("items").where({ id: input.id }).first();
+      if (byId || match === "id") {
+        return byId;
+      }
+    }
+
+    const common = input.common === true || input.project === null;
+    const project = common ? null : await this.resolveProject(input.project);
+    return this.db("items")
+      .where({ type: String(input.type), title: String(input.title) })
+      .andWhere((builder) => {
+        if (project) {
+          builder.where("project_id", project.id);
+        } else {
+          builder.whereNull("project_id");
+        }
+      })
+      .first();
   }
 
   private async getMemory(id: string) {

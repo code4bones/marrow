@@ -130,7 +130,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 31,
+    "tools": 32,
     "node": {
       "version": "v24.16.0"
     },
@@ -170,7 +170,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 31
+      "tools": 32
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -274,7 +274,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 31,
+    "tools": 32,
     "records": {
       "projects": 1,
       "items": 10,
@@ -657,6 +657,49 @@ Behavior:
 
 * if `project` is null or omitted with `common=true`, create common item
 * record `item.created` event
+
+---
+
+### `memory.upsert`
+
+Create or update a memory item idempotently.
+
+When `id` is provided, the gateway first tries to match by `id`. Otherwise it
+matches by scope, `type`, and `title`:
+
+```text
+project/common + type + title
+```
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "type": "workflow_rule",
+  "title": "Run diagnostics before deploy",
+  "body": "Before deploying pm3m, run gateway diagnostics and migration status.",
+  "tags": ["gateway", "deploy"],
+  "match": "scope_type_title"
+}
+```
+
+Output:
+
+```json
+{
+  "action": "updated",
+  "item": {
+    "id": "I-MEMORY-001",
+    "projectId": "P-MEMORY",
+    "type": "workflow_rule",
+    "title": "Run diagnostics before deploy"
+  }
+}
+```
+
+Use this when an agent records durable knowledge that may already exist. It
+reduces duplicate common/project records.
 
 ---
 

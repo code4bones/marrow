@@ -26,7 +26,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
 
 ## Priority 2 — Memory Quality
 
-4. `memory.upsert`
+4. `memory.upsert` — implemented
    - Make memory creation idempotent by `id` or a stable natural key.
    - Reduce duplicate common/project records created by agents.
 
@@ -74,9 +74,9 @@ multiple developers and agents, not to grow the tool list for its own sake.
 
 Start with:
 
-1. `gateway.version`
-2. `gateway.diagnostics`
-3. `memory.upsert`
+1. `gateway.version` — implemented
+2. `gateway.diagnostics` — implemented
+3. `memory.upsert` — implemented
 4. `failed_attempt.record`
 
 These deliver operational visibility first, then reduce duplicate and low-quality

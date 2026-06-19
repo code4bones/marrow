@@ -52,6 +52,7 @@ try {
   assert(toolNames.includes("gateway.status"), "gateway.status tool was not listed.");
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
+  assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -169,6 +170,45 @@ try {
     }
   });
   assertOk(memoryResult.structuredContent, "memory.create failed.");
+
+  const upsertCreateResult = await client.callTool({
+    name: "memory.upsert",
+    arguments: {
+      project: state.projectId,
+      type: "workflow_rule",
+      title: "Gateway MCP HTTP smoke upsert",
+      body: "First upsert call should create this record.",
+      tags: ["smoke", "upsert"],
+      match: "scope_type_title"
+    }
+  });
+  assertOk(upsertCreateResult.structuredContent, "memory.upsert create failed.");
+  assert(
+    readNestedString(upsertCreateResult.structuredContent, ["data", "action"]) === "created",
+    "memory.upsert did not report created on first call."
+  );
+  const upsertedItemId = readNestedString(upsertCreateResult.structuredContent, ["data", "item", "id"]);
+
+  const upsertUpdateResult = await client.callTool({
+    name: "memory.upsert",
+    arguments: {
+      project: state.projectId,
+      type: "workflow_rule",
+      title: "Gateway MCP HTTP smoke upsert",
+      body: "Second upsert call should update this record.",
+      tags: ["smoke", "upsert", "updated"],
+      match: "scope_type_title"
+    }
+  });
+  assertOk(upsertUpdateResult.structuredContent, "memory.upsert update failed.");
+  assert(
+    readNestedString(upsertUpdateResult.structuredContent, ["data", "action"]) === "updated",
+    "memory.upsert did not report updated on second call."
+  );
+  assert(
+    readNestedString(upsertUpdateResult.structuredContent, ["data", "item", "id"]) === upsertedItemId,
+    "memory.upsert created a duplicate instead of updating the existing item."
+  );
 
   state.artifactPath = `gateway-smoke/AGENTS-${unique}.md`;
   const artifactContent = "# Gateway Smoke AGENTS\n\nUse preflight before editing files.\n";
