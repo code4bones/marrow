@@ -16,6 +16,7 @@ const state: {
   projectId?: string;
   anonymousProjectId?: string;
   anonymousClientIds: string[];
+  staleAnonymousClientId?: string;
   taskId?: string;
   memoryId?: string;
 } = {
@@ -38,8 +39,28 @@ try {
   console.log("ok - gateway tools");
 
   const unique = Date.now();
+  state.staleAnonymousClientId = `anonymous:gateway-smoke-stale-${unique}`;
+  await db("gateway_clients").insert({
+    id: state.staleAnonymousClientId,
+    label: "Gateway Smoke Stale Anonymous",
+    last_seen_at: new Date(0).toISOString(),
+    metadata: "{}",
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  });
+  await db("kv").insert({
+    key: `current_project_id:${state.staleAnonymousClientId}`,
+    value: "P-GATEWAY-SMOKE-STALE",
+    updated_at: new Date(0).toISOString()
+  });
+
   const status = await callGateway("gateway.status", {});
   assert(expectData<{ status: { storage: string } }>(status).status.storage === "postgresql", "Gateway status did not report PostgreSQL storage.");
+  const staleClient = await db("gateway_clients").where({ id: state.staleAnonymousClientId }).first();
+  const staleCurrentProject = await db("kv").where({ key: `current_project_id:${state.staleAnonymousClientId}` }).first();
+  assert(!staleClient, "Gateway did not clean up the stale anonymous client.");
+  assert(!staleCurrentProject, "Gateway did not clean up the stale anonymous current project key.");
+  console.log("ok - anonymous client cleanup");
   console.log("ok - gateway.status");
 
   const project = await callGateway("project.create", {
@@ -141,6 +162,10 @@ try {
       )
       .del();
     await db("gateway_clients").whereIn("id", state.anonymousClientIds).del();
+  }
+  if (state.staleAnonymousClientId) {
+    await db("kv").where({ key: `current_project_id:${state.staleAnonymousClientId}` }).del();
+    await db("gateway_clients").where({ id: state.staleAnonymousClientId }).del();
   }
   await db("gateway_clients").where({ id: clientId }).del();
   await new Promise<void>((resolve) => started.server.close(() => resolve()));

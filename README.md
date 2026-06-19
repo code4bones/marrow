@@ -165,6 +165,7 @@ PORT=8765
 API_ENDPOINT=/api
 MCP_TOKEN=...
 ARTIFACT_DIR=./artifacts
+GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
 ```
 
 The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
@@ -180,7 +181,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.2.tgz
+npm install -g ./deadragdoll-pm3m-1.1.3.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -219,6 +220,9 @@ For shared teams, MCP HTTP clients may also send `X-Project-Memory-Client-*` hea
 The gateway scopes implicit current project state to this client id. Requests
 without a client id get a temporary `anonymous:<request-id>` scope, which is
 isolated but not durable.
+Temporary anonymous client records and their current-project keys are cleaned
+up after `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`; set it to `0` to disable this
+cleanup.
 
 Codex CLI streamable HTTP MCP config does not currently expose custom headers, so pass client identity through URL query parameters:
 

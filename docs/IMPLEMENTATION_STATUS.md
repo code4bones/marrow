@@ -26,6 +26,7 @@ Implemented capabilities:
 - gateway client registry through `gateway_clients`
 - per-client current project state in shared gateway mode
 - temporary anonymous gateway client scopes for requests without `client_id`
+- configurable cleanup for temporary anonymous gateway clients and their current-project keys
 - gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.status`, `gateway.clients`
 - gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
@@ -101,7 +102,7 @@ Shared agents should connect to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, optional `MCP_TOKEN`, and optional `ARTIFACT_DIR`. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
+Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, optional `MCP_TOKEN`, optional `ARTIFACT_DIR`, and `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
 
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put`, `artifact.search`, `artifact.get`, and authenticated download routes.
 

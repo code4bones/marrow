@@ -114,6 +114,8 @@ project state is also scoped to this client id, so avoid random client ids.
 If a gateway request omits `client_id`, pmem assigns a temporary anonymous
 client id for that request. This prevents shared anonymous state, but it also
 means implicit current project state is not durable.
+Temporary anonymous client records are cleaned up after
+`GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`; set it to `0` to disable cleanup.
 
 ### CodeWhale
 
@@ -405,6 +407,7 @@ API_ENDPOINT=/api
 GW_ENDPOINT=https://pmem.undoo.ru/api
 MCP_TOKEN=...
 ARTIFACT_DIR=./artifacts
+GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
 LOG_LEVEL=info
 LOG_DIR=./logs/
 LOG_PRETTY=true
@@ -429,7 +432,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.1.2.tgz
+npm install -g ./deadragdoll-pm3m-1.1.3.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

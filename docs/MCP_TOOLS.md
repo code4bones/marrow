@@ -149,7 +149,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.1.2",
+    "packageVersion": "1.1.3",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 41,
@@ -211,6 +211,9 @@ Output:
       "level": "info",
       "dir": "/var/log/pm3m"
     },
+    "clients": {
+      "anonymousTtlSeconds": 86400
+    },
     "security": {
       "bearerAuth": true
     }
@@ -241,7 +244,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.1.2",
+      "packageVersion": "1.1.3",
       "tools": 41
     },
     "database": {
@@ -931,7 +934,9 @@ implicit project scope.
 
 Gateway clients should send a stable `client_id`. If omitted, pmem assigns a
 temporary anonymous id for the request, so current project state is isolated but
-not durable.
+not durable. Temporary anonymous client records and their current-project keys
+are cleaned up after `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`; set it to `0` to
+disable cleanup.
 
 ## Memory tools
 

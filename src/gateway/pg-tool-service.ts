@@ -48,6 +48,9 @@ const manualSpecs = [
   }
 ] as const;
 
+const anonymousClientPrefix = "anonymous:";
+const defaultAnonymousClientTtlSeconds = 24 * 60 * 60;
+
 export class PgToolService {
   constructor(private readonly db: Knex) {}
 
@@ -353,6 +356,9 @@ export class PgToolService {
         dir: process.env.LOG_DIR ?? ".agent",
         pretty: process.env.LOG_PRETTY ?? "false",
         includeTime: process.env.LOG_INCLUDE_TIME ?? "true"
+      },
+      clients: {
+        anonymousTtlSeconds: anonymousClientTtlSeconds()
       },
       security: {
         bearerAuth: Boolean(process.env.MCP_TOKEN)
@@ -1568,6 +1574,7 @@ export class PgToolService {
 
   private async touchClient(context: NormalizedGatewayRequestContext): Promise<void> {
     const now = nowIso();
+    await this.cleanupExpiredAnonymousClients(now);
     await this.db("gateway_clients")
       .insert({
         id: context.clientId,
@@ -1584,6 +1591,28 @@ export class PgToolService {
         metadata: JSON.stringify(context.metadata),
         updated_at: now
       });
+  }
+
+  private async cleanupExpiredAnonymousClients(now: string): Promise<void> {
+    const ttlSeconds = anonymousClientTtlSeconds();
+    if (ttlSeconds <= 0) {
+      return;
+    }
+
+    const cutoff = new Date(new Date(now).getTime() - ttlSeconds * 1000).toISOString();
+    const rows = await this.db("gateway_clients")
+      .select("id")
+      .where("id", "like", `${anonymousClientPrefix}%`)
+      .andWhere("last_seen_at", "<", cutoff);
+    const clientIds = rows.map((row) => String(row.id));
+    if (clientIds.length === 0) {
+      return;
+    }
+
+    await this.db.transaction(async (trx) => {
+      await trx("kv").whereIn("key", clientIds.map(currentProjectKey)).del();
+      await trx("gateway_clients").whereIn("id", clientIds).del();
+    });
   }
 
   private async countRows(table: string): Promise<number> {
@@ -1769,6 +1798,15 @@ function connectionSnippets() {
 
 function currentProjectKey(clientId: string): string {
   return `current_project_id:${clientId}`;
+}
+
+function anonymousClientTtlSeconds(): number {
+  const raw = process.env.GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS;
+  if (raw === undefined || raw.trim().length === 0) {
+    return defaultAnonymousClientTtlSeconds;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : defaultAnonymousClientTtlSeconds;
 }
 
 function scoreProjectCandidate(row: Row, input: Row) {

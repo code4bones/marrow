@@ -85,6 +85,9 @@ Requests without a client id are assigned temporary `anonymous:<request-id>`
 identity. This avoids one shared anonymous current project, but those requests
 should not be treated as durable agent sessions. Configure a stable `client_id`
 for normal collaboration.
+Temporary anonymous client records and their current-project keys are cleaned
+up after `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`; set it to `0` to disable
+cleanup.
 
 ## Collaboration-Ready Principles
 
