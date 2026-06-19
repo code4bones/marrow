@@ -1,9 +1,12 @@
 #!/usr/bin/env node
+import dotenv from "dotenv";
 import path from "node:path";
 import { startGatewayServer } from "./gateway/http-server.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
+
+dotenv.config({ quiet: true });
 
 async function main(): Promise<void> {
   const logFile = envLogFile(process.env.LOG_DIR, "project-memory-gateway.log");

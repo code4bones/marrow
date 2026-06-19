@@ -153,6 +153,26 @@ npm run build
 pm2 startOrReload ecosystem.config.cjs --env production
 ```
 
+For package deployments, install the packed artifact globally and run the
+gateway commands from the deployment directory that contains `.env`:
+
+```bash
+npm install -g ./project-memory-mcp-1.0.0.tgz
+
+mkdir -p /opt/project-memory-gateway
+cd /opt/project-memory-gateway
+$EDITOR .env
+
+project-memory-gateway-migrate latest
+project-memory-gateway-migrate status
+project-memory-gateway-pm2
+pm2 save
+```
+
+There is intentionally no `postinstall` side effect. Installing the package
+does not start or reload PM2 automatically; service changes should happen only
+through explicit deploy commands.
+
 `MCP_TOKEN` enables bearer auth for gateway routes.
 
 Client-specific variables point agents at the public gateway base URL:

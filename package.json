@@ -5,6 +5,8 @@
   "type": "module",
   "main": "dist/src/index.js",
   "bin": {
+    "project-memory-gateway-migrate": "dist/scripts/gateway-migrate.js",
+    "project-memory-gateway-pm2": "dist/scripts/gateway-pm2.js",
     "project-memory-gateway": "dist/src/gateway.js",
     "project-memory-mcp": "dist/src/index.js"
   },

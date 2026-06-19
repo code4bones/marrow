@@ -402,6 +402,31 @@ npm run build
 pm2 startOrReload ecosystem.config.cjs --env production
 ```
 
+For a server that already has Node, PostgreSQL, and PM2 installed, the package
+can be deployed from a tarball without cloning the repository:
+
+```bash
+npm install -g ./project-memory-mcp-1.0.0.tgz
+
+mkdir -p /opt/project-memory-gateway
+cd /opt/project-memory-gateway
+$EDITOR .env
+
+project-memory-gateway-migrate latest
+project-memory-gateway-migrate status
+project-memory-gateway-pm2
+pm2 save
+```
+
+Run these commands from the directory that contains the gateway `.env`.
+`project-memory-gateway-pm2` generates a local
+`.project-memory-gateway.ecosystem.cjs` file that reads `.env` and starts or
+reloads the `project-memory-gateway` PM2 process.
+
+The package intentionally has no `postinstall` that starts PM2. Installing or
+upgrading a package should not mutate a running service without an explicit
+operator command.
+
 Back up both:
 
 - PostgreSQL database
