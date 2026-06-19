@@ -255,7 +255,8 @@ Record only durable knowledge:
 - use `decision.record` for decisions that should constrain future work
 - use `decision.supersede` when replacing an older decision
 - use `memory.upsert` for reusable notes that may already exist
-- use `failed_attempt.record` when an approach failed and should not be repeated
+- use `failed_attempt.record` when an approach failed and should appear as a
+  future `knownFaults` stop-signal
 - use `handoff.create` when another agent or later session may continue the work
 - use `artifact.put` when a reusable file should be shared with the team
 
@@ -397,10 +398,10 @@ Record a decision:
 Запиши в pmem решение: gateway использует PostgreSQL и хранит artifact metadata в БД, а bytes на диске.
 ```
 
-Record a failed attempt:
+Record a fault or failed attempt:
 
 ```text
-Запиши failed attempt в pmem: что пробовали, почему не сработало, что не повторять.
+Запиши fault в pmem: что пробовали, почему не сработало, что не повторять, и лучший следующий подход.
 ```
 
 Leave a handoff:
@@ -445,7 +446,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.2.0.tgz
+npm install -g ./deadragdoll-pm3m-1.2.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

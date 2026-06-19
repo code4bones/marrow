@@ -112,9 +112,10 @@ Purpose:
 - inspect prior decisions
 - find related failed attempts or patterns
 
-## Failed Attempt Recording
+## Fault Recording
 
 Use this when an approach fails in a way future agents should not repeat.
+`failed_attempt.record` is the canonical fault-recording tool.
 
 ```text
 failed_attempt.record
@@ -131,9 +132,29 @@ Better next approach:
 
 Purpose:
 
+- make future `preflight` and `preflight.by_query` calls expose the record as
+  `knownFaults`
+- prevent agents from retrying the same broken approach
+- preserve the better next approach while context is fresh
 - make failure searchable
 - attach it to a task, decision, or item
 - include it in future preflight output
+
+## Known Fault Handling
+
+Use this before repeating any risky command, deploy path, migration, tool chain,
+or integration workflow:
+
+```text
+preflight
+preflight.by_query
+```
+
+Purpose:
+
+- inspect `knownFaults`
+- stop before repeating a matching `doNotRepeat`
+- choose a different next approach or ask for direction
 
 ## Decision Recording
 
@@ -260,7 +281,7 @@ task.next
 preflight
 task.update_status(status="doing")
 memory.search, if more context is needed
-decision.get or memory.get, if ids from preflight need full detail
+decision.get or memory.get, if ids from preflight/knownFaults need full detail
 implement
 npm run lint / typecheck / test / build, as appropriate
 task.update_status(status="done")

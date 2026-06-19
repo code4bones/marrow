@@ -30,6 +30,7 @@ Implemented capabilities:
 - operator client management through `gateway.client_get`, `gateway.client_forget`, and `gateway.client_prune`
 - gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.status`, `gateway.clients`
 - gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`
+- preflight `knownFaults` alias for failed attempts that should stop repeated mistakes
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
 - artifact metadata update, archival lifecycle, and deterministic listing
 - ad-hoc preflight context through `preflight.by_query`

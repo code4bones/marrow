@@ -26,6 +26,7 @@ export class PreflightService {
     const task = this.tasks.get(input.taskId);
     const project = this.projects.get({ id: task.projectId });
     const query = taskQuery(task.title, task.scope, task.acceptance);
+    const faultQuery = task.title || query;
 
     const relevantDecisions = this.decisions.list({
       project: project.id,
@@ -62,7 +63,7 @@ export class PreflightService {
     });
 
     const failedAttempts = this.memory.search({
-      query,
+      query: faultQuery,
       project: project.id,
       includeCommon,
       type: "failed_attempt",
@@ -97,8 +98,9 @@ export class PreflightService {
       commonRules,
       relatedItems,
       failedAttempts,
+      knownFaults: failedAttempts,
       recentEvents,
-      summary: "Use this context before editing files. Respect allowed and forbidden scope."
+      summary: "Use this context before editing files. Treat knownFaults as stop-signals before repeating an approach."
     };
   }
 }

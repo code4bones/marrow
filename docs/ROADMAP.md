@@ -75,6 +75,7 @@ Implemented:
 
 - `memory.upsert`
 - `failed_attempt.record`
+- preflight `knownFaults`
 - `decision.supersede`
 - `project.resolve`
 

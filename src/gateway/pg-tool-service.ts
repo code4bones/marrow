@@ -1466,7 +1466,16 @@ export class PgToolService {
     const task = await this.getTask(String(input.taskId));
     const project = await this.getProject({ id: task.projectId });
     const query = [task.title, task.scope, task.acceptance].filter(Boolean).join(" ") || "task";
+    const faultQuery = String(task.title || query);
     const limits = (input.limits ?? {}) as Row;
+    const failedAttempts = await this.searchMemory({
+      query: faultQuery,
+      project: project.id,
+      includeCommon: input.includeCommon !== false,
+      type: "failed_attempt",
+      status: "active",
+      limit: limits.failedAttempts ?? 5
+    });
     return {
       project,
       task: {
@@ -1499,19 +1508,14 @@ export class PgToolService {
         status: "active",
         limit: limits.items ?? 10
       }),
-      failedAttempts: await this.searchMemory({
-        query,
-        project: project.id,
-        includeCommon: input.includeCommon !== false,
-        type: "failed_attempt",
-        status: "active",
-        limit: limits.failedAttempts ?? 5
-      }),
+      failedAttempts,
+      knownFaults: failedAttempts,
       recentEvents: await this.listEvents({
         project: project.id,
         limit: limits.events ?? 10
       }),
-      summary: "Use this shared gateway context before editing files. Respect allowed and forbidden scope."
+      summary:
+        "Use this shared gateway context before editing files. Treat knownFaults as stop-signals before repeating an approach."
     };
   }
 
@@ -1523,6 +1527,14 @@ export class PgToolService {
     }
     const query = String(input.query);
     const limits = (input.limits ?? {}) as Row;
+    const failedAttempts = await this.searchMemory({
+      query,
+      project: project?.id,
+      includeCommon,
+      type: "failed_attempt",
+      status: "active",
+      limit: limits.failedAttempts ?? 5
+    });
 
     return {
       project: project ?? null,
@@ -1547,14 +1559,8 @@ export class PgToolService {
         status: "active",
         limit: limits.items ?? 10
       }),
-      failedAttempts: await this.searchMemory({
-        query,
-        project: project?.id,
-        includeCommon,
-        type: "failed_attempt",
-        status: "active",
-        limit: limits.failedAttempts ?? 5
-      }),
+      failedAttempts,
+      knownFaults: failedAttempts,
       artifacts: await this.searchArtifacts({
         query,
         project: project?.id,
@@ -1565,7 +1571,7 @@ export class PgToolService {
         ? await this.listEvents({ project: project.id, limit: limits.events ?? 10 })
         : await this.listEvents({ project: null, limit: limits.events ?? 10 }),
       summary:
-        "Use this shared query context before creating a task or editing files. Create a task when scope becomes executable."
+        "Use this shared query context before creating a task or editing files. Treat knownFaults as stop-signals before repeating an approach."
     };
   }
 

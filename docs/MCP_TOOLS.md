@@ -152,7 +152,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.2.0",
+    "packageVersion": "1.2.1",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -247,7 +247,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.2.0",
+      "packageVersion": "1.2.1",
       "tools": 44
     },
     "database": {
@@ -1128,7 +1128,11 @@ reduces duplicate common/project records.
 
 ### `failed_attempt.record`
 
-Record a failed attempt as first-class searchable memory.
+Record a failed attempt as first-class searchable fault memory.
+
+Faults are mistakes or broken approaches that future agents should notice
+before retrying similar work. `failed_attempt.record` is the canonical fault
+recording tool in the current API.
 
 Input:
 
@@ -1176,11 +1180,13 @@ Behavior:
 * upserts by project/common scope, type, and title by default
 * records an `attempt.failed` event
 * when `relatedId` is provided, creates a `warns_against` link
-* preflight includes matching failed attempts in `failedAttempts`
+* preflight includes matching records in both `failedAttempts` and
+  `knownFaults`
 
 Use this immediately after a meaningful failed implementation, deploy, or
 debugging attempt. Agents should search/read these records before retrying a
-similar task.
+similar task. Treat `doNotRepeat` as a hard stop unless the user explicitly
+chooses a new approach.
 
 ---
 
@@ -1771,8 +1777,9 @@ Output:
   "commonRules": [],
   "relatedItems": [],
   "failedAttempts": [],
+  "knownFaults": [],
   "recentEvents": [],
-  "summary": "Use this context before editing files."
+  "summary": "Use this context before editing files. Treat knownFaults as stop-signals before repeating an approach."
 }
 ```
 
@@ -1784,8 +1791,12 @@ Preflight should include:
 * active common rules
 * items matching task title/scope
 * failed attempts matching task title/scope
+* known faults matching task title/scope
 * recent events for the project
 * dependencies if any
+
+`knownFaults` is currently an alias of `failedAttempts` for clearer agent
+behavior. Keep reading `failedAttempts` for backward compatibility.
 
 ---
 
@@ -1823,14 +1834,17 @@ Output:
   "commonRules": [],
   "relatedItems": [],
   "failedAttempts": [],
+  "knownFaults": [],
   "artifacts": [],
   "recentEvents": [],
-  "summary": "Use this shared query context before creating a task or editing files."
+  "summary": "Use this shared query context before creating a task or editing files. Treat knownFaults as stop-signals before repeating an approach."
 }
 ```
 
 Use this when an agent is asked to explore or start ad-hoc work before a formal
 task exists. Once scope becomes executable, create a task and use `preflight`.
+If `knownFaults` contains a matching record, do not repeat that approach without
+choosing a different next step or asking for direction.
 
 ---
 

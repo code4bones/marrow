@@ -294,7 +294,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "failed_attempt.record",
     description:
-      "Record a failed attempt as first-class searchable memory. Captures what was tried, why it failed, what not to repeat, and optional better next approach.",
+      "Record a failed attempt/fault as first-class searchable memory. Captures what was tried, why it failed, what not to repeat, and optional better next approach.",
     schema: failedAttemptRecordSchema
   },
   {
@@ -412,13 +412,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "preflight",
-    description: "Return shared preflight context for a task before editing files.",
+    description: "Return shared preflight context for a task before editing files, including knownFaults that should stop repeated mistakes.",
     schema: preflightSchema
   },
   {
     name: "preflight.by_query",
     description:
-      "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, failed attempts, artifacts, and recent events.",
+      "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, knownFaults, artifacts, and recent events.",
     schema: preflightByQuerySchema
   },
   {

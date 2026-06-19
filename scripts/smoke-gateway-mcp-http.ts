@@ -53,6 +53,7 @@ const state: {
   projectId?: string;
   secondProjectId?: string;
   taskId?: string;
+  failedAttemptId?: string;
   artifactId?: string;
   artifactPath?: string;
 } = {};
@@ -537,7 +538,7 @@ try {
     name: "failed_attempt.record",
     arguments: {
       project: state.projectId,
-      title: "Gateway MCP HTTP smoke failed attempt",
+      title: "Verify gateway MCP HTTP smoke failed attempt",
       whatTried: "A smoke client tried an intentionally bad gateway workflow.",
       whyFailed: "The workflow was only a synthetic validation example.",
       doNotRepeat: "Do not treat synthetic smoke attempts as real project guidance.",
@@ -547,6 +548,7 @@ try {
     }
   });
   assertOk(failedAttemptResult.structuredContent, "failed_attempt.record failed.");
+  state.failedAttemptId = readNestedString(failedAttemptResult.structuredContent, ["data", "attempt", "id"]);
   assert(
     readNestedString(failedAttemptResult.structuredContent, ["data", "attempt", "type"]) === "failed_attempt",
     "failed_attempt.record did not create a failed_attempt item."
@@ -563,6 +565,10 @@ try {
     }
   });
   assertOk(preflightResult.structuredContent, "preflight failed.");
+  const knownFaultIds = readNestedArray(preflightResult.structuredContent, ["data", "knownFaults"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(knownFaultIds.includes(state.failedAttemptId), "preflight did not include the known fault.");
 
   const handoffResult = await client.callTool({
     name: "handoff.create",

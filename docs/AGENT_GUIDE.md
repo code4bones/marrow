@@ -126,7 +126,7 @@ Use preflight output to check:
 - forbidden files
 - relevant project decisions
 - relevant common rules
-- known failed attempts
+- known failed attempts and `knownFaults`
 - related links
 
 Stop and ask the user when preflight reveals:
@@ -134,7 +134,7 @@ Stop and ask the user when preflight reveals:
 - conflicting decisions
 - forbidden scope
 - missing acceptance criteria
-- matching failed attempts
+- matching failed attempts or `knownFaults`
 - blocked dependencies
 - materially different implementation strategies with product or architecture
   consequences
@@ -226,7 +226,18 @@ Use `memory.create` for:
 Use `memory.upsert` when the durable note may already exist.
 
 Use `failed_attempt.record` when an approach failed and future agents should not
-repeat it.
+repeat it. Treat this as the current fault-recording tool: include what was
+tried, why it failed, what not to repeat, and the better next approach.
+
+Record a fault when:
+
+- a command/tool/deploy/migration path fails for a reusable reason
+- a library, CLI, or gateway behavior is surprising enough to trap another agent
+- a retry would waste time unless the next approach is changed
+- the failure explains why a tempting implementation path should be avoided
+
+Do not record a fault for a typo that was fixed immediately and has no future
+value.
 
 Use `handoff.create` when another agent or future session needs a compact
 continuation point.
@@ -261,7 +272,7 @@ Ask the user before proceeding when:
 - acceptance criteria are missing or contradictory
 - requested edits exceed allowed scope
 - forbidden files are required
-- a failed attempt matches the planned approach
+- a failed attempt or `knownFaults` record matches the planned approach
 - an artifact overwrite would replace shared knowledge
 - several artifact templates could fit and there is no clear winner
 - using common knowledge would leak project-specific or private information

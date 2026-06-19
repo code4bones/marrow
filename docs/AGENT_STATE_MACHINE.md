@@ -28,10 +28,10 @@ S8_RECORDING_MEMORY
 | `S0_NO_PROJECT` | Project missing and repository identity is clear | `project.create -> project.set_current` | `S1_PROJECT_SELECTED` | Repository identity or project title is unclear |
 | `S1_PROJECT_SELECTED` | Agent needs next queued work | `task.next` | `S2_TASK_SELECTED` | No todo task exists and user did not provide a task |
 | `S1_PROJECT_SELECTED` | User referenced a task id | `task.get` | `S2_TASK_SELECTED` | Task does not exist |
-| `S1_PROJECT_SELECTED` | User asks broad research/planning | `preflight.by_query -> memory.search -> decision.list -> event.list` | `S1_PROJECT_SELECTED` | Found decisions or failed attempts conflict with user request |
+| `S1_PROJECT_SELECTED` | User asks broad research/planning | `preflight.by_query -> memory.search -> decision.list -> event.list` | `S1_PROJECT_SELECTED` | Found decisions or known faults conflict with user request |
 | `S2_TASK_SELECTED` | Task scope is usable | `preflight` | `S3_PREFLIGHT_READY` | Task has missing or contradictory scope/acceptance criteria |
 | `S2_TASK_SELECTED` | Task has dependencies | `task.get -> link.list -> preflight` | `S3_PREFLIGHT_READY` | Dependency is blocked, missing, or contradicts requested work |
-| `S3_PREFLIGHT_READY` | Scope is clear and no conflicts | `task.update_status(status="doing")` | `S4_EXECUTING` | Preflight shows forbidden scope, conflicting decisions, or relevant failed attempts that make the requested approach unsafe |
+| `S3_PREFLIGHT_READY` | Scope is clear and no conflicts | `task.update_status(status="doing")` | `S4_EXECUTING` | Preflight shows forbidden scope, conflicting decisions, or known faults that make the requested approach unsafe |
 | `S4_EXECUTING` | Implementation proceeds normally | Local edits and validation commands | `S5_VALIDATING` | Required file changes exceed allowed scope |
 | `S4_EXECUTING` | Approach fails in a reusable way | `failed_attempt.record` | `S7_BLOCKED` or `S4_EXECUTING` | Need user decision between alternative approaches |
 | `S5_VALIDATING` | Validation passes | `task.update_status(status="done")` | `S6_COMPLETED` | Never |
@@ -114,6 +114,8 @@ Use `memory.create` for:
 Use `memory.upsert` when the reusable note may already exist.
 
 Use `failed_attempt.record` for failed attempts that future agents should avoid.
+Preflight exposes these records as `knownFaults`; treat matching faults as
+stop-signals before retrying an approach.
 
 Use `handoff.create` when work should be resumable by another agent.
 

@@ -134,6 +134,10 @@ const steps: SmokeStep[] = [
         preflight.failedAttempts.some((item) => item.id === state.failedAttemptId),
         "Preflight did not include the failed attempt."
       );
+      assert(
+        preflight.knownFaults.some((item) => item.id === state.failedAttemptId),
+        "Preflight did not include the known fault."
+      );
     }
   },
   {

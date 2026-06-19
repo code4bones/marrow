@@ -34,6 +34,7 @@ export interface PreflightResult {
   commonRules: MemorySearchResult[];
   relatedItems: MemorySearchResult[];
   failedAttempts: MemorySearchResult[];
+  knownFaults: MemorySearchResult[];
   recentEvents: EventRecord[];
   summary: string;
 }

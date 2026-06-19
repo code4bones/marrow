@@ -5,6 +5,8 @@ Local-first MCP server for structured project memory used by coding agents.
 The default local stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
 
 Shared gateway mode stores the same tool model in PostgreSQL and exposes it through an HTTP gateway with a direct MCP Streamable HTTP endpoint.
+Preflight output includes `knownFaults` so agents can avoid repeating failed
+commands, deploy paths, migrations, and implementation approaches.
 
 ## Current Status
 
@@ -190,7 +192,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.2.0.tgz
+npm install -g ./deadragdoll-pm3m-1.2.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

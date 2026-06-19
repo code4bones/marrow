@@ -180,8 +180,8 @@ try {
   const memory = await callGateway("memory.create", {
     project: state.projectId,
     type: "failed_attempt",
-    title: "Gateway smoke searchable failed attempt",
-    body: "Smoke record used to verify PostgreSQL full text search.",
+    title: "Gateway smoke task preflight failed attempt",
+    body: "Smoke record used to verify PostgreSQL full text search and gateway task preflight known fault search.",
     tags: ["smoke", "gateway"]
   });
   state.memoryId = expectData<{ item: { id: string } }>(memory).item.id;
@@ -207,9 +207,17 @@ try {
   console.log("ok - memory.search");
 
   const preflight = await callGateway("preflight", { taskId: state.taskId });
-  const preflightData = expectData<{ task: { id: string }; project: { id: string } }>(preflight);
+  const preflightData = expectData<{
+    task: { id: string };
+    project: { id: string };
+    knownFaults: { id: string }[];
+  }>(preflight);
   assert(preflightData.task.id === state.taskId, "Gateway preflight returned wrong task.");
   assert(preflightData.project.id === state.projectId, "Gateway preflight returned wrong project.");
+  assert(
+    preflightData.knownFaults.some((item) => item.id === state.memoryId),
+    "Gateway preflight did not include the known fault."
+  );
   console.log("ok - preflight");
 
   const clients = await callGateway("gateway.clients", {});
