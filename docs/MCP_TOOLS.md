@@ -16,6 +16,8 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `gateway.manuals`
 * `gateway.status`
 * `gateway.clients`
+* `memory.upsert`
+* `failed_attempt.record`
 * `artifact.put`
 * `artifact.search`
 * `artifact.get`
@@ -130,7 +132,7 @@ Output:
     "packageVersion": "1.0.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 32,
+    "tools": 33,
     "node": {
       "version": "v24.16.0"
     },
@@ -170,7 +172,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 32
+      "tools": 33
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -274,7 +276,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 32,
+    "tools": 33,
     "records": {
       "projects": 1,
       "items": 10,
@@ -700,6 +702,64 @@ Output:
 
 Use this when an agent records durable knowledge that may already exist. It
 reduces duplicate common/project records.
+
+---
+
+### `failed_attempt.record`
+
+Record a failed attempt as first-class searchable memory.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "title": "PM2 ecosystem object passed incorrectly",
+  "whatTried": "Started PM2 with a generated ecosystem module that did not export the expected object.",
+  "whyFailed": "PM2 tried to read config.deploy from an undefined config object.",
+  "doNotRepeat": "Do not call PM2 startOrReload with an ecosystem file that cannot be resolved by PM2's loader.",
+  "betterNextApproach": "Generate a plain .cjs ecosystem file and fall back to direct pm2 start when reload fails.",
+  "relatedId": "T-MEMORY-003",
+  "tags": ["pm2", "deploy"]
+}
+```
+
+Output:
+
+```json
+{
+  "action": "created",
+  "attempt": {
+    "id": "I-MEMORY-002",
+    "projectId": "P-MEMORY",
+    "type": "failed_attempt",
+    "title": "PM2 ecosystem object passed incorrectly"
+  },
+  "event": {
+    "type": "attempt.failed",
+    "relatedId": "I-MEMORY-002"
+  },
+  "link": {
+    "relation": "warns_against",
+    "fromId": "I-MEMORY-002",
+    "toId": "T-MEMORY-003"
+  }
+}
+```
+
+Behavior:
+
+* stores the attempt as `type="failed_attempt"`
+* formats the body from `whatTried`, `whyFailed`, `doNotRepeat`, and optional
+  `betterNextApproach`
+* upserts by project/common scope, type, and title by default
+* records an `attempt.failed` event
+* when `relatedId` is provided, creates a `warns_against` link
+* preflight includes matching failed attempts in `failedAttempts`
+
+Use this immediately after a meaningful failed implementation, deploy, or
+debugging attempt. Agents should search/read these records before retrying a
+similar task.
 
 ---
 

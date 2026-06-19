@@ -98,6 +98,8 @@ export class PgToolService {
           const result = await this.upsertMemory(parsed, requestContext);
           return ok(`Memory item ${result.action}.`, result);
         }
+        case "failed_attempt.record":
+          return ok("Failed attempt recorded.", await this.recordFailedAttempt(parsed, requestContext));
         case "memory.get":
           return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id)) });
         case "memory.search":
@@ -559,6 +561,74 @@ export class PgToolService {
         }
       })
       .first();
+  }
+
+  private async recordFailedAttempt(input: Row, context: NormalizedGatewayRequestContext) {
+    const tags = Array.from(new Set(["failed_attempt", ...stringArray(input.tags)]));
+    const upsert = await this.upsertMemory(
+      {
+        id: input.id,
+        project: input.project,
+        common: input.common,
+        type: "failed_attempt",
+        title: input.title,
+        body: failedAttemptBody(input),
+        status: "active",
+        tags,
+        match: input.match ?? "scope_type_title"
+      },
+      context
+    );
+    const item = upsert.item as ReturnType<typeof itemOut>;
+    const event = await this.recordEventForProject(item.projectId, {
+      type: "attempt.failed",
+      title: `Failed attempt recorded: ${item.title}`,
+      body: item.body,
+      related_id: item.id
+    }, context);
+    const link = input.relatedId
+      ? await this.createWarnsAgainstLink(item.id, String(input.relatedId), item.projectId, context)
+      : null;
+
+    return {
+      action: upsert.action,
+      attempt: item,
+      event,
+      link
+    };
+  }
+
+  private async createWarnsAgainstLink(
+    fromId: string,
+    toId: string,
+    projectId: string | null,
+    context: NormalizedGatewayRequestContext
+  ) {
+    await this.assertRecordExists(toId);
+    const existing = await this.db("links")
+      .where({ from_id: fromId, to_id: toId, relation: "warns_against" })
+      .first();
+    if (existing) {
+      return linkOut(existing);
+    }
+
+    const row = {
+      id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
+      project_id: projectId,
+      from_id: fromId,
+      to_id: toId,
+      relation: "warns_against",
+      created_by: context.clientId,
+      source_instance_id: context.clientId,
+      created_at: nowIso()
+    };
+    await this.db("links").insert(row);
+    await this.recordEventForProject(projectId, {
+      type: "link.created",
+      title: `Link created: ${fromId} warns_against ${toId}`,
+      related_id: row.id
+    }, context);
+    return linkOut(row);
   }
 
   private async getMemory(id: string) {
@@ -1287,6 +1357,20 @@ function linkOut(row: Row) {
     relation: String(row.relation),
     createdAt: String(row.created_at)
   };
+}
+
+function failedAttemptBody(input: Row): string {
+  const sections: Array<[string, string]> = [
+    ["What was tried", String(input.whatTried)],
+    ["Why it failed", String(input.whyFailed)],
+    ["What should not be repeated", String(input.doNotRepeat)]
+  ];
+
+  if (typeof input.betterNextApproach === "string" && input.betterNextApproach.length > 0) {
+    sections.push(["Better next approach", input.betterNextApproach]);
+  }
+
+  return sections.map(([title, body]) => `${title}:\n${body}`).join("\n\n");
 }
 
 function excerpt(body: string): string {

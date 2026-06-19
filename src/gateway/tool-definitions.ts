@@ -32,6 +32,19 @@ const gatewayManualsSchema = z.object({
 const memoryUpsertSchema = createMemorySchema.extend({
   match: z.enum(["id", "scope_type_title"]).optional()
 });
+const failedAttemptRecordSchema = z.object({
+  id: z.string().min(1).optional(),
+  project: z.string().nullable().optional(),
+  common: z.boolean().optional(),
+  title: z.string().min(1),
+  whatTried: z.string().min(1),
+  whyFailed: z.string().min(1),
+  doNotRepeat: z.string().min(1),
+  betterNextApproach: z.string().min(1).optional(),
+  relatedId: z.string().min(1).optional(),
+  tags: z.array(z.string()).optional(),
+  match: z.enum(["id", "scope_type_title"]).optional()
+});
 const listGatewayClientsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
@@ -139,6 +152,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Create or update a memory item idempotently. Match by id when provided, otherwise by scope + type + title to avoid duplicate shared records.",
     schema: memoryUpsertSchema
+  },
+  {
+    name: "failed_attempt.record",
+    description:
+      "Record a failed attempt as first-class searchable memory. Captures what was tried, why it failed, what not to repeat, and optional better next approach.",
+    schema: failedAttemptRecordSchema
   },
   {
     name: "memory.get",

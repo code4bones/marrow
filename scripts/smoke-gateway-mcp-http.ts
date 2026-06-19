@@ -53,6 +53,7 @@ try {
   assert(toolNames.includes("gateway.clients"), "gateway.clients tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
+  assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
@@ -277,6 +278,29 @@ try {
   });
   assertOk(taskResult.structuredContent, "task.create failed.");
   state.taskId = readNestedString(taskResult.structuredContent, ["data", "task", "id"]);
+
+  const failedAttemptResult = await client.callTool({
+    name: "failed_attempt.record",
+    arguments: {
+      project: state.projectId,
+      title: "Gateway MCP HTTP smoke failed attempt",
+      whatTried: "A smoke client tried an intentionally bad gateway workflow.",
+      whyFailed: "The workflow was only a synthetic validation example.",
+      doNotRepeat: "Do not treat synthetic smoke attempts as real project guidance.",
+      betterNextApproach: "Use real failure details when recording production failed attempts.",
+      relatedId: state.taskId,
+      tags: ["smoke", "failed-attempt"]
+    }
+  });
+  assertOk(failedAttemptResult.structuredContent, "failed_attempt.record failed.");
+  assert(
+    readNestedString(failedAttemptResult.structuredContent, ["data", "attempt", "type"]) === "failed_attempt",
+    "failed_attempt.record did not create a failed_attempt item."
+  );
+  assert(
+    readNestedString(failedAttemptResult.structuredContent, ["data", "link", "relation"]) === "warns_against",
+    "failed_attempt.record did not create a warns_against link."
+  );
 
   const preflightResult = await client.callTool({
     name: "preflight",

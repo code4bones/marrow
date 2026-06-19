@@ -30,7 +30,7 @@ multiple developers and agents, not to grow the tool list for its own sake.
    - Make memory creation idempotent by `id` or a stable natural key.
    - Reduce duplicate common/project records created by agents.
 
-5. `failed_attempt.record`
+5. `failed_attempt.record` — implemented
    - First-class tool for failed attempts instead of relying on
      `memory.create(type="failed_attempt")`.
    - Include what was tried, why it failed, what not to repeat, and better next
@@ -77,7 +77,7 @@ Start with:
 1. `gateway.version` — implemented
 2. `gateway.diagnostics` — implemented
 3. `memory.upsert` — implemented
-4. `failed_attempt.record`
+4. `failed_attempt.record` — implemented
 
 These deliver operational visibility first, then reduce duplicate and low-quality
 memory records.
