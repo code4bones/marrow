@@ -85,6 +85,7 @@ try {
   assert(toolNames.includes("artifact.archive"), "artifact.archive tool was not listed.");
   assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
   assert(toolNames.includes("artifact.peek"), "artifact.peek tool was not listed.");
+  assert(toolNames.includes("artifact.read_text"), "artifact.read_text tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
@@ -478,7 +479,7 @@ try {
   );
 
   state.artifactPath = `gateway-smoke/AGENTS-${unique}.md`;
-  const artifactContent = "# Gateway Smoke AGENTS\n\nUse preflight before editing files.\n";
+  const artifactContent = "# Gateway Smoke AGENTS\n\nUse preflight before editing files.\napi_key=smoke-secret\n";
   const artifactResult = await client.callTool({
     name: "artifact.put",
     arguments: {
@@ -558,9 +559,9 @@ try {
   assert(contextPackArtifacts.includes(state.artifactId), "context.pack did not include smoke artifact metadata.");
   assert(
     readNestedArray(contextPackResult.structuredContent, ["data", "nextCalls"]).some(
-      (item) => isRecord(item) && item.tool === "artifact.peek"
+      (item) => isRecord(item) && item.tool === "artifact.read_text"
     ),
-    "context.pack did not suggest artifact.peek next call."
+    "context.pack did not suggest artifact.read_text next call for a text artifact."
   );
 
   const artifactPeekResult = await client.callTool({
@@ -585,6 +586,36 @@ try {
       (item) => isRecord(item) && item.title === "Gateway Smoke AGENTS"
     ),
     "artifact.peek did not return a Markdown outline."
+  );
+
+  const artifactReadTextResult = await client.callTool({
+    name: "artifact.read_text",
+    arguments: {
+      id: state.artifactId,
+      maxChars: 2000
+    }
+  });
+  assertOk(artifactReadTextResult.structuredContent, "artifact.read_text failed.");
+  const artifactReadText = readNestedRecord(artifactReadTextResult.structuredContent, ["data", "artifact"]);
+  assert(!("contentBase64" in artifactReadText), "artifact.read_text returned base64 content.");
+  assert(
+    readNestedString(artifactReadTextResult.structuredContent, ["data", "artifact", "text"]).includes(
+      "Use preflight before editing files."
+    ),
+    "artifact.read_text did not return expected text."
+  );
+  assert(
+    readNestedString(artifactReadTextResult.structuredContent, ["data", "artifact", "text"]).includes("[REDACTED]"),
+    "artifact.read_text did not redact secret-like content."
+  );
+  assert(
+    readNestedString(artifactReadTextResult.structuredContent, ["data", "artifact", "text"]).includes("smoke-secret") ===
+      false,
+    "artifact.read_text leaked secret-like content."
+  );
+  assert(
+    readNestedRecord(artifactReadTextResult.structuredContent, ["data", "artifact", "textInfo"]).base64Included === false,
+    "artifact.read_text textInfo did not mark base64 as excluded."
   );
 
   const artifactGetResult = await client.callTool({

@@ -303,7 +303,8 @@ Use this when browsing shared files by hierarchy or tags:
 ```text
 artifact.list
 artifact.peek
-artifact.get, only if full content is needed
+artifact.read_text, for Markdown/text content
+artifact.get, only if exact base64 bytes are needed
 ```
 
 Use this when searching by meaning:
@@ -311,7 +312,8 @@ Use this when searching by meaning:
 ```text
 artifact.search
 artifact.peek
-artifact.get, only if full content is needed
+artifact.read_text, for Markdown/text content
+artifact.get, only if exact base64 bytes are needed
 ```
 
 After upload:
@@ -360,7 +362,7 @@ Codex continues:
   gateway.manuals(audience="conventions", includeContent=true)
   project.summary
   handoff.latest / handoff.search
-  artifact.search / artifact.peek / artifact.get only when needed
+  artifact.search / artifact.peek / artifact.read_text / artifact.get only when exact bytes are needed
   preflight.by_query
   repository inspection
 

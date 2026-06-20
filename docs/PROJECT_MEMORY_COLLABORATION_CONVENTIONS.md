@@ -200,7 +200,7 @@ context.pack
 preflight.by_query
 decision.list / decision.get
 failed_attempt search
-artifact.search / artifact.peek / artifact.get only if needed
+artifact.search / artifact.peek / artifact.read_text / artifact.get only if exact bytes are needed
 repository inspection
 ```
 
@@ -358,7 +358,8 @@ Codex searches:
 
 Codex retrieves:
   artifact.peek id="..."
-  artifact.get id="...", only if full content is needed
+  artifact.read_text id="...", for Markdown/text content
+  artifact.get id="...", only if exact base64 bytes are needed
 
 Codex edits repo or updates PMem.
 

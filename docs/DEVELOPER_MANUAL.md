@@ -336,11 +336,11 @@ https://pmem.undoo.ru/api/artifacts/A-COMMON-001/download
 
 Bearer auth is still required.
 
-For Markdown or text files, the agent should call `artifact.peek` first. It
-returns metadata, an excerpt, and a Markdown outline without `contentBase64`.
-Use `artifact.get(includeContent=true)` only when the full inline base64 content
-is actually needed. For larger files or binary files, download from
-`downloadPath`.
+For Markdown or text files, the agent should call `artifact.peek` first when it
+needs orientation, then `artifact.read_text` when it needs the actual file text
+in model context. Both avoid `contentBase64`. Use
+`artifact.get(includeContent=true)` only when exact inline base64 content is
+actually needed. For larger files or binary files, download from `downloadPath`.
 
 ### Upload
 
@@ -527,7 +527,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.12.2.tgz
+npm install -g ./deadragdoll-pm3m-1.13.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

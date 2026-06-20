@@ -85,6 +85,7 @@ gateway.manuals(audience="conventions", includeContent=true)
 project.summary
 handoff.latest, or handoff.search for a specific topic
 artifact.search, if the task mentions shared docs, instructions, or generated files
+artifact.read_text, if a matching Markdown/text artifact must be read into context
 ```
 
 Treat `knownFaults` as stop-signals. Do not repeat a failed approach until the
@@ -98,7 +99,8 @@ Search gateway artifacts before creating local project docs:
 artifact.search query="frontend AGENTS template" includeCommon=true
 artifact.list common=true pathPrefix="templates"
 artifact.peek id=<artifact id>
-artifact.get id=<artifact id> includeContent=true, only if full content is needed
+artifact.read_text id=<artifact id>, when Markdown/text content is needed
+artifact.get id=<artifact id> includeContent=true, only if exact base64 bytes are needed
 ```
 
 The gateway is the source of truth for bundled templates. Client agents should

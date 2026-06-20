@@ -36,6 +36,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.search`
 * `artifact.list`
 * `artifact.peek`
+* `artifact.read_text`
 * `artifact.get`
 * `artifact.update_metadata`
 * `artifact.archive`
@@ -182,10 +183,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.12.2",
+    "packageVersion": "1.13.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 51,
+    "tools": 52,
     "node": {
       "version": "v24.16.0"
     },
@@ -225,7 +226,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 51
+      "tools": 52
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -277,8 +278,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.12.2",
-      "tools": 51
+      "packageVersion": "1.13.0",
+      "tools": 52
     },
     "database": {
       "engine": "postgresql",
@@ -430,7 +431,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 51,
+    "tools": 52,
     "records": {
       "projects": 1,
       "items": 10,
@@ -769,8 +770,9 @@ Use this when an agent needs to browse a folder-like artifact hierarchy. Use
 
 Get a compact artifact preview without base64 content.
 
-Use this before `artifact.get(includeContent=true)` when an agent needs to
-decide whether the full file is relevant.
+Use this when an agent needs to decide whether the full file is relevant. For
+Markdown/text content, follow it with `artifact.read_text`; use
+`artifact.get(includeContent=true)` only when exact bytes are needed.
 
 Input:
 
@@ -842,6 +844,74 @@ Output for binary or non-text artifacts keeps metadata only:
 
 ---
 
+### `artifact.read_text`
+
+Read bounded UTF-8 text from a text or Markdown artifact without base64
+content. This is the preferred tool when ChatGPT or another agent needs the
+actual content of an artifact in model context.
+
+Input:
+
+```json
+{
+  "id": "A-COMMON-001",
+  "maxBytes": 131072,
+  "maxChars": 20000,
+  "maxLines": 500,
+  "outlineLimit": 40
+}
+```
+
+Input by path:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "templates/agents/frontend/AGENTS.md"
+}
+```
+
+Output:
+
+```json
+{
+  "artifact": {
+    "id": "A-COMMON-001",
+    "path": "templates/agents/frontend/AGENTS.md",
+    "contentType": "text/markdown; charset=utf-8",
+    "downloadPath": "/artifacts/A-COMMON-001/download",
+    "text": "# AGENTS.md\n\n...",
+    "textInfo": {
+      "isText": true,
+      "isMarkdown": true,
+      "encoding": "utf8",
+      "readBytes": 12042,
+      "maxBytes": 131072,
+      "maxChars": 20000,
+      "maxLines": 500,
+      "truncated": false,
+      "truncatedByBytes": false,
+      "truncatedByChars": false,
+      "truncatedByLines": false,
+      "redacted": false,
+      "redactions": 0,
+      "base64Included": false
+    },
+    "outline": [
+      { "level": 1, "title": "AGENTS.md", "line": 1 }
+    ]
+  }
+}
+```
+
+`artifact.read_text` rejects binary artifacts, never returns `contentBase64`,
+and redacts obvious token/password/private-key patterns by default. Pass
+`redactSecrets=false` only for trusted internal debugging when the user
+explicitly needs exact bytes; prefer `artifact.get(includeContent=true)` for
+exact base64 transport.
+
+---
+
 ### `artifact.get`
 
 Get artifact metadata by id or project/path.
@@ -875,8 +945,9 @@ For small files, agents may request inline base64 content:
 
 Use direct download for larger files and binaries.
 
-Agents should usually call `artifact.peek` first. Use inline base64 only when
-the preview confirms that the full content is needed in the model context.
+Agents should usually call `artifact.peek` first for orientation, then
+`artifact.read_text` for Markdown/text content. Use inline base64 only when
+the exact file bytes are needed in the model context.
 
 ---
 
@@ -2164,7 +2235,7 @@ choosing a different next step or asking for direction.
 
 Return a compact token-conscious start-of-work package for a task or query.
 
-Use this before full `preflight`, full `memory.get`, or
+Use this before full `preflight`, full `memory.get`, `artifact.read_text`, or
 `artifact.get(includeContent=true)` when the agent needs a quick orientation
 without loading complete bodies or base64 content.
 
@@ -2231,15 +2302,15 @@ Output:
     {
       "id": "A-COMMON-013",
       "path": "conventions/PROJECT_MEMORY_COLLABORATION.md",
-      "preferredNextTool": "artifact.peek"
+      "preferredNextTool": "artifact.read_text"
     }
   ],
   "recentEvents": [],
   "nextCalls": [
     {
-      "tool": "artifact.peek",
+      "tool": "artifact.read_text",
       "input": { "id": "A-COMMON-013" },
-      "reason": "Preview shared artifact before requesting full base64 content or downloading."
+      "reason": "Read bounded text from shared artifact without loading base64 content."
     }
   ]
 }

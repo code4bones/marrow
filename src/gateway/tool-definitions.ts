@@ -176,6 +176,20 @@ const artifactPeekSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const artifactReadTextSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    project: z.string().optional(),
+    path: z.string().min(1).optional(),
+    maxBytes: z.number().int().min(1).max(512 * 1024).optional(),
+    maxChars: z.number().int().min(1).max(100_000).optional(),
+    maxLines: z.number().int().min(1).max(5000).optional(),
+    outlineLimit: z.number().int().min(1).max(100).optional(),
+    redactSecrets: z.boolean().optional()
+  })
+  .refine((value) => Boolean(value.id || value.path), {
+    message: "Either id or path is required."
+  });
 const artifactUpdateMetadataSchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -441,8 +455,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.peek",
     description:
-      "Get a compact artifact preview without base64 content. Text/Markdown artifacts return an excerpt and outline; binary artifacts return metadata only. Prefer this before artifact.get(includeContent=true).",
+      "Get a compact artifact preview without base64 content. Text/Markdown artifacts return an excerpt and outline; binary artifacts return metadata only. Prefer artifact.read_text when text content is needed.",
     schema: artifactPeekSchema
+  },
+  {
+    name: "artifact.read_text",
+    description:
+      "Read bounded UTF-8 text from a text/Markdown artifact without base64 content. Prefer this for ChatGPT and other agents that need artifact text in model context.",
+    schema: artifactReadTextSchema
   },
   {
     name: "artifact.update_metadata",

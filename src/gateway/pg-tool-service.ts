@@ -150,6 +150,8 @@ export class PgToolService {
           return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed, requestContext) });
         case "artifact.peek":
           return ok("Artifact preview loaded.", { artifact: await this.peekArtifact(parsed, requestContext) });
+        case "artifact.read_text":
+          return ok("Artifact text loaded.", { artifact: await this.readTextArtifact(parsed, requestContext) });
         case "artifact.update_metadata":
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "artifact.archive":
@@ -1392,6 +1394,57 @@ export class PgToolService {
     };
   }
 
+  private async readTextArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
+    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const output = artifactOut(row);
+    const contentType = String(row.content_type);
+    const artifactPath = String(row.path);
+    const isText = isTextArtifact(contentType, artifactPath);
+    const isMarkdown = isMarkdownArtifact(contentType, artifactPath);
+    if (!isText) {
+      throw new AppError("VALIDATION_ERROR", "Artifact is not a text artifact. Use downloadPath for binary bytes.", {
+        contentType,
+        path: artifactPath,
+        downloadPath: output.downloadPath
+      });
+    }
+
+    const sizeBytes = Number(row.size_bytes ?? 0);
+    const maxBytes = Math.min(Number(input.maxBytes ?? 128 * 1024), sizeBytes);
+    const maxChars = Number(input.maxChars ?? 20_000);
+    const maxLines = Number(input.maxLines ?? 500);
+    const outlineLimit = Number(input.outlineLimit ?? 40);
+    const buffer =
+      maxBytes > 0 ? await readArtifactPrefix(artifactAbsolutePath(String(row.storage_path)), maxBytes) : Buffer.alloc(0);
+    const decoded = buffer.toString("utf8");
+    const limited = limitText(decoded, maxChars, maxLines);
+    const redaction = input.redactSecrets === false ? { text: limited.text, redactions: 0 } : redactSensitiveText(limited.text);
+    const truncatedByBytes = sizeBytes > buffer.byteLength;
+    const truncated = truncatedByBytes || limited.truncatedByChars || limited.truncatedByLines;
+
+    return {
+      ...output,
+      text: redaction.text,
+      textInfo: {
+        isText,
+        isMarkdown,
+        encoding: "utf8",
+        readBytes: buffer.byteLength,
+        maxBytes,
+        maxChars,
+        maxLines,
+        truncated,
+        truncatedByBytes,
+        truncatedByChars: limited.truncatedByChars,
+        truncatedByLines: limited.truncatedByLines,
+        redacted: redaction.redactions > 0,
+        redactions: redaction.redactions,
+        base64Included: false
+      },
+      outline: isMarkdown ? markdownOutline(redaction.text, outlineLimit) : []
+    };
+  }
+
   private async updateArtifactMetadata(input: Row, context: NormalizedGatewayRequestContext) {
     const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
     const [row] = await this.db("artifacts")
@@ -2534,6 +2587,7 @@ function compactDecisionRecord(record: Row) {
 }
 
 function compactArtifactRecord(record: Row) {
+  const preferredNextTool = preferredArtifactReadTool(record);
   return {
     id: String(record.id),
     scope: String(record.scope ?? (record.projectId ? "project" : "common")),
@@ -2544,8 +2598,14 @@ function compactArtifactRecord(record: Row) {
     sizeBytes: Number(record.sizeBytes ?? 0),
     tags: stringArray(record.tags),
     downloadPath: String(record.downloadPath),
-    preferredNextTool: "artifact.peek"
+    preferredNextTool
   };
+}
+
+function preferredArtifactReadTool(record: Row) {
+  const contentType = String(record.contentType ?? record.content_type ?? "");
+  const artifactPath = String(record.path ?? "");
+  return isTextArtifact(contentType, artifactPath) ? "artifact.read_text" : "artifact.peek";
 }
 
 function compactEventRecord(record: Row) {
@@ -2578,10 +2638,14 @@ function contextPackNextCalls(input: { decisions: Row[]; faults: Row[]; artifact
     });
   }
   for (const artifact of input.artifacts.slice(0, 5)) {
+    const tool = preferredArtifactReadTool(artifact);
     calls.push({
-      tool: "artifact.peek",
+      tool,
       input: { id: String(artifact.id) },
-      reason: "Preview shared artifact before requesting full base64 content or downloading."
+      reason:
+        tool === "artifact.read_text"
+          ? "Read bounded text from shared artifact without loading base64 content."
+          : "Preview shared artifact before requesting full base64 content or downloading."
     });
   }
   for (const decision of input.decisions.slice(0, 3)) {
@@ -2624,10 +2688,14 @@ function changedSinceNextCalls(input: {
     });
   }
   for (const artifact of input.artifacts.slice(0, 3)) {
+    const tool = preferredArtifactReadTool(artifact);
     calls.push({
-      tool: "artifact.peek",
+      tool,
       input: { id: String(artifact.id) },
-      reason: "Preview changed artifact before requesting full content."
+      reason:
+        tool === "artifact.read_text"
+          ? "Read bounded text from changed artifact without loading base64 content."
+          : "Preview changed artifact before requesting full content."
     });
   }
   for (const decision of input.decisions.slice(0, 2)) {
@@ -2675,10 +2743,14 @@ function projectSummaryNextCalls(input: {
     });
   }
   for (const artifact of input.artifacts.slice(0, 3)) {
+    const tool = preferredArtifactReadTool(artifact);
     calls.push({
-      tool: "artifact.peek",
+      tool,
       input: { id: String(artifact.id) },
-      reason: "Preview shared artifact before requesting full content."
+      reason:
+        tool === "artifact.read_text"
+          ? "Read bounded text from shared artifact without loading base64 content."
+          : "Preview shared artifact before requesting full content."
     });
   }
   for (const decision of input.decisions.slice(0, 2)) {
@@ -3108,6 +3180,56 @@ function isTextArtifact(contentType: string, artifactPath: string): boolean {
 
 function isMarkdownArtifact(contentType: string, artifactPath: string): boolean {
   return contentType.toLowerCase().includes("markdown") || path.posix.extname(artifactPath).toLowerCase() === ".md";
+}
+
+function limitText(text: string, maxChars: number, maxLines: number) {
+  let output = text;
+  let truncatedByChars = false;
+  let truncatedByLines = false;
+
+  if (output.length > maxChars) {
+    output = output.slice(0, maxChars);
+    truncatedByChars = true;
+  }
+
+  const lines = output.split(/\r?\n/);
+  if (lines.length > maxLines) {
+    output = lines.slice(0, maxLines).join("\n");
+    truncatedByLines = true;
+  }
+
+  return {
+    text: output,
+    truncatedByChars,
+    truncatedByLines
+  };
+}
+
+function redactSensitiveText(text: string) {
+  let redactions = 0;
+  const redact = () => {
+    redactions += 1;
+    return "[REDACTED]";
+  };
+
+  let output = text.replace(
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    () => redact()
+  );
+  output = output.replace(/(authorization\s*:\s*bearer\s+)[^\s"'`]+/gi, (_match, prefix: string) => `${prefix}${redact()}`);
+  output = output.replace(
+    /((?:"?(?:api[_-]?key|token|secret|password|private[_-]?key|client[_-]?secret)"?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s]+))/gi,
+    (match: string) => {
+      const separatorIndex = Math.max(match.indexOf(":"), match.indexOf("="));
+      if (separatorIndex < 0) {
+        return redact();
+      }
+      redactions += 1;
+      return `${match.slice(0, separatorIndex + 1)} [REDACTED]`;
+    }
+  );
+
+  return { text: output, redactions };
 }
 
 function markdownOutline(text: string, limit: number): Array<{ level: number; title: string; line: number }> {

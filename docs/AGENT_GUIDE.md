@@ -234,7 +234,8 @@ before creating a new shared template:
 ```text
 artifact.search query="frontend AGENTS template" includeCommon=true
 artifact.peek id=<selected artifact id>
-artifact.get id=<selected artifact id> includeContent=true, only if full content is needed
+artifact.read_text id=<selected artifact id>, when the template text is needed
+artifact.get id=<selected artifact id> includeContent=true, only if exact base64 bytes are needed
 ```
 
 If a user asks for templates and `memory.search` returns `C-TEMPLATE-001`, treat
@@ -250,11 +251,12 @@ Use project artifacts for files specific to one project:
 }
 ```
 
-For text or Markdown files, call `artifact.peek` first. It returns compact
-metadata, an excerpt, and a Markdown outline without `contentBase64`.
+For text or Markdown files, call `artifact.peek` first when orienting, then
+`artifact.read_text` when the actual file text is needed. Both return no
+`contentBase64`.
 
-Use `artifact.get(includeContent=true)` only when the excerpt or outline shows
-that the full content is actually needed.
+Use `artifact.get(includeContent=true)` only when exact base64 file bytes are
+actually needed.
 
 For binary files or larger files, use the returned `downloadPath` and append it
 to `GW_ENDPOINT`.
@@ -463,6 +465,7 @@ Find shared files:
 artifact.search
 artifact.list
 artifact.peek
+artifact.read_text
 artifact.get
 ```
 

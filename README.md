@@ -36,7 +36,7 @@ Implemented local/core MCP tools:
 - `preflight`
 
 Shared PostgreSQL gateway mode exposes the same core model plus gateway and
-collaboration tools. Current gateway smoke coverage expects 51 tools, including:
+collaboration tools. Current gateway smoke coverage expects 52 tools, including:
 
 - `gateway.about`
 - `gateway.version`
@@ -58,6 +58,7 @@ collaboration tools. Current gateway smoke coverage expects 51 tools, including:
 - `artifact.search`
 - `artifact.list`
 - `artifact.peek`
+- `artifact.read_text`
 - `artifact.get`
 - `artifact.update_metadata`
 - `artifact.archive`
@@ -230,7 +231,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.12.2.tgz
+npm install -g ./deadragdoll-pm3m-1.13.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -246,7 +247,7 @@ pm2 save
 and then seeds or updates bundled common artifact templates from the installed
 package into PostgreSQL plus `ARTIFACT_DIR`. Clients do not seed templates
 locally; they discover gateway templates with `artifact.search`,
-`artifact.list`, `artifact.peek`, and `artifact.get`. Run `pm3m seed templates` on the gateway
+`artifact.list`, `artifact.peek`, `artifact.read_text`, and `artifact.get`. Run `pm3m seed templates` on the gateway
 only when you need to repeat just the template sync.
 
 There is intentionally no `postinstall` side effect. Installing the package
@@ -350,6 +351,7 @@ Gateway-only MCP tools:
 - `artifact.search`
 - `artifact.list`
 - `artifact.peek`
+- `artifact.read_text`
 - `artifact.get`
 - `artifact.update_metadata`
 - `artifact.archive`
