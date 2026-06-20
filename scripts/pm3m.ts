@@ -50,7 +50,7 @@ function startPm2(): void {
   const deployDir = process.cwd();
   const gatewayScript = path.resolve(packageRoot, "dist", "src", "gateway.js");
   const envPath = path.resolve(deployDir, ".env");
-  const ecosystemPath = path.resolve(deployDir, ".pm3m.ecosystem.config.js");
+  const ecosystemPath = path.resolve(deployDir, ".pm3m.ecosystem.config.cjs");
   const processName = process.env.PM2_NAME ?? "pm3m-gateway";
 
   if (!existsSync(envPath)) {

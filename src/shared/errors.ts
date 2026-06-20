@@ -1,6 +1,7 @@
 import { ZodError } from "zod/v4";
 
 export type ErrorCode =
+  | "ARTIFACT_CONFLICT"
   | "CURRENT_PROJECT_NOT_SET"
   | "ARTIFACT_NOT_FOUND"
   | "DB_ERROR"

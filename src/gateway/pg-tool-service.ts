@@ -932,9 +932,35 @@ export class PgToolService {
       .where({ project_id: project?.id ?? null, path: artifactPath })
       .first();
     if (existing && input.overwrite !== true) {
-      throw new AppError("VALIDATION_ERROR", "Artifact already exists. Set overwrite=true to replace it.", {
-        id: existing.id,
-        path: artifactPath
+      throw new AppError("ARTIFACT_CONFLICT", "Artifact already exists. Choose overwrite, a versioned path, or archive the existing artifact first.", {
+        existing: artifactOut(existing),
+        requested: {
+          scope: project ? "project" : "common",
+          projectId: project?.id ?? null,
+          path: artifactPath,
+          title: typeof input.title === "string" ? input.title : path.posix.basename(artifactPath),
+          contentType: typeof input.contentType === "string" ? input.contentType : inferContentType(artifactPath),
+          sizeBytes: content.byteLength,
+          sha256: createHash("sha256").update(content).digest("hex")
+        },
+        suggestedActions: [
+          {
+            action: "keep_existing",
+            description: "Do not upload. Use artifact.get or the existing downloadPath."
+          },
+          {
+            action: "overwrite",
+            description: "Call artifact.put again with overwrite=true only after the user confirms replacement."
+          },
+          {
+            action: "versioned_path",
+            description: "Call artifact.put with a new path such as templates/name-v2.md or templates/name-YYYY-MM-DD.md."
+          },
+          {
+            action: "archive_then_put",
+            description: "Call artifact.archive for the existing artifact, then artifact.put with the original path."
+          }
+        ]
       });
     }
 

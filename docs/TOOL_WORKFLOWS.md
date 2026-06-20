@@ -264,6 +264,16 @@ artifact.update_metadata, if title/description/tags need cleanup
 artifact.archive, if a shared file is superseded but should remain retrievable
 ```
 
+If upload returns `ARTIFACT_CONFLICT`:
+
+```text
+artifact.get, to inspect the existing artifact
+ask user, unless the requested action already explicitly says replace/archive
+artifact.put(overwrite=true), only after replacement is confirmed
+artifact.put(path="...-v2.md"), when keeping both versions is better
+artifact.archive -> artifact.put, when the old path should point at the new file
+```
+
 Purpose:
 
 - keep reusable files discoverable

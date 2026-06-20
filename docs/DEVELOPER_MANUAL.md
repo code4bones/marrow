@@ -345,6 +345,14 @@ For common artifacts, use:
 
 Use `overwrite: true` only when the replacement is intentional.
 
+When a path already exists, `artifact.put` returns `ARTIFACT_CONFLICT` with the
+existing artifact and suggested actions. The safe choices are:
+
+- use the existing artifact
+- retry with `overwrite: true` after explicit confirmation
+- upload to a versioned path
+- archive the old artifact and then upload to the original path
+
 Use `artifact.update_metadata` when bytes are correct but the title,
 description, or tags need cleanup.
 
@@ -478,7 +486,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.4.0.tgz
+npm install -g ./deadragdoll-pm3m-1.4.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

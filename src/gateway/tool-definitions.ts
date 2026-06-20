@@ -315,7 +315,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.put",
     description:
-      "Store or update a shared artifact file on the gateway. Content is base64 so agents can upload text files and binaries.",
+      "Store or update a shared artifact file on the gateway. Content is base64 so agents can upload text files and binaries. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutSchema
   },
   {

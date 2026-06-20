@@ -175,7 +175,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.4.0",
+    "packageVersion": "1.4.1",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -270,7 +270,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.4.0",
+      "packageVersion": "1.4.1",
       "tools": 44
     },
     "database": {
@@ -602,6 +602,35 @@ Output:
 ```
 
 Agents upload content as base64 so this works for Markdown and binary files. The gateway stores bytes on disk under `ARTIFACT_DIR` and metadata in PostgreSQL.
+
+If the same scope/path already exists and `overwrite` is not `true`, the tool
+returns `ok=false` with `error.code="ARTIFACT_CONFLICT"`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "ARTIFACT_CONFLICT",
+    "message": "Artifact already exists. Choose overwrite, a versioned path, or archive the existing artifact first.",
+    "details": {
+      "existing": {
+        "id": "A-COMMON-001",
+        "path": "templates/agents/frontend/AGENTS.md",
+        "downloadPath": "/artifacts/A-COMMON-001/download"
+      },
+      "suggestedActions": [
+        { "action": "keep_existing" },
+        { "action": "overwrite" },
+        { "action": "versioned_path" },
+        { "action": "archive_then_put" }
+      ]
+    }
+  }
+}
+```
+
+Agents should ask before `overwrite` or `archive_then_put` unless the user
+already explicitly requested replacement.
 
 ---
 

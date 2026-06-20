@@ -4,6 +4,7 @@
 .tellymcp
 .mcpsession.json
 .env
+.pm3m.ecosystem.config.cjs
 node_modules
 dist
 .agent

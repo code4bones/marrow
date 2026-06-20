@@ -419,6 +419,34 @@ try {
   assertOk(artifactResult.structuredContent, "artifact.put failed.");
   state.artifactId = readNestedString(artifactResult.structuredContent, ["data", "artifact", "id"]);
 
+  const artifactConflictResult = await client.callTool({
+    name: "artifact.put",
+    arguments: {
+      common: true,
+      path: state.artifactPath,
+      title: "Gateway smoke duplicate AGENTS template",
+      description: "Smoke test duplicate artifact for conflict handling.",
+      contentType: "text/markdown; charset=utf-8",
+      contentBase64: Buffer.from("# Duplicate\n", "utf8").toString("base64"),
+      tags: ["smoke", "agents-template"]
+    }
+  });
+  assertFailureCode(artifactConflictResult.structuredContent, "ARTIFACT_CONFLICT", "artifact.put conflict did not fail correctly.");
+  assert(
+    readNestedString(artifactConflictResult.structuredContent, ["error", "details", "existing", "id"]) ===
+      state.artifactId,
+    "artifact.put conflict did not include the existing artifact."
+  );
+  const suggestedArtifactConflictActions = readNestedArray(artifactConflictResult.structuredContent, [
+    "error",
+    "details",
+    "suggestedActions"
+  ]);
+  assert(
+    suggestedArtifactConflictActions.some((item) => isRecord(item) && item.action === "archive_then_put"),
+    "artifact.put conflict did not suggest archive_then_put."
+  );
+
   const artifactSearchResult = await client.callTool({
     name: "artifact.search",
     arguments: {
@@ -649,6 +677,12 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function assertOk(value: unknown, message: string): void {
   if (!isRecord(value) || value.ok !== true) {
+    throw new Error(`${message} Response: ${JSON.stringify(value)}`);
+  }
+}
+
+function assertFailureCode(value: unknown, code: string, message: string): void {
+  if (!isRecord(value) || value.ok !== false || !isRecord(value.error) || value.error.code !== code) {
     throw new Error(`${message} Response: ${JSON.stringify(value)}`);
   }
 }

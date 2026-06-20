@@ -222,6 +222,18 @@ to `GW_ENDPOINT`.
 Ask before overwriting an artifact unless the user explicitly requested a
 replacement.
 
+If `artifact.put` returns `ARTIFACT_CONFLICT`, do not retry blindly. Inspect
+`error.details.existing` and `error.details.suggestedActions`, then choose one
+path:
+
+- keep the existing artifact and use `artifact.get`
+- ask for confirmation, then retry `artifact.put` with `overwrite=true`
+- create a new versioned path such as `templates/name-v2.md`
+- call `artifact.archive` on the old artifact, then `artifact.put` with the
+  original path
+
+Ask the user before replacing or archiving shared team artifacts.
+
 Ask when multiple artifacts are plausible matches.
 
 Use `artifact.update_metadata` when the bytes are correct but title,
