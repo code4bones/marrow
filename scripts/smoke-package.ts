@@ -54,6 +54,15 @@ try {
     existsSync(join(installedPackageRoot, "dist", "scripts", "seed-templates.js")),
     "template seed script was not packaged."
   );
+  const oauthKeyOutput = execFileSync(process.execPath, [join(installedPackageRoot, "dist", "scripts", "pm3m.js"), "oauth", "key"], {
+    cwd: extractDir,
+    encoding: "utf8",
+    stdio: "pipe"
+  });
+  assert(
+    /^PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\\n/.test(oauthKeyOutput),
+    "pm3m oauth key did not print a dotenv-ready private key."
+  );
 
   await runInstalledServerSmoke(installedPackageRoot);
 

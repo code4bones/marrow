@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import dotenv from "dotenv";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -20,6 +21,9 @@ try {
       break;
     case "seed":
       await runSeed(process.argv[3] ?? "templates");
+      break;
+    case "oauth":
+      runOauth(process.argv[3] ?? "help");
       break;
     case "status":
       await runMigrations("status");
@@ -155,6 +159,27 @@ async function runSeed(target: string): Promise<void> {
     default:
       throw new Error(`Unknown seed target "${target}". Use templates.`);
   }
+}
+
+function runOauth(target: string): void {
+  switch (target) {
+    case "key":
+      printOauthPrivateKey();
+      break;
+    case "help":
+    case "--help":
+    case "-h":
+      printOauthHelp();
+      break;
+    default:
+      throw new Error(`Unknown oauth target "${target}". Use key.`);
+  }
+}
+
+function printOauthPrivateKey(): void {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  console.log(`PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="${escapeEnvValue(pem)}"`);
 }
 
 function pathToGatewayImport(): string {
@@ -304,6 +329,10 @@ function parseEnvFile(filePath: string): Record<string, string> {
   return env;
 }
 
+function escapeEnvValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/"/g, '\\"');
+}
+
 function printHelp(): void {
   console.log(`pm3m
 
@@ -311,11 +340,20 @@ Usage:
   pm3m start              Start or reload the PM2 gateway from the current .env directory
   pm3m migrate [latest]   Apply PostgreSQL migrations using .env from the current directory
   pm3m seed templates     Seed or update bundled common artifact templates
+  pm3m oauth key          Print PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM for .env
   pm3m status             Show PostgreSQL migration status
   pm3m rollback           Roll back the latest PostgreSQL migration batch
   pm3m gateway            Run the gateway directly without PM2
   pm3m stdio              Run the local SQLite stdio MCP server
   pm3m help               Show this help
+`);
+}
+
+function printOauthHelp(): void {
+  console.log(`pm3m oauth
+
+Usage:
+  pm3m oauth key          Print a new RSA private key formatted for PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM
 `);
 }
 

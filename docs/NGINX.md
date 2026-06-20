@@ -92,6 +92,12 @@ PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
 PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 ```
 
+Generate the signing key value with:
+
+```bash
+pm3m oauth key
+```
+
 The OAuth discovery and token routes are public by design. The nginx include
 maps the prefixed public routes to the gateway's internal unprefixed OAuth
 routes.

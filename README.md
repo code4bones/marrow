@@ -196,6 +196,12 @@ is used only at `/oauth/authorize`; ChatGPT receives a short-lived OAuth access
 token and never sees `MCP_TOKEN`. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
 for stable JWT signing across restarts.
 
+Generate that `.env` value with:
+
+```bash
+pm3m oauth key
+```
+
 For PM2 deployments, use the included ecosystem file. It loads `.env`, watches the built gateway files and migrations, and maps `BIND`/`PORT` into the gateway runtime:
 
 ```bash
@@ -207,7 +213,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.5.0.tgz
+npm install -g ./deadragdoll-pm3m-1.5.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

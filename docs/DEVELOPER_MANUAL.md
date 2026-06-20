@@ -477,6 +477,12 @@ LOG_INCLUDE_TIME=true
 
 Run migrations before starting or after deploys that add tables:
 
+Generate a stable OAuth signing key for `.env` with:
+
+```bash
+pm3m oauth key
+```
+
 ```bash
 npm run db:pg:migrate
 npm run db:pg:status
@@ -493,7 +499,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.5.0.tgz
+npm install -g ./deadragdoll-pm3m-1.5.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
