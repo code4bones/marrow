@@ -81,6 +81,7 @@ try {
   assert(toolNames.includes("memory.hygiene_report"), "memory.hygiene_report tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
+  assert(toolNames.includes("artifact.put_text"), "artifact.put_text tool was not listed.");
   assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
   assert(toolNames.includes("artifact.archive"), "artifact.archive tool was not listed.");
   assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
@@ -481,38 +482,40 @@ try {
   state.artifactPath = `gateway-smoke/AGENTS-${unique}.md`;
   const artifactContent = "# Gateway Smoke AGENTS\n\nUse preflight before editing files.\napi_key=smoke-secret\n";
   const artifactResult = await client.callTool({
-    name: "artifact.put",
+    name: "artifact.put_text",
     arguments: {
       common: true,
       path: state.artifactPath,
       title: "Gateway smoke AGENTS template",
       description: "Smoke test artifact for gateway file storage.",
       contentType: "text/markdown; charset=utf-8",
-      contentBase64: Buffer.from(artifactContent, "utf8").toString("base64"),
+      text: artifactContent,
       tags: ["smoke", "agents-template"],
       overwrite: true
     }
   });
-  assertOk(artifactResult.structuredContent, "artifact.put failed.");
+  assertOk(artifactResult.structuredContent, "artifact.put_text failed.");
   state.artifactId = readNestedString(artifactResult.structuredContent, ["data", "artifact", "id"]);
+  const artifactPutText = readNestedRecord(artifactResult.structuredContent, ["data", "artifact"]);
+  assert(!("contentBase64" in artifactPutText), "artifact.put_text returned base64 content.");
 
   const artifactConflictResult = await client.callTool({
-    name: "artifact.put",
+    name: "artifact.put_text",
     arguments: {
       common: true,
       path: state.artifactPath,
       title: "Gateway smoke duplicate AGENTS template",
       description: "Smoke test duplicate artifact for conflict handling.",
       contentType: "text/markdown; charset=utf-8",
-      contentBase64: Buffer.from("# Duplicate\n", "utf8").toString("base64"),
+      text: "# Duplicate\n",
       tags: ["smoke", "agents-template"]
     }
   });
-  assertFailureCode(artifactConflictResult.structuredContent, "ARTIFACT_CONFLICT", "artifact.put conflict did not fail correctly.");
+  assertFailureCode(artifactConflictResult.structuredContent, "ARTIFACT_CONFLICT", "artifact.put_text conflict did not fail correctly.");
   assert(
     readNestedString(artifactConflictResult.structuredContent, ["error", "details", "existing", "id"]) ===
       state.artifactId,
-    "artifact.put conflict did not include the existing artifact."
+    "artifact.put_text conflict did not include the existing artifact."
   );
   const suggestedArtifactConflictActions = readNestedArray(artifactConflictResult.structuredContent, [
     "error",
@@ -521,7 +524,22 @@ try {
   ]);
   assert(
     suggestedArtifactConflictActions.some((item) => isRecord(item) && item.action === "archive_then_put"),
-    "artifact.put conflict did not suggest archive_then_put."
+    "artifact.put_text conflict did not suggest archive_then_put."
+  );
+
+  const artifactPutTextBinaryResult = await client.callTool({
+    name: "artifact.put_text",
+    arguments: {
+      common: true,
+      path: `gateway-smoke/not-text-${unique}.png`,
+      contentType: "image/png",
+      text: "not really an image"
+    }
+  });
+  assertFailureCode(
+    artifactPutTextBinaryResult.structuredContent,
+    "VALIDATION_ERROR",
+    "artifact.put_text accepted a non-text contentType."
   );
 
   const artifactSearchResult = await client.callTool({

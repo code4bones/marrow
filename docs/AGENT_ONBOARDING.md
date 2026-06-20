@@ -100,6 +100,7 @@ artifact.search query="frontend AGENTS template" includeCommon=true
 artifact.list common=true pathPrefix="templates"
 artifact.peek id=<artifact id>
 artifact.read_text id=<artifact id>, when Markdown/text content is needed
+artifact.put_text path=<artifact path> text=<updated text>, when Markdown/text content should be saved
 artifact.get id=<artifact id> includeContent=true, only if exact base64 bytes are needed
 ```
 
@@ -131,7 +132,8 @@ Use only the records that match what actually happened.
 
 Write back durable information only. Use `handoff.create` for compact session
 summaries, `memory.upsert` for compact reusable status or conventions,
-`decision.record` for durable architecture, `artifact.put` for generated files
+`decision.record` for durable architecture, `artifact.put_text` for generated text files,
+`artifact.put` for binaries or exact bytes
 or docs, and `failed_attempt.record` for dead ends. Do not write pmem after
 every tiny edit.
 

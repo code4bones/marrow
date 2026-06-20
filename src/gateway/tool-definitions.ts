@@ -134,6 +134,18 @@ const artifactPutSchema = z.object({
   tags: z.array(z.string()).optional(),
   overwrite: z.boolean().optional()
 });
+const artifactPutTextSchema = z.object({
+  id: z.string().min(1).optional(),
+  project: z.string().nullable().optional(),
+  common: z.boolean().optional(),
+  path: z.string().min(1),
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  contentType: z.string().min(1).optional(),
+  text: z.string(),
+  tags: z.array(z.string()).optional(),
+  overwrite: z.boolean().optional()
+});
 const artifactSearchSchema = z.object({
   query: z.string().min(1).optional(),
   project: z.string().optional(),
@@ -433,8 +445,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.put",
     description:
-      "Store or update a shared artifact file on the gateway. Content is base64 so agents can upload text files and binaries. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
+      "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutSchema
+  },
+  {
+    name: "artifact.put_text",
+    description:
+      "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
+    schema: artifactPutTextSchema
   },
   {
     name: "artifact.search",

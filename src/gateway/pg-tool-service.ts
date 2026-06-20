@@ -142,6 +142,8 @@ export class PgToolService {
           return ok("Memory hygiene report loaded.", await this.memoryHygieneReport(parsed, requestContext));
         case "artifact.put":
           return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
+        case "artifact.put_text":
+          return ok("Text artifact stored.", { artifact: await this.putTextArtifact(parsed, requestContext) });
         case "artifact.search":
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed, requestContext) });
         case "artifact.list":
@@ -322,14 +324,14 @@ export class PgToolService {
         "Call task.next or task.get when working from a recorded task.",
         "Call preflight before editing files.",
         "Call artifact.search or artifact.list before creating local reusable docs or templates.",
-        "Call artifact.peek before requesting inline base64 content from artifact.get.",
+        "Call artifact.read_text and artifact.put_text for Markdown/text; use base64 artifact.get/artifact.put only for exact bytes or binary files.",
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
       artifactStorage: {
         status: "available",
         intent:
           "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them.",
-        tools: ["artifact.put", "artifact.search", "artifact.peek", "artifact.get"]
+        tools: ["artifact.put_text", "artifact.put", "artifact.search", "artifact.peek", "artifact.read_text", "artifact.get"]
       },
       connectionSnippets: connectionSnippets()
     };
@@ -1146,10 +1148,37 @@ export class PgToolService {
   }
 
   private async putArtifact(input: Row, context: NormalizedGatewayRequestContext) {
+    return this.storeArtifact(input, context, decodeBase64(String(input.contentBase64)), {
+      contentType: typeof input.contentType === "string" ? input.contentType : undefined,
+      conflictTool: "artifact.put"
+    });
+  }
+
+  private async putTextArtifact(input: Row, context: NormalizedGatewayRequestContext) {
+    const text = String(input.text ?? "");
+    const artifactPath = normalizeArtifactPath(String(input.path));
+    const contentType = typeof input.contentType === "string" ? input.contentType : inferTextContentType(artifactPath);
+    if (!isTextArtifact(contentType, artifactPath)) {
+      throw new AppError("VALIDATION_ERROR", "artifact.put_text requires a text-compatible contentType.", {
+        path: artifactPath,
+        contentType
+      });
+    }
+    return this.storeArtifact(input, context, Buffer.from(text, "utf8"), {
+      contentType,
+      conflictTool: "artifact.put_text"
+    });
+  }
+
+  private async storeArtifact(
+    input: Row,
+    context: NormalizedGatewayRequestContext,
+    content: Buffer,
+    options: { contentType?: string; conflictTool: "artifact.put" | "artifact.put_text" }
+  ) {
     const common = input.common === true || input.project === null;
     const project = common ? null : await this.resolveProject(input.project, context);
     const artifactPath = normalizeArtifactPath(String(input.path));
-    const content = decodeBase64(String(input.contentBase64));
     const maxBytes = Number(process.env.ARTIFACT_MAX_BYTES ?? 10 * 1024 * 1024);
     if (content.byteLength > maxBytes) {
       throw new AppError("VALIDATION_ERROR", `Artifact exceeds ARTIFACT_MAX_BYTES (${maxBytes}).`, {
@@ -1180,15 +1209,15 @@ export class PgToolService {
           },
           {
             action: "overwrite",
-            description: "Call artifact.put again with overwrite=true only after the user confirms replacement."
+            description: `Call ${options.conflictTool} again with overwrite=true only after the user confirms replacement.`
           },
           {
             action: "versioned_path",
-            description: "Call artifact.put with a new path such as templates/name-v2.md or templates/name-YYYY-MM-DD.md."
+            description: `Call ${options.conflictTool} with a new path such as templates/name-v2.md or templates/name-YYYY-MM-DD.md.`
           },
           {
             action: "archive_then_put",
-            description: "Call artifact.archive for the existing artifact, then artifact.put with the original path."
+            description: `Call artifact.archive for the existing artifact, then ${options.conflictTool} with the original path.`
           }
         ]
       });
@@ -1197,7 +1226,7 @@ export class PgToolService {
     const now = nowIso();
     const id = existing?.id ? String(existing.id) : String(input.id ?? (await this.nextId("artifacts", `A-${project ? projectKeyFromId(project.id) : "COMMON"}`)));
     const title = typeof input.title === "string" ? input.title : path.posix.basename(artifactPath);
-    const contentType = typeof input.contentType === "string" ? input.contentType : inferContentType(artifactPath);
+    const contentType = options.contentType ?? inferContentType(artifactPath);
     const storagePath = artifactStoragePath(project?.slug ?? null, artifactPath);
     const absolutePath = artifactAbsolutePath(storagePath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
@@ -3292,6 +3321,11 @@ function inferContentType(artifactPath: string): string {
     default:
       return "application/octet-stream";
   }
+}
+
+function inferTextContentType(artifactPath: string): string {
+  const inferred = inferContentType(artifactPath);
+  return isTextArtifact(inferred, artifactPath) ? inferred : "text/plain; charset=utf-8";
 }
 
 async function readBundledManual(relativePath: string): Promise<string> {

@@ -269,7 +269,8 @@ Record only durable knowledge:
 - use `failed_attempt.record` when an approach failed and should appear as a
   future `knownFaults` stop-signal
 - use `handoff.create` when another agent or later session may continue the work
-- use `artifact.put` when a reusable file should be shared with the team
+- use `artifact.put_text` when a reusable text file should be shared with the team
+- use `artifact.put` when binary or exact bytes should be shared with the team
 
 Do not record every tiny observation.
 
@@ -338,13 +339,14 @@ Bearer auth is still required.
 
 For Markdown or text files, the agent should call `artifact.peek` first when it
 needs orientation, then `artifact.read_text` when it needs the actual file text
-in model context. Both avoid `contentBase64`. Use
-`artifact.get(includeContent=true)` only when exact inline base64 content is
-actually needed. For larger files or binary files, download from `downloadPath`.
+in model context. Both avoid `contentBase64`. Use `artifact.put_text` when
+writing Markdown or text artifacts. Use `artifact.get(includeContent=true)` only
+when exact inline base64 content is actually needed. For larger files or binary
+files, download from `downloadPath`.
 
 ### Upload
 
-Agents upload artifact bytes as base64:
+Agents should upload Markdown and text artifacts with `artifact.put_text`:
 
 ```json
 {
@@ -353,8 +355,22 @@ Agents upload artifact bytes as base64:
   "title": "Frontend AGENTS.md",
   "description": "Reusable frontend agent instructions.",
   "contentType": "text/markdown; charset=utf-8",
-  "contentBase64": "IyBBR0VOVFMubWQK",
+  "text": "# AGENTS.md\n\nFrontend instructions...",
   "tags": ["agents", "frontend", "template"],
+  "overwrite": false
+}
+```
+
+Use `artifact.put` only for binary files or exact byte transport:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "assets/diagram.png",
+  "title": "Architecture diagram",
+  "contentType": "image/png",
+  "contentBase64": "<base64 bytes>",
+  "tags": ["diagram"],
   "overwrite": false
 }
 ```
@@ -370,8 +386,9 @@ For common artifacts, use:
 
 Use `overwrite: true` only when the replacement is intentional.
 
-When a path already exists, `artifact.put` returns `ARTIFACT_CONFLICT` with the
-existing artifact and suggested actions. The safe choices are:
+When a path already exists, `artifact.put_text` and `artifact.put` return
+`ARTIFACT_CONFLICT` with the existing artifact and suggested actions. The safe
+choices are:
 
 - use the existing artifact
 - retry with `overwrite: true` after explicit confirmation
@@ -527,7 +544,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.13.0.tgz
+npm install -g ./deadragdoll-pm3m-1.14.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

@@ -200,7 +200,7 @@ context.pack
 preflight.by_query
 decision.list / decision.get
 failed_attempt search
-artifact.search / artifact.peek / artifact.read_text / artifact.get only if exact bytes are needed
+artifact.search / artifact.peek / artifact.read_text / artifact.put_text / artifact.get only if exact bytes are needed
 repository inspection
 ```
 
@@ -216,7 +216,8 @@ Write one or more of:
 - `handoff.create` for session summary
 - `memory.upsert` for compact status or convention
 - `decision.record` for durable architecture
-- `artifact.put` for generated files or docs
+- `artifact.put_text` for generated text files or docs
+- `artifact.put` for binaries or exact byte artifacts
 - `failed_attempt.record` for dead ends
 - `task.update_status` for task lifecycle
 
@@ -325,7 +326,7 @@ PROJECT_MEMORY_MAGIC_TOKEN=...
 
 When ChatGPT or Codex creates a file that should be shared:
 
-1. Store it with `artifact.put`.
+1. Store text files with `artifact.put_text`; use `artifact.put` only for binaries or exact bytes.
 2. Use a clear path.
 3. Use a clear title and description.
 4. Add tags.
@@ -344,7 +345,7 @@ conventions/PROJECT_MEMORY_COLLABORATION.md
 
 ```text
 ChatGPT writes artifact:
-  artifact.put path="conventions/PROJECT_MEMORY_COLLABORATION.md"
+  artifact.put_text path="conventions/PROJECT_MEMORY_COLLABORATION.md"
 
 ChatGPT writes memory:
   memory.upsert title="Project Memory Collaboration Conventions uploaded"

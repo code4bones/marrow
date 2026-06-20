@@ -121,7 +121,8 @@ Use this before recording new information:
 memory.upsert       compact durable status, conventions, constraints, links
 decision.record     durable architecture, product, or workflow decisions
 task.create         executable work with scope and acceptance criteria
-artifact.put        files, generated docs, diagrams, fixtures, templates
+artifact.put_text   generated docs, Markdown, templates, text fixtures
+artifact.put        binary files or exact byte transport
 failed_attempt.record
                     failed approaches that should not be repeated blindly
 handoff.create      compact session summary for another agent or future session
@@ -328,9 +329,10 @@ If upload returns `ARTIFACT_CONFLICT`:
 ```text
 artifact.peek, to inspect the existing artifact without base64 content
 ask user, unless the requested action already explicitly says replace/archive
-artifact.put(overwrite=true), only after replacement is confirmed
-artifact.put(path="...-v2.md"), when keeping both versions is better
-artifact.archive -> artifact.put, when the old path should point at the new file
+artifact.put_text(overwrite=true), for text replacement after confirmation
+artifact.put(overwrite=true), for binary/exact bytes after confirmation
+artifact.put_text(path="...-v2.md"), when keeping both text versions is better
+artifact.archive -> artifact.put_text, when the old text path should point at the new file
 ```
 
 Purpose:
@@ -355,7 +357,8 @@ Use this when ChatGPT and Codex are collaborating through the shared gateway:
 
 ```text
 ChatGPT creates context:
-  artifact.put, for shared docs/files
+  artifact.put_text, for shared docs/text files
+  artifact.put, for binaries or exact byte artifacts
   memory.upsert, for compact status or pointers
 
 Codex continues:

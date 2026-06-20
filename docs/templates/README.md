@@ -15,7 +15,8 @@ templates/
 
 Agents can find them with `artifact.search` or browse them with `artifact.list`.
 Use `artifact.read_text` to load Markdown template content into model context
-without requesting base64 bytes.
+without requesting base64 bytes. Use `artifact.put_text` when writing or
+replacing Markdown templates through the gateway.
 
 Current bundled files:
 

@@ -235,6 +235,7 @@ before creating a new shared template:
 artifact.search query="frontend AGENTS template" includeCommon=true
 artifact.peek id=<selected artifact id>
 artifact.read_text id=<selected artifact id>, when the template text is needed
+artifact.put_text path=<selected path> text=<updated Markdown>, when writing text changes
 artifact.get id=<selected artifact id> includeContent=true, only if exact base64 bytes are needed
 ```
 
@@ -255,6 +256,9 @@ For text or Markdown files, call `artifact.peek` first when orienting, then
 `artifact.read_text` when the actual file text is needed. Both return no
 `contentBase64`.
 
+Use `artifact.put_text` when creating or updating Markdown/text artifacts. It
+stores UTF-8 text directly and avoids base64.
+
 Use `artifact.get(includeContent=true)` only when exact base64 file bytes are
 actually needed.
 
@@ -264,14 +268,14 @@ to `GW_ENDPOINT`.
 Ask before overwriting an artifact unless the user explicitly requested a
 replacement.
 
-If `artifact.put` returns `ARTIFACT_CONFLICT`, do not retry blindly. Inspect
+If `artifact.put_text` or `artifact.put` returns `ARTIFACT_CONFLICT`, do not retry blindly. Inspect
 `error.details.existing` and `error.details.suggestedActions`, then choose one
 path:
 
-- keep the existing artifact and use `artifact.get`
-- ask for confirmation, then retry `artifact.put` with `overwrite=true`
+- keep the existing artifact and use `artifact.read_text` or `artifact.get`
+- ask for confirmation, then retry `artifact.put_text` or `artifact.put` with `overwrite=true`
 - create a new versioned path such as `templates/name-v2.md`
-- call `artifact.archive` on the old artifact, then `artifact.put` with the
+- call `artifact.archive` on the old artifact, then `artifact.put_text` or `artifact.put` with the
   original path
 
 Ask the user before replacing or archiving shared team artifacts.
@@ -466,6 +470,7 @@ artifact.search
 artifact.list
 artifact.peek
 artifact.read_text
+artifact.put_text
 artifact.get
 ```
 
@@ -482,7 +487,8 @@ task.update_status(status="done")
 event.record, if important
 decision.record, if a durable decision was made
 decision.supersede, if replacing an old decision
-artifact.put, if a reusable file should be shared
+artifact.put_text, if a reusable text file should be shared
+artifact.put, if binary or exact base64 bytes should be shared
 handoff.create, if another agent may continue the work
 ```
 

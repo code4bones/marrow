@@ -109,7 +109,7 @@ http://127.0.0.1:8765/mcp
 
 Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, optional `MCP_TOKEN`, optional `ARTIFACT_DIR`, and `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`. OAuth facade variables include `PROJECT_MEMORY_PUBLIC_URL`, `PROJECT_MEMORY_OAUTH_ISSUER`, `PROJECT_MEMORY_OAUTH_AUDIENCE`, `PROJECT_MEMORY_MAGIC_TOKEN` or `PROJECT_MEMORY_MAGIC_TOKEN_HASH`, `PROJECT_MEMORY_ALLOWED_REDIRECT_URIS`, optional `PROJECT_MEMORY_OAUTH_CLIENT_ID`, optional `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`, optional authorization-code TTL, and optional OAuth scope/key settings. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
 
-Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
+Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
 Gateway logging uses `pino`:
 
@@ -255,6 +255,7 @@ Implemented tools:
 - `handoff.latest` (gateway)
 - `handoff.search` (gateway)
 - `artifact.put` (gateway)
+- `artifact.put_text` (gateway)
 - `artifact.search` (gateway)
 - `artifact.list` (gateway)
 - `artifact.peek` (gateway)

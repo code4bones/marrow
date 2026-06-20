@@ -33,6 +33,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `handoff.latest`
 * `handoff.search`
 * `artifact.put`
+* `artifact.put_text`
 * `artifact.search`
 * `artifact.list`
 * `artifact.peek`
@@ -183,10 +184,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.13.0",
+    "packageVersion": "1.14.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 52,
+    "tools": 53,
     "node": {
       "version": "v24.16.0"
     },
@@ -226,7 +227,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 52
+      "tools": 53
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -278,8 +279,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.13.0",
-      "tools": 52
+      "packageVersion": "1.14.0",
+      "tools": 53
     },
     "database": {
       "engine": "postgresql",
@@ -431,7 +432,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 52,
+    "tools": 53,
     "records": {
       "projects": 1,
       "items": 10,
@@ -591,9 +592,71 @@ https://pmem.undoo.ru/api/mcp?client_id=developer@host&client_label=Developer%20
 
 ---
 
+### `artifact.put_text`
+
+Store or update a shared UTF-8 text or Markdown artifact on the gateway
+without base64.
+
+Prefer this for templates, generated Markdown, handoffs, docs, checklists,
+JSON/YAML snippets, and other text-first collaboration files.
+
+Input:
+
+```json
+{
+  "common": true,
+  "path": "templates/agents/frontend/AGENTS.md",
+  "title": "Frontend AGENTS.md",
+  "description": "Reusable frontend agent instructions.",
+  "contentType": "text/markdown; charset=utf-8",
+  "text": "# AGENTS.md\n\nFrontend instructions...",
+  "tags": ["agents", "frontend", "template"],
+  "overwrite": true
+}
+```
+
+For project artifacts, pass `project` instead of `"common": true`:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "docs/snapshots/architecture-2026-06-20.md",
+  "text": "# Architecture Snapshot\n\n..."
+}
+```
+
+Output:
+
+```json
+{
+  "artifact": {
+    "id": "A-COMMON-001",
+    "scope": "common",
+    "path": "templates/agents/frontend/AGENTS.md",
+    "title": "Frontend AGENTS.md",
+    "contentType": "text/markdown; charset=utf-8",
+    "sizeBytes": 1234,
+    "sha256": "...",
+    "downloadPath": "/artifacts/A-COMMON-001/download",
+    "tags": ["agents", "frontend", "template"]
+  }
+}
+```
+
+`artifact.put_text` stores UTF-8 bytes in the same artifact storage as
+`artifact.put`, records the same `artifact.created` / `artifact.updated` events,
+and returns the same conflict response when the scope/path already exists and
+`overwrite` is not `true`. It rejects explicitly non-text content types; use
+`artifact.put` for binary files.
+
+---
+
 ### `artifact.put`
 
-Store or update a shared artifact file on the gateway.
+Store or update a shared artifact file on the gateway from base64 bytes.
+
+Use this for binary files, exact byte transport, or clients that cannot send
+text safely. For Markdown and ordinary text, prefer `artifact.put_text`.
 
 Input:
 
@@ -630,7 +693,9 @@ Output:
 }
 ```
 
-Agents upload content as base64 so this works for Markdown and binary files. The gateway stores bytes on disk under `ARTIFACT_DIR` and metadata in PostgreSQL.
+Agents upload content as base64 so this works for binary files and exact byte
+transport. The gateway stores bytes on disk under `ARTIFACT_DIR` and metadata
+in PostgreSQL.
 
 If the same scope/path already exists and `overwrite` is not `true`, the tool
 returns `ok=false` with `error.code="ARTIFACT_CONFLICT"`:
