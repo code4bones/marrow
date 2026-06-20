@@ -204,8 +204,10 @@ any client with the configured bearer token can use the shared gateway. Per-user
 roles, ACLs, and project permissions are not part of the current product stage.
 For ChatGPT Apps/custom MCP Apps, set `PROJECT_MEMORY_MAGIC_TOKEN` and
 `PROJECT_MEMORY_PUBLIC_URL` to enable the minimal OAuth facade. The magic token
-is used only at `/oauth/authorize`; ChatGPT receives a short-lived OAuth access
-token and never sees `MCP_TOKEN`. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
+is used only at `/oauth/authorize`; ChatGPT receives an OAuth bearer token and
+never sees `MCP_TOKEN`. The authorization code is short-lived and one-time-use,
+but the issued access token intentionally has no expiration so ChatGPT does not
+drop the MCP authorization during long-lived chats. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
 for stable JWT signing across restarts. Set `PROJECT_MEMORY_OAUTH_CLIENT_ID`
 when ChatGPT gives you a predefined OAuth client id. If ChatGPT also gives you a
 client secret, set `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`; the token endpoint then
@@ -228,7 +230,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.11.0.tgz
+npm install -g ./deadragdoll-pm3m-1.12.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

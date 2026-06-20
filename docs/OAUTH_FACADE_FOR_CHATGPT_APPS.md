@@ -250,7 +250,6 @@ Return:
 {
   "access_token": "<jwt>",
   "token_type": "Bearer",
-  "expires_in": 3600,
   "scope": "memory:read memory:write"
 }
 ```
@@ -259,13 +258,10 @@ Refresh token is optional.
 
 For v1, do not add refresh tokens unless they are actually needed.
 
-Access token should be short-lived.
-
-Suggested TTL:
-
-```text
-15 minutes to 1 hour
-```
+The authorization code should be short-lived and one-time-use. The issued
+access token is intentionally non-expiring for the internal trusted-token
+deployment model, because ChatGPT may otherwise drop MCP authorization during a
+long-lived chat.
 
 ## JWKS endpoint
 
@@ -290,7 +286,6 @@ iss: https://mcp.example.com
 aud: https://mcp.example.com
 sub: project-memory-user
 scope: memory:read memory:write
-exp: short-lived expiry
 iat: issued at
 jti: unique token id
 ```
@@ -300,7 +295,6 @@ The MCP server must verify:
 - token signature;
 - issuer;
 - audience / resource;
-- expiry;
 - required scopes.
 
 ## MCP auth behavior
@@ -478,7 +472,6 @@ PROJECT_MEMORY_PUBLIC_URL="https://mcp.example.com"
 PROJECT_MEMORY_OAUTH_ISSUER="https://mcp.example.com"
 PROJECT_MEMORY_OAUTH_AUDIENCE="https://mcp.example.com"
 PROJECT_MEMORY_MAGIC_TOKEN="change-me"
-PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS="3600"
 PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS="300"
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS="https://chatgpt.com/connector/oauth/..."
 PROJECT_MEMORY_OAUTH_CLIENT_ID="chatgpt"
@@ -517,7 +510,7 @@ PROJECT_MEMORY_PUBLIC_URL == PROJECT_MEMORY_OAUTH_ISSUER
 - [ ] Verify JWT signature.
 - [ ] Verify `iss`.
 - [ ] Verify `aud` or `resource`.
-- [ ] Verify `exp` / `nbf`.
+- [ ] Verify `nbf` if present.
 - [ ] Verify scopes per tool.
 - [ ] Return `401` with `WWW-Authenticate` challenge when missing/invalid.
 - [ ] Add tool `securitySchemes`.
@@ -527,12 +520,12 @@ PROJECT_MEMORY_PUBLIC_URL == PROJECT_MEMORY_OAUTH_ISSUER
 - [ ] Do not log secrets.
 - [ ] Rate-limit magic-token attempts.
 - [ ] Use HTTPS only.
-- [ ] Keep access tokens short-lived.
+- [ ] Keep authorization codes short-lived and one-time-use.
+- [ ] Do not set an access-token expiry unless ChatGPT reconnect behavior is verified.
 - [ ] Use secure random values for codes and token IDs.
 - [ ] Add tests for:
   - missing token;
   - invalid token;
-  - expired token;
   - wrong issuer;
   - wrong audience;
   - wrong scope;
@@ -703,7 +696,7 @@ This task is done when:
 - User can authorize with magic token.
 - ChatGPT can exchange code with PKCE for an access token.
 - ChatGPT calls the existing `project-memory` MCP server with Bearer token.
-- MCP server rejects missing/invalid/expired/wrong-scope tokens.
+- MCP server rejects missing/invalid/wrong-scope tokens.
 - Existing MCP tools continue working after successful auth.
 - No static internal Bearer token is exposed to ChatGPT.
 - Magic token is never logged or returned to the client.

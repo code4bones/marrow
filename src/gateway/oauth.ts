@@ -52,7 +52,6 @@ type OAuthConfig = {
   clientSecret?: string;
   magicToken?: string;
   magicTokenHash?: string;
-  accessTokenTtlSeconds: number;
   authCodeTtlSeconds: number;
   allowedRedirectUris: string[];
   scopes: string[];
@@ -90,7 +89,6 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
     clientSecret: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET),
     magicToken: env.PROJECT_MEMORY_MAGIC_TOKEN,
     magicTokenHash: env.PROJECT_MEMORY_MAGIC_TOKEN_HASH,
-    accessTokenTtlSeconds: positiveInteger(env.PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS, 3600),
     authCodeTtlSeconds: positiveInteger(env.PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS, 300),
     allowedRedirectUris: listEnv(env.PROJECT_MEMORY_ALLOWED_REDIRECT_URIS),
     scopes: listEnv(env.PROJECT_MEMORY_OAUTH_SCOPES, defaultScopes),
@@ -228,7 +226,6 @@ export function createOAuthFacade(config: OAuthConfig) {
         body: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: config.accessTokenTtlSeconds,
           scope: record.scopes.join(" ")
         }
       };
@@ -362,7 +359,6 @@ function issueJwt(config: OAuthConfig, record: OAuthCodeRecord): string {
     client_id: record.clientId,
     scope: record.scopes.join(" "),
     iat: now,
-    exp: now + config.accessTokenTtlSeconds,
     jti: randomUUID()
   });
   const signingInput = `${header}.${payload}`;
@@ -396,9 +392,6 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
   const now = Math.floor(Date.now() / 1000);
   if (payload.iss !== config.issuer || payload.aud !== config.audience) {
     return { ok: false, reason: "claims" };
-  }
-  if (typeof payload.exp !== "number" || payload.exp <= now) {
-    return { ok: false, reason: "expired" };
   }
   if (typeof payload.nbf === "number" && payload.nbf > now) {
     return { ok: false, reason: "not_before" };

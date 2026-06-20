@@ -23,7 +23,6 @@ const oauth = createOAuthFacadeFromEnv({
   PROJECT_MEMORY_OAUTH_CLIENT_ID: clientId,
   PROJECT_MEMORY_OAUTH_CLIENT_SECRET: clientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
-  PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS: "3600",
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300"
 });
 
@@ -138,6 +137,8 @@ try {
   assert(token.status === 200, `Token endpoint failed: ${JSON.stringify(token.body)}`);
   const accessToken = readNestedString(token.body, ["access_token"]);
   assert(readNestedString(token.body, ["token_type"]) === "Bearer", "Token endpoint did not return Bearer token.");
+  assert(!("expires_in" in (token.body as Record<string, unknown>)), "Token endpoint returned finite expires_in.");
+  assert(!("exp" in jwtPayload(accessToken)), "OAuth access token included an exp claim.");
   console.log("ok - oauth token exchange");
 
   const reusedCode = await postFormJson(`${started.url}/oauth/token`, {
@@ -267,6 +268,13 @@ async function requestAuthorizationCode(startedUrl: string, authorizeUrl: URL, t
 
 function base64url(input: Buffer): string {
   return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function jwtPayload(token: string): Record<string, unknown> {
+  const payload = token.split(".")[1];
+  assert(payload, "JWT did not include a payload.");
+  const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+  return JSON.parse(Buffer.from(normalized, "base64").toString("utf8")) as Record<string, unknown>;
 }
 
 function readNestedString(value: unknown, path: string[]): string {
