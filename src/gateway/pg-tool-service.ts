@@ -1,7 +1,7 @@
 import type { Knex } from "knex";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { nowIso } from "../shared/dates.js";
@@ -144,6 +144,8 @@ export class PgToolService {
           return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed, requestContext) });
         case "artifact.get":
           return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed, requestContext) });
+        case "artifact.peek":
+          return ok("Artifact preview loaded.", { artifact: await this.peekArtifact(parsed, requestContext) });
         case "artifact.update_metadata":
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "artifact.archive":
@@ -306,13 +308,14 @@ export class PgToolService {
         "Call task.next or task.get when working from a recorded task.",
         "Call preflight before editing files.",
         "Call artifact.search or artifact.list before creating local reusable docs or templates.",
+        "Call artifact.peek before requesting inline base64 content from artifact.get.",
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
       artifactStorage: {
         status: "available",
         intent:
           "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them.",
-        tools: ["artifact.put", "artifact.search", "artifact.get"]
+        tools: ["artifact.put", "artifact.search", "artifact.peek", "artifact.get"]
       },
       connectionSnippets: connectionSnippets()
     };
@@ -1133,6 +1136,50 @@ export class PgToolService {
       };
     }
     return output;
+  }
+
+  private async peekArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
+    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const output = artifactOut(row);
+    const contentType = String(row.content_type);
+    const artifactPath = String(row.path);
+    const isText = isTextArtifact(contentType, artifactPath);
+    const isMarkdown = isMarkdownArtifact(contentType, artifactPath);
+    const sizeBytes = Number(row.size_bytes ?? 0);
+    const maxBytes = Math.min(Number(input.maxBytes ?? 64 * 1024), sizeBytes);
+    const excerptChars = Number(input.excerptChars ?? 4000);
+    const outlineLimit = Number(input.outlineLimit ?? 40);
+
+    if (!isText || maxBytes <= 0) {
+      return {
+        ...output,
+        preview: {
+          isText,
+          isMarkdown,
+          truncated: false,
+          excerpt: null,
+          outline: [],
+          note: "Binary or non-text artifact. Use downloadPath when bytes are needed."
+        }
+      };
+    }
+
+    const buffer = await readArtifactPrefix(artifactAbsolutePath(String(row.storage_path)), maxBytes);
+    const text = buffer.toString("utf8");
+    const truncated = sizeBytes > buffer.byteLength || text.length > excerptChars;
+    const excerpt = text.slice(0, excerptChars);
+    return {
+      ...output,
+      preview: {
+        isText,
+        isMarkdown,
+        truncated,
+        readBytes: buffer.byteLength,
+        maxBytes,
+        excerpt,
+        outline: isMarkdown ? markdownOutline(text, outlineLimit) : []
+      }
+    };
   }
 
   private async updateArtifactMetadata(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2216,6 +2263,58 @@ function artifactAbsolutePath(storagePath: string): string {
     throw new AppError("VALIDATION_ERROR", "Artifact storage path escaped artifact root.", { storagePath });
   }
   return absolutePath;
+}
+
+async function readArtifactPrefix(absolutePath: string, maxBytes: number): Promise<Buffer> {
+  const file = await open(absolutePath, "r");
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    const result = await file.read(buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, result.bytesRead);
+  } finally {
+    await file.close();
+  }
+}
+
+function isTextArtifact(contentType: string, artifactPath: string): boolean {
+  const normalized = contentType.toLowerCase();
+  if (
+    normalized.startsWith("text/") ||
+    normalized.includes("json") ||
+    normalized.includes("xml") ||
+    normalized.includes("yaml") ||
+    normalized.includes("toml") ||
+    normalized.includes("markdown")
+  ) {
+    return true;
+  }
+  return [".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".xml"].includes(
+    path.posix.extname(artifactPath).toLowerCase()
+  );
+}
+
+function isMarkdownArtifact(contentType: string, artifactPath: string): boolean {
+  return contentType.toLowerCase().includes("markdown") || path.posix.extname(artifactPath).toLowerCase() === ".md";
+}
+
+function markdownOutline(text: string, limit: number): Array<{ level: number; title: string; line: number }> {
+  const outline: Array<{ level: number; title: string; line: number }> = [];
+  const lines = text.split(/\r?\n/);
+  for (const [index, line] of lines.entries()) {
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (!match) {
+      continue;
+    }
+    outline.push({
+      level: match[1].length,
+      title: match[2].trim(),
+      line: index + 1
+    });
+    if (outline.length >= limit) {
+      break;
+    }
+  }
+  return outline;
 }
 
 function decodeBase64(value: string): Buffer {

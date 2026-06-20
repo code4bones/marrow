@@ -135,6 +135,18 @@ const artifactGetSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const artifactPeekSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    project: z.string().optional(),
+    path: z.string().min(1).optional(),
+    maxBytes: z.number().int().min(1).max(512 * 1024).optional(),
+    excerptChars: z.number().int().min(1).max(20000).optional(),
+    outlineLimit: z.number().int().min(1).max(100).optional()
+  })
+  .refine((value) => Boolean(value.id || value.path), {
+    message: "Either id or path is required."
+  });
 const artifactUpdateMetadataSchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -348,6 +360,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
     schema: artifactGetSchema
+  },
+  {
+    name: "artifact.peek",
+    description:
+      "Get a compact artifact preview without base64 content. Text/Markdown artifacts return an excerpt and outline; binary artifacts return metadata only. Prefer this before artifact.get(includeContent=true).",
+    schema: artifactPeekSchema
   },
   {
     name: "artifact.update_metadata",

@@ -249,6 +249,7 @@ Implemented tools:
 - `artifact.put` (gateway)
 - `artifact.search` (gateway)
 - `artifact.list` (gateway)
+- `artifact.peek` (gateway)
 - `artifact.get` (gateway)
 - `artifact.update_metadata` (gateway)
 - `artifact.archive` (gateway)

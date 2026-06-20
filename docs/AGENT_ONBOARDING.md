@@ -91,7 +91,8 @@ Search gateway artifacts before creating local project docs:
 ```text
 artifact.search query="frontend AGENTS template" includeCommon=true
 artifact.list common=true pathPrefix="templates"
-artifact.get id=<artifact id> includeContent=true
+artifact.peek id=<artifact id>
+artifact.get id=<artifact id> includeContent=true, only if full content is needed
 ```
 
 The gateway is the source of truth for bundled templates. Client agents should

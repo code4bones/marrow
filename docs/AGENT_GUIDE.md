@@ -229,7 +229,8 @@ before creating a new shared template:
 
 ```text
 artifact.search query="frontend AGENTS template" includeCommon=true
-artifact.get id=<selected artifact id> includeContent=true
+artifact.peek id=<selected artifact id>
+artifact.get id=<selected artifact id> includeContent=true, only if full content is needed
 ```
 
 Use project artifacts for files specific to one project:
@@ -241,7 +242,11 @@ Use project artifacts for files specific to one project:
 }
 ```
 
-For small text or Markdown files, `artifact.get` may include content.
+For text or Markdown files, call `artifact.peek` first. It returns compact
+metadata, an excerpt, and a Markdown outline without `contentBase64`.
+
+Use `artifact.get(includeContent=true)` only when the excerpt or outline shows
+that the full content is actually needed.
 
 For binary files or larger files, use the returned `downloadPath` and append it
 to `GW_ENDPOINT`.
@@ -434,6 +439,7 @@ Find shared files:
 ```text
 artifact.search
 artifact.list
+artifact.peek
 artifact.get
 ```
 

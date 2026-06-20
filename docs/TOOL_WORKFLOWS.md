@@ -280,14 +280,16 @@ Use this when browsing shared files by hierarchy or tags:
 
 ```text
 artifact.list
-artifact.get
+artifact.peek
+artifact.get, only if full content is needed
 ```
 
 Use this when searching by meaning:
 
 ```text
 artifact.search
-artifact.get
+artifact.peek
+artifact.get, only if full content is needed
 ```
 
 After upload:
@@ -300,7 +302,7 @@ artifact.archive, if a shared file is superseded but should remain retrievable
 If upload returns `ARTIFACT_CONFLICT`:
 
 ```text
-artifact.get, to inspect the existing artifact
+artifact.peek, to inspect the existing artifact without base64 content
 ask user, unless the requested action already explicitly says replace/archive
 artifact.put(overwrite=true), only after replacement is confirmed
 artifact.put(path="...-v2.md"), when keeping both versions is better
@@ -334,7 +336,7 @@ ChatGPT creates context:
 
 Codex continues:
   gateway.manuals(audience="conventions", includeContent=true)
-  artifact.search / artifact.get
+  artifact.search / artifact.peek / artifact.get only when needed
   preflight.by_query
   repository inspection
 

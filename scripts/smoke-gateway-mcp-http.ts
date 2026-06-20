@@ -82,6 +82,7 @@ try {
   assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
   assert(toolNames.includes("artifact.archive"), "artifact.archive tool was not listed.");
   assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
+  assert(toolNames.includes("artifact.peek"), "artifact.peek tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
@@ -480,6 +481,30 @@ try {
   );
   assert(artifactIds.includes(state.artifactId), "artifact.search did not include smoke artifact.");
 
+  const artifactPeekResult = await client.callTool({
+    name: "artifact.peek",
+    arguments: {
+      id: state.artifactId,
+      maxBytes: 1024,
+      excerptChars: 2000
+    }
+  });
+  assertOk(artifactPeekResult.structuredContent, "artifact.peek failed.");
+  const artifactPeek = readNestedRecord(artifactPeekResult.structuredContent, ["data", "artifact"]);
+  assert(!("contentBase64" in artifactPeek), "artifact.peek returned base64 content.");
+  assert(
+    readNestedString(artifactPeekResult.structuredContent, ["data", "artifact", "preview", "excerpt"]).includes(
+      "Use preflight before editing files."
+    ),
+    "artifact.peek did not return a text excerpt."
+  );
+  assert(
+    readNestedArray(artifactPeekResult.structuredContent, ["data", "artifact", "preview", "outline"]).some(
+      (item) => isRecord(item) && item.title === "Gateway Smoke AGENTS"
+    ),
+    "artifact.peek did not return a Markdown outline."
+  );
+
   const artifactGetResult = await client.callTool({
     name: "artifact.get",
     arguments: {
@@ -733,6 +758,22 @@ function readNestedArray(value: unknown, path: string[]): unknown[] {
 
   if (!Array.isArray(current)) {
     throw new Error(`Expected array at ${path.join(".")}.`);
+  }
+
+  return current;
+}
+
+function readNestedRecord(value: unknown, path: string[]): Record<string, unknown> {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) {
+      throw new Error(`Expected object while reading ${path.join(".")}.`);
+    }
+    current = current[key];
+  }
+
+  if (!isRecord(current)) {
+    throw new Error(`Expected object at ${path.join(".")}.`);
   }
 
   return current;

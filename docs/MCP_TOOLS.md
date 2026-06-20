@@ -29,6 +29,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.put`
 * `artifact.search`
 * `artifact.list`
+* `artifact.peek`
 * `artifact.get`
 * `artifact.update_metadata`
 * `artifact.archive`
@@ -175,7 +176,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.6.1",
+    "packageVersion": "1.6.2",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -270,7 +271,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.6.1",
+      "packageVersion": "1.6.2",
       "tools": 44
     },
     "database": {
@@ -758,6 +759,83 @@ Use this when an agent needs to browse a folder-like artifact hierarchy. Use
 
 ---
 
+### `artifact.peek`
+
+Get a compact artifact preview without base64 content.
+
+Use this before `artifact.get(includeContent=true)` when an agent needs to
+decide whether the full file is relevant.
+
+Input:
+
+```json
+{
+  "id": "A-COMMON-001",
+  "maxBytes": 65536,
+  "excerptChars": 4000,
+  "outlineLimit": 40
+}
+```
+
+Input by path:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "path": "docs/design.md"
+}
+```
+
+Output for Markdown/text artifacts:
+
+```json
+{
+  "artifact": {
+    "id": "A-COMMON-001",
+    "path": "conventions/PROJECT_MEMORY_COLLABORATION.md",
+    "contentType": "text/markdown; charset=utf-8",
+    "sizeBytes": 9005,
+    "downloadPath": "/artifacts/A-COMMON-001/download",
+    "preview": {
+      "isText": true,
+      "isMarkdown": true,
+      "truncated": false,
+      "readBytes": 9005,
+      "maxBytes": 65536,
+      "excerpt": "# Project Memory...",
+      "outline": [
+        { "level": 1, "title": "Project Memory MCP - Collaboration Conventions", "line": 1 },
+        { "level": 2, "title": "Core Principle", "line": 14 }
+      ]
+    }
+  }
+}
+```
+
+Output for binary or non-text artifacts keeps metadata only:
+
+```json
+{
+  "artifact": {
+    "id": "A-COMMON-020",
+    "contentType": "application/octet-stream",
+    "downloadPath": "/artifacts/A-COMMON-020/download",
+    "preview": {
+      "isText": false,
+      "isMarkdown": false,
+      "truncated": false,
+      "excerpt": null,
+      "outline": [],
+      "note": "Binary or non-text artifact. Use downloadPath when bytes are needed."
+    }
+  }
+}
+```
+
+`artifact.peek` never returns `contentBase64`.
+
+---
+
 ### `artifact.get`
 
 Get artifact metadata by id or project/path.
@@ -790,6 +868,9 @@ For small files, agents may request inline base64 content:
 ```
 
 Use direct download for larger files and binaries.
+
+Agents should usually call `artifact.peek` first. Use inline base64 only when
+the preview confirms that the full content is needed in the model context.
 
 ---
 

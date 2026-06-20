@@ -198,7 +198,7 @@ handoff or memory.search
 preflight.by_query
 decision.list / decision.get
 failed_attempt search
-artifact.search / artifact.get
+artifact.search / artifact.peek / artifact.get only if needed
 repository inspection
 ```
 
@@ -355,7 +355,8 @@ Codex searches:
   artifact.search query="Project Memory Collaboration Conventions"
 
 Codex retrieves:
-  artifact.get id="..."
+  artifact.peek id="..."
+  artifact.get id="...", only if full content is needed
 
 Codex edits repo or updates PMem.
 
