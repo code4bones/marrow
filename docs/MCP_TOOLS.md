@@ -25,6 +25,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `decision.supersede`
 * `project.resolve`
 * `preflight.by_query`
+* `context.pack`
 * `handoff.create`
 * `artifact.put`
 * `artifact.search`
@@ -176,7 +177,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.6.2",
+    "packageVersion": "1.7.0",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -271,7 +272,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.6.2",
+      "packageVersion": "1.7.0",
       "tools": 44
     },
     "database": {
@@ -2015,6 +2016,96 @@ Use this when an agent is asked to explore or start ad-hoc work before a formal
 task exists. Once scope becomes executable, create a task and use `preflight`.
 If `knownFaults` contains a matching record, do not repeat that approach without
 choosing a different next step or asking for direction.
+
+---
+
+### `context.pack`
+
+Return a compact token-conscious start-of-work package for a task or query.
+
+Use this before full `preflight`, full `memory.get`, or
+`artifact.get(includeContent=true)` when the agent needs a quick orientation
+without loading complete bodies or base64 content.
+
+Input by query:
+
+```json
+{
+  "query": "add compact context retrieval",
+  "project": "project-memory-mcp",
+  "mode": "brief",
+  "profile": "implement",
+  "tokenBudget": 1500,
+  "includeCommon": true
+}
+```
+
+Input by task:
+
+```json
+{
+  "taskId": "T-MEMORY-016",
+  "mode": "normal",
+  "profile": "implement"
+}
+```
+
+`mode` may be `brief`, `normal`, or `deep`. It controls default result limits.
+`profile` may be `general`, `implement`, `review`, `deploy`, `chatgpt`, or
+`onboarding`.
+
+Output:
+
+```json
+{
+  "summary": "Compact start-of-work context...",
+  "budget": {
+    "mode": "brief",
+    "profile": "implement",
+    "tokenBudget": 1500,
+    "strategy": "compact-cards",
+    "fullBodiesIncluded": false,
+    "base64Included": false,
+    "estimatedChars": 4200
+  },
+  "project": {
+    "id": "P-MEMORY",
+    "slug": "project-memory-mcp",
+    "title": "Project Memory MCP"
+  },
+  "task": null,
+  "mustRead": [
+    {
+      "kind": "failed_attempt",
+      "id": "I-MEMORY-011",
+      "tool": "memory.get",
+      "reason": "Known fault matched this task/query..."
+    }
+  ],
+  "handoffs": [],
+  "decisions": [],
+  "knownFaults": [],
+  "memory": [],
+  "artifacts": [
+    {
+      "id": "A-COMMON-013",
+      "path": "conventions/PROJECT_MEMORY_COLLABORATION.md",
+      "preferredNextTool": "artifact.peek"
+    }
+  ],
+  "recentEvents": [],
+  "nextCalls": [
+    {
+      "tool": "artifact.peek",
+      "input": { "id": "A-COMMON-013" },
+      "reason": "Preview shared artifact before requesting full base64 content or downloading."
+    }
+  ]
+}
+```
+
+`context.pack` intentionally returns compact cards and next-call pointers. It
+does not include full record bodies or artifact base64 content.
 
 ---
 

@@ -245,6 +245,7 @@ Implemented tools:
 - `link.list`
 - `preflight`
 - `preflight.by_query` (gateway)
+- `context.pack` (gateway)
 - `handoff.create` (gateway)
 - `artifact.put` (gateway)
 - `artifact.search` (gateway)

@@ -86,6 +86,7 @@ try {
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
+  assert(toolNames.includes("context.pack"), "context.pack tool was not listed.");
   assert(toolNames.includes("handoff.create"), "handoff.create tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
 
@@ -480,6 +481,32 @@ try {
     isRecord(item) ? item.id : undefined
   );
   assert(artifactIds.includes(state.artifactId), "artifact.search did not include smoke artifact.");
+
+  const contextPackResult = await client.callTool({
+    name: "context.pack",
+    arguments: {
+      query: "Gateway Smoke AGENTS",
+      includeCommon: true,
+      mode: "brief",
+      tokenBudget: 1500
+    }
+  });
+  assertOk(contextPackResult.structuredContent, "context.pack failed.");
+  assert(
+    readNestedString(contextPackResult.structuredContent, ["data", "budget", "strategy"]) === "compact-cards",
+    "context.pack did not report compact-cards strategy."
+  );
+  assert(JSON.stringify(contextPackResult.structuredContent).includes("contentBase64") === false, "context.pack returned base64 content.");
+  const contextPackArtifacts = readNestedArray(contextPackResult.structuredContent, ["data", "artifacts"]).map((item) =>
+    isRecord(item) ? item.id : undefined
+  );
+  assert(contextPackArtifacts.includes(state.artifactId), "context.pack did not include smoke artifact metadata.");
+  assert(
+    readNestedArray(contextPackResult.structuredContent, ["data", "nextCalls"]).some(
+      (item) => isRecord(item) && item.tool === "artifact.peek"
+    ),
+    "context.pack did not suggest artifact.peek next call."
+  );
 
   const artifactPeekResult = await client.callTool({
     name: "artifact.peek",

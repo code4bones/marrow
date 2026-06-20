@@ -240,12 +240,17 @@ Expected flow:
 ```text
 project.resolve, when repository identity is available
 project.current
+context.pack(query=<work topic>, mode="brief")
 preflight.by_query, if no task exists yet
 task.next or task.get
+context.pack(taskId=<task id>, mode="brief"), when working from a recorded task
 preflight
 ```
 
 If preflight finds a conflict, the agent should stop and ask for clarification.
+Use `context.pack` as the first pass when the goal is to avoid loading full
+records, artifact base64, or all manuals into the model context. It returns
+compact cards and `nextCalls` for only the records that are worth expanding.
 
 ### During Work
 
@@ -522,7 +527,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.6.2.tgz
+npm install -g ./deadragdoll-pm3m-1.7.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

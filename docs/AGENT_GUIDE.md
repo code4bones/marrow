@@ -47,6 +47,7 @@ gateway.manuals(audience="onboarding", includeContent=true)
 gateway.manuals(audience="conventions", includeContent=true), for collaboration-heavy work
 project.resolve
 project.current or project.set_current
+context.pack, for a compact start-of-work package
 preflight.by_query, or task.next -> task.get -> preflight
 artifact.search, when shared templates or files are needed
 ```
@@ -142,6 +143,7 @@ If no task exists but the user gave a concrete request:
 ```text
 project.resolve, when repository identity is available
 project.current
+context.pack(query=<request>, mode="brief"|"normal")
 preflight.by_query
 implement
 validate
@@ -422,6 +424,7 @@ Start task:
 ```text
 project.current
 task.next
+context.pack(taskId=<task id>)
 preflight
 task.update_status(status="doing")
 ```

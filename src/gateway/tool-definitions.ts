@@ -189,6 +189,29 @@ const preflightByQuerySchema = z.object({
     })
     .optional()
 });
+const contextPackSchema = z
+  .object({
+    taskId: z.string().min(1).optional(),
+    query: z.string().min(1).optional(),
+    project: z.string().optional(),
+    includeCommon: z.boolean().optional(),
+    mode: z.enum(["brief", "normal", "deep"]).optional(),
+    profile: z.enum(["general", "implement", "review", "deploy", "chatgpt", "onboarding"]).optional(),
+    tokenBudget: z.number().int().min(500).max(20000).optional(),
+    limits: z
+      .object({
+        decisions: z.number().int().min(1).max(50).optional(),
+        items: z.number().int().min(1).max(50).optional(),
+        failedAttempts: z.number().int().min(1).max(50).optional(),
+        artifacts: z.number().int().min(1).max(50).optional(),
+        events: z.number().int().min(1).max(50).optional(),
+        handoffs: z.number().int().min(1).max(20).optional()
+      })
+      .optional()
+  })
+  .refine((value) => Boolean(value.taskId || value.query), {
+    message: "Either taskId or query is required."
+  });
 const handoffCreateSchema = z
   .object({
     project: z.string().nullable().optional(),
@@ -453,6 +476,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, knownFaults, artifacts, and recent events.",
     schema: preflightByQuerySchema
+  },
+  {
+    name: "context.pack",
+    description:
+      "Build a compact token-conscious start-of-work context package for a task or query. Returns summaries, stop-signals, pointers, and next tool calls instead of full record bodies or base64 content.",
+    schema: contextPackSchema
   },
   {
     name: "handoff.create",

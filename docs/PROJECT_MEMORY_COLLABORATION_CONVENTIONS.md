@@ -183,18 +183,20 @@ Before doing non-trivial work, an agent should:
 
 1. Resolve or set the current project when relevant.
 2. Read the latest relevant handoff.
-3. Run `preflight.by_query` or search relevant memory.
-4. Check known failed attempts.
-5. Check relevant decisions.
-6. Inspect artifacts if the task mentions docs, instructions, or generated
+3. Run `context.pack` for a compact first pass.
+4. Run `preflight.by_query` or search relevant memory when full context is needed.
+5. Check known failed attempts.
+6. Check relevant decisions.
+7. Inspect artifacts if the task mentions docs, instructions, or generated
    files.
-7. Then inspect repository files.
+8. Then inspect repository files.
 
 Suggested order:
 
 ```text
 project.current / project.resolve
 handoff or memory.search
+context.pack
 preflight.by_query
 decision.list / decision.get
 failed_attempt search

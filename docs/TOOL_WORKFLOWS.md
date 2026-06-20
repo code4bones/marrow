@@ -123,6 +123,7 @@ Use this before changing design or implementation strategy.
 
 ```text
 project.current
+context.pack(query=<topic>, mode="brief"|"normal")
 preflight.by_query, when no task exists yet
 memory.search
 decision.list
@@ -144,6 +145,10 @@ Purpose:
 - discover project and common constraints
 - inspect prior decisions
 - find related failed attempts or patterns
+
+`context.pack` is the token-conscious first pass. It returns compact cards,
+known-fault stop-signals, artifact metadata, and next tool calls. Use the
+follow-up tools it suggests only when full details are needed.
 
 ## Fault Recording
 
@@ -359,6 +364,7 @@ For most implementation tasks, use:
 project.resolve, if repository identity is available
 project.current
 task.next
+context.pack(taskId=<task id>, mode="brief"|"normal")
 preflight
 task.update_status(status="doing")
 memory.search, if more context is needed

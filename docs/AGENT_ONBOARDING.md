@@ -61,12 +61,14 @@ For an existing task:
 ```text
 task.next
 task.get
+context.pack(taskId=<task id>, mode="brief")
 preflight
 ```
 
 For ad-hoc work before a task exists:
 
 ```text
+context.pack(query=<work topic>, mode="brief")
 preflight.by_query
 memory.search
 decision.list

@@ -180,6 +180,8 @@ export class PgToolService {
           return ok("Preflight context loaded.", await this.preflight(parsed));
         case "preflight.by_query":
           return ok("Preflight query context loaded.", await this.preflightByQuery(parsed, requestContext));
+        case "context.pack":
+          return ok("Compact context pack loaded.", await this.contextPack(parsed, requestContext));
         case "handoff.create":
           return ok("Handoff created.", await this.createHandoff(parsed, requestContext));
         default:
@@ -1688,6 +1690,99 @@ export class PgToolService {
     };
   }
 
+  private async contextPack(input: Row, context: NormalizedGatewayRequestContext) {
+    const mode = typeof input.mode === "string" ? input.mode : "normal";
+    const profile = typeof input.profile === "string" ? input.profile : "general";
+    const tokenBudget = Number(input.tokenBudget ?? defaultTokenBudget(mode));
+    const limits = contextPackLimits(mode, (input.limits ?? {}) as Row);
+    const includeCommon = input.includeCommon !== false;
+
+    const source = input.taskId
+      ? await this.preflight({ taskId: input.taskId, includeCommon, limits })
+      : await this.preflightByQuery(
+          {
+            query: input.query,
+            project: input.project,
+            includeCommon,
+            limits
+          },
+          context
+        );
+
+    const project = (source.project ?? null) as ReturnType<typeof projectOut> | null;
+    const task = "task" in source ? (source.task as Row) : null;
+    const query = task
+      ? [task.title, task.scope, task.acceptance].filter(Boolean).join(" ")
+      : String((source as Row).query ?? input.query ?? "");
+    const projectId = project?.id ?? null;
+    const artifacts =
+      "artifacts" in source
+        ? ((source as Row).artifacts as Row[])
+        : await this.searchArtifacts({
+            query,
+            project: projectId ?? undefined,
+            includeCommon,
+            limit: limits.artifacts
+          });
+    const handoffs = await this.listRecentItemsByType("handoff", projectId, includeCommon, limits.handoffs);
+
+    const pack: Row = {
+      summary:
+        "Compact start-of-work context. Read mustRead stop-signals first; use nextCalls to fetch full records or artifact previews only when needed.",
+      budget: {
+        mode,
+        profile,
+        tokenBudget,
+        strategy: "compact-cards",
+        fullBodiesIncluded: false,
+        base64Included: false,
+        limits
+      },
+      project: project ? compactProject(project) : null,
+      task: task ? compactTask(task) : null,
+      query,
+      mustRead: mustReadPointers((source.knownFaults ?? []) as Row[]),
+      handoffs: handoffs.map(compactMemoryRecord),
+      decisions: ((source.relevantDecisions ?? []) as Row[]).map(compactDecisionRecord),
+      knownFaults: ((source.knownFaults ?? []) as Row[]).map(compactSearchRecord),
+      memory: ((source.relatedItems ?? []) as Row[]).map(compactSearchRecord),
+      artifacts: (artifacts ?? []).map(compactArtifactRecord),
+      recentEvents: ((source.recentEvents ?? []) as Row[]).map(compactEventRecord),
+      nextCalls: contextPackNextCalls({
+        decisions: (source.relevantDecisions ?? []) as Row[],
+        faults: (source.knownFaults ?? []) as Row[],
+        artifacts: artifacts ?? [],
+        task
+      })
+    };
+
+    return {
+      ...pack,
+      budget: {
+        ...(pack.budget as Row),
+        estimatedChars: JSON.stringify(pack).length
+      }
+    };
+  }
+
+  private async listRecentItemsByType(
+    type: string,
+    projectId: string | null,
+    includeCommon: boolean,
+    limit: number
+  ): Promise<Row[]> {
+    let query = this.db("items").select("*").where({ type, status: "active" });
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    return (await query.orderBy("updated_at", "desc").limit(limit)).map(itemOut);
+  }
+
   private async createHandoff(input: Row, context: NormalizedGatewayRequestContext) {
     const tags = Array.from(new Set(["handoff", ...stringArray(input.tags)]));
     const item = await this.createMemory(
@@ -1925,6 +2020,164 @@ function artifactSearchOut(row: Row) {
     ...artifactOut(row),
     rank: Number(row.rank ?? 0)
   };
+}
+
+function compactProject(project: Row) {
+  return {
+    id: String(project.id),
+    slug: String(project.slug),
+    title: String(project.title),
+    status: String(project.status),
+    description: shortText(stringOrNull(project.description), 240)
+  };
+}
+
+function compactTask(task: Row) {
+  return {
+    id: String(task.id),
+    title: String(task.title),
+    status: String(task.status),
+    scope: shortText(stringOrNull(task.scope), 360),
+    acceptance: shortText(stringOrNull(task.acceptance), 360),
+    allowedFiles: stringArray(task.allowedFiles),
+    forbiddenFiles: stringArray(task.forbiddenFiles),
+    dependsOn: stringArray(task.dependsOn)
+  };
+}
+
+function compactSearchRecord(record: Row) {
+  return {
+    id: String(record.id),
+    scope: String(record.scope ?? (record.projectId ? "project" : "common")),
+    type: String(record.type),
+    title: String(record.title),
+    status: String(record.status),
+    excerpt: shortText(String(record.excerpt ?? record.body ?? ""), 360),
+    tags: stringArray(record.tags)
+  };
+}
+
+function compactMemoryRecord(record: Row) {
+  return {
+    id: String(record.id),
+    projectId: stringOrNull(record.projectId),
+    type: String(record.type),
+    title: String(record.title),
+    status: String(record.status),
+    excerpt: shortText(String(record.body ?? ""), 500),
+    tags: stringArray(record.tags),
+    updatedAt: stringOrNull(record.updatedAt)
+  };
+}
+
+function compactDecisionRecord(record: Row) {
+  return {
+    id: String(record.id),
+    projectId: stringOrNull(record.projectId),
+    title: String(record.title),
+    status: String(record.status),
+    decision: shortText(String(record.decision ?? ""), 360),
+    rationale: shortText(stringOrNull(record.rationale), 260),
+    consequences: shortText(stringOrNull(record.consequences), 260),
+    tags: stringArray(record.tags)
+  };
+}
+
+function compactArtifactRecord(record: Row) {
+  return {
+    id: String(record.id),
+    scope: String(record.scope ?? (record.projectId ? "project" : "common")),
+    path: String(record.path),
+    title: String(record.title),
+    description: shortText(stringOrNull(record.description), 220),
+    contentType: String(record.contentType),
+    sizeBytes: Number(record.sizeBytes ?? 0),
+    tags: stringArray(record.tags),
+    downloadPath: String(record.downloadPath),
+    preferredNextTool: "artifact.peek"
+  };
+}
+
+function compactEventRecord(record: Row) {
+  return {
+    id: String(record.id),
+    type: String(record.type),
+    title: shortText(stringOrNull(record.title), 220),
+    relatedId: stringOrNull(record.relatedId),
+    createdAt: stringOrNull(record.createdAt)
+  };
+}
+
+function mustReadPointers(faults: Row[]) {
+  return faults.slice(0, 5).map((fault) => ({
+    kind: "failed_attempt",
+    id: String(fault.id),
+    title: String(fault.title),
+    tool: "memory.get",
+    reason: "Known fault matched this task/query. Read before repeating related approaches."
+  }));
+}
+
+function contextPackNextCalls(input: { decisions: Row[]; faults: Row[]; artifacts: Row[]; task: Row | null }) {
+  const calls: Array<{ tool: string; input: Row; reason: string }> = [];
+  for (const fault of input.faults.slice(0, 3)) {
+    calls.push({
+      tool: "memory.get",
+      input: { id: String(fault.id) },
+      reason: "Read full failed-attempt details before proceeding."
+    });
+  }
+  for (const artifact of input.artifacts.slice(0, 5)) {
+    calls.push({
+      tool: "artifact.peek",
+      input: { id: String(artifact.id) },
+      reason: "Preview shared artifact before requesting full base64 content or downloading."
+    });
+  }
+  for (const decision of input.decisions.slice(0, 3)) {
+    calls.push({
+      tool: "decision.get",
+      input: { id: String(decision.id) },
+      reason: "Read full decision only if the compact decision card affects the implementation."
+    });
+  }
+  if (input.task?.id) {
+    calls.push({
+      tool: "preflight",
+      input: { taskId: String(input.task.id) },
+      reason: "Use full preflight when allowed/forbidden scope or complete context is needed."
+    });
+  }
+  return calls;
+}
+
+function contextPackLimits(mode: string, overrides: Row) {
+  const defaults =
+    mode === "brief"
+      ? { decisions: 3, items: 4, failedAttempts: 3, artifacts: 3, events: 3, handoffs: 1 }
+      : mode === "deep"
+        ? { decisions: 10, items: 12, failedAttempts: 8, artifacts: 10, events: 10, handoffs: 3 }
+        : { decisions: 5, items: 6, failedAttempts: 5, artifacts: 5, events: 5, handoffs: 2 };
+  return {
+    decisions: Number(overrides.decisions ?? defaults.decisions),
+    items: Number(overrides.items ?? defaults.items),
+    failedAttempts: Number(overrides.failedAttempts ?? defaults.failedAttempts),
+    artifacts: Number(overrides.artifacts ?? defaults.artifacts),
+    events: Number(overrides.events ?? defaults.events),
+    handoffs: Number(overrides.handoffs ?? defaults.handoffs)
+  };
+}
+
+function defaultTokenBudget(mode: string): number {
+  return mode === "brief" ? 1500 : mode === "deep" ? 6000 : 3000;
+}
+
+function shortText(value: string | null, maxLength: number): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 3)}...`;
 }
 
 function projectOut(row: Row) {
