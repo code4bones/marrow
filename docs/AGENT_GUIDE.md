@@ -237,6 +237,10 @@ artifact.peek id=<selected artifact id>
 artifact.get id=<selected artifact id> includeContent=true, only if full content is needed
 ```
 
+If a user asks for templates and `memory.search` returns `C-TEMPLATE-001`, treat
+that record as a pointer to artifact-backed templates and switch to
+`artifact.search` or `artifact.list`.
+
 Use project artifacts for files specific to one project:
 
 ```json

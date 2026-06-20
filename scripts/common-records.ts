@@ -77,6 +77,14 @@ export const commonRecords = [
     tags: ["common", "task", "scope"]
   },
   {
+    id: "C-TEMPLATE-001",
+    type: "template_index",
+    title: "Bundled template artifacts index",
+    body:
+      "Project Memory bundled templates are stored as common artifacts on the gateway, not as memory item bodies. To find templates, agents should call artifact.list with { common: true, pathPrefix: \"templates\" } or artifact.search with queries such as \"template\", \"frontend AGENTS template\", \"handoff template\", \"task template\", \"deploy checklist\", or \"review checklist\" and includeCommon=true. Russian запросы like \"шаблон\" mean template; use artifact.search query=\"template\" if Cyrillic search returns no results. Current bundled artifact paths include templates/agents/generic/AGENTS.md, templates/agents/frontend/AGENTS.md, templates/agents/backend/AGENTS.md, templates/agents/devops/AGENTS.md, templates/review/REVIEW_CHECKLIST.md, templates/deploy/DEPLOY_CHECKLIST.md, templates/release/RELEASE_CHECKLIST.md, templates/task/TASK_TEMPLATE.md, templates/handoff/HANDOFF_TEMPLATE.md, and templates/fault/FAULT_TEMPLATE.md.",
+    tags: ["template", "templates", "artifact", "artifacts", "agents", "handoff", "task", "review", "deploy", "шаблон"]
+  },
+  {
     id: "C-ARCH-001",
     type: "architecture_note",
     title: "Prefer feature-oriented architecture",
