@@ -338,6 +338,10 @@ Use `context.changed_since` during long or resumed sessions when you already
 have a `nextCursor` from a prior pmem response and only need incremental
 changes.
 
+Use `memory.hygiene_report` when project memory feels noisy, repetitive, or too
+large. Treat it as a read-only report; do not archive or rewrite records without
+reviewing the full records first.
+
 Use `event.record` for:
 
 - append-only history

@@ -47,6 +47,13 @@ const gatewayManualsSchema = z.object({
 const memoryUpsertSchema = createMemorySchema.extend({
   match: z.enum(["id", "scope_type_title"]).optional()
 });
+const memoryHygieneReportSchema = z.object({
+  project: z.string().nullable().optional(),
+  includeCommon: z.boolean().optional(),
+  largeBodyChars: z.number().int().min(500).max(200_000).optional(),
+  staleDays: z.number().int().min(1).max(3650).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+});
 const decisionSupersedeSchema = recordDecisionSchema.extend({
   supersedesId: z.string().min(1)
 });
@@ -402,6 +409,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "memory.update",
     description: "Update a shared memory item and record an event.",
     schema: updateMemorySchema
+  },
+  {
+    name: "memory.hygiene_report",
+    description:
+      "Return compact memory quality signals for project/common scope: large records, stale active records, duplicate title groups, and suggested next calls.",
+    schema: memoryHygieneReportSchema
   },
   {
     name: "artifact.put",

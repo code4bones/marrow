@@ -25,6 +25,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `decision.supersede`
 * `project.resolve`
 * `project.summary`
+* `memory.hygiene_report`
 * `preflight.by_query`
 * `context.pack`
 * `context.changed_since`
@@ -181,10 +182,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.10.0",
+    "packageVersion": "1.11.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 50,
+    "tools": 51,
     "node": {
       "version": "v24.16.0"
     },
@@ -224,7 +225,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 50
+      "tools": 51
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -276,8 +277,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.10.0",
-      "tools": 50
+      "packageVersion": "1.11.0",
+      "tools": 51
     },
     "database": {
       "engine": "postgresql",
@@ -429,7 +430,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 50,
+    "tools": 51,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1539,6 +1540,73 @@ Behavior:
 * update `updated_at`
 * keep FTS in sync through triggers
 * record `item.updated` event
+
+---
+
+### `memory.hygiene_report`
+
+Return read-only memory quality signals for a project/common scope.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "includeCommon": true,
+  "largeBodyChars": 4000,
+  "staleDays": 90,
+  "limit": 20
+}
+```
+
+Use `"project": null` for common-only hygiene. Omit `project` to use the
+requesting client's current project when available.
+
+Output:
+
+```json
+{
+  "summary": "Read-only memory hygiene report...",
+  "thresholds": {
+    "largeBodyChars": 4000,
+    "staleDays": 90
+  },
+  "scanned": {
+    "activeItems": 120
+  },
+  "findings": {
+    "largeRecords": [
+      {
+        "id": "I-MEMORY-021",
+        "type": "handoff",
+        "title": "Large handoff",
+        "bodyChars": 9200,
+        "updatedAt": "2026-06-20T14:00:00.000Z"
+      }
+    ],
+    "staleRecords": [],
+    "duplicateTitleGroups": [
+      {
+        "type": "workflow_rule",
+        "title": "Always run preflight",
+        "count": 2,
+        "ids": ["C-AGENT-001", "C-AGENT-009"]
+      }
+    ]
+  },
+  "nextCalls": [
+    {
+      "tool": "memory.get",
+      "input": {
+        "id": "I-MEMORY-021"
+      }
+    }
+  ]
+}
+```
+
+The report intentionally does not mutate records and does not include full
+memory bodies. Use it to decide what to inspect, split, archive, or consolidate.
 
 ## Task tools
 

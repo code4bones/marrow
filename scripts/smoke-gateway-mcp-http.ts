@@ -78,6 +78,7 @@ try {
   assert(toolNames.includes("project.resolve"), "project.resolve tool was not listed.");
   assert(toolNames.includes("project.summary"), "project.summary tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
+  assert(toolNames.includes("memory.hygiene_report"), "memory.hygiene_report tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
   assert(toolNames.includes("artifact.update_metadata"), "artifact.update_metadata tool was not listed.");
@@ -392,6 +393,28 @@ try {
   assert(
     readNestedString(upsertUpdateResult.structuredContent, ["data", "item", "id"]) === upsertedItemId,
     "memory.upsert created a duplicate instead of updating the existing item."
+  );
+
+  const hygieneResult = await client.callTool({
+    name: "memory.hygiene_report",
+    arguments: {
+      project: state.projectId,
+      includeCommon: true,
+      largeBodyChars: 500,
+      staleDays: 1,
+      limit: 5
+    }
+  });
+  assertOk(hygieneResult.structuredContent, "memory.hygiene_report failed.");
+  assert(
+    typeof readNestedString(hygieneResult.structuredContent, ["data", "summary"]) === "string",
+    "memory.hygiene_report did not return a summary."
+  );
+  assert(
+    readNestedArray(hygieneResult.structuredContent, ["data", "findings", "largeRecords"]).every(
+      (item) => isRecord(item) && !("body" in item)
+    ),
+    "memory.hygiene_report returned full memory bodies."
   );
 
   const preflightByQueryResult = await client.callTool({

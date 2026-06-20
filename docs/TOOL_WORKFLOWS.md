@@ -15,6 +15,13 @@ project.summary
 context.changed_since, only when resuming from a stored cursor
 ```
 
+When memory quality is the problem, inspect before mutating:
+
+```text
+memory.hygiene_report
+memory.get, only for records selected by nextCalls
+```
+
 If current project is missing:
 
 ```text

@@ -29,7 +29,7 @@ Implemented capabilities:
 - configurable cleanup for temporary anonymous gateway clients and their current-project keys
 - operator client management through `gateway.client_get`, `gateway.client_forget`, and `gateway.client_prune`
 - gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.manuals(audience="onboarding")`, `gateway.status`, `gateway.clients`
-- gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`, `project.summary`
+- gateway memory-quality tools: `memory.upsert`, `memory.hygiene_report`, `failed_attempt.record`, `decision.supersede`, `project.resolve`, `project.summary`
 - preflight `knownFaults` alias for failed attempts that should stop repeated mistakes
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
 - artifact metadata update, archival lifecycle, and deterministic listing
@@ -232,6 +232,7 @@ Implemented tools:
 - `memory.search`
 - `memory.update`
 - `memory.upsert` (gateway)
+- `memory.hygiene_report` (gateway)
 - `failed_attempt.record` (gateway)
 - `task.create`
 - `task.list`

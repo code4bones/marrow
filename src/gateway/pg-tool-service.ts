@@ -138,6 +138,8 @@ export class PgToolService {
           return ok("Memory searched.", { results: await this.searchMemory(parsed, requestContext) });
         case "memory.update":
           return ok("Memory item updated.", { item: await this.updateMemory(parsed, requestContext) });
+        case "memory.hygiene_report":
+          return ok("Memory hygiene report loaded.", await this.memoryHygieneReport(parsed, requestContext));
         case "artifact.put":
           return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
         case "artifact.search":
@@ -1055,6 +1057,90 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return itemOut(row);
+  }
+
+  private async memoryHygieneReport(input: Row, context: NormalizedGatewayRequestContext) {
+    const commonOnly = input.project === null;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project, context)
+        : await this.tryCurrentProject(context);
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "memory.hygiene_report requires a project or includeCommon=true.");
+    }
+
+    const limit = Number(input.limit ?? 20);
+    const largeBodyChars = Number(input.largeBodyChars ?? 4000);
+    const staleDays = Number(input.staleDays ?? 90);
+    const staleBefore = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000).toISOString();
+    const rows = await this.memoryHygieneRows(project?.id ?? null, includeCommon);
+    const duplicateGroups = memoryDuplicateGroups(rows, limit);
+    const largeRecords = rows
+      .filter((row) => Number(row.bodyChars ?? 0) >= largeBodyChars)
+      .sort((left, right) => Number(right.bodyChars ?? 0) - Number(left.bodyChars ?? 0))
+      .slice(0, limit)
+      .map(hygieneItemOut);
+    const staleRecords = rows
+      .filter((row) => String(row.updatedAt) < staleBefore)
+      .sort((left, right) => String(left.updatedAt).localeCompare(String(right.updatedAt)))
+      .slice(0, limit)
+      .map(hygieneItemOut);
+
+    return {
+      summary:
+        "Read-only memory hygiene report. Review suggested records before updating, archiving, or consolidating anything.",
+      project: project ? compactProject(project) : null,
+      includeCommon,
+      thresholds: {
+        largeBodyChars,
+        staleDays,
+        staleBefore
+      },
+      scanned: {
+        activeItems: rows.length
+      },
+      findings: {
+        largeRecords,
+        staleRecords,
+        duplicateTitleGroups: duplicateGroups
+      },
+      counts: {
+        largeRecords: largeRecords.length,
+        staleRecords: staleRecords.length,
+        duplicateTitleGroups: duplicateGroups.length
+      },
+      nextCalls: hygieneNextCalls([...largeRecords, ...staleRecords], duplicateGroups)
+    };
+  }
+
+  private async memoryHygieneRows(projectId: string | null, includeCommon: boolean): Promise<Row[]> {
+    let query = this.db("items")
+      .select("id", "project_id", "type", "title", "status", "tags", "created_at", "updated_at")
+      .select(this.db.raw("char_length(body) as body_chars"))
+      .where("status", "active");
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    const rows = await query.orderBy("updated_at", "desc").limit(2000);
+    return rows.map((row) => ({
+      id: String(row.id),
+      projectId: stringOrNull(row.project_id),
+      scope: row.project_id ? "project" : "common",
+      type: String(row.type),
+      title: String(row.title),
+      status: String(row.status),
+      tags: stringArray(row.tags),
+      bodyChars: Number(row.body_chars ?? 0),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    }));
   }
 
   private async putArtifact(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2345,6 +2431,80 @@ function compactMemoryRecord(record: Row) {
     tags: stringArray(record.tags),
     updatedAt: stringOrNull(record.updatedAt)
   };
+}
+
+function hygieneItemOut(record: Row) {
+  return {
+    id: String(record.id),
+    projectId: stringOrNull(record.projectId),
+    scope: String(record.scope ?? (record.projectId ? "project" : "common")),
+    type: String(record.type),
+    title: String(record.title),
+    status: String(record.status),
+    bodyChars: Number(record.bodyChars ?? 0),
+    tags: stringArray(record.tags),
+    updatedAt: stringOrNull(record.updatedAt)
+  };
+}
+
+function memoryDuplicateGroups(rows: Row[], limit: number) {
+  const groups = new Map<string, Row[]>();
+  for (const row of rows) {
+    const key = [row.projectId ?? "common", row.type, String(row.title).trim().toLowerCase()].join("\u0000");
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return Array.from(groups.values())
+    .filter((group) => group.length > 1)
+    .sort((left, right) => right.length - left.length)
+    .slice(0, limit)
+    .map((group) => ({
+      scope: String(group[0]?.scope ?? "project"),
+      projectId: stringOrNull(group[0]?.projectId),
+      type: String(group[0]?.type),
+      title: String(group[0]?.title),
+      count: group.length,
+      ids: group.map((item) => String(item.id)),
+      updatedAt: stringOrNull(
+        group
+          .map((item) => stringOrNull(item.updatedAt))
+          .filter((value): value is string => Boolean(value))
+          .sort()
+          .at(-1) ?? null
+      )
+    }));
+}
+
+function hygieneNextCalls(records: Row[], duplicateGroups: Row[]) {
+  const calls: Array<{ tool: string; input: Row; reason: string }> = [];
+  const seen = new Set<string>();
+  for (const record of records.slice(0, 5)) {
+    const id = String(record.id);
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    calls.push({
+      tool: "memory.get",
+      input: { id },
+      reason: "Inspect full record before deciding whether to split, archive, or rewrite it."
+    });
+  }
+  for (const group of duplicateGroups.slice(0, 3)) {
+    for (const id of stringArray(group.ids).slice(0, 2)) {
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      calls.push({
+        tool: "memory.get",
+        input: { id },
+        reason: "Compare duplicate title group before consolidating records."
+      });
+    }
+  }
+  return calls;
 }
 
 function handoffOut(record: Row, includeContent: boolean) {
