@@ -358,6 +358,9 @@ pm3m seed templates
 npm run seed:templates
 ```
 
+Template sync validates both PostgreSQL artifact metadata and files under
+`ARTIFACT_DIR`; if bytes are missing or stale, the seed rewrites them.
+
 Current template artifact paths:
 
 - `templates/agents/generic/AGENTS.md`

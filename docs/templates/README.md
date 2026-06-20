@@ -3,6 +3,10 @@
 These files are packaged with `@deadragdoll/pm3m` and seeded into the gateway
 artifact store after `pm3m migrate latest`.
 
+The seed checks both PostgreSQL metadata and bytes under `ARTIFACT_DIR`. If an
+active template artifact exists in PostgreSQL but the file is missing on disk,
+`pm3m migrate latest` or `pm3m seed templates` rewrites the missing bytes.
+
 Seeded artifacts are common-scope files with paths under:
 
 ```text

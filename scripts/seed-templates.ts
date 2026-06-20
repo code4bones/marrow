@@ -121,15 +121,15 @@ export async function seedBundledTemplates(options: SeedTemplatesOptions = {}): 
       const existing = await db("artifacts")
         .where({ project_id: null, path: seed.artifactPath })
         .first();
+      const storagePath = path.posix.join("common", seed.artifactPath);
 
-      if (existing && templateArtifactIsCurrent(existing, seed, sha256)) {
+      if (existing && (await templateArtifactIsCurrent(existing, seed, sha256, storagePath))) {
         unchanged += 1;
         continue;
       }
 
       const now = new Date().toISOString();
       const id = existing?.id ? String(existing.id) : await nextArtifactId(db);
-      const storagePath = path.posix.join("common", seed.artifactPath);
       const absolutePath = artifactAbsolutePath(storagePath);
       await mkdir(path.dirname(absolutePath), { recursive: true });
       await writeFile(absolutePath, content);
@@ -214,14 +214,33 @@ function artifactAbsolutePath(storagePath: string): string {
   return absolutePath;
 }
 
-function templateArtifactIsCurrent(existing: Record<string, unknown>, seed: TemplateSeed, sha256: string): boolean {
+async function templateArtifactIsCurrent(
+  existing: Record<string, unknown>,
+  seed: TemplateSeed,
+  sha256: string,
+  storagePath: string
+): Promise<boolean> {
   return (
     String(existing.sha256) === sha256 &&
     String(existing.status ?? "active") === "active" &&
     String(existing.title) === seed.title &&
     String(existing.description ?? "") === seed.description &&
-    JSON.stringify(parseTags(existing.tags)) === JSON.stringify(seed.tags)
+    String(existing.storage_path) === storagePath &&
+    JSON.stringify(parseTags(existing.tags)) === JSON.stringify(seed.tags) &&
+    (await artifactFileSha256(storagePath)) === sha256
   );
+}
+
+async function artifactFileSha256(storagePath: string): Promise<string | null> {
+  try {
+    const content = await readFile(artifactAbsolutePath(storagePath));
+    return createHash("sha256").update(content).digest("hex");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function parseTags(value: unknown): string[] {
