@@ -247,6 +247,8 @@ Implemented tools:
 - `preflight.by_query` (gateway)
 - `context.pack` (gateway)
 - `handoff.create` (gateway)
+- `handoff.latest` (gateway)
+- `handoff.search` (gateway)
 - `artifact.put` (gateway)
 - `artifact.search` (gateway)
 - `artifact.list` (gateway)

@@ -237,6 +237,19 @@ const handoffCreateSchema = z
       message: "At least one handoff section is required."
     }
   );
+const handoffLatestSchema = z.object({
+  project: z.string().nullable().optional(),
+  includeCommon: z.boolean().optional(),
+  includeContent: z.boolean().optional(),
+  limit: z.number().int().min(1).max(20).optional()
+});
+const handoffSearchSchema = z.object({
+  query: z.string().min(1),
+  project: z.string().optional(),
+  includeCommon: z.boolean().optional(),
+  includeContent: z.boolean().optional(),
+  limit: z.number().int().min(1).max(50).optional()
+});
 
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
@@ -488,5 +501,16 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Create a compact shared handoff for another agent: work completed, files touched, blockers, validation, and next steps.",
     schema: handoffCreateSchema
+  },
+  {
+    name: "handoff.latest",
+    description:
+      "Return recent compact handoffs for the current/project/common scope. Use this as the first continuation point before broad memory search.",
+    schema: handoffLatestSchema
+  },
+  {
+    name: "handoff.search",
+    description: "Search handoff records by query and return compact continuation summaries by default.",
+    schema: handoffSearchSchema
   }
 ];

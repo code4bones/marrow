@@ -184,6 +184,10 @@ export class PgToolService {
           return ok("Compact context pack loaded.", await this.contextPack(parsed, requestContext));
         case "handoff.create":
           return ok("Handoff created.", await this.createHandoff(parsed, requestContext));
+        case "handoff.latest":
+          return ok("Latest handoffs loaded.", { handoffs: await this.latestHandoffs(parsed, requestContext) });
+        case "handoff.search":
+          return ok("Handoffs searched.", { handoffs: await this.searchHandoffs(parsed, requestContext) });
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
@@ -1813,6 +1817,40 @@ export class PgToolService {
     };
   }
 
+  private async latestHandoffs(input: Row, context: NormalizedGatewayRequestContext) {
+    const commonOnly = input.project === null;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project, context)
+        : await this.tryCurrentProject(context);
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "handoff.latest requires a project or includeCommon=true.");
+    }
+    const rows = await this.listRecentItemsByType("handoff", project?.id ?? null, includeCommon, Number(input.limit ?? 3));
+    return rows.map((row) => handoffOut(row, input.includeContent === true));
+  }
+
+  private async searchHandoffs(input: Row, context: NormalizedGatewayRequestContext) {
+    const rows = await this.searchMemory(
+      {
+        query: input.query,
+        project: input.project,
+        includeCommon: input.includeCommon !== false,
+        type: "handoff",
+        status: "active",
+        limit: input.limit ?? 10
+      },
+      context
+    );
+    if (input.includeContent === true) {
+      const fullRows = await Promise.all(rows.map((row) => this.getMemory(String(row.id))));
+      return fullRows.map((row) => handoffOut(row as Row, true));
+    }
+    return rows.map((row) => handoffOut(row as Row, false));
+  }
+
   private async createHandoffTaskLink(
     fromId: string,
     toId: string,
@@ -2067,6 +2105,19 @@ function compactMemoryRecord(record: Row) {
     excerpt: shortText(String(record.body ?? ""), 500),
     tags: stringArray(record.tags),
     updatedAt: stringOrNull(record.updatedAt)
+  };
+}
+
+function handoffOut(record: Row, includeContent: boolean) {
+  return {
+    id: String(record.id),
+    projectId: stringOrNull(record.projectId),
+    title: String(record.title),
+    status: String(record.status),
+    excerpt: shortText(String(record.body ?? record.excerpt ?? ""), 700),
+    tags: stringArray(record.tags),
+    updatedAt: stringOrNull(record.updatedAt),
+    ...(includeContent ? { body: String(record.body ?? "") } : {})
   };
 }
 

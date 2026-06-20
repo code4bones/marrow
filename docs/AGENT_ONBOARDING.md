@@ -79,7 +79,7 @@ For collaboration-heavy work, also load:
 
 ```text
 gateway.manuals(audience="conventions", includeContent=true)
-handoff or memory.search for the latest relevant handoff
+handoff.latest, or handoff.search for a specific topic
 artifact.search, if the task mentions shared docs, instructions, or generated files
 ```
 

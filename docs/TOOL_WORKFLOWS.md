@@ -28,6 +28,13 @@ Purpose:
 - avoid guessing project context
 - establish the scope used by tools with optional `project`
 
+When continuing previous work, load recent handoffs before broad search:
+
+```text
+handoff.latest
+handoff.search, when the topic is known
+```
+
 For collaboration-heavy work, load the conventions manual before editing:
 
 ```text
@@ -341,6 +348,7 @@ ChatGPT creates context:
 
 Codex continues:
   gateway.manuals(audience="conventions", includeContent=true)
+  handoff.latest / handoff.search
   artifact.search / artifact.peek / artifact.get only when needed
   preflight.by_query
   repository inspection

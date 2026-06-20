@@ -27,6 +27,8 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `preflight.by_query`
 * `context.pack`
 * `handoff.create`
+* `handoff.latest`
+* `handoff.search`
 * `artifact.put`
 * `artifact.search`
 * `artifact.list`
@@ -177,10 +179,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.7.0",
+    "packageVersion": "1.8.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 44,
+    "tools": 48,
     "node": {
       "version": "v24.16.0"
     },
@@ -220,7 +222,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 44
+      "tools": 48
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -272,8 +274,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.7.0",
-      "tools": 44
+      "packageVersion": "1.8.0",
+      "tools": 48
     },
     "database": {
       "engine": "postgresql",
@@ -425,7 +427,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 44,
+    "tools": 48,
     "records": {
       "projects": 1,
       "items": 10,
@@ -2170,17 +2172,66 @@ Behavior:
 
 Use this before switching agents, pausing work, or leaving a compact continuation
 point after meaningful changes.
-* allowed files
-* forbidden files
-* acceptance criteria
 
-Behavior:
+---
 
-* fail if task does not exist
-* fail if task project does not exist
-* include common records by default
-* project decisions should appear before common rules
-* do not return excessive data
+### `handoff.latest`
+
+Return recent handoffs for the current/project/common scope.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "includeCommon": true,
+  "includeContent": false,
+  "limit": 3
+}
+```
+
+Use `"project": null` for common-only handoffs. Omit `project` to use the
+requesting client's current project.
+
+Output:
+
+```json
+{
+  "handoffs": [
+    {
+      "id": "I-MEMORY-010",
+      "title": "Project Memory OAuth facade for ChatGPT Apps",
+      "excerpt": "Work completed: ...",
+      "tags": ["handoff", "oauth"],
+      "updatedAt": "2026-06-20T13:22:21.278Z"
+    }
+  ]
+}
+```
+
+By default the response is compact and omits full `body`. Pass
+`includeContent=true` only when the full handoff body is needed.
+
+---
+
+### `handoff.search`
+
+Search handoffs by topic.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "query": "OAuth facade ChatGPT Apps",
+  "includeCommon": true,
+  "includeContent": false,
+  "limit": 10
+}
+```
+
+Output is the same compact handoff shape as `handoff.latest`. Use this before
+broad `memory.search` when the agent needs a continuation summary.
 
 ## Seed tools or scripts
 

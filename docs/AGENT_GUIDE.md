@@ -326,6 +326,9 @@ value.
 Use `handoff.create` when another agent or future session needs a compact
 continuation point.
 
+Use `handoff.latest` at the start of continuation work before broad
+`memory.search`. Use `handoff.search` when the handoff topic is known.
+
 Use `event.record` for:
 
 - append-only history
@@ -461,6 +464,14 @@ decision.record, if a durable decision was made
 decision.supersede, if replacing an old decision
 artifact.put, if a reusable file should be shared
 handoff.create, if another agent may continue the work
+```
+
+Continue previous work:
+
+```text
+project.current
+handoff.latest
+context.pack(query=<handoff topic>)
 ```
 
 ## Source Of Truth

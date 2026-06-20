@@ -88,6 +88,8 @@ try {
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
   assert(toolNames.includes("context.pack"), "context.pack tool was not listed.");
   assert(toolNames.includes("handoff.create"), "handoff.create tool was not listed.");
+  assert(toolNames.includes("handoff.latest"), "handoff.latest tool was not listed.");
+  assert(toolNames.includes("handoff.search"), "handoff.search tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
 
   const aboutResult = await client.callTool({
@@ -714,6 +716,43 @@ try {
   assert(
     readNestedString(handoffResult.structuredContent, ["data", "link", "relation"]) === "relates_to",
     "handoff.create did not link the handoff to the task."
+  );
+  const handoffId = readNestedString(handoffResult.structuredContent, ["data", "handoff", "id"]);
+
+  const latestHandoffResult = await client.callTool({
+    name: "handoff.latest",
+    arguments: {
+      project: state.projectId,
+      limit: 1
+    }
+  });
+  assertOk(latestHandoffResult.structuredContent, "handoff.latest failed.");
+  assert(
+    readNestedArray(latestHandoffResult.structuredContent, ["data", "handoffs"]).some(
+      (item) => isRecord(item) && item.id === handoffId && !("body" in item)
+    ),
+    "handoff.latest did not return compact latest handoff."
+  );
+
+  const searchHandoffResult = await client.callTool({
+    name: "handoff.search",
+    arguments: {
+      project: state.projectId,
+      query: "gateway MCP HTTP smoke handoff",
+      includeContent: true,
+      limit: 5
+    }
+  });
+  assertOk(searchHandoffResult.structuredContent, "handoff.search failed.");
+  assert(
+    readNestedArray(searchHandoffResult.structuredContent, ["data", "handoffs"]).some(
+      (item) =>
+        isRecord(item) &&
+        item.id === handoffId &&
+        typeof item.body === "string" &&
+        item.body.includes("Verified gateway MCP HTTP smoke workflow.")
+    ),
+    "handoff.search did not return full handoff content when requested."
   );
 
   console.log(`ok - gateway MCP HTTP workflow completed for ${state.taskId}`);
