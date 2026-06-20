@@ -11,6 +11,7 @@ Use this when an agent starts work in a repository.
 ```text
 project.resolve, when repository path/slug/remote is known
 project.current
+project.summary
 ```
 
 If current project is missing:
@@ -31,6 +32,7 @@ Purpose:
 When continuing previous work, load recent handoffs before broad search:
 
 ```text
+project.summary
 handoff.latest
 handoff.search, when the topic is known
 ```
@@ -348,6 +350,7 @@ ChatGPT creates context:
 
 Codex continues:
   gateway.manuals(audience="conventions", includeContent=true)
+  project.summary
   handoff.latest / handoff.search
   artifact.search / artifact.peek / artifact.get only when needed
   preflight.by_query

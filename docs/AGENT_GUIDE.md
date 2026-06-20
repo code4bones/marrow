@@ -47,6 +47,7 @@ gateway.manuals(audience="onboarding", includeContent=true)
 gateway.manuals(audience="conventions", includeContent=true), for collaboration-heavy work
 project.resolve
 project.current or project.set_current
+project.summary, for a compact project state card
 context.pack, for a compact start-of-work package
 preflight.by_query, or task.next -> task.get -> preflight
 artifact.search, when shared templates or files are needed
@@ -329,6 +330,9 @@ continuation point.
 Use `handoff.latest` at the start of continuation work before broad
 `memory.search`. Use `handoff.search` when the handoff topic is known.
 
+Use `project.summary` when you need a compact project-level snapshot before
+deciding which task, handoff, artifact, or decision to read in full.
+
 Use `event.record` for:
 
 - append-only history
@@ -470,6 +474,7 @@ Continue previous work:
 
 ```text
 project.current
+project.summary
 handoff.latest
 context.pack(query=<handoff topic>)
 ```

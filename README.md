@@ -36,7 +36,7 @@ Implemented local/core MCP tools:
 - `preflight`
 
 Shared PostgreSQL gateway mode exposes the same core model plus gateway and
-collaboration tools. Current gateway smoke coverage expects 48 tools, including:
+collaboration tools. Current gateway smoke coverage expects 49 tools, including:
 
 - `gateway.about`
 - `gateway.version`
@@ -49,6 +49,7 @@ collaboration tools. Current gateway smoke coverage expects 48 tools, including:
 - `gateway.client_forget`
 - `gateway.client_prune`
 - `project.resolve`
+- `project.summary`
 - `memory.upsert`
 - `failed_attempt.record`
 - `decision.supersede`
@@ -225,7 +226,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.8.0.tgz
+npm install -g ./deadragdoll-pm3m-1.9.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

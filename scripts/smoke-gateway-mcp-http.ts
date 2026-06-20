@@ -76,6 +76,7 @@ try {
   assert(toolNames.includes("gateway.client_prune"), "gateway.client_prune tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
   assert(toolNames.includes("project.resolve"), "project.resolve tool was not listed.");
+  assert(toolNames.includes("project.summary"), "project.summary tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
   assert(toolNames.includes("failed_attempt.record"), "failed_attempt.record tool was not listed.");
   assert(toolNames.includes("decision.supersede"), "decision.supersede tool was not listed.");
@@ -273,6 +274,33 @@ try {
     }
   });
   assertOk(currentResult.structuredContent, "project.set_current failed.");
+
+  const projectSummaryResult = await client.callTool({
+    name: "project.summary",
+    arguments: {
+      query: "gateway MCP HTTP smoke project state",
+      limits: {
+        tasks: 3,
+        decisions: 3,
+        faults: 3,
+        handoffs: 2,
+        artifacts: 3,
+        memory: 3,
+        events: 3
+      }
+    }
+  });
+  assertOk(projectSummaryResult.structuredContent, "project.summary failed.");
+  assert(
+    readNestedString(projectSummaryResult.structuredContent, ["data", "project", "id"]) === state.projectId,
+    "project.summary did not use the current project."
+  );
+  assert(
+    readNestedArray(projectSummaryResult.structuredContent, ["data", "nextCalls"]).some(
+      (item) => isRecord(item) && item.tool === "context.pack"
+    ),
+    "project.summary did not return compact nextCalls."
+  );
 
   const secondProjectResult = await secondClient.callTool({
     name: "project.create",

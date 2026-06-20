@@ -24,6 +24,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `failed_attempt.record`
 * `decision.supersede`
 * `project.resolve`
+* `project.summary`
 * `preflight.by_query`
 * `context.pack`
 * `handoff.create`
@@ -179,10 +180,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.8.0",
+    "packageVersion": "1.9.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 48,
+    "tools": 49,
     "node": {
       "version": "v24.16.0"
     },
@@ -222,7 +223,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 48
+      "tools": 49
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -274,8 +275,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.8.0",
-      "tools": 48
+      "packageVersion": "1.9.0",
+      "tools": 49
     },
     "database": {
       "engine": "postgresql",
@@ -427,7 +428,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 48,
+    "tools": 49,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1133,6 +1134,75 @@ Behavior:
 
 Use this when an agent connects from a repository and needs to discover the
 right shared project scope before recording memory or running preflight.
+
+---
+
+### `project.summary`
+
+Return a compact project state card for the selected or current project.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "query": "OAuth facade ChatGPT Apps",
+  "includeCommon": true,
+  "limits": {
+    "tasks": 8,
+    "decisions": 5,
+    "faults": 5,
+    "handoffs": 3,
+    "artifacts": 5,
+    "memory": 6,
+    "events": 5
+  }
+}
+```
+
+Omit `project` to use the requesting client's current project. Omit `query` to
+derive a broad project query from the project title, slug, and description.
+
+Output:
+
+```json
+{
+  "project": {
+    "id": "P-MEMORY",
+    "slug": "project-memory-mcp",
+    "title": "Project Memory MCP"
+  },
+  "counts": {
+    "tasks": 18,
+    "openTasks": 2,
+    "items": 42,
+    "decisions": 6,
+    "artifacts": 14,
+    "events": 109
+  },
+  "openTasks": [],
+  "handoffs": [],
+  "decisions": [],
+  "knownFaults": [],
+  "artifacts": [],
+  "memory": [],
+  "recentEvents": [],
+  "nextCalls": [
+    {
+      "tool": "context.pack",
+      "input": {
+        "project": "P-MEMORY",
+        "query": "OAuth facade ChatGPT Apps",
+        "mode": "normal"
+      }
+    }
+  ]
+}
+```
+
+`project.summary` is intentionally compact. It does not include full memory
+bodies or artifact base64 content. Follow `nextCalls` when a compact card is not
+enough.
 
 ---
 

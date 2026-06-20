@@ -93,6 +93,22 @@ const projectResolveSchema = z
   .refine((value) => Boolean(value.id || value.slug || value.title || value.rootPath || value.remoteUrl || value.query), {
     message: "At least one resolver field is required."
   });
+const projectSummarySchema = z.object({
+  project: z.string().optional(),
+  query: z.string().min(1).optional(),
+  includeCommon: z.boolean().optional(),
+  limits: z
+    .object({
+      tasks: z.number().int().min(1).max(50).optional(),
+      decisions: z.number().int().min(1).max(50).optional(),
+      faults: z.number().int().min(1).max(50).optional(),
+      handoffs: z.number().int().min(1).max(20).optional(),
+      artifacts: z.number().int().min(1).max(50).optional(),
+      memory: z.number().int().min(1).max(50).optional(),
+      events: z.number().int().min(1).max(50).optional()
+    })
+    .optional()
+});
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -332,6 +348,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Resolve a likely project from id, slug, title, repository path, remote URL, or query. Returns candidates instead of guessing when ambiguous.",
     schema: projectResolveSchema
+  },
+  {
+    name: "project.summary",
+    description:
+      "Return a compact token-conscious project state card: open tasks, recent handoffs, decisions, known faults, artifacts, memory, events, and next calls.",
+    schema: projectSummarySchema
   },
   {
     name: "project.set_current",

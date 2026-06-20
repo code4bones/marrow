@@ -61,6 +61,7 @@ For an existing task:
 ```text
 task.next
 task.get
+project.summary
 context.pack(taskId=<task id>, mode="brief")
 preflight
 ```
@@ -68,6 +69,7 @@ preflight
 For ad-hoc work before a task exists:
 
 ```text
+project.summary
 context.pack(query=<work topic>, mode="brief")
 preflight.by_query
 memory.search
@@ -79,6 +81,7 @@ For collaboration-heavy work, also load:
 
 ```text
 gateway.manuals(audience="conventions", includeContent=true)
+project.summary
 handoff.latest, or handoff.search for a specific topic
 artifact.search, if the task mentions shared docs, instructions, or generated files
 ```

@@ -118,6 +118,8 @@ export class PgToolService {
           return ok("Project loaded.", { project: await this.getProject(parsed) });
         case "project.resolve":
           return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed));
+        case "project.summary":
+          return ok("Project summary loaded.", await this.projectSummary(parsed, requestContext));
         case "project.set_current":
           return ok("Current project set.", { currentProject: await this.setCurrentProject(parsed, requestContext) });
         case "project.current":
@@ -684,6 +686,120 @@ export class PgToolService {
       ambiguous: Boolean(top && second && top.score === second.score),
       candidates
     };
+  }
+
+  private async projectSummary(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    const includeCommon = input.includeCommon !== false;
+    const limits = projectSummaryLimits((input.limits ?? {}) as Row);
+    const query =
+      typeof input.query === "string"
+        ? input.query
+        : [project.title, project.slug, project.description].filter(Boolean).join(" ");
+
+    const [openTasks, decisions, knownFaults, handoffs, artifacts, memory, recentEvents, counts] = await Promise.all([
+      this.listOpenProjectTasks(project.id, limits.tasks),
+      this.listDecisions({
+        project: project.id,
+        includeCommon,
+        status: "active",
+        limit: limits.decisions
+      }),
+      this.searchMemory({
+        query,
+        project: project.id,
+        includeCommon,
+        type: "failed_attempt",
+        status: "active",
+        limit: limits.faults
+      }),
+      this.listRecentItemsByType("handoff", project.id, includeCommon, limits.handoffs),
+      this.searchArtifacts({
+        query,
+        project: project.id,
+        includeCommon,
+        limit: limits.artifacts
+      }),
+      this.searchMemory({
+        query,
+        project: project.id,
+        includeCommon,
+        status: "active",
+        limit: limits.memory
+      }),
+      this.listEvents({
+        project: project.id,
+        limit: limits.events
+      }),
+      this.projectSummaryCounts(project.id)
+    ]);
+
+    const summary = {
+      summary:
+        "Compact project state. Use nextCalls to fetch full records or artifact previews only when a compact card is insufficient.",
+      budget: {
+        strategy: "compact-project-card",
+        fullBodiesIncluded: false,
+        base64Included: false,
+        limits
+      },
+      project: compactProject(project),
+      query,
+      includeCommon,
+      counts,
+      openTasks: openTasks.map(compactTask),
+      handoffs: handoffs.map(compactMemoryRecord),
+      decisions: decisions.map(compactDecisionRecord),
+      knownFaults: knownFaults.map(compactSearchRecord),
+      artifacts: artifacts.map(compactArtifactRecord),
+      memory: memory.map(compactSearchRecord),
+      recentEvents: recentEvents.map(compactEventRecord),
+      nextCalls: projectSummaryNextCalls({ project, query, openTasks, knownFaults, artifacts, decisions })
+    };
+
+    return {
+      ...summary,
+      budget: {
+        ...summary.budget,
+        estimatedChars: JSON.stringify(summary).length
+      }
+    };
+  }
+
+  private async listOpenProjectTasks(projectId: string, limit: number): Promise<Row[]> {
+    const rows = await this.db("tasks")
+      .select("*")
+      .where("project_id", projectId)
+      .whereIn("status", ["doing", "todo", "blocked"])
+      .orderByRaw("case status when 'doing' then 0 when 'todo' then 1 when 'blocked' then 2 else 3 end")
+      .orderBy("priority")
+      .orderBy("created_at")
+      .limit(limit);
+    return rows.map(taskOut);
+  }
+
+  private async projectSummaryCounts(projectId: string) {
+    const [tasks, openTasks, items, decisions, artifacts, events] = await Promise.all([
+      this.countQueryRows(this.db("tasks").where("project_id", projectId)),
+      this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked"])),
+      this.countQueryRows(this.db("items").where("project_id", projectId)),
+      this.countQueryRows(this.db("decisions").where("project_id", projectId)),
+      this.countQueryRows(this.db("artifacts").where("project_id", projectId)),
+      this.countQueryRows(this.db("events").where("project_id", projectId))
+    ]);
+    return {
+      tasks,
+      openTasks,
+      items,
+      decisions,
+      artifacts,
+      events
+    };
+  }
+
+  private async countQueryRows(query: Knex.QueryBuilder): Promise<number> {
+    const row = (await query.count({ count: "*" }).first()) as Row | undefined;
+    return Number(row?.count ?? 0);
   }
 
   private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2200,6 +2316,69 @@ function contextPackNextCalls(input: { decisions: Row[]; faults: Row[]; artifact
     });
   }
   return calls;
+}
+
+function projectSummaryNextCalls(input: {
+  project: Row;
+  query: string;
+  openTasks: Row[];
+  knownFaults: Row[];
+  artifacts: Row[];
+  decisions: Row[];
+}) {
+  const calls: Array<{ tool: string; input: Row; reason: string }> = [
+    {
+      tool: "context.pack",
+      input: { project: String(input.project.id), query: input.query, mode: "normal" },
+      reason: "Load a focused compact context pack before implementation work."
+    },
+    {
+      tool: "handoff.latest",
+      input: { project: String(input.project.id), limit: 3 },
+      reason: "Check recent continuation points before broad search."
+    }
+  ];
+  for (const task of input.openTasks.slice(0, 2)) {
+    calls.push({
+      tool: "preflight",
+      input: { taskId: String(task.id) },
+      reason: "Use full task preflight before editing files for this task."
+    });
+  }
+  for (const fault of input.knownFaults.slice(0, 3)) {
+    calls.push({
+      tool: "memory.get",
+      input: { id: String(fault.id) },
+      reason: "Read full failed-attempt details before repeating related work."
+    });
+  }
+  for (const artifact of input.artifacts.slice(0, 3)) {
+    calls.push({
+      tool: "artifact.peek",
+      input: { id: String(artifact.id) },
+      reason: "Preview shared artifact before requesting full content."
+    });
+  }
+  for (const decision of input.decisions.slice(0, 2)) {
+    calls.push({
+      tool: "decision.get",
+      input: { id: String(decision.id) },
+      reason: "Read full decision if the compact card affects the task."
+    });
+  }
+  return calls;
+}
+
+function projectSummaryLimits(overrides: Row) {
+  return {
+    tasks: Number(overrides.tasks ?? 8),
+    decisions: Number(overrides.decisions ?? 5),
+    faults: Number(overrides.faults ?? 5),
+    handoffs: Number(overrides.handoffs ?? 3),
+    artifacts: Number(overrides.artifacts ?? 5),
+    memory: Number(overrides.memory ?? 6),
+    events: Number(overrides.events ?? 5)
+  };
 }
 
 function contextPackLimits(mode: string, overrides: Row) {
