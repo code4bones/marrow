@@ -12,6 +12,7 @@ Use this when an agent starts work in a repository.
 project.resolve, when repository path/slug/remote is known
 project.current
 project.summary
+context.changed_since, only when resuming from a stored cursor
 ```
 
 If current project is missing:

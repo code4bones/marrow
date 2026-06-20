@@ -27,6 +27,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `project.summary`
 * `preflight.by_query`
 * `context.pack`
+* `context.changed_since`
 * `handoff.create`
 * `handoff.latest`
 * `handoff.search`
@@ -180,10 +181,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.9.0",
+    "packageVersion": "1.10.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 49,
+    "tools": 50,
     "node": {
       "version": "v24.16.0"
     },
@@ -223,7 +224,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 49
+      "tools": 50
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -275,8 +276,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.9.0",
-      "tools": 49
+      "packageVersion": "1.10.0",
+      "tools": 50
     },
     "database": {
       "engine": "postgresql",
@@ -428,7 +429,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 49,
+    "tools": 50,
     "records": {
       "projects": 1,
       "items": 10,
@@ -2178,6 +2179,60 @@ Output:
 
 `context.pack` intentionally returns compact cards and next-call pointers. It
 does not include full record bodies or artifact base64 content.
+
+---
+
+### `context.changed_since`
+
+Return compact changes after a timestamp cursor.
+
+Input:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "since": "2026-06-20T14:30:00.000Z",
+  "includeCommon": true,
+  "limit": 20
+}
+```
+
+Use `"project": null` for common-only changes. Omit `project` to use the
+requesting client's current project. Store the returned `nextCursor` and pass it
+as `since` on the next refresh.
+
+Output:
+
+```json
+{
+  "since": "2026-06-20T14:30:00.000Z",
+  "nextCursor": "2026-06-20T14:47:12.880Z",
+  "project": {
+    "id": "P-MEMORY",
+    "slug": "project-memory-mcp"
+  },
+  "counts": {
+    "tasks": 1,
+    "memory": 2,
+    "handoffs": 1,
+    "decisions": 0,
+    "artifacts": 1,
+    "events": 5
+  },
+  "changes": {
+    "tasks": [],
+    "memory": [],
+    "handoffs": [],
+    "decisions": [],
+    "artifacts": [],
+    "events": []
+  },
+  "nextCalls": []
+}
+```
+
+The response is an incremental compact refresh. It omits full memory bodies and
+artifact base64 content; use `nextCalls` only for records that need detail.
 
 ---
 

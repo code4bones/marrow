@@ -71,6 +71,7 @@ For ad-hoc work before a task exists:
 ```text
 project.summary
 context.pack(query=<work topic>, mode="brief")
+context.changed_since, only if resuming from a stored cursor
 preflight.by_query
 memory.search
 decision.list

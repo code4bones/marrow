@@ -34,6 +34,8 @@ Implemented capabilities:
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
 - artifact metadata update, archival lifecycle, and deterministic listing
 - ad-hoc preflight context through `preflight.by_query`
+- compact start-of-work context through `context.pack`
+- compact incremental refresh through `context.changed_since`
 - compact continuation records through `handoff.create`
 - backup and restore runbook for PostgreSQL plus artifact bytes
 - tests, typecheck, lint, and build scripts
@@ -247,6 +249,7 @@ Implemented tools:
 - `preflight`
 - `preflight.by_query` (gateway)
 - `context.pack` (gateway)
+- `context.changed_since` (gateway)
 - `handoff.create` (gateway)
 - `handoff.latest` (gateway)
 - `handoff.search` (gateway)

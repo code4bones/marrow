@@ -184,6 +184,8 @@ export class PgToolService {
           return ok("Preflight query context loaded.", await this.preflightByQuery(parsed, requestContext));
         case "context.pack":
           return ok("Compact context pack loaded.", await this.contextPack(parsed, requestContext));
+        case "context.changed_since":
+          return ok("Changed context loaded.", await this.contextChangedSince(parsed, requestContext));
         case "handoff.create":
           return ok("Handoff created.", await this.createHandoff(parsed, requestContext));
         case "handoff.latest":
@@ -1885,6 +1887,127 @@ export class PgToolService {
     };
   }
 
+  private async contextChangedSince(input: Row, context: NormalizedGatewayRequestContext) {
+    const since = parseSinceCursor(input.since);
+    const nextCursor = nowIso();
+    const commonOnly = input.project === null;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project, context)
+        : await this.currentProject(context);
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    const limit = Number(input.limit ?? 20);
+
+    const [tasks, memory, handoffs, decisions, artifacts, events] = await Promise.all([
+      project ? this.listChangedTasks(project.id, since, limit) : Promise.resolve([]),
+      this.listChangedItems(project?.id ?? null, includeCommon, since, limit),
+      this.listChangedItems(project?.id ?? null, includeCommon, since, limit, "handoff"),
+      this.listChangedDecisions(project?.id ?? null, includeCommon, since, limit),
+      this.listChangedArtifacts(project?.id ?? null, includeCommon, since, limit),
+      this.listChangedEvents(project?.id ?? null, includeCommon, since, limit)
+    ]);
+
+    const changes = {
+      tasks: tasks.map(compactTask),
+      memory: memory.map(compactMemoryRecord),
+      handoffs: handoffs.map(compactMemoryRecord),
+      decisions: decisions.map(compactDecisionRecord),
+      artifacts: artifacts.map(compactArtifactRecord),
+      events: events.map(compactEventRecord)
+    };
+
+    return {
+      summary:
+        "Compact incremental context refresh. Store nextCursor and pass it as since on the next refresh.",
+      since,
+      nextCursor,
+      project: project ? compactProject(project) : null,
+      includeCommon,
+      counts: {
+        tasks: changes.tasks.length,
+        memory: changes.memory.length,
+        handoffs: changes.handoffs.length,
+        decisions: changes.decisions.length,
+        artifacts: changes.artifacts.length,
+        events: changes.events.length
+      },
+      changes,
+      nextCalls: changedSinceNextCalls({ project, memory, handoffs, decisions, artifacts })
+    };
+  }
+
+  private async listChangedTasks(projectId: string, since: string, limit: number): Promise<Row[]> {
+    const rows = await this.db("tasks")
+      .select("*")
+      .where("project_id", projectId)
+      .andWhere("updated_at", ">", since)
+      .orderBy("updated_at", "desc")
+      .limit(limit);
+    return rows.map(taskOut);
+  }
+
+  private async listChangedItems(projectId: string | null, includeCommon: boolean, since: string, limit: number, type?: string) {
+    let query = this.db("items").select("*").andWhere("updated_at", ">", since);
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (type) {
+      query = query.andWhere("type", type);
+    } else {
+      query = query.andWhereNot("type", "handoff");
+    }
+    const rows = await query.orderBy("updated_at", "desc").limit(limit);
+    return rows.map(itemOut);
+  }
+
+  private async listChangedDecisions(projectId: string | null, includeCommon: boolean, since: string, limit: number) {
+    let query = this.db("decisions").select("*").andWhere("updated_at", ">", since);
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    const rows = await query.orderBy("updated_at", "desc").limit(limit);
+    return rows.map(decisionOut);
+  }
+
+  private async listChangedArtifacts(projectId: string | null, includeCommon: boolean, since: string, limit: number) {
+    let query = this.db("artifacts").select("*").andWhere("updated_at", ">", since);
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    const rows = await query.orderBy("updated_at", "desc").limit(limit);
+    return rows.map(artifactOut);
+  }
+
+  private async listChangedEvents(projectId: string | null, includeCommon: boolean, since: string, limit: number) {
+    let query = this.db("events").select("*").andWhere("created_at", ">", since);
+    query = query.andWhere((builder) => {
+      if (projectId) {
+        builder.orWhere("project_id", projectId);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    const rows = await query.orderBy("created_at", "desc").limit(limit);
+    return rows.map(eventOut);
+  }
+
   private async listRecentItemsByType(
     type: string,
     projectId: string | null,
@@ -2318,6 +2441,45 @@ function contextPackNextCalls(input: { decisions: Row[]; faults: Row[]; artifact
   return calls;
 }
 
+function changedSinceNextCalls(input: {
+  project: Row | null;
+  memory: Row[];
+  handoffs: Row[];
+  decisions: Row[];
+  artifacts: Row[];
+}) {
+  const calls: Array<{ tool: string; input: Row; reason: string }> = [];
+  if (input.project) {
+    calls.push({
+      tool: "project.summary",
+      input: { project: String(input.project.id) },
+      reason: "Reload compact project state if the incremental changes are not enough."
+    });
+  }
+  for (const item of [...input.memory, ...input.handoffs].slice(0, 3)) {
+    calls.push({
+      tool: "memory.get",
+      input: { id: String(item.id) },
+      reason: "Read full memory body only when the compact changed card is insufficient."
+    });
+  }
+  for (const artifact of input.artifacts.slice(0, 3)) {
+    calls.push({
+      tool: "artifact.peek",
+      input: { id: String(artifact.id) },
+      reason: "Preview changed artifact before requesting full content."
+    });
+  }
+  for (const decision of input.decisions.slice(0, 2)) {
+    calls.push({
+      tool: "decision.get",
+      input: { id: String(decision.id) },
+      reason: "Read full decision when the compact changed card affects current work."
+    });
+  }
+  return calls;
+}
+
 function projectSummaryNextCalls(input: {
   project: Row;
   query: string;
@@ -2400,6 +2562,14 @@ function contextPackLimits(mode: string, overrides: Row) {
 
 function defaultTokenBudget(mode: string): number {
   return mode === "brief" ? 1500 : mode === "deep" ? 6000 : 3000;
+}
+
+function parseSinceCursor(value: unknown): string {
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    throw new AppError("VALIDATION_ERROR", "since must be an ISO timestamp or Date-compatible cursor.");
+  }
+  return date.toISOString();
 }
 
 function shortText(value: string | null, maxLength: number): string | null {

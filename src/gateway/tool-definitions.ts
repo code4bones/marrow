@@ -109,6 +109,12 @@ const projectSummarySchema = z.object({
     })
     .optional()
 });
+const contextChangedSinceSchema = z.object({
+  project: z.string().nullable().optional(),
+  since: z.string().min(1),
+  includeCommon: z.boolean().optional(),
+  limit: z.number().int().min(1).max(100).optional()
+});
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -517,6 +523,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Build a compact token-conscious start-of-work context package for a task or query. Returns summaries, stop-signals, pointers, and next tool calls instead of full record bodies or base64 content.",
     schema: contextPackSchema
+  },
+  {
+    name: "context.changed_since",
+    description:
+      "Return compact project/common changes since an ISO timestamp cursor so agents can refresh context without broad reloads.",
+    schema: contextChangedSinceSchema
   },
   {
     name: "handoff.create",

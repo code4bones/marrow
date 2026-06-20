@@ -88,6 +88,7 @@ try {
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
   assert(toolNames.includes("context.pack"), "context.pack tool was not listed.");
+  assert(toolNames.includes("context.changed_since"), "context.changed_since tool was not listed.");
   assert(toolNames.includes("handoff.create"), "handoff.create tool was not listed.");
   assert(toolNames.includes("handoff.latest"), "handoff.latest tool was not listed.");
   assert(toolNames.includes("handoff.search"), "handoff.search tool was not listed.");
@@ -244,6 +245,7 @@ try {
   console.log("ok - gateway MCP HTTP status and clients");
 
   const unique = Date.now();
+  const changedSinceCursor = new Date(Date.now() - 1000).toISOString();
   const projectResult = await client.callTool({
     name: "project.create",
     arguments: {
@@ -781,6 +783,26 @@ try {
         item.body.includes("Verified gateway MCP HTTP smoke workflow.")
     ),
     "handoff.search did not return full handoff content when requested."
+  );
+
+  const changedSinceResult = await client.callTool({
+    name: "context.changed_since",
+    arguments: {
+      project: state.projectId,
+      since: changedSinceCursor,
+      limit: 10
+    }
+  });
+  assertOk(changedSinceResult.structuredContent, "context.changed_since failed.");
+  assert(
+    typeof readNestedString(changedSinceResult.structuredContent, ["data", "nextCursor"]) === "string",
+    "context.changed_since did not return nextCursor."
+  );
+  assert(
+    readNestedArray(changedSinceResult.structuredContent, ["data", "changes", "handoffs"]).some(
+      (item) => isRecord(item) && item.id === handoffId && !("body" in item)
+    ),
+    "context.changed_since did not return compact changed handoff."
   );
 
   console.log(`ok - gateway MCP HTTP workflow completed for ${state.taskId}`);
