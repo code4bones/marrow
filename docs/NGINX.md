@@ -88,6 +88,9 @@ PROJECT_MEMORY_OAUTH_ISSUER=https://memory.example.internal/project-memory
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://memory.example.internal/project-memory
 PROJECT_MEMORY_MAGIC_TOKEN=...
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
+# Optional confidential-client secret; omit to use public PKCE client auth.
+PROJECT_MEMORY_OAUTH_CLIENT_SECRET=...
 # Optional stable signing key; if omitted, tokens are invalidated on restart.
 PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 ```
@@ -101,6 +104,10 @@ pm3m oauth key
 The OAuth discovery and token routes are public by design. The nginx include
 maps the prefixed public routes to the gateway's internal unprefixed OAuth
 routes.
+
+When `PROJECT_MEMORY_OAUTH_CLIENT_SECRET` is set, the authorization server
+metadata advertises `client_secret_post` and `client_secret_basic`. Without it,
+metadata advertises `none` for public PKCE clients.
 
 The nginx include forwards `X-Request-ID`, `X-Forwarded-*`, and client IP headers. The gateway logs request ids, status codes, durations, client ids, and tool call completion.
 

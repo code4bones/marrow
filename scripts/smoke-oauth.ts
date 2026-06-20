@@ -12,6 +12,7 @@ const magicToken = `oauth-smoke-magic-${unique}`;
 const publicUrl = "https://pmem-smoke.example/api";
 const redirectUri = "https://chatgpt.com/connector/oauth/pmem-smoke";
 const clientId = `chatgpt-smoke-${unique}`;
+const clientSecret = `chatgpt-smoke-secret-${unique}`;
 const pmemClientId = `oauth-smoke-client-${unique}`;
 const oauth = createOAuthFacadeFromEnv({
   ...process.env,
@@ -19,6 +20,8 @@ const oauth = createOAuthFacadeFromEnv({
   PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
   PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
   PROJECT_MEMORY_MAGIC_TOKEN: magicToken,
+  PROJECT_MEMORY_OAUTH_CLIENT_ID: clientId,
+  PROJECT_MEMORY_OAUTH_CLIENT_SECRET: clientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
   PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS: "3600",
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300"
@@ -49,6 +52,14 @@ try {
   assert(
     readNestedString(authorizationServer, ["authorization_endpoint"]) === `${publicUrl}/oauth/authorize`,
     "Authorization metadata returned the wrong authorize endpoint."
+  );
+  assert(
+    readNestedArray(authorizationServer, ["token_endpoint_auth_methods_supported"]).includes("client_secret_post"),
+    "Authorization metadata did not advertise client_secret_post."
+  );
+  assert(
+    readNestedArray(authorizationServer, ["token_endpoint_auth_methods_supported"]).includes("client_secret_basic"),
+    "Authorization metadata did not advertise client_secret_basic."
   );
   console.log("ok - oauth authorization server metadata");
 
@@ -84,6 +95,12 @@ try {
   assert((await authorizeForm.text()).includes("Magic token"), "Authorize form did not ask for magic token.");
   console.log("ok - oauth authorize form");
 
+  const wrongClientAuthorizeUrl = new URL(authorizeUrl);
+  wrongClientAuthorizeUrl.searchParams.set("client_id", "wrong-client");
+  const wrongClientAuthorizeForm = await fetch(wrongClientAuthorizeUrl);
+  assert(wrongClientAuthorizeForm.status === 400, "Unexpected client_id did not return HTTP 400.");
+  console.log("ok - oauth client_id allowlist");
+
   const invalidAuthorize = await postForm(`${started.url}/oauth/authorize`, {
     ...Object.fromEntries(authorizeUrl.searchParams.entries()),
     magic_token: "wrong"
@@ -94,24 +111,27 @@ try {
   assert(!invalidAuthorizeBody.includes(magicToken), "Invalid authorize response leaked the magic token.");
   console.log("ok - oauth magic token rejection");
 
-  const authorize = await postForm(`${started.url}/oauth/authorize`, {
-    ...Object.fromEntries(authorizeUrl.searchParams.entries()),
-    magic_token: magicToken
-  });
-  assert(authorize.status === 302, "Valid magic token did not redirect with an authorization code.");
-  const location = authorize.headers.get("location");
-  assert(location, "Authorize redirect did not include Location.");
-  const redirect = new URL(location);
-  const code = redirect.searchParams.get("code");
-  assert(code, "Authorize redirect did not include code.");
-  assert(redirect.searchParams.get("state") === "oauth-smoke-state", "Authorize redirect did not preserve state.");
+  const codeMissingSecret = await requestAuthorizationCode(started.url, authorizeUrl, magicToken);
   console.log("ok - oauth authorization code");
 
+  const missingSecret = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: codeMissingSecret,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(missingSecret.status === 401, "Missing OAuth client_secret did not fail.");
+  console.log("ok - oauth client_secret required");
+
+  const code = await requestAuthorizationCode(started.url, authorizeUrl, magicToken);
   const token = await postFormJson(`${started.url}/oauth/token`, {
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
     client_id: clientId,
+    client_secret: clientSecret,
     code_verifier: codeVerifier,
     resource: publicUrl
   });
@@ -125,11 +145,29 @@ try {
     code,
     redirect_uri: redirectUri,
     client_id: clientId,
+    client_secret: clientSecret,
     code_verifier: codeVerifier,
     resource: publicUrl
   });
   assert(reusedCode.status === 400, "Reused authorization code did not fail.");
   console.log("ok - oauth authorization code one-time use");
+
+  const basicCode = await requestAuthorizationCode(started.url, authorizeUrl, magicToken);
+  const basicToken = await postFormJsonWithHeaders(
+    `${started.url}/oauth/token`,
+    {
+      grant_type: "authorization_code",
+      code: basicCode,
+      redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
+      resource: publicUrl
+    },
+    {
+      authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`
+    }
+  );
+  assert(basicToken.status === 200, `Basic client auth token exchange failed: ${JSON.stringify(basicToken.body)}`);
+  console.log("ok - oauth client_secret_basic token exchange");
 
   const oauthCall = await postJson(
     `${started.url}/call?client_id=${pmemClientId}`,
@@ -193,6 +231,38 @@ async function postForm(url: string, body: Record<string, string>): Promise<Resp
 async function postFormJson(url: string, body: Record<string, string>): Promise<{ status: number; body: unknown }> {
   const response = await postForm(url, body);
   return { status: response.status, body: await response.json() };
+}
+
+async function postFormJsonWithHeaders(
+  url: string,
+  body: Record<string, string>,
+  headers: Record<string, string>
+): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(url, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      ...headers
+    },
+    body: new URLSearchParams(body)
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+async function requestAuthorizationCode(startedUrl: string, authorizeUrl: URL, token: string): Promise<string> {
+  const authorize = await postForm(`${startedUrl}/oauth/authorize`, {
+    ...Object.fromEntries(authorizeUrl.searchParams.entries()),
+    magic_token: token
+  });
+  assert(authorize.status === 302, "Valid magic token did not redirect with an authorization code.");
+  const location = authorize.headers.get("location");
+  assert(location, "Authorize redirect did not include Location.");
+  const redirect = new URL(location);
+  const code = redirect.searchParams.get("code");
+  assert(code, "Authorize redirect did not include code.");
+  assert(redirect.searchParams.get("state") === "oauth-smoke-state", "Authorize redirect did not preserve state.");
+  return code;
 }
 
 function base64url(input: Buffer): string {

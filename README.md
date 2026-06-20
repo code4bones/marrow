@@ -181,6 +181,9 @@ PROJECT_MEMORY_OAUTH_ISSUER=https://pmem.undoo.ru/api
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://pmem.undoo.ru/api
 PROJECT_MEMORY_MAGIC_TOKEN=...
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
+# Optional confidential-client secret; omit to use public PKCE client auth.
+PROJECT_MEMORY_OAUTH_CLIENT_SECRET=...
 # Optional stable signing key; if omitted, tokens are invalidated on restart.
 PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 ```
@@ -194,7 +197,10 @@ For ChatGPT Apps/custom MCP Apps, set `PROJECT_MEMORY_MAGIC_TOKEN` and
 `PROJECT_MEMORY_PUBLIC_URL` to enable the minimal OAuth facade. The magic token
 is used only at `/oauth/authorize`; ChatGPT receives a short-lived OAuth access
 token and never sees `MCP_TOKEN`. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
-for stable JWT signing across restarts.
+for stable JWT signing across restarts. Set `PROJECT_MEMORY_OAUTH_CLIENT_ID`
+when ChatGPT gives you a predefined OAuth client id. If ChatGPT also gives you a
+client secret, set `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`; the token endpoint then
+accepts `client_secret_post` and `client_secret_basic`.
 
 Generate that `.env` value with:
 
@@ -213,7 +219,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.5.1.tgz
+npm install -g ./deadragdoll-pm3m-1.6.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

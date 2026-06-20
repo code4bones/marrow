@@ -467,6 +467,9 @@ PROJECT_MEMORY_OAUTH_ISSUER=https://pmem.undoo.ru/api
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://pmem.undoo.ru/api
 PROJECT_MEMORY_MAGIC_TOKEN=...
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
+# Optional confidential-client secret; omit to use public PKCE client auth.
+PROJECT_MEMORY_OAUTH_CLIENT_SECRET=...
 # Optional stable signing key; if omitted, tokens are invalidated on restart.
 PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 LOG_LEVEL=info
@@ -499,7 +502,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.5.1.tgz
+npm install -g ./deadragdoll-pm3m-1.6.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

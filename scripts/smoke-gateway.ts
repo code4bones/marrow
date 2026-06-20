@@ -112,19 +112,24 @@ try {
   const pruneDryRun = await callGateway("gateway.client_prune", {
     anonymousOnly: true,
     olderThanSeconds: 1,
+    limit: 1000,
     dryRun: true
   });
   assert(
     expectData<{ matched: number; pruned: number }>(pruneDryRun).matched >= 1 &&
       expectData<{ matched: number; pruned: number }>(pruneDryRun).pruned === 0,
-    "gateway.client_prune dry-run did not report a stale anonymous client."
+    `gateway.client_prune dry-run did not report a stale anonymous client: ${JSON.stringify(pruneDryRun)}`
   );
   const prune = await callGateway("gateway.client_prune", {
     anonymousOnly: true,
     olderThanSeconds: 1,
+    limit: 1000,
     dryRun: false
   });
-  assert(expectData<{ pruned: number }>(prune).pruned >= 1, "gateway.client_prune did not prune stale anonymous clients.");
+  assert(
+    expectData<{ pruned: number }>(prune).pruned >= 1,
+    `gateway.client_prune did not prune stale anonymous clients: ${JSON.stringify(prune)}`
+  );
   assert(
     !(await db("gateway_clients").where({ id: state.pruneAnonymousClientId }).first()),
     "gateway.client_prune did not remove stale anonymous client."

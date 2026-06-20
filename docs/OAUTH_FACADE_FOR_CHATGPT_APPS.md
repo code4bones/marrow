@@ -140,7 +140,16 @@ Use:
 "token_endpoint_auth_methods_supported": ["none"]
 ```
 
-for a public-client PKCE flow unless the project explicitly decides to support confidential clients.
+for a public-client PKCE flow. If `PROJECT_MEMORY_OAUTH_CLIENT_SECRET` is
+configured, use:
+
+```json
+"token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"]
+```
+
+The gateway also supports predefined-client allowlisting with
+`PROJECT_MEMORY_OAUTH_CLIENT_ID`. When that variable is set, `/oauth/authorize`
+and `/oauth/token` reject other client ids.
 
 ## Authorization endpoint
 
@@ -205,25 +214,35 @@ grant_type=authorization_code
 code=...
 redirect_uri=...
 client_id=...
+client_secret=...    # optional, only for client_secret_post
 code_verifier=...
 resource=...
+```
+
+Alternatively, when `PROJECT_MEMORY_OAUTH_CLIENT_SECRET` is configured, accept
+HTTP Basic client authentication:
+
+```text
+Authorization: Basic base64(client_id:client_secret)
 ```
 
 Behavior:
 
 1. Validate `grant_type=authorization_code`.
-2. Load and consume the authorization code.
-3. Reject if the code is expired or already used.
-4. Validate `client_id`.
-5. Validate `redirect_uri`.
-6. Validate `resource`.
-7. Verify PKCE:
+2. Validate client authentication before consuming the authorization code.
+3. Load the authorization code.
+4. Reject if the code is expired or already used.
+5. Validate `client_id`.
+6. Validate `redirect_uri`.
+7. Validate `resource`.
+8. Verify PKCE:
 
 ```text
 base64url(sha256(code_verifier)) == code_challenge
 ```
 
-8. Issue access token.
+9. Mark the authorization code as used.
+10. Issue access token.
 
 Return:
 
@@ -462,6 +481,9 @@ PROJECT_MEMORY_MAGIC_TOKEN="change-me"
 PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS="3600"
 PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS="300"
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS="https://chatgpt.com/connector/oauth/..."
+PROJECT_MEMORY_OAUTH_CLIENT_ID="chatgpt"
+# Optional. Enables client_secret_post and client_secret_basic.
+PROJECT_MEMORY_OAUTH_CLIENT_SECRET="change-me-too"
 PROJECT_MEMORY_OAUTH_SCOPES="memory:read memory:write"
 ```
 
@@ -550,7 +572,9 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET
+      ? ["client_secret_post", "client_secret_basic"]
+      : ["none"],
     scopes_supported: ["memory:read", "memory:write"]
   });
 });

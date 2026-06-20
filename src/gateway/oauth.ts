@@ -18,7 +18,8 @@ export type OAuthAuthResult =
 
 export type OAuthTokenResponse =
   | { status: 200; body: Record<string, unknown> }
-  | { status: 400; body: Record<string, unknown> };
+  | { status: 400; body: Record<string, unknown> }
+  | { status: 401; body: Record<string, unknown> };
 
 export type OAuthAuthorizeResult =
   | { status: 302; location: string }
@@ -47,6 +48,8 @@ type OAuthConfig = {
   publicUrl: string;
   issuer: string;
   audience: string;
+  clientId?: string;
+  clientSecret?: string;
   magicToken?: string;
   magicTokenHash?: string;
   accessTokenTtlSeconds: number;
@@ -83,6 +86,8 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
     publicUrl,
     issuer: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_ISSUER ?? publicUrl),
     audience: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_AUDIENCE ?? publicUrl),
+    clientId: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_ID),
+    clientSecret: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET),
     magicToken: env.PROJECT_MEMORY_MAGIC_TOKEN,
     magicTokenHash: env.PROJECT_MEMORY_MAGIC_TOKEN_HASH,
     accessTokenTtlSeconds: positiveInteger(env.PROJECT_MEMORY_ACCESS_TOKEN_TTL_SECONDS, 3600),
@@ -118,7 +123,7 @@ export function createOAuthFacade(config: OAuthConfig) {
           response_types_supported: ["code"],
           grant_types_supported: ["authorization_code"],
           code_challenge_methods_supported: ["S256"],
-          token_endpoint_auth_methods_supported: ["none"],
+          token_endpoint_auth_methods_supported: tokenEndpointAuthMethods(config),
           scopes_supported: config.scopes
         };
       },
@@ -184,9 +189,14 @@ export function createOAuthFacade(config: OAuthConfig) {
       redirect.searchParams.set("state", validation.params.state);
       return { status: 302, location: redirect.toString() };
     },
-    token(form: URLSearchParams): OAuthTokenResponse {
+    token(form: URLSearchParams, request?: IncomingMessage): OAuthTokenResponse {
       if (form.get("grant_type") !== "authorization_code") {
         return oauthTokenError("unsupported_grant_type", "Only authorization_code is supported.");
+      }
+
+      const clientAuth = authenticateOAuthClient(form, request, config);
+      if (!clientAuth.ok) {
+        return oauthTokenError("invalid_client", clientAuth.error, 401);
       }
 
       const code = form.get("code") ?? "";
@@ -194,10 +204,8 @@ export function createOAuthFacade(config: OAuthConfig) {
       if (!record || record.usedAt !== null || record.expiresAt <= Date.now()) {
         return oauthTokenError("invalid_grant", "Invalid authorization code.");
       }
-      record.usedAt = Date.now();
-      codes.set(code, record);
 
-      if (form.get("client_id") !== record.clientId) {
+      if (clientAuth.clientId !== record.clientId) {
         return oauthTokenError("invalid_grant", "Invalid authorization code.");
       }
       if (form.get("redirect_uri") !== record.redirectUri) {
@@ -210,6 +218,9 @@ export function createOAuthFacade(config: OAuthConfig) {
       if (!verifyPkceS256(form.get("code_verifier") ?? "", record.codeChallenge)) {
         return oauthTokenError("invalid_grant", "Invalid authorization code.");
       }
+
+      record.usedAt = Date.now();
+      codes.set(code, record);
 
       const accessToken = issueJwt(config, record);
       return {
@@ -259,6 +270,10 @@ function validateAuthorizeParams(
   if (params.get("code_challenge_method") !== "S256") {
     return { ok: false, error: "code_challenge_method must be S256." };
   }
+  const clientId = params.get("client_id") ?? "";
+  if (config.clientId && clientId !== config.clientId) {
+    return { ok: false, error: "client_id is not allowed." };
+  }
 
   const redirectUri = params.get("redirect_uri") ?? "";
   if (!isAllowedRedirectUri(redirectUri, config.allowedRedirectUris)) {
@@ -273,13 +288,67 @@ function validateAuthorizeParams(
   return {
     ok: true,
     params: {
-      clientId: params.get("client_id") ?? "",
+      clientId,
       redirectUri,
       codeChallenge: params.get("code_challenge") ?? "",
       resource,
       state: params.get("state") ?? "",
       scopes: requestedScopes(params.get("scope"), config.scopes)
     }
+  };
+}
+
+function tokenEndpointAuthMethods(config: OAuthConfig): string[] {
+  return config.clientSecret ? ["client_secret_post", "client_secret_basic"] : ["none"];
+}
+
+function authenticateOAuthClient(
+  form: URLSearchParams,
+  request: IncomingMessage | undefined,
+  config: OAuthConfig
+): { ok: true; clientId: string } | { ok: false; error: string } {
+  const basic = basicClientCredentials(request);
+  const formClientId = form.get("client_id") ?? "";
+  const clientId = basic?.clientId ?? formClientId;
+
+  if (!clientId) {
+    return { ok: false, error: "Missing client_id." };
+  }
+  if (basic && formClientId && formClientId !== basic.clientId) {
+    return { ok: false, error: "Conflicting client_id values." };
+  }
+  if (config.clientId && clientId !== config.clientId) {
+    return { ok: false, error: "Unknown client." };
+  }
+
+  if (!config.clientSecret) {
+    return { ok: true, clientId };
+  }
+
+  const clientSecret = basic?.clientSecret ?? form.get("client_secret") ?? "";
+  if (!clientSecret || !safeEqual(clientSecret, config.clientSecret)) {
+    return { ok: false, error: "Invalid client credentials." };
+  }
+
+  return { ok: true, clientId };
+}
+
+function basicClientCredentials(
+  request: IncomingMessage | undefined
+): { clientId: string; clientSecret: string } | undefined {
+  const header = request?.headers.authorization?.trim();
+  const match = header?.match(/^Basic\s+(.+)$/i);
+  if (!match) {
+    return undefined;
+  }
+  const decoded = Buffer.from(match[1], "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  if (separator < 0) {
+    return undefined;
+  }
+  return {
+    clientId: decoded.slice(0, separator),
+    clientSecret: decoded.slice(separator + 1)
   };
 }
 
@@ -440,9 +509,9 @@ function pruneCodes(codes: Map<string, OAuthCodeRecord>): void {
   }
 }
 
-function oauthTokenError(error: string, description: string): OAuthTokenResponse {
+function oauthTokenError(error: string, description: string, status: 400 | 401 = 400): OAuthTokenResponse {
   return {
-    status: 400,
+    status,
     body: {
       error,
       error_description: description
@@ -533,6 +602,11 @@ function trimTrailingSlash(value: string): string {
 function positiveInteger(value: string | undefined, defaultValue: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+function optionalEnv(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function listEnv(value: string | undefined, fallback: string[] = []): string[] {

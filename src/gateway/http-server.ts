@@ -107,7 +107,7 @@ async function handleRequest(
     }
 
     if (options.oauth && request.method === "POST" && requestPath === "/oauth/token") {
-      const result = options.oauth.token(await readForm(request));
+      const result = options.oauth.token(await readForm(request), request);
       send(result.status, result.body);
       return;
     }
