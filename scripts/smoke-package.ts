@@ -47,6 +47,10 @@ try {
     "pm3m CLI was not packaged."
   );
   assert(
+    existsSync(join(installedPackageRoot, "dist", "scripts", "smoke-oauth.js")),
+    "OAuth smoke script was not packaged."
+  );
+  assert(
     existsSync(join(installedPackageRoot, "dist", "scripts", "seed-templates.js")),
     "template seed script was not packaged."
   );

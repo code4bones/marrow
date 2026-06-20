@@ -176,6 +176,13 @@ API_ENDPOINT=/api
 MCP_TOKEN=...
 ARTIFACT_DIR=./artifacts
 GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
+PROJECT_MEMORY_PUBLIC_URL=https://pmem.undoo.ru/api
+PROJECT_MEMORY_OAUTH_ISSUER=https://pmem.undoo.ru/api
+PROJECT_MEMORY_OAUTH_AUDIENCE=https://pmem.undoo.ru/api
+PROJECT_MEMORY_MAGIC_TOKEN=...
+PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+# Optional stable signing key; if omitted, tokens are invalidated on restart.
+PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 ```
 
 The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
@@ -183,6 +190,11 @@ The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`
 Gateway authorization is intentionally simple for trusted internal deployments:
 any client with the configured bearer token can use the shared gateway. Per-user
 roles, ACLs, and project permissions are not part of the current product stage.
+For ChatGPT Apps/custom MCP Apps, set `PROJECT_MEMORY_MAGIC_TOKEN` and
+`PROJECT_MEMORY_PUBLIC_URL` to enable the minimal OAuth facade. The magic token
+is used only at `/oauth/authorize`; ChatGPT receives a short-lived OAuth access
+token and never sees `MCP_TOKEN`. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
+for stable JWT signing across restarts.
 
 For PM2 deployments, use the included ecosystem file. It loads `.env`, watches the built gateway files and migrations, and maps `BIND`/`PORT` into the gateway runtime:
 
@@ -195,7 +207,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.4.1.tgz
+npm install -g ./deadragdoll-pm3m-1.5.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -219,6 +231,7 @@ does not start or reload PM2 automatically; service changes should happen only
 through explicit deploy commands such as `pm3m start`.
 
 `MCP_TOKEN` enables bearer auth for gateway routes.
+OAuth access tokens are also accepted when the OAuth facade is enabled.
 
 Client-specific variables point agents at the public gateway base URL:
 

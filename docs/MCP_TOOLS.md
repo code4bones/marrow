@@ -175,7 +175,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.4.1",
+    "packageVersion": "1.5.0",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -270,7 +270,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.4.1",
+      "packageVersion": "1.5.0",
       "tools": 44
     },
     "database": {

@@ -9,12 +9,14 @@ import { fail } from "../shared/mcp/tool-response.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
+import type { OAuthFacade } from "./oauth.js";
 
 export interface GatewayServerOptions {
   host: string;
   port: number;
   logger?: AppLogger;
   token?: string;
+  oauth?: OAuthFacade;
 }
 
 export interface StartedGatewayServer {
@@ -66,8 +68,54 @@ async function handleRequest(
   };
 
   try {
-    if (!isAuthorized(options, request)) {
-      send(401, fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token.")));
+    if (options.oauth && request.method === "GET" && requestPath === "/.well-known/oauth-protected-resource") {
+      send(200, options.oauth.metadata.protectedResource());
+      return;
+    }
+
+    if (options.oauth && request.method === "GET" && requestPath === "/.well-known/oauth-authorization-server") {
+      send(200, options.oauth.metadata.authorizationServer());
+      return;
+    }
+
+    if (options.oauth && request.method === "GET" && requestPath === "/.well-known/jwks.json") {
+      send(200, options.oauth.metadata.jwks());
+      return;
+    }
+
+    if (options.oauth && request.method === "GET" && requestPath === "/oauth/authorize") {
+      const result = options.oauth.authorizeForm(requestUrl);
+      sendHtml(response, result.status, result.html, requestId);
+      logRequest(options, request, result.status, Date.now() - startedAt, requestId, context);
+      return;
+    }
+
+    if (options.oauth && request.method === "POST" && requestPath === "/oauth/authorize") {
+      const result = options.oauth.authorize(await readForm(request), clientIp(request));
+      if (result.status === 302) {
+        response.writeHead(302, {
+          location: result.location,
+          "x-request-id": requestId
+        });
+        response.end();
+        logRequest(options, request, 302, Date.now() - startedAt, requestId, context);
+      } else {
+        sendHtml(response, result.status, result.html, requestId);
+        logRequest(options, request, result.status, Date.now() - startedAt, requestId, context);
+      }
+      return;
+    }
+
+    if (options.oauth && request.method === "POST" && requestPath === "/oauth/token") {
+      const result = options.oauth.token(await readForm(request));
+      send(result.status, result.body);
+      return;
+    }
+
+    const auth = isAuthorized(options, request);
+    if (!auth.ok) {
+      sendUnauthorized(response, requestId, auth.challenge);
+      logRequest(options, request, 401, Date.now() - startedAt, requestId, context);
       return;
     }
 
@@ -257,23 +305,47 @@ function headerString(request: IncomingMessage, name: string): string | undefine
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): boolean {
-  if (!options.token) {
-    return true;
+function isAuthorized(
+  options: GatewayServerOptions,
+  request: IncomingMessage
+): { ok: true } | { ok: false; challenge?: string } {
+  if (options.token && request.headers.authorization === `Bearer ${options.token}`) {
+    return { ok: true };
   }
-  return request.headers.authorization === `Bearer ${options.token}`;
+
+  if (options.oauth) {
+    const auth = options.oauth.authenticate(request);
+    if (auth.ok) {
+      return { ok: true };
+    }
+    return { ok: false, challenge: options.oauth.challengeHeader() };
+  }
+
+  if (!options.token) {
+    return { ok: true };
+  }
+
+  return { ok: false };
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const raw = Buffer.concat(chunks).toString("utf8");
+  const raw = await readText(request);
   if (!raw.trim()) {
     return {};
   }
   return JSON.parse(raw);
+}
+
+async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
+  return new URLSearchParams(await readText(request));
+}
+
+async function readText(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown, requestId: string): void {
@@ -284,6 +356,34 @@ function sendJson(response: ServerResponse, status: number, body: unknown, reque
     "content-length": Buffer.byteLength(payload)
   });
   response.end(payload);
+}
+
+function sendHtml(response: ServerResponse, status: number, body: string, requestId: string): void {
+  response.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "x-request-id": requestId,
+    "content-length": Buffer.byteLength(body)
+  });
+  response.end(body);
+}
+
+function sendUnauthorized(response: ServerResponse, requestId: string, challenge?: string): void {
+  const body = fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token."));
+  const payload = JSON.stringify(body);
+  const headers: Record<string, string | number> = {
+    "content-type": "application/json; charset=utf-8",
+    "x-request-id": requestId,
+    "content-length": Buffer.byteLength(payload)
+  };
+  if (challenge) {
+    headers["www-authenticate"] = challenge;
+  }
+  response.writeHead(401, headers);
+  response.end(payload);
+}
+
+function clientIp(request: IncomingMessage): string {
+  return headerString(request, "x-forwarded-for")?.split(",")[0]?.trim() || request.socket.remoteAddress || "unknown";
 }
 
 function logRequest(

@@ -462,6 +462,13 @@ GW_ENDPOINT=https://pmem.undoo.ru/api
 MCP_TOKEN=...
 ARTIFACT_DIR=./artifacts
 GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
+PROJECT_MEMORY_PUBLIC_URL=https://pmem.undoo.ru/api
+PROJECT_MEMORY_OAUTH_ISSUER=https://pmem.undoo.ru/api
+PROJECT_MEMORY_OAUTH_AUDIENCE=https://pmem.undoo.ru/api
+PROJECT_MEMORY_MAGIC_TOKEN=...
+PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+# Optional stable signing key; if omitted, tokens are invalidated on restart.
+PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 LOG_LEVEL=info
 LOG_DIR=./logs/
 LOG_PRETTY=true
@@ -486,7 +493,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.4.1.tgz
+npm install -g ./deadragdoll-pm3m-1.5.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -503,7 +510,7 @@ Run these commands from the directory that contains the gateway `.env`.
 common artifact templates from the installed package into the gateway database
 and `ARTIFACT_DIR`.
 
-`pm3m start` generates a local `.pm3m.ecosystem.config.js` file that reads
+`pm3m start` generates a local `.pm3m.ecosystem.config.cjs` file that reads
 `.env` and starts or reloads the `pm3m-gateway` PM2 process.
 
 The package intentionally has no `postinstall` that starts PM2. Installing or

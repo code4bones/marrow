@@ -44,6 +44,12 @@ GET  /project-memory/ready
 GET  /project-memory/tools
 POST /project-memory/call
 GET  /project-memory/artifacts/<id>/download
+GET  /project-memory/.well-known/oauth-protected-resource
+GET  /project-memory/.well-known/oauth-authorization-server
+GET  /project-memory/.well-known/jwks.json
+GET  /project-memory/oauth/authorize
+POST /project-memory/oauth/authorize
+POST /project-memory/oauth/token
 ```
 
 Endpoint meaning:
@@ -73,6 +79,22 @@ If bearer auth is enabled on the gateway, the gateway runtime and clients must a
 MCP_TOKEN=...
 MCP_CLIENT_AUTH=...
 ```
+
+For ChatGPT Apps/custom MCP Apps, enable the OAuth facade on the gateway:
+
+```text
+PROJECT_MEMORY_PUBLIC_URL=https://memory.example.internal/project-memory
+PROJECT_MEMORY_OAUTH_ISSUER=https://memory.example.internal/project-memory
+PROJECT_MEMORY_OAUTH_AUDIENCE=https://memory.example.internal/project-memory
+PROJECT_MEMORY_MAGIC_TOKEN=...
+PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+# Optional stable signing key; if omitted, tokens are invalidated on restart.
+PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
+```
+
+The OAuth discovery and token routes are public by design. The nginx include
+maps the prefixed public routes to the gateway's internal unprefixed OAuth
+routes.
 
 The nginx include forwards `X-Request-ID`, `X-Forwarded-*`, and client IP headers. The gateway logs request ids, status codes, durations, client ids, and tool call completion.
 

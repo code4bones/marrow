@@ -2,6 +2,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { startGatewayServer } from "./gateway/http-server.js";
+import { createOAuthFacadeFromEnv } from "./gateway/oauth.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
@@ -21,12 +22,14 @@ async function main(): Promise<void> {
   const host = process.env.BIND ?? "127.0.0.1";
   const port = Number(process.env.PORT ?? 8765);
   const token = process.env.MCP_TOKEN;
-  const started = await startGatewayServer(service, { host, port, token, logger });
+  const oauth = createOAuthFacadeFromEnv();
+  const started = await startGatewayServer(service, { host, port, token, oauth, logger });
 
   logger.info(
     {
       url: started.url,
-      logFile: logFile || null
+      logFile: logFile || null,
+      oauth: Boolean(oauth)
     },
     "project memory gateway listening"
   );
