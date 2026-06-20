@@ -28,6 +28,15 @@ Purpose:
 - avoid guessing project context
 - establish the scope used by tools with optional `project`
 
+For collaboration-heavy work, load the conventions manual before editing:
+
+```text
+gateway.manuals(audience="conventions", includeContent=true)
+```
+
+Use it when the task involves ChatGPT-Codex handoff, shared artifacts,
+cross-agent context, or choosing the correct pmem storage surface.
+
 ## Backlog Selection
 
 Use this when an agent needs to choose work.
@@ -83,6 +92,30 @@ Purpose:
 - make task lifecycle visible
 - preserve important knowledge
 - avoid repeating failed attempts
+
+Write back only durable information. Do not create pmem records for every small
+edit or transient observation.
+
+## Storage Surface Selection
+
+Use this before recording new information:
+
+```text
+memory.upsert       compact durable status, conventions, constraints, links
+decision.record     durable architecture, product, or workflow decisions
+task.create         executable work with scope and acceptance criteria
+artifact.put        files, generated docs, diagrams, fixtures, templates
+failed_attempt.record
+                    failed approaches that should not be repeated blindly
+handoff.create      compact session summary for another agent or future session
+```
+
+Purpose:
+
+- prevent `memory.*` from becoming a chat log
+- keep files and larger reusable documents in artifact storage
+- keep decisions and failed attempts first-class
+- make later preflight output useful
 
 ## Research And Planning
 
@@ -279,6 +312,42 @@ Purpose:
 - keep reusable files discoverable
 - avoid overwriting shared artifacts accidentally
 - preserve old files through archival instead of deletion
+
+Recommended artifact paths are stable and area-prefixed:
+
+```text
+conventions/PROJECT_MEMORY_COLLABORATION.md
+oauth/OAUTH_FACADE_FOR_CHATGPT_APPS.md
+agents/CODEX_PROJECT_MEMORY.md
+```
+
+For Markdown documents, prefer `contentType: text/markdown; charset=utf-8`.
+
+## ChatGPT-Codex Collaboration Loop
+
+Use this when ChatGPT and Codex are collaborating through the shared gateway:
+
+```text
+ChatGPT creates context:
+  artifact.put, for shared docs/files
+  memory.upsert, for compact status or pointers
+
+Codex continues:
+  gateway.manuals(audience="conventions", includeContent=true)
+  artifact.search / artifact.get
+  preflight.by_query
+  repository inspection
+
+Codex finishes:
+  handoff.create
+  task.update_status / event.record / decision.record, as needed
+
+ChatGPT resumes:
+  memory.search or handoff lookup
+  summarize next steps for the user
+```
+
+Repository files remain authoritative if they conflict with pmem records.
 
 ## Default Agent Chain
 

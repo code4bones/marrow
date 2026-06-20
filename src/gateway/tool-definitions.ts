@@ -26,7 +26,22 @@ export interface GatewayToolSpec {
 
 const emptySchema = z.object({});
 const gatewayManualsSchema = z.object({
-  audience: z.enum(["developer", "user", "manual", "onboarding", "start", "first-run", "quickstart", "agent", "workflow", "all"]).optional(),
+  audience: z
+    .enum([
+      "developer",
+      "user",
+      "manual",
+      "onboarding",
+      "start",
+      "first-run",
+      "quickstart",
+      "agent",
+      "workflow",
+      "conventions",
+      "collaboration",
+      "all"
+    ])
+    .optional(),
   includeContent: z.boolean().optional()
 });
 const memoryUpsertSchema = createMemorySchema.extend({

@@ -53,6 +53,15 @@ const manualSpecs = [
     title: "Project Memory MCP Agent Guide",
     description: "Operational rules for agents: when to use pmem, tool chains, preflight, artifacts, and clarification triggers.",
     path: "docs/AGENT_GUIDE.md"
+  },
+  {
+    id: "conventions",
+    audience: "conventions",
+    aliases: ["collaboration"],
+    title: "Project Memory MCP Collaboration Conventions",
+    description:
+      "Shared storage-surface mapping and collaboration rules for ChatGPT, Codex, and other agents using pmem together.",
+    path: "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md"
   }
 ] as const;
 
@@ -208,6 +217,12 @@ export class PgToolService {
           tool: "gateway.manuals",
           reason:
             "Load Markdown manuals for developers/users, onboarding, and agents. Use includeContent=true when the caller wants the .md files inline."
+        },
+        {
+          tool: "gateway.manuals",
+          input: { audience: "conventions", includeContent: true },
+          reason:
+            "Load collaboration conventions when ChatGPT, Codex, or other agents share context through pmem."
         },
         {
           tool: "gateway.status",

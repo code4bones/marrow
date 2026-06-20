@@ -2,6 +2,11 @@
 
 This document describes how Project Memory MCP supports team collaboration while preserving local-first operation.
 
+For operational conventions shared by ChatGPT, Codex, and other agents, see
+[PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md).
+That document defines which pmem storage surface to use for memory, artifacts,
+decisions, tasks, failed attempts, and handoffs.
+
 ## Goal
 
 Multiple developers and agents may work on the same project.
@@ -47,6 +52,17 @@ Use it for:
 - durable team audit history
 
 Gateway mode is the correct collaboration runtime. Do not use a shared SQLite file as the main team database.
+
+In active collaboration, use Project Memory as a shared context layer:
+
+```text
+ChatGPT <-> Project Memory <-> Codex / agents
+```
+
+Files and larger reusable documents belong in `artifact.*`; compact durable
+state belongs in `memory.*`; executable work belongs in `task.*`; architecture
+constraints belong in `decision.*`; repeatable mistakes belong in
+`failed_attempt.*`; session continuation summaries belong in `handoff.*`.
 
 Current gateway commands:
 

@@ -76,6 +76,8 @@ See [docs/AGENT_STATE_MACHINE.md](docs/AGENT_STATE_MACHINE.md) for the agent sta
 
 See [docs/COLLABORATION.md](docs/COLLABORATION.md) for how the local-first MVP is designed to evolve toward shared team knowledge.
 
+See [docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md) for the storage-surface mapping and collaboration rules shared by ChatGPT, Codex, and other agents.
+
 See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the shared gateway.
 
 See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for the PostgreSQL plus artifact backup and restore runbook.
@@ -219,7 +221,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.6.0.tgz
+npm install -g ./deadragdoll-pm3m-1.6.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

@@ -175,7 +175,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.6.0",
+    "packageVersion": "1.6.1",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -270,7 +270,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.6.0",
+      "packageVersion": "1.6.1",
       "tools": 44
     },
     "database": {
@@ -340,11 +340,14 @@ Input:
 * `quickstart`
 * `agent`
 * `workflow`
+* `conventions`
+* `collaboration`
 * `all`
 
 `user` and `manual` are aliases for the developer manual. `start`,
 `first-run`, and `quickstart` are aliases for the onboarding guide. `workflow`
-is an alias for the agent guide.
+is an alias for the agent guide. `collaboration` is an alias for the
+collaboration conventions manual.
 
 Output:
 
@@ -368,6 +371,24 @@ Output:
         "packagePath": "docs/DEVELOPER_MANUAL.md"
       },
       "content": "# Project Memory MCP — Developer Manual\n..."
+    },
+    {
+      "id": "conventions",
+      "audience": "conventions",
+      "aliases": ["collaboration"],
+      "title": "Project Memory MCP Collaboration Conventions",
+      "description": "Shared storage-surface mapping and collaboration rules...",
+      "path": "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md",
+      "contentType": "text/markdown; charset=utf-8",
+      "retrieval": {
+        "preferredTool": "gateway.manuals",
+        "preferredInput": {
+          "audience": "conventions",
+          "includeContent": true
+        },
+        "packagePath": "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md"
+      },
+      "content": "# Project Memory MCP - Collaboration Conventions\n..."
     },
     {
       "id": "onboarding",

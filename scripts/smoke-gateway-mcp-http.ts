@@ -156,6 +156,16 @@ try {
     ),
     "gateway.manuals did not return onboarding Markdown content."
   );
+  assert(
+    manuals.some(
+      (manual) =>
+        isRecord(manual) &&
+        manual.id === "conventions" &&
+        typeof manual.content === "string" &&
+        manual.content.includes("Collaboration Conventions")
+    ),
+    "gateway.manuals did not return collaboration conventions Markdown content."
+  );
 
   const onboardingManualResult = await client.callTool({
     name: "gateway.manuals",
@@ -165,6 +175,15 @@ try {
     }
   });
   assertOk(onboardingManualResult.structuredContent, "gateway.manuals onboarding failed.");
+
+  const conventionsManualResult = await client.callTool({
+    name: "gateway.manuals",
+    arguments: {
+      audience: "collaboration",
+      includeContent: true
+    }
+  });
+  assertOk(conventionsManualResult.structuredContent, "gateway.manuals collaboration failed.");
 
   const statusResult = await client.callTool({
     name: "gateway.status",

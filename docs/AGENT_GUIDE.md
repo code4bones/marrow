@@ -30,6 +30,13 @@ For first-run onboarding, request the compact onboarding manual:
 gateway.manuals(audience="onboarding", includeContent=true)
 ```
 
+For ChatGPT-Codex collaboration, handoffs, artifacts, or storage-surface
+questions, request the conventions manual:
+
+```text
+gateway.manuals(audience="conventions", includeContent=true)
+```
+
 Default onboarding chain:
 
 ```text
@@ -37,6 +44,7 @@ gateway.about
 gateway.status
 gateway.version
 gateway.manuals(audience="onboarding", includeContent=true)
+gateway.manuals(audience="conventions", includeContent=true), for collaboration-heavy work
 project.resolve
 project.current or project.set_current
 preflight.by_query, or task.next -> task.get -> preflight
@@ -81,6 +89,25 @@ Use pmem after work when:
 - a failed attempt should be preserved
 - a reusable file should be shared as an artifact
 - important project history should appear in the timeline
+
+## Storage Surface Mapping
+
+Use the right pmem surface for the right kind of information:
+
+- `memory.*` for compact durable knowledge, status, conventions, constraints,
+  and links to related artifacts or decisions
+- `decision.*` for durable architecture, product, and workflow decisions
+- `task.*` for executable work with scope and acceptance criteria
+- `artifact.*` for files, larger reusable documents, generated Markdown,
+  diagrams, exports, fixtures, and templates
+- `failed_attempt.*` for mistakes or dead ends that future agents should not
+  repeat blindly
+- `handoff.*` for compact session summaries with completed work, files,
+  validation, blockers, and next steps
+
+Do not store secrets, tokens, private keys, cookies, session IDs, full `.env`
+files, raw authorization headers, or raw logs. Redact before writing if a secret
+appears in diagnostic output.
 
 ## When Not To Use pmem
 
@@ -242,6 +269,16 @@ description, or tags need cleanup.
 Use `artifact.archive` instead of deleting shared files. Archived artifacts are
 hidden from default search but remain retrievable by explicit id/path or
 `includeArchived=true`.
+
+Prefer clear artifact paths such as:
+
+```text
+conventions/PROJECT_MEMORY_COLLABORATION.md
+oauth/OAUTH_FACADE_FOR_CHATGPT_APPS.md
+agents/CODEX_PROJECT_MEMORY.md
+```
+
+For Markdown documents, use `contentType: text/markdown; charset=utf-8`.
 
 ## Recording Rules
 
@@ -421,6 +458,7 @@ handoff.create, if another agent may continue the work
 
 Use these docs for deeper behavior:
 
+- [PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md)
 - [TOOL_WORKFLOWS.md](TOOL_WORKFLOWS.md)
 - [AGENT_STATE_MACHINE.md](AGENT_STATE_MACHINE.md)
 - [MCP_TOOLS.md](MCP_TOOLS.md)

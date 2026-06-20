@@ -27,6 +27,10 @@ gateway.manuals(audience="all", includeContent=true)
 
 Use `audience="agent"` when only the agent workflow is needed.
 
+Use `audience="conventions"` when the task involves ChatGPT-Codex
+collaboration, handoffs, artifacts, or deciding which pmem storage surface to
+use.
+
 ## Select Project Scope
 
 Resolve the repository or project before writing memory:
@@ -69,6 +73,14 @@ decision.list
 event.list
 ```
 
+For collaboration-heavy work, also load:
+
+```text
+gateway.manuals(audience="conventions", includeContent=true)
+handoff or memory.search for the latest relevant handoff
+artifact.search, if the task mentions shared docs, instructions, or generated files
+```
+
 Treat `knownFaults` as stop-signals. Do not repeat a failed approach until the
 user or project context gives a reason to try it differently.
 
@@ -107,6 +119,12 @@ handoff.create
 ```
 
 Use only the records that match what actually happened.
+
+Write back durable information only. Use `handoff.create` for compact session
+summaries, `memory.upsert` for compact reusable status or conventions,
+`decision.record` for durable architecture, `artifact.put` for generated files
+or docs, and `failed_attempt.record` for dead ends. Do not write pmem after
+every tiny edit.
 
 ## Ask The User When
 

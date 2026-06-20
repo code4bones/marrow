@@ -268,6 +268,24 @@ Record only durable knowledge:
 
 Do not record every tiny observation.
 
+Use the right storage surface:
+
+- `memory.*` for compact durable status, conventions, constraints, and links
+- `decision.*` for durable architecture, product, or workflow decisions
+- `task.*` for executable work with scope and acceptance criteria
+- `artifact.*` for files, generated docs, fixtures, templates, and larger
+  reusable documents
+- `failed_attempt.*` for approaches that should not be repeated blindly
+- `handoff.*` for compact session summaries and continuation points
+
+For ChatGPT-Codex collaboration rules, load or read
+[PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md)
+through `gateway.manuals(audience="conventions", includeContent=true)`.
+
+Never store secrets, tokens, private keys, cookies, session IDs, full `.env`
+files, raw authorization headers, passwords, or raw logs in Project Memory.
+Redact before writing if a secret appears in diagnostic output.
+
 ## Artifact Workflow
 
 ### Search Before Creating
@@ -502,7 +520,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.6.0.tgz
+npm install -g ./deadragdoll-pm3m-1.6.1.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
