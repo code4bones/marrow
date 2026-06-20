@@ -38,7 +38,7 @@ Goal: make shared files useful immediately for agents.
 Done:
 
 - add common `AGENTS.md` templates for frontend, backend, DevOps, and generic repos
-- add deploy and review checklist templates
+- add deploy, review, release, task, handoff, and fault templates
 - seed/update bundled templates after `pm3m migrate latest`
 - add manual `pm3m seed templates`
 
@@ -63,8 +63,10 @@ Implemented:
 
 - `gateway.about`
 - `gateway.manuals`
+- `gateway.manuals(audience="onboarding")`
 - `preflight.by_query`
 - `handoff.create`
+- first-run agent onboarding guide
 - tool workflow and state-machine documentation
 
 Next:

@@ -186,6 +186,12 @@ gateway.about
 gateway.manuals(audience="all", includeContent=true)
 ```
 
+For a compact first-run guide, ask for onboarding only:
+
+```text
+gateway.manuals(audience="onboarding", includeContent=true)
+```
+
 Then ask it to check the shared gateway:
 
 ```text
@@ -205,7 +211,7 @@ The gateway should report:
 
 - `mode: gateway`
 - `storage: postgresql`
-- `tools: 44` for pm3m 1.3.x
+- `tools: 44` for pm3m 1.4.x
 - recent clients
 
 Operators can also inspect or clean stale client registrations with:
@@ -360,6 +366,10 @@ Current bundled artifact paths:
 - `templates/agents/devops/AGENTS.md`
 - `templates/review/REVIEW_CHECKLIST.md`
 - `templates/deploy/DEPLOY_CHECKLIST.md`
+- `templates/release/RELEASE_CHECKLIST.md`
+- `templates/task/TASK_TEMPLATE.md`
+- `templates/handoff/HANDOFF_TEMPLATE.md`
+- `templates/fault/FAULT_TEMPLATE.md`
 
 Operators can repeat only the template sync on the gateway:
 
@@ -468,7 +478,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.3.0.tgz
+npm install -g ./deadragdoll-pm3m-1.4.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

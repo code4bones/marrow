@@ -61,6 +61,9 @@ collaboration tools. Current gateway smoke coverage expects 44 tools, including:
 - `preflight.by_query`
 - `handoff.create`
 
+New agents can request the compact first-run guide with
+`gateway.manuals(audience="onboarding", includeContent=true)`.
+
 See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the detailed implementation status, validation notes, and known follow-up work.
 
 See [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md) for a practical developer guide covering purpose, setup, safe usage, artifacts, and operations.
@@ -192,7 +195,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.3.0.tgz
+npm install -g ./deadragdoll-pm3m-1.4.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -324,6 +327,10 @@ Bundled gateway templates are seeded as common artifacts under:
 - `templates/agents/devops/AGENTS.md`
 - `templates/review/REVIEW_CHECKLIST.md`
 - `templates/deploy/DEPLOY_CHECKLIST.md`
+- `templates/release/RELEASE_CHECKLIST.md`
+- `templates/task/TASK_TEMPLATE.md`
+- `templates/handoff/HANDOFF_TEMPLATE.md`
+- `templates/fault/FAULT_TEMPLATE.md`
 
 Gateway logging uses `pino` and writes JSON logs to console and file by default:
 

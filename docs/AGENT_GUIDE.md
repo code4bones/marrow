@@ -24,6 +24,25 @@ gateway.manuals
 
 Use `includeContent=true` when the user wants the actual `.md` text.
 
+For first-run onboarding, request the compact onboarding manual:
+
+```text
+gateway.manuals(audience="onboarding", includeContent=true)
+```
+
+Default onboarding chain:
+
+```text
+gateway.about
+gateway.status
+gateway.version
+gateway.manuals(audience="onboarding", includeContent=true)
+project.resolve
+project.current or project.set_current
+preflight.by_query, or task.next -> task.get -> preflight
+artifact.search, when shared templates or files are needed
+```
+
 ## Confirm Shared Gateway Mode
 
 When collaboration or shared knowledge matters, call:

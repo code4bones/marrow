@@ -11,6 +11,19 @@ templates/
 
 Agents can find them with `artifact.search` or browse them with `artifact.list`.
 
+Current bundled files:
+
+- `templates/agents/generic/AGENTS.md`
+- `templates/agents/frontend/AGENTS.md`
+- `templates/agents/backend/AGENTS.md`
+- `templates/agents/devops/AGENTS.md`
+- `templates/review/REVIEW_CHECKLIST.md`
+- `templates/deploy/DEPLOY_CHECKLIST.md`
+- `templates/release/RELEASE_CHECKLIST.md`
+- `templates/task/TASK_TEMPLATE.md`
+- `templates/handoff/HANDOFF_TEMPLATE.md`
+- `templates/fault/FAULT_TEMPLATE.md`
+
 Example:
 
 ```json

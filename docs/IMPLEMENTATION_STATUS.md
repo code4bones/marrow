@@ -28,7 +28,7 @@ Implemented capabilities:
 - temporary anonymous gateway client scopes for requests without `client_id`
 - configurable cleanup for temporary anonymous gateway clients and their current-project keys
 - operator client management through `gateway.client_get`, `gateway.client_forget`, and `gateway.client_prune`
-- gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.status`, `gateway.clients`
+- gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.manuals(audience="onboarding")`, `gateway.status`, `gateway.clients`
 - gateway memory-quality tools: `memory.upsert`, `failed_attempt.record`, `decision.supersede`, `project.resolve`
 - preflight `knownFaults` alias for failed attempts that should stop repeated mistakes
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem
@@ -257,6 +257,7 @@ Implemented tools:
 - `gateway.diagnostics` (gateway)
 - `gateway.backup_manifest` (gateway)
 - `gateway.manuals` (gateway)
+- `gateway.manuals(audience="onboarding")` returns `docs/AGENT_ONBOARDING.md`
 - `gateway.status` (gateway)
 - `gateway.clients` (gateway)
 
@@ -356,6 +357,10 @@ Current template artifact paths:
 - `templates/agents/devops/AGENTS.md`
 - `templates/review/REVIEW_CHECKLIST.md`
 - `templates/deploy/DEPLOY_CHECKLIST.md`
+- `templates/release/RELEASE_CHECKLIST.md`
+- `templates/task/TASK_TEMPLATE.md`
+- `templates/handoff/HANDOFF_TEMPLATE.md`
+- `templates/fault/FAULT_TEMPLATE.md`
 
 ## Validation
 

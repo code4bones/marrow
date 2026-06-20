@@ -31,9 +31,14 @@ try {
   symlinkSync(join(repoRoot, "node_modules"), join(installedPackageRoot, "node_modules"), "dir");
 
   assert(existsSync(join(installedPackageRoot, "docs", "AGENT_STATE_MACHINE.md")), "docs were not packaged.");
+  assert(existsSync(join(installedPackageRoot, "docs", "AGENT_ONBOARDING.md")), "onboarding guide was not packaged.");
   assert(
     existsSync(join(installedPackageRoot, "docs", "templates", "agents", "frontend", "AGENTS.md")),
     "bundled frontend template was not packaged."
+  );
+  assert(
+    existsSync(join(installedPackageRoot, "docs", "templates", "task", "TASK_TEMPLATE.md")),
+    "bundled task template was not packaged."
   );
   assert(existsSync(join(installedPackageRoot, "migrations", "001_init.sql")), "migrations were not packaged.");
   assert(existsSync(join(installedPackageRoot, "dist", "src", "index.js")), "server entrypoint was not packaged.");

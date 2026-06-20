@@ -26,7 +26,7 @@ export interface GatewayToolSpec {
 
 const emptySchema = z.object({});
 const gatewayManualsSchema = z.object({
-  audience: z.enum(["developer", "user", "agent", "all"]).optional(),
+  audience: z.enum(["developer", "user", "manual", "onboarding", "start", "first-run", "quickstart", "agent", "workflow", "all"]).optional(),
   includeContent: z.boolean().optional()
 });
 const memoryUpsertSchema = createMemorySchema.extend({
@@ -216,7 +216,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.manuals",
     description:
-      "Return Project Memory Markdown manuals for developers/users and agents. Set includeContent=true when the caller needs the actual .md text.",
+      "Return Project Memory Markdown manuals for developers/users, onboarding, and agents. Set includeContent=true when the caller needs the actual .md text.",
     schema: gatewayManualsSchema
   },
   {

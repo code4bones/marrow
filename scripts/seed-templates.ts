@@ -72,6 +72,34 @@ const templateSeeds: TemplateSeed[] = [
     title: "Deploy Checklist Template",
     description: "Reusable checklist for service deployment validation.",
     tags: ["template", "deploy", "checklist", "ops", "markdown"]
+  },
+  {
+    source: "docs/templates/release/RELEASE_CHECKLIST.md",
+    artifactPath: "templates/release/RELEASE_CHECKLIST.md",
+    title: "Release Checklist Template",
+    description: "Reusable checklist for package releases and deployment readiness.",
+    tags: ["template", "release", "checklist", "markdown"]
+  },
+  {
+    source: "docs/templates/task/TASK_TEMPLATE.md",
+    artifactPath: "templates/task/TASK_TEMPLATE.md",
+    title: "Task Template",
+    description: "Reusable task specification template for agent-executable work.",
+    tags: ["template", "task", "planning", "markdown"]
+  },
+  {
+    source: "docs/templates/handoff/HANDOFF_TEMPLATE.md",
+    artifactPath: "templates/handoff/HANDOFF_TEMPLATE.md",
+    title: "Handoff Template",
+    description: "Reusable handoff template for transferring work between agents or developers.",
+    tags: ["template", "handoff", "collaboration", "markdown"]
+  },
+  {
+    source: "docs/templates/fault/FAULT_TEMPLATE.md",
+    artifactPath: "templates/fault/FAULT_TEMPLATE.md",
+    title: "Fault Template",
+    description: "Reusable template for recording failed attempts and what not to repeat.",
+    tags: ["template", "fault", "failed-attempt", "markdown"]
   }
 ];
 

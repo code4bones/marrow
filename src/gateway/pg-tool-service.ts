@@ -33,15 +33,23 @@ const manualSpecs = [
   {
     id: "developer",
     audience: "developer",
-    aliases: ["user"],
+    aliases: ["user", "manual"],
     title: "Project Memory MCP Developer Manual",
     description: "Purpose, setup, safe usage, artifact workflows, guardrails, and gateway operations.",
     path: "docs/DEVELOPER_MANUAL.md"
   },
   {
+    id: "onboarding",
+    audience: "onboarding",
+    aliases: ["start", "first-run", "quickstart"],
+    title: "Project Memory MCP Agent Onboarding",
+    description: "First-run tool chain for agents connecting to a shared pmem gateway.",
+    path: "docs/AGENT_ONBOARDING.md"
+  },
+  {
     id: "agent",
     audience: "agent",
-    aliases: [],
+    aliases: ["workflow"],
     title: "Project Memory MCP Agent Guide",
     description: "Operational rules for agents: when to use pmem, tool chains, preflight, artifacts, and clarification triggers.",
     path: "docs/AGENT_GUIDE.md"
@@ -199,28 +207,43 @@ export class PgToolService {
         {
           tool: "gateway.manuals",
           reason:
-            "Load Markdown manuals for developers/users and agents. Use includeContent=true when the caller wants the .md files inline."
+            "Load Markdown manuals for developers/users, onboarding, and agents. Use includeContent=true when the caller wants the .md files inline."
         },
         {
           tool: "gateway.status",
           reason: "Confirm that the agent is connected to the shared PostgreSQL gateway."
         },
         {
+          tool: "gateway.version",
+          reason: "Confirm package version, storage mode, and exposed tool count."
+        },
+        {
           tool: "gateway.clients",
           reason: "See recently connected agents and developers."
         },
         {
-          tool: "project.list",
-          reason: "Discover existing project scopes."
+          tool: "project.resolve",
+          reason: "Resolve project scope from repository path, slug, title, or remote URL before writing memory."
         },
         {
-          tool: "memory.search",
-          reason: "Search common and project-specific knowledge before editing files."
+          tool: "project.current",
+          reason: "Confirm the per-client current project used by tools with optional project arguments."
         },
         {
-          tool: "preflight",
-          reason: "Load task-specific safety context before implementation work."
+          tool: "preflight.by_query",
+          reason: "Load ad-hoc project context, decisions, known faults, artifacts, and recent events before a task exists."
         }
+      ],
+      onboardingFlow: [
+        "gateway.about",
+        "gateway.status",
+        "gateway.version",
+        "gateway.manuals(audience=\"onboarding\", includeContent=true)",
+        "project.resolve",
+        "project.current or project.set_current",
+        "preflight.by_query for ad-hoc work, or task.next -> task.get -> preflight for recorded tasks",
+        "artifact.search or artifact.list before creating local AGENTS.md/templates",
+        "task.update_status/status events and record decisions/faults/handoffs after meaningful work"
       ],
       operatingModel: {
         commonLayer:
@@ -260,12 +283,14 @@ export class PgToolService {
       },
       recommendedAgentFlow: [
         "Call gateway.about if the agent has not used pmem before.",
-        "Call gateway.manuals with includeContent=true when the developer or agent needs the bundled Markdown manuals.",
+        "Call gateway.manuals(audience=\"onboarding\", includeContent=true) for the first-run tool chain.",
+        "Call gateway.manuals with includeContent=true when the developer or agent needs the full bundled Markdown manuals.",
         "Call gateway.status to confirm shared gateway mode.",
-        "Call project.current or project.list to identify the active project.",
-        "Call memory.search with the task topic and include common knowledge.",
+        "Call project.resolve, then project.current or project.set_current to identify the active project.",
+        "Call preflight.by_query with the task topic when no task exists yet.",
         "Call task.next or task.get when working from a recorded task.",
         "Call preflight before editing files.",
+        "Call artifact.search or artifact.list before creating local reusable docs or templates.",
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
       artifactStorage: {

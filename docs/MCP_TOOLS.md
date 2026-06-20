@@ -93,6 +93,11 @@ Output:
           "reason": "Return the user/developer manual as Markdown."
         },
         {
+          "audience": "onboarding",
+          "includeContent": true,
+          "reason": "Return the first-run agent onboarding guide as Markdown."
+        },
+        {
           "audience": "agent",
           "includeContent": true,
           "reason": "Return the agent operating guide as Markdown."
@@ -102,12 +107,30 @@ Output:
     "firstCalls": [
       {
         "tool": "gateway.manuals",
-        "reason": "Load Markdown manuals for developers/users and agents."
+        "reason": "Load Markdown manuals for developers/users, onboarding, and agents."
       },
       {
         "tool": "gateway.status",
         "reason": "Confirm that the agent is connected to the shared PostgreSQL gateway."
+      },
+      {
+        "tool": "project.resolve",
+        "reason": "Resolve project scope before writing memory."
+      },
+      {
+        "tool": "preflight.by_query",
+        "reason": "Load ad-hoc context before a task exists."
       }
+    ],
+    "onboardingFlow": [
+      "gateway.about",
+      "gateway.status",
+      "gateway.version",
+      "gateway.manuals(audience=\"onboarding\", includeContent=true)",
+      "project.resolve",
+      "project.current or project.set_current",
+      "preflight.by_query for ad-hoc work, or task.next -> task.get -> preflight for recorded tasks",
+      "artifact.search or artifact.list before creating local AGENTS.md/templates"
     ],
     "recommendedAgentFlow": [
       "Call gateway.about if the agent has not used pmem before.",
@@ -152,7 +175,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.3.0",
+    "packageVersion": "1.4.0",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 44,
@@ -247,7 +270,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.3.0",
+      "packageVersion": "1.4.0",
       "tools": 44
     },
     "database": {
@@ -310,10 +333,18 @@ Input:
 
 * `developer`
 * `user`
+* `manual`
+* `onboarding`
+* `start`
+* `first-run`
+* `quickstart`
 * `agent`
+* `workflow`
 * `all`
 
-`user` is an alias for the developer manual.
+`user` and `manual` are aliases for the developer manual. `start`,
+`first-run`, and `quickstart` are aliases for the onboarding guide. `workflow`
+is an alias for the agent guide.
 
 Output:
 
@@ -323,7 +354,7 @@ Output:
     {
       "id": "developer",
       "audience": "developer",
-      "aliases": ["user"],
+      "aliases": ["user", "manual"],
       "title": "Project Memory MCP Developer Manual",
       "description": "Purpose, setup, safe usage...",
       "path": "docs/DEVELOPER_MANUAL.md",
@@ -337,6 +368,14 @@ Output:
         "packagePath": "docs/DEVELOPER_MANUAL.md"
       },
       "content": "# Project Memory MCP — Developer Manual\n..."
+    },
+    {
+      "id": "onboarding",
+      "audience": "onboarding",
+      "aliases": ["start", "first-run", "quickstart"],
+      "title": "Project Memory MCP Agent Onboarding",
+      "path": "docs/AGENT_ONBOARDING.md",
+      "content": "# Project Memory MCP — Agent Onboarding\n..."
     }
   ]
 }

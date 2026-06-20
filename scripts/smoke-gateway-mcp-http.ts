@@ -101,6 +101,11 @@ try {
     readNestedString(aboutResult.structuredContent, ["data", "about", "manuals", "tool"]) === "gateway.manuals",
     "gateway.about did not point at gateway.manuals."
   );
+  const onboardingFlow = readNestedArray(aboutResult.structuredContent, ["data", "about", "onboardingFlow"]);
+  assert(
+    onboardingFlow.some((step) => String(step).includes("gateway.manuals(audience=\"onboarding\"")),
+    "gateway.about did not include the onboarding manuals call."
+  );
   const connectionSnippets = readNestedArray(aboutResult.structuredContent, ["data", "about", "connectionSnippets"]);
   assert(
     connectionSnippets.some((snippet) => isRecord(snippet) && snippet.client === "codex"),
@@ -141,6 +146,25 @@ try {
     ),
     "gateway.manuals did not return agent Markdown content."
   );
+  assert(
+    manuals.some(
+      (manual) =>
+        isRecord(manual) &&
+        manual.id === "onboarding" &&
+        typeof manual.content === "string" &&
+        manual.content.includes("Agent Onboarding")
+    ),
+    "gateway.manuals did not return onboarding Markdown content."
+  );
+
+  const onboardingManualResult = await client.callTool({
+    name: "gateway.manuals",
+    arguments: {
+      audience: "onboarding",
+      includeContent: true
+    }
+  });
+  assertOk(onboardingManualResult.structuredContent, "gateway.manuals onboarding failed.");
 
   const statusResult = await client.callTool({
     name: "gateway.status",
