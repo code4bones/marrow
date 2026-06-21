@@ -27,6 +27,14 @@ export interface GatewayGraphqlServer {
 export interface GatewayGraphqlRequestResult {
   status: number;
   operationName?: string;
+  errors?: GraphqlLoggedError[];
+}
+
+export interface GraphqlLoggedError {
+  message: string;
+  locations?: unknown;
+  path?: unknown;
+  extensions?: unknown;
 }
 
 const typeDefs = `#graphql
@@ -253,7 +261,7 @@ const typeDefs = `#graphql
   type Project {
     id: ID!
     slug: String!
-    title: String!
+    title: String
     description: String
     status: String!
     rootPath: String
@@ -328,7 +336,7 @@ const typeDefs = `#graphql
     projectId: String
     scope: String
     type: String!
-    title: String!
+    title: String
     body: String
     excerpt: String
     status: String!
@@ -346,7 +354,7 @@ const typeDefs = `#graphql
   type Task {
     id: ID!
     projectId: String
-    title: String!
+    title: String
     status: String!
     milestone: String
     priority: Int
@@ -373,7 +381,7 @@ const typeDefs = `#graphql
   type Decision {
     id: ID!
     projectId: String
-    title: String!
+    title: String
     status: String!
     context: String
     decision: String
@@ -393,9 +401,9 @@ const typeDefs = `#graphql
   type Artifact {
     id: ID!
     projectId: String
-    scope: String!
+    scope: String
     path: String!
-    title: String!
+    title: String
     description: String
     status: String!
     contentType: String!
@@ -692,10 +700,12 @@ export async function handleGatewayGraphqlRequest(input: {
     })
   });
 
+  const errors = graphqlErrorsFromResponse(httpGraphQLResponse);
   await sendGraphqlResponse(response, httpGraphQLResponse, requestId);
   return {
     status: httpGraphQLResponse.status ?? 200,
-    operationName
+    operationName,
+    errors
   };
 }
 
@@ -772,6 +782,33 @@ function requireOne(input: Row, fields: string[], label: string): Row {
   throw new AppError("VALIDATION_ERROR", `${label} requires one of: ${fields.join(", ")}.`);
 }
 
+function graphqlErrorsFromResponse(response: HTTPGraphQLResponse): GraphqlLoggedError[] | undefined {
+  if (response.body.kind !== "complete") {
+    return undefined;
+  }
+  try {
+    const payload = JSON.parse(response.body.string) as { errors?: unknown };
+    if (!Array.isArray(payload.errors) || payload.errors.length === 0) {
+      return undefined;
+    }
+    return payload.errors.map(graphqlErrorForLog);
+  } catch {
+    return undefined;
+  }
+}
+
+function graphqlErrorForLog(error: unknown): GraphqlLoggedError {
+  if (!isRow(error)) {
+    return { message: String(error) };
+  }
+  return {
+    message: typeof error.message === "string" ? error.message : JSON.stringify(error),
+    locations: error.locations,
+    path: error.path,
+    extensions: error.extensions
+  };
+}
+
 function cleanInput(input: Row): Row {
   const output: Row = {};
   for (const [key, value] of Object.entries(input)) {
@@ -780,6 +817,10 @@ function cleanInput(input: Row): Row {
     }
   }
   return output;
+}
+
+function isRow(value: unknown): value is Row {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJsonLiteral(ast: ValueNode): unknown {

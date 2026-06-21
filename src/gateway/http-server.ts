@@ -298,9 +298,17 @@ async function handleGraphqlRequest(
       logger: options.logger,
       body
     });
-    logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, {
+    const graphqlLogFields: LogFields = {
       graphqlOperationName: result.operationName,
       requiredScopes
+    };
+    if (result.errors?.length) {
+      graphqlLogFields.graphqlErrorCount = result.errors.length;
+      graphqlLogFields.graphqlErrors = result.errors;
+      graphqlLogFields.requestBody = sanitizeLogBody(body);
+    }
+    logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, {
+      ...graphqlLogFields
     });
   } catch (error) {
     options.logger?.error({ requestId, clientId: context.clientId, error }, "gateway graphql request failed");

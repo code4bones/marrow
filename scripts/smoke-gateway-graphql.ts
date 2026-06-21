@@ -130,7 +130,7 @@ try {
   console.log("ok - graphql project explorer queries");
 
   const recordNavigation = await graphql<{
-    taskRecord: { kind: string; record: { __typename: string; id: string; title: string } };
+    taskRecord: { kind: string; record: { __typename: string; id: string; title: string; scope: string | null } };
     artifactRecord: { kind: string; record: { __typename: string; id: string; path: string } };
     memory: { id: string; body: string };
     link: { id: string; fromId: string; toId: string; relation: string };
@@ -140,7 +140,10 @@ try {
         kind
         record {
           __typename
-          ... on Task { id title }
+          ... on Task { id title scope }
+          ... on MemoryRecord { id title scope }
+          ... on Artifact { id title scope }
+          ... on Event { id title }
         }
       }
       artifactRecord: record(id: $artifactId) {
