@@ -39,7 +39,7 @@ interface ToolCallBody {
 type LogFields = Record<string, unknown>;
 type AuthorizationState =
   | { ok: true; source: "static" | "oauth" | "none" }
-  | { ok: false; challenge?: string };
+  | { ok: false; challenge?: string; reason?: string };
 
 export async function startGatewayServer(
   service: PgToolService,
@@ -177,7 +177,9 @@ async function handleRequest(
     const auth = isAuthorized(options, request);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth.challenge);
-      logRequest(options, request, 401, Date.now() - startedAt, requestId, context);
+      logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+        authReason: auth.reason
+      });
       return;
     }
 
@@ -227,7 +229,8 @@ async function handleRequest(
         logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
           tool: body.tool,
           requestBody: sanitizeLogBody(body),
-          requiredScopes: gatewayToolRequiredScopes(body.tool)
+          requiredScopes: gatewayToolRequiredScopes(body.tool),
+          authReason: scopeAuth.reason
         });
         return;
       }
@@ -284,7 +287,8 @@ async function handleGraphqlRequest(
       sendUnauthorized(response, requestId, scopeAuth.challenge);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
         requiredScopes,
-        graphqlOperationType: requiredScopes.includes("memory:write") ? "mutation" : "query"
+        graphqlOperationType: requiredScopes.includes("memory:write") ? "mutation" : "query",
+        authReason: scopeAuth.reason
       });
       return;
     }
@@ -391,7 +395,8 @@ async function handleMcpRequest(
       sendMcpUnauthorized(response, requestId, scopeAuth.challenge);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
         ...logFields,
-        requiredScopes
+        requiredScopes,
+        authReason: scopeAuth.reason
       });
       return;
     }
@@ -546,14 +551,18 @@ function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): 
     if (auth.ok) {
       return { ok: true, source: "oauth" };
     }
-    return { ok: false, challenge: options.oauth.challengeHeader(["memory:read"], options.oauth.resourceForPath(parseRequestUrl(request).pathname)) };
+    return {
+      ok: false,
+      reason: auth.reason,
+      challenge: options.oauth.challengeHeader(defaultOAuthScopes(), options.oauth.resourceForPath(parseRequestUrl(request).pathname))
+    };
   }
 
   if (!options.token) {
     return { ok: true, source: "none" };
   }
 
-  return { ok: false };
+  return { ok: false, reason: "missing_static_token" };
 }
 
 function isAuthorizedForScopes(
@@ -569,7 +578,15 @@ function isAuthorizedForScopes(
   if (scopedAuth.ok) {
     return auth;
   }
-  return { ok: false, challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname)) };
+  return {
+    ok: false,
+    reason: scopedAuth.reason,
+    challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname))
+  };
+}
+
+function defaultOAuthScopes(): string[] {
+  return ["memory:read", "memory:write"];
 }
 
 function protectedResourceFromRequestPath(oauth: OAuthFacade, requestPath: string): string | undefined {

@@ -151,6 +151,10 @@ OAuth tokens are checked per tool. Read-only tools require `memory:read`; write
 tools such as `project.create`, `task.create`, `artifact.put_text`,
 `memory.update`, `handoff.create`, and status/archive-changing tools require
 both `memory:read` and `memory:write`.
+Because pmem is an internal gateway, successful OAuth authorization grants the
+full configured scope set (`memory:read memory:write` by default), even when a
+host initially requests only `memory:read`. This keeps Claude-style connectors
+from getting stuck with read-only tokens when they later call write tools.
 
 OAuth resource validation accepts the configured audience and the MCP endpoint
 resource (`PROJECT_MEMORY_PUBLIC_URL + "/mcp"`) so stricter clients such as

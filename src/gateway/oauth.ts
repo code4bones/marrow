@@ -420,12 +420,16 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
 }
 
 function requestedScopes(scope: string | null, supportedScopes: string[]): string[] {
-  if (!scope) {
-    return supportedScopes;
+  // PMem is an internal gateway: successful OAuth means access to the full configured scope set.
+  // Some hosts initially request only memory:read and do not retry escalation before write tools.
+  if (scope) {
+    const requested = scope.split(/\s+/).filter(Boolean);
+    const unsupported = requested.filter((item) => !supportedScopes.includes(item));
+    if (unsupported.length === requested.length) {
+      return supportedScopes;
+    }
   }
-  const requested = scope.split(/\s+/).filter(Boolean);
-  const allowed = requested.filter((item) => supportedScopes.includes(item));
-  return allowed.length > 0 ? allowed : supportedScopes;
+  return supportedScopes;
 }
 
 function verifyPkceS256(verifier: string, expectedChallenge: string): boolean {

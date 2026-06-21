@@ -339,7 +339,12 @@ memory:write  create/update/delete project memory entries
 memory:admin  optional future admin operations
 ```
 
-Keep scopes coarse for now.
+Keep scopes coarse for now. Project Memory is an internal-company gateway: any
+user who completes OAuth is trusted for the configured gateway scopes. The
+facade grants the full configured scope set, currently
+`memory:read memory:write`, even if a host initially asks only for
+`memory:read`. This avoids read-only connector tokens in hosts that do not
+retry OAuth scope escalation before calling write tools.
 
 Suggested mapping:
 
