@@ -232,7 +232,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.16.0.tgz
+npm install -g ./deadragdoll-pm3m-1.17.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -261,7 +261,11 @@ does not start or reload PM2 automatically; service changes should happen only
 through explicit deploy commands such as `pm3m start`.
 
 `MCP_TOKEN` enables bearer auth for gateway routes.
-OAuth access tokens are also accepted when the OAuth facade is enabled.
+OAuth access tokens are also accepted when the OAuth facade is enabled. OAuth
+tokens must include `memory:write` to execute write tools such as
+`project.create`, `project.set_current`, `task.create`, `memory.create`,
+`artifact.put_text`, `handoff.create`, and update/archive/status-changing
+tools. Read-only tools require `memory:read`.
 
 Client-specific variables point agents at the public gateway base URL:
 

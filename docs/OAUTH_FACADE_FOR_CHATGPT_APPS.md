@@ -345,7 +345,7 @@ Suggested mapping:
 
 ```text
 search/read/list tools      -> memory:read
-create/update/delete tools  -> memory:write
+create/update/delete tools  -> memory:read memory:write
 admin/maintenance tools     -> memory:admin
 ```
 
@@ -511,7 +511,7 @@ PROJECT_MEMORY_PUBLIC_URL == PROJECT_MEMORY_OAUTH_ISSUER
 - [ ] Verify `iss`.
 - [ ] Verify `aud` or `resource`.
 - [ ] Verify `nbf` if present.
-- [ ] Verify scopes per tool.
+- [x] Verify scopes per tool.
 - [ ] Return `401` with `WWW-Authenticate` challenge when missing/invalid.
 - [ ] Add tool `securitySchemes`.
 

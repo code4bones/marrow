@@ -10,6 +10,7 @@ import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js"
 import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
 import type { OAuthFacade } from "./oauth.js";
+import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 
 export interface GatewayServerOptions {
   host: string;
@@ -30,6 +31,9 @@ interface ToolCallBody {
 }
 
 type LogFields = Record<string, unknown>;
+type AuthorizationState =
+  | { ok: true; source: "static" | "oauth" | "none" }
+  | { ok: false; challenge?: string };
 
 export async function startGatewayServer(
   service: PgToolService,
@@ -132,7 +136,7 @@ async function handleRequest(
     }
 
     if (requestPath === "/mcp") {
-      await handleMcpRequest(service, options, request, response, requestId, context, startedAt);
+      await handleMcpRequest(service, options, request, response, requestId, context, startedAt, auth);
       return;
     }
 
@@ -163,6 +167,16 @@ async function handleRequest(
       if (typeof body.tool !== "string") {
         send(400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")), {
           requestBody: sanitizeLogBody(body)
+        });
+        return;
+      }
+      const scopeAuth = isAuthorizedForScopes(options, request, auth, gatewayToolRequiredScopes(body.tool));
+      if (!scopeAuth.ok) {
+        sendUnauthorized(response, requestId, scopeAuth.challenge);
+        logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+          tool: body.tool,
+          requestBody: sanitizeLogBody(body),
+          requiredScopes: gatewayToolRequiredScopes(body.tool)
         });
         return;
       }
@@ -235,7 +249,8 @@ async function handleMcpRequest(
   response: ServerResponse,
   requestId: string,
   context: GatewayRequestContext,
-  startedAt: number
+  startedAt: number,
+  auth: AuthorizationState
 ): Promise<void> {
   if (request.method !== "POST") {
     sendJson(
@@ -265,6 +280,16 @@ async function handleMcpRequest(
     await server.connect(transport);
     const body = await readJson(request);
     logFields = mcpLogFields(body);
+    const requiredScopes = mcpRequiredScopes(body);
+    const scopeAuth = isAuthorizedForScopes(options, request, auth, requiredScopes);
+    if (!scopeAuth.ok) {
+      sendMcpUnauthorized(response, requestId, scopeAuth.challenge);
+      logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+        ...logFields,
+        requiredScopes
+      });
+      return;
+    }
     await transport.handleRequest(request, response, body);
     logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context, logFields);
   } catch (error) {
@@ -326,6 +351,28 @@ function mcpMessageSummary(value: unknown): LogFields {
   return fields;
 }
 
+function mcpRequiredScopes(body: unknown): string[] {
+  const messages = Array.isArray(body) ? body : [body];
+  const scopes = new Set<string>(["memory:read"]);
+  for (const message of messages) {
+    const toolName = mcpToolName(message);
+    if (!toolName) {
+      continue;
+    }
+    for (const scope of gatewayToolRequiredScopes(toolName)) {
+      scopes.add(scope);
+    }
+  }
+  return [...scopes];
+}
+
+function mcpToolName(value: unknown): string | undefined {
+  if (!isRecord(value) || value.method !== "tools/call" || !isRecord(value.params)) {
+    return undefined;
+  }
+  return typeof value.params.name === "string" ? value.params.name : undefined;
+}
+
 function requestContext(request: IncomingMessage, requestId: string): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
   const explicitClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
@@ -361,27 +408,40 @@ function headerString(request: IncomingMessage, name: string): string | undefine
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function isAuthorized(
-  options: GatewayServerOptions,
-  request: IncomingMessage
-): { ok: true } | { ok: false; challenge?: string } {
+function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): AuthorizationState {
   if (options.token && request.headers.authorization === `Bearer ${options.token}`) {
-    return { ok: true };
+    return { ok: true, source: "static" };
   }
 
   if (options.oauth) {
     const auth = options.oauth.authenticate(request);
     if (auth.ok) {
-      return { ok: true };
+      return { ok: true, source: "oauth" };
     }
     return { ok: false, challenge: options.oauth.challengeHeader() };
   }
 
   if (!options.token) {
-    return { ok: true };
+    return { ok: true, source: "none" };
   }
 
   return { ok: false };
+}
+
+function isAuthorizedForScopes(
+  options: GatewayServerOptions,
+  request: IncomingMessage,
+  auth: AuthorizationState,
+  requiredScopes: string[]
+): AuthorizationState {
+  if (!auth.ok || auth.source !== "oauth" || !options.oauth) {
+    return auth;
+  }
+  const scopedAuth = options.oauth.authenticate(request, requiredScopes);
+  if (scopedAuth.ok) {
+    return auth;
+  }
+  return { ok: false, challenge: options.oauth.challengeHeader(requiredScopes) };
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -441,6 +501,27 @@ function sendHtml(response: ServerResponse, status: number, body: string, reques
 function sendUnauthorized(response: ServerResponse, requestId: string, challenge?: string): void {
   const body = fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token."));
   const payload = JSON.stringify(body);
+  const headers: Record<string, string | number> = {
+    "content-type": "application/json; charset=utf-8",
+    "x-request-id": requestId,
+    "content-length": Buffer.byteLength(payload)
+  };
+  if (challenge) {
+    headers["www-authenticate"] = challenge;
+  }
+  response.writeHead(401, headers);
+  response.end(payload);
+}
+
+function sendMcpUnauthorized(response: ServerResponse, requestId: string, challenge?: string): void {
+  const payload = JSON.stringify({
+    jsonrpc: "2.0",
+    error: {
+      code: -32001,
+      message: "Missing required OAuth scope."
+    },
+    id: null
+  });
   const headers: Record<string, string | number> = {
     "content-type": "application/json; charset=utf-8",
     "x-request-id": requestId,

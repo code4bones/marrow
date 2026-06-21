@@ -23,6 +23,7 @@ export interface GatewayToolSpec {
   description: string;
   schema: z.ZodObject;
   outputSchema?: z.ZodType;
+  access?: "read" | "write";
 }
 
 const emptySchema = z.object({});
@@ -505,19 +506,22 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "gateway.client_forget",
     description:
       "Forget one gateway client and remove its current-project key. Use this for stale or renamed internal clients.",
-    schema: gatewayClientForgetSchema
+    schema: gatewayClientForgetSchema,
+    access: "write"
   },
   {
     name: "gateway.client_prune",
     description:
       "Prune stale gateway clients and matching current-project keys. Defaults to dry-run and anonymous-only cleanup.",
-    schema: gatewayClientPruneSchema
+    schema: gatewayClientPruneSchema,
+    access: "write"
   },
   {
     name: "project.create",
     description:
       "Create a durable shared project scope. In gateway mode this writes to PostgreSQL for all connected developers and agents.",
-    schema: createProjectSchema
+    schema: createProjectSchema,
+    access: "write"
   },
   {
     name: "project.list",
@@ -545,7 +549,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.set_current",
     description: "Set the gateway current project used when project arguments are omitted.",
-    schema: projectLookupSchema
+    schema: projectLookupSchema,
+    access: "write"
   },
   {
     name: "project.current",
@@ -555,19 +560,22 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "memory.create",
     description: "Create a project or common memory item in the shared gateway database.",
-    schema: createMemorySchema
+    schema: createMemorySchema,
+    access: "write"
   },
   {
     name: "memory.upsert",
     description:
       "Create or update a memory item idempotently. Match by id when provided, otherwise by scope + type + title to avoid duplicate shared records.",
-    schema: memoryUpsertSchema
+    schema: memoryUpsertSchema,
+    access: "write"
   },
   {
     name: "failed_attempt.record",
     description:
       "Record a failed attempt/fault as first-class searchable memory. Captures what was tried, why it failed, what not to repeat, and optional better next approach.",
-    schema: failedAttemptRecordSchema
+    schema: failedAttemptRecordSchema,
+    access: "write"
   },
   {
     name: "memory.get",
@@ -582,7 +590,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "memory.update",
     description: "Update a shared memory item and record an event.",
-    schema: updateMemorySchema
+    schema: updateMemorySchema,
+    access: "write"
   },
   {
     name: "memory.hygiene_report",
@@ -595,14 +604,16 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutSchema,
-    outputSchema: output(z.object({ artifact: artifactSchema }))
+    outputSchema: output(z.object({ artifact: artifactSchema })),
+    access: "write"
   },
   {
     name: "artifact.put_text",
     description:
       "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutTextSchema,
-    outputSchema: output(z.object({ artifact: artifactSchema }))
+    outputSchema: output(z.object({ artifact: artifactSchema })),
+    access: "write"
   },
   {
     name: "artifact.search",
@@ -641,18 +652,21 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "artifact.update_metadata",
     description: "Update artifact title, description, and tags without re-uploading bytes.",
     schema: artifactUpdateMetadataSchema,
-    outputSchema: output(z.object({ artifact: artifactSchema }))
+    outputSchema: output(z.object({ artifact: artifactSchema })),
+    access: "write"
   },
   {
     name: "artifact.archive",
     description: "Archive an artifact without deleting bytes. Archived artifacts are hidden from default search.",
     schema: artifactArchiveSchema,
-    outputSchema: output(z.object({ action: z.string(), artifact: artifactSchema, event: eventLikeSchema }))
+    outputSchema: output(z.object({ action: z.string(), artifact: artifactSchema, event: eventLikeSchema })),
+    access: "write"
   },
   {
     name: "task.create",
     description: "Create a shared executable task for a project.",
-    schema: createTaskSchema
+    schema: createTaskSchema,
+    access: "write"
   },
   {
     name: "task.list",
@@ -672,18 +686,21 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "task.update_status",
     description: "Update shared task status and record lifecycle event.",
-    schema: updateTaskStatusSchema
+    schema: updateTaskStatusSchema,
+    access: "write"
   },
   {
     name: "decision.record",
     description: "Record a shared project or common decision.",
-    schema: recordDecisionSchema
+    schema: recordDecisionSchema,
+    access: "write"
   },
   {
     name: "decision.supersede",
     description:
       "Create a replacement decision in the same scope, mark the old decision as superseded, and record link/event history.",
-    schema: decisionSupersedeSchema
+    schema: decisionSupersedeSchema,
+    access: "write"
   },
   {
     name: "decision.list",
@@ -698,7 +715,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "event.record",
     description: "Record an append-only shared gateway event.",
-    schema: recordEventSchema
+    schema: recordEventSchema,
+    access: "write"
   },
   {
     name: "event.list",
@@ -708,7 +726,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "link.create",
     description: "Create a shared relationship between records.",
-    schema: createLinkSchema
+    schema: createLinkSchema,
+    access: "write"
   },
   {
     name: "link.list",
@@ -744,7 +763,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "handoff.create",
     description:
       "Create a compact shared handoff for another agent: work completed, files touched, blockers, validation, and next steps.",
-    schema: handoffCreateSchema
+    schema: handoffCreateSchema,
+    access: "write"
   },
   {
     name: "handoff.latest",
@@ -758,3 +778,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: handoffSearchSchema
   }
 ];
+
+export function gatewayToolRequiredScopes(toolName: string): string[] {
+  const spec = gatewayToolSpecs.find((tool) => tool.name === toolName);
+  return spec?.access === "write" ? ["memory:read", "memory:write"] : ["memory:read"];
+}

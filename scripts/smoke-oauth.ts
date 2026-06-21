@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { createOAuthFacadeFromEnv } from "../src/gateway/oauth.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
@@ -141,6 +143,39 @@ try {
   assert(!("exp" in jwtPayload(accessToken)), "OAuth access token included an exp claim.");
   console.log("ok - oauth token exchange");
 
+  const readOnlyAuthorizeUrl = new URL(authorizeUrl);
+  readOnlyAuthorizeUrl.searchParams.set("scope", "memory:read");
+  readOnlyAuthorizeUrl.searchParams.set("state", "oauth-smoke-read-only-state");
+  const readOnlyCode = await requestAuthorizationCode(started.url, readOnlyAuthorizeUrl, magicToken);
+  const readOnlyToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: readOnlyCode,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(readOnlyToken.status === 200, `Read-only token endpoint failed: ${JSON.stringify(readOnlyToken.body)}`);
+  const readOnlyAccessToken = readNestedString(readOnlyToken.body, ["access_token"]);
+  const readOnlyWriteCall = await postJson(
+    `${started.url}/call?client_id=${pmemClientId}`,
+    {
+      tool: "gateway.client_prune",
+      input: {
+        dryRun: true,
+        limit: 1
+      }
+    },
+    readOnlyAccessToken
+  );
+  assert(readOnlyWriteCall.status === 401, "Read-only OAuth token was allowed to call a write tool.");
+  assert(
+    readOnlyWriteCall.headers.get("www-authenticate")?.includes("memory:write"),
+    "Read-only OAuth denial did not advertise memory:write."
+  );
+  console.log("ok - oauth read-only token cannot call write tools");
+
   const reusedCode = await postFormJson(`${started.url}/oauth/token`, {
     grant_type: "authorization_code",
     code,
@@ -181,6 +216,25 @@ try {
   assert(oauthCall.status === 200, "OAuth bearer call did not return HTTP 200.");
   assert(readNestedBoolean(oauthCall.body, ["ok"]) === true, "OAuth bearer call did not execute the tool.");
   console.log("ok - oauth bearer authorizes gateway call");
+
+  const oauthWriteCall = await postJson(
+    `${started.url}/call?client_id=${pmemClientId}`,
+    {
+      tool: "gateway.client_prune",
+      input: {
+        dryRun: true,
+        limit: 1
+      }
+    },
+    accessToken
+  );
+  assert(oauthWriteCall.status === 200, "OAuth memory:write bearer call did not return HTTP 200.");
+  assert(readNestedBoolean(oauthWriteCall.body, ["ok"]) === true, "OAuth memory:write bearer call did not execute.");
+  console.log("ok - oauth memory:write authorizes write tools");
+
+  await assertMcpWriteCall(started.url, `${pmemClientId}-mcp-write`, accessToken, true);
+  await assertMcpWriteCall(started.url, `${pmemClientId}-mcp-read-only`, readOnlyAccessToken, false);
+  console.log("ok - oauth MCP scopes are enforced for write tools");
 
   const staticCall = await postJson(
     `${started.url}/call?client_id=${pmemClientId}`,
@@ -262,8 +316,55 @@ async function requestAuthorizationCode(startedUrl: string, authorizeUrl: URL, t
   const redirect = new URL(location);
   const code = redirect.searchParams.get("code");
   assert(code, "Authorize redirect did not include code.");
-  assert(redirect.searchParams.get("state") === "oauth-smoke-state", "Authorize redirect did not preserve state.");
+  assert(
+    redirect.searchParams.get("state") === authorizeUrl.searchParams.get("state"),
+    "Authorize redirect did not preserve state."
+  );
   return code;
+}
+
+async function assertMcpWriteCall(
+  startedUrl: string,
+  clientId: string,
+  bearerToken: string,
+  shouldSucceed: boolean
+): Promise<void> {
+  const endpoint = new URL(`${startedUrl}/mcp`);
+  endpoint.searchParams.set("client_id", clientId);
+  endpoint.searchParams.set("client_label", "OAuth Smoke MCP Client");
+  endpoint.searchParams.set("client_kind", "oauth-smoke");
+  const transport = new StreamableHTTPClientTransport(endpoint, {
+    requestInit: {
+      headers: {
+        authorization: `Bearer ${bearerToken}`
+      }
+    }
+  });
+  const client = new Client({
+    name: "project-memory-oauth-smoke",
+    version: "0.1.0"
+  });
+
+  try {
+    await client.connect(transport);
+    try {
+      const result = await client.callTool({
+        name: "gateway.client_prune",
+        arguments: {
+          dryRun: true,
+          limit: 1
+        }
+      });
+      assert(shouldSucceed, "MCP read-only OAuth token was allowed to call a write tool.");
+      assert(readNestedBoolean(result.structuredContent, ["ok"]) === true, "MCP write tool did not execute.");
+    } catch (error) {
+      if (shouldSucceed) {
+        throw error;
+      }
+    }
+  } finally {
+    await client.close();
+  }
 }
 
 function base64url(input: Buffer): string {
