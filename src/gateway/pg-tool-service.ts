@@ -9,7 +9,7 @@ import { nowIso } from "../shared/dates.js";
 import { AppError } from "../shared/errors.js";
 import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/ids/id.service.js";
 import { fail, ok, type ToolResponse } from "../shared/mcp/tool-response.js";
-import { defaultGatewayOutputSchema, gatewayToolSpecs } from "./tool-definitions.js";
+import { defaultGatewayOutputSchema, gatewayToolCanonicalName, gatewayToolSpecs } from "./tool-definitions.js";
 
 type Row = Record<string, unknown>;
 
@@ -85,7 +85,8 @@ export class PgToolService {
     input: unknown,
     context: GatewayRequestContext = {}
   ): Promise<ToolResponse<unknown>> {
-    const spec = gatewayToolSpecs.find((tool) => tool.name === toolName);
+    const canonicalToolName = gatewayToolCanonicalName(toolName);
+    const spec = gatewayToolSpecs.find((tool) => tool.name === canonicalToolName);
     if (!spec) {
       return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not registered.`));
     }
@@ -93,8 +94,8 @@ export class PgToolService {
     try {
       const requestContext = normalizeContext(context);
       const parsed = spec.schema.parse(input ?? {}) as Row;
-      await this.touchClient(requestContext, { cleanupAnonymous: toolName !== "gateway.client_prune" });
-      switch (toolName) {
+      await this.touchClient(requestContext, { cleanupAnonymous: canonicalToolName !== "gateway.client_prune" });
+      switch (canonicalToolName) {
         case "gateway.about":
           return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
         case "gateway.version":

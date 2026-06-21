@@ -232,7 +232,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.18.0.tgz
+npm install -g ./deadragdoll-pm3m-1.19.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -272,6 +272,9 @@ For Claude Custom Connectors, include
 `PROJECT_MEMORY_ALLOWED_REDIRECT_URIS`. The gateway accepts both the base OAuth
 resource (`PROJECT_MEMORY_OAUTH_AUDIENCE`) and the MCP endpoint resource
 (`${PROJECT_MEMORY_PUBLIC_URL}/mcp`) for stricter MCP clients.
+When `client_kind` contains `claude`, MCP tool names are exposed with
+Claude-safe aliases such as `project_create` and `artifact_read_text`; the
+gateway maps them back to the canonical pmem tools internally.
 
 Client-specific variables point agents at the public gateway base URL:
 

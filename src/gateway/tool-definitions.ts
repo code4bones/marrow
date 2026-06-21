@@ -780,6 +780,18 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
 ];
 
 export function gatewayToolRequiredScopes(toolName: string): string[] {
-  const spec = gatewayToolSpecs.find((tool) => tool.name === toolName);
+  const canonicalName = gatewayToolCanonicalName(toolName);
+  const spec = gatewayToolSpecs.find((tool) => tool.name === canonicalName);
   return spec?.access === "write" ? ["memory:read", "memory:write"] : ["memory:read"];
+}
+
+export function gatewayToolClaudeName(toolName: string): string {
+  return toolName.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function gatewayToolCanonicalName(toolName: string): string {
+  if (gatewayToolSpecs.some((tool) => tool.name === toolName)) {
+    return toolName;
+  }
+  return gatewayToolSpecs.find((tool) => gatewayToolClaudeName(tool.name) === toolName)?.name ?? toolName;
 }

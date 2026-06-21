@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { asMcpResult } from "../shared/mcp/tool-response.js";
-import { defaultGatewayOutputSchema, gatewayToolSpecs } from "./tool-definitions.js";
+import { defaultGatewayOutputSchema, gatewayToolClaudeName, gatewayToolSpecs } from "./tool-definitions.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 
 export function createGatewayMcpServer(service: PgToolService, context: GatewayRequestContext): McpServer {
@@ -9,11 +9,13 @@ export function createGatewayMcpServer(service: PgToolService, context: GatewayR
     version: "0.1.0"
   });
 
+  const useClaudeSafeNames = shouldUseClaudeSafeToolNames(context);
   for (const spec of gatewayToolSpecs) {
+    const transportName = useClaudeSafeNames ? gatewayToolClaudeName(spec.name) : spec.name;
     server.registerTool(
-      spec.name,
+      transportName,
       {
-        description: spec.description,
+        description: useClaudeSafeNames ? `${spec.description} Canonical pmem tool: ${spec.name}.` : spec.description,
         inputSchema: spec.schema.shape,
         outputSchema: spec.outputSchema ?? defaultGatewayOutputSchema
       },
@@ -22,4 +24,10 @@ export function createGatewayMcpServer(service: PgToolService, context: GatewayR
   }
 
   return server;
+}
+
+function shouldUseClaudeSafeToolNames(context: GatewayRequestContext): boolean {
+  const kind = typeof context.metadata?.kind === "string" ? context.metadata.kind : "";
+  const userAgent = typeof context.metadata?.userAgent === "string" ? context.metadata.userAgent : "";
+  return /claude/i.test(kind) || /claude/i.test(userAgent);
 }

@@ -121,6 +121,12 @@ clients can continue using the gateway base resource. The gateway also serves
 RFC 8414 path-insertion discovery routes such as
 `/.well-known/oauth-authorization-server/api` when nginx forwards them.
 
+Claude Custom Connectors reject dots in tool names. When a gateway MCP request
+uses `client_kind` containing `claude`, the MCP tool list exposes Claude-safe
+aliases such as `project_create`, `artifact_read_text`, and `gateway_status`.
+The gateway maps those aliases to canonical tools such as `project.create`
+internally. Non-Claude clients continue to receive canonical dotted names.
+
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
 Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the

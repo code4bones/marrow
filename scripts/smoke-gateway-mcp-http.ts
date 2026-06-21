@@ -25,6 +25,7 @@ const started = await startGatewayServer(service, {
 });
 const clientId = `gateway-mcp-http-smoke-${Date.now()}`;
 const secondClientId = `gateway-mcp-http-smoke-second-${Date.now()}`;
+const claudeClientId = `gateway-mcp-http-smoke-claude-${Date.now()}`;
 const endpoint = new URL(`${started.url}/mcp`);
 endpoint.searchParams.set("client_id", clientId);
 endpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke");
@@ -33,6 +34,10 @@ const secondEndpoint = new URL(`${started.url}/mcp`);
 secondEndpoint.searchParams.set("client_id", secondClientId);
 secondEndpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke Second");
 secondEndpoint.searchParams.set("client_kind", "mcp-http");
+const claudeEndpoint = new URL(`${started.url}/mcp`);
+claudeEndpoint.searchParams.set("client_id", claudeClientId);
+claudeEndpoint.searchParams.set("client_label", "Gateway MCP HTTP Smoke Claude");
+claudeEndpoint.searchParams.set("client_kind", "claude-code");
 
 const transport = new StreamableHTTPClientTransport(endpoint, {
   requestInit: {
@@ -48,6 +53,13 @@ const secondTransport = new StreamableHTTPClientTransport(secondEndpoint, {
     }
   }
 });
+const claudeTransport = new StreamableHTTPClientTransport(claudeEndpoint, {
+  requestInit: {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  }
+});
 
 const client = new Client({
   name: "project-memory-gateway-mcp-http-smoke",
@@ -55,6 +67,10 @@ const client = new Client({
 });
 const secondClient = new Client({
   name: "project-memory-gateway-mcp-http-smoke-second",
+  version: "0.1.0"
+});
+const claudeClient = new Client({
+  name: "project-memory-gateway-mcp-http-smoke-claude",
   version: "0.1.0"
 });
 
@@ -70,6 +86,7 @@ const state: {
 try {
   await client.connect(transport);
   await secondClient.connect(secondTransport);
+  await claudeClient.connect(claudeTransport);
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
@@ -112,6 +129,22 @@ try {
   assert(toolNames.includes("handoff.latest"), "handoff.latest tool was not listed.");
   assert(toolNames.includes("handoff.search"), "handoff.search tool was not listed.");
   console.log(`ok - gateway MCP HTTP listed ${toolNames.length} tools`);
+
+  const claudeTools = await claudeClient.listTools();
+  const claudeToolNames = claudeTools.tools.map((tool) => tool.name);
+  assert(
+    claudeToolNames.every((name) => /^[a-zA-Z0-9_-]{1,64}$/.test(name)),
+    "Claude-safe MCP tool names did not match Claude's frontend regex."
+  );
+  assert(claudeToolNames.includes("gateway_status"), "Claude-safe gateway_status tool was not listed.");
+  assert(claudeToolNames.includes("project_create"), "Claude-safe project_create tool was not listed.");
+  assert(!claudeToolNames.includes("gateway.status"), "Claude-safe tool list still included dotted names.");
+  const claudeStatusResult = await claudeClient.callTool({
+    name: "gateway_status",
+    arguments: {}
+  });
+  assertOk(claudeStatusResult.structuredContent, "gateway_status alias failed.");
+  console.log("ok - gateway MCP HTTP listed Claude-safe tool aliases");
 
   const aboutResult = await client.callTool({
     name: "gateway.about",
@@ -899,6 +932,7 @@ try {
 } finally {
   await client.close();
   await secondClient.close();
+  await claudeClient.close();
   if (state.projectId) {
     await db("kv").whereIn("key", [`current_project_id:${clientId}`, `current_project_id:${secondClientId}`]).del();
     await db("projects").where({ id: state.projectId }).del();
