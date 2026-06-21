@@ -170,6 +170,19 @@ Purpose:
 known-fault stop-signals, artifact metadata, and next tool calls. Use the
 follow-up tools it suggests only when full details are needed.
 
+For ChatGPT or other contexts where every tool result stays in the session,
+prefer:
+
+```text
+context.pack(profile="chatgpt", mode="brief"|"normal")
+artifact.search(compact=true)
+artifact.list(compact=true, limit=<small number>)
+artifact.peek(excerptChars=1000)
+```
+
+Use full `artifact.read_text`, manual content, and high-limit debug lists only
+after selecting exact records. Compact the chat after large reads.
+
 ## Fault Recording
 
 Use this when an approach fails in a way future agents should not repeat.

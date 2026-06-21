@@ -5,6 +5,32 @@ This guide tells agents when and how to use Project Memory MCP (`pmem`).
 Use it as an operating procedure. Do not treat pmem as a passive note database.
 It is part of task execution.
 
+## PMem Token Discipline
+
+PMem tool results remain in the model context for the rest of the session. Use
+PMem as a lazy index first, not as a document dump.
+
+Default workflow:
+
+```text
+compact first -> select exact record/artifact -> read full content only by id/path -> compact after heavy reads
+```
+
+Prefer:
+
+- `context.pack(profile="chatgpt", mode="brief"|"normal")` for ChatGPT-style compact starts
+- `project.list(compact=true)` and `task.list(compact=true)` for selection
+- `artifact.search(compact=true)` before broad `artifact.list`
+- `artifact.list(compact=true, limit=<small number>)` for folder-like browsing
+- small `artifact.peek` excerpts before `artifact.read_text`
+
+Avoid during normal coding flow:
+
+- broad list calls with high limits
+- `artifact.read_text` before selecting a specific artifact
+- `artifact.get(includeContent=true)` unless exact bytes/base64 are required
+- `gateway.clients`, `gateway.diagnostics`, and other debug tools unless diagnosing PMem itself
+
 ## First Rule
 
 If the user asks what `pmem`, `project-memory`, or this MCP server is, call:
@@ -261,7 +287,7 @@ before creating a new shared template:
 
 ```text
 artifact.search query="frontend AGENTS template" includeCommon=true
-artifact.peek id=<selected artifact id>
+artifact.peek id=<selected artifact id> excerptChars=1000
 artifact.read_text id=<selected artifact id>, when the template text is needed
 artifact.put_text path=<selected path> text=<updated Markdown>, when writing text changes
 artifact.get id=<selected artifact id> includeContent=true, only if exact base64 bytes are needed

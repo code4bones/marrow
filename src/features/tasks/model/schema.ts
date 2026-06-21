@@ -19,7 +19,8 @@ export const listTasksSchema = z.object({
   project: z.string().optional(),
   status: taskStatusSchema.optional(),
   milestone: z.string().optional(),
-  limit: z.number().int().min(1).max(100).optional()
+  limit: z.number().int().min(1).max(100).optional(),
+  compact: z.boolean().optional()
 });
 
 export const getTaskSchema = z.object({

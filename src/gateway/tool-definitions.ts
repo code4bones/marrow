@@ -75,7 +75,8 @@ const failedAttemptRecordSchema = z.object({
 const listGatewayClientsSchema = z.object({
   anonymous: z.boolean().optional(),
   staleOlderThanSeconds: z.number().int().min(0).optional(),
-  limit: z.number().int().min(1).max(100).optional()
+  limit: z.number().int().min(1).max(100).optional(),
+  compact: z.boolean().optional()
 });
 const gatewayClientGetSchema = z.object({
   id: z.string().min(1)
@@ -204,7 +205,8 @@ const artifactSearchSchema = z.object({
   includeArchived: z.boolean().optional(),
   status: z.enum(["active", "archived"]).optional(),
   tags: z.array(z.string()).optional(),
-  limit: z.number().int().min(1).max(100).optional()
+  limit: z.number().int().min(1).max(100).optional(),
+  compact: z.boolean().optional()
 });
 const artifactListSchema = z.object({
   project: z.string().nullable().optional(),
@@ -214,7 +216,8 @@ const artifactListSchema = z.object({
   tags: z.array(z.string()).optional(),
   includeArchived: z.boolean().optional(),
   status: z.enum(["active", "archived"]).optional(),
-  limit: z.number().int().min(1).max(200).optional()
+  limit: z.number().int().min(1).max(200).optional(),
+  compact: z.boolean().optional()
 });
 const artifactGetSchema = z
   .object({
@@ -500,6 +503,8 @@ const compactArtifactSchema = z
     preferredNextTool: z.string()
   })
   .catchall(z.unknown());
+const artifactListItemSchema = z.union([artifactSchema, compactArtifactSchema]);
+const artifactSearchItemSchema = z.union([artifactSearchResultSchema, compactArtifactSchema.extend({ rank: z.number().optional() })]);
 const projectSummaryDataSchema = z
   .object({
     summary: z.string(),
@@ -589,7 +594,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.manuals",
     description:
-      "Return Project Memory Markdown manuals for developers/users, onboarding, and agents. Set includeContent=true when the caller needs the actual .md text.",
+      "Return Project Memory manual metadata by default. Set includeContent=true only when the caller needs the actual Markdown text in context.",
     schema: gatewayManualsSchema
   },
   {
@@ -601,7 +606,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.clients",
     description:
-      "List recently seen gateway clients. Filter anonymous or stale clients when inspecting shared gateway activity.",
+      "List recently seen gateway clients for diagnostics/collaboration audit. Not part of normal coding flow; default limit is small and compact=true returns selection fields only.",
     schema: listGatewayClientsSchema
   },
   {
@@ -632,7 +637,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "project.list",
-    description: "List shared project scopes from the gateway database.",
+    description: "List shared project scopes from the gateway database. Use compact=true for low-token project selection.",
     schema: listProjectsSchema
   },
   {
@@ -746,15 +751,17 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "artifact.search",
-    description: "Search shared artifact metadata and return download paths for matching files.",
+    description:
+      "Search shared artifact metadata and return pointers for matching files. Prefer this over broad artifact.list; use compact=true for low-token selection results, then artifact.peek/read_text only for the chosen artifact.",
     schema: artifactSearchSchema,
-    outputSchema: output(z.object({ results: z.array(artifactSearchResultSchema) }))
+    outputSchema: output(z.object({ results: z.array(artifactSearchItemSchema) }))
   },
   {
     name: "artifact.list",
-    description: "List artifacts by project/common scope, path prefix, tags, and lifecycle status for navigation.",
+    description:
+      "Browse artifacts by scope/path/tags for navigation. Keep limits low and use compact=true unless full metadata is needed; prefer artifact.search for targeted lookup.",
     schema: artifactListSchema,
-    outputSchema: output(z.object({ artifacts: z.array(artifactSchema) }))
+    outputSchema: output(z.object({ artifacts: z.array(artifactListItemSchema) }))
   },
   {
     name: "artifact.get",
@@ -766,14 +773,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.peek",
     description:
-      "Get a compact artifact preview without base64 content. Text/Markdown artifacts return an excerpt and outline; binary artifacts return metadata only. Prefer artifact.read_text when text content is needed.",
+      "Get a compact artifact preview without base64 content. Defaults keep excerpts small; increase excerptChars only when needed, and use artifact.read_text only after selecting a specific artifact.",
     schema: artifactPeekSchema,
     outputSchema: output(z.object({ artifact: artifactPreviewSchema }))
   },
   {
     name: "artifact.read_text",
     description:
-      "Read bounded UTF-8 text from a text/Markdown artifact without base64 content. Prefer this for ChatGPT and other agents that need artifact text in model context.",
+      "Read bounded UTF-8 text from one selected text/Markdown artifact without base64 content. This can be token-expensive; set maxChars/maxLines and compact the chat after large reads.",
     schema: artifactReadTextSchema,
     outputSchema: output(z.object({ artifact: artifactReadTextSchemaOut }))
   },
@@ -806,7 +813,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.list",
-    description: "List shared tasks for a project.",
+    description: "List shared tasks for a project. Use compact=true for low-token task selection before task.get/preflight.",
     schema: listTasksSchema
   },
   {
@@ -972,7 +979,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "context.pack",
     description:
-      "Build a compact token-conscious start-of-work context package for a task or query. Returns summaries, stop-signals, pointers, and next tool calls instead of full record bodies or base64 content.",
+      "Build a compact token-conscious start-of-work context package for a task or query. Prefer brief/normal; deep is expensive. Use profile=chatgpt for a smaller pointer-first budget.",
     schema: contextPackSchema,
     outputSchema: output(contextPackDataSchema)
   },

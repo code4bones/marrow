@@ -790,7 +790,8 @@ Input:
   "pathPrefix": "templates/agents/frontend",
   "tags": ["agents"],
   "status": "active",
-  "limit": 50
+  "compact": true,
+  "limit": 20
 }
 ```
 
@@ -831,7 +832,9 @@ Behavior:
 * sorts by project artifacts first, then common, then path
 
 Use this when an agent needs to browse a folder-like artifact hierarchy. Use
-`artifact.search` when the agent needs fuzzy full-text lookup.
+`artifact.search` when the agent needs fuzzy full-text lookup. Prefer
+`compact=true` for selection lists; omit it only when full metadata such as
+`sha256` or archive fields is needed.
 
 ---
 
@@ -848,9 +851,9 @@ Input:
 ```json
 {
   "id": "A-COMMON-001",
-  "maxBytes": 65536,
-  "excerptChars": 4000,
-  "outlineLimit": 40
+  "maxBytes": 16384,
+  "excerptChars": 1000,
+  "outlineLimit": 20
 }
 ```
 
@@ -1171,7 +1174,8 @@ Input:
 
 ```json
 {
-  "status": "active"
+  "status": "active",
+  "compact": true
 }
 ```
 
@@ -2406,8 +2410,7 @@ Input by query:
   "query": "add compact context retrieval",
   "project": "project-memory-mcp",
   "mode": "brief",
-  "profile": "implement",
-  "tokenBudget": 1500,
+  "profile": "chatgpt",
   "includeCommon": true
 }
 ```

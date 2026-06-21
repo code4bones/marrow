@@ -298,6 +298,13 @@ try {
     isRecord(item) ? item.id : undefined
   );
   assert(clientIds.includes(clientId), "gateway.clients did not include the MCP HTTP smoke client.");
+  const compactClientsResult = await client.callTool({
+    name: "gateway.clients",
+    arguments: { compact: true, limit: 2 }
+  });
+  assertOk(compactClientsResult.structuredContent, "compact gateway.clients failed.");
+  const compactClient = readNestedArray(compactClientsResult.structuredContent, ["data", "clients"]).find(isRecord);
+  assert(compactClient && !("metadata" in compactClient), "compact gateway.clients returned full metadata.");
   console.log("ok - gateway MCP HTTP status and clients");
 
   const unique = Date.now();
@@ -635,6 +642,20 @@ try {
     ),
     "context.pack did not suggest artifact.read_text next call for a text artifact."
   );
+  const chatgptContextPackResult = await client.callTool({
+    name: "context.pack",
+    arguments: {
+      query: "Gateway Smoke AGENTS",
+      includeCommon: true,
+      mode: "normal",
+      profile: "chatgpt"
+    }
+  });
+  assertOk(chatgptContextPackResult.structuredContent, "chatgpt context.pack failed.");
+  assert(
+    readNestedNumber(chatgptContextPackResult.structuredContent, ["data", "budget", "tokenBudget"]) === 2000,
+    "context.pack profile=chatgpt did not use the smaller default token budget."
+  );
 
   const artifactPeekResult = await client.callTool({
     name: "artifact.peek",
@@ -734,6 +755,22 @@ try {
     isRecord(item) ? item.id : undefined
   );
   assert(listedArtifactIds.includes(state.artifactId), "artifact.list did not include active smoke artifact.");
+  const compactArtifactListResult = await client.callTool({
+    name: "artifact.list",
+    arguments: {
+      common: true,
+      pathPrefix: "gateway-smoke",
+      tags: ["metadata"],
+      compact: true,
+      limit: 5
+    }
+  });
+  assertOk(compactArtifactListResult.structuredContent, "compact artifact.list failed.");
+  const compactArtifact = readNestedArray(compactArtifactListResult.structuredContent, ["data", "artifacts"]).find(
+    (item) => isRecord(item) && item.id === state.artifactId
+  );
+  assert(isRecord(compactArtifact), "compact artifact.list did not include active smoke artifact.");
+  assert(compactArtifact && !("sha256" in compactArtifact), "compact artifact.list returned full artifact metadata.");
 
   const downloadPath = readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "downloadPath"]);
   const downloadResponse = await fetch(`${started.url}${downloadPath}`, {
@@ -1077,6 +1114,22 @@ function readNestedString(value: unknown, path: string[]): string {
 
   if (typeof current !== "string") {
     throw new Error(`Expected string at ${path.join(".")}.`);
+  }
+
+  return current;
+}
+
+function readNestedNumber(value: unknown, path: string[]): number {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current)) {
+      throw new Error(`Expected object while reading ${path.join(".")}.`);
+    }
+    current = current[key];
+  }
+
+  if (typeof current !== "number") {
+    throw new Error(`Expected number at ${path.join(".")}.`);
   }
 
   return current;

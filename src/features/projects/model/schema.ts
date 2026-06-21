@@ -19,5 +19,6 @@ export const projectLookupSchema = z
   });
 
 export const listProjectsSchema = z.object({
-  status: projectStatusSchema.optional()
+  status: projectStatusSchema.optional(),
+  compact: z.boolean().optional()
 });

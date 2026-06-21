@@ -330,7 +330,7 @@ export class PgToolService {
         {
           tool: "gateway.manuals",
           reason:
-            "Load Markdown manuals for developers/users, onboarding, and agents. Use includeContent=true when the caller wants the .md files inline."
+            "Load manual metadata first. Use includeContent=true only when the caller wants the .md files inline."
         },
         {
           tool: "gateway.manuals",
@@ -348,7 +348,8 @@ export class PgToolService {
         },
         {
           tool: "gateway.clients",
-          reason: "See recently connected agents and developers."
+          input: { limit: 10, compact: true },
+          reason: "Diagnostic only: see recently connected agents and developers without loading full metadata."
         },
         {
           tool: "project.resolve",
@@ -416,13 +417,24 @@ export class PgToolService {
         "Call gateway.manuals with includeContent=true when the developer or agent needs the full bundled Markdown manuals.",
         "Call gateway.status to confirm shared gateway mode.",
         "Call project.resolve, then project.current or project.set_current to identify the active project.",
-        "Call preflight.by_query with the task topic when no task exists yet.",
+        "Call context.pack(profile=\"chatgpt\", mode=\"brief\"|\"normal\") or preflight.by_query with the task topic when no task exists yet.",
         "Call task.next or task.get when working from a recorded task.",
         "Call preflight before editing files.",
-        "Call artifact.search or artifact.list before creating local reusable docs or templates.",
+        "Call artifact.search before artifact.list; use compact=true for navigation and small artifact.peek excerpts before reading full text.",
         "Call artifact.read_text and artifact.put_text for Markdown/text; use base64 artifact.get/artifact.put only for exact bytes or binary files.",
+        "After large artifact/manual reads, compact the chat before implementation; clear context when switching projects.",
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
+      tokenDiscipline: {
+        rule: "Use PMem as a lazy index first, not as a document dump.",
+        workflow: "compact first -> select exact record/artifact -> read full content only by id/path -> compact after heavy reads",
+        avoid: [
+          "broad artifact.list calls with high limits",
+          "large artifact.peek excerpts before selecting a file",
+          "artifact.read_text for large Markdown unless full text is required",
+          "gateway.clients/gateway.diagnostics during normal coding flow"
+        ]
+      },
       artifactStorage: {
         status: "available",
         intent:
@@ -538,6 +550,7 @@ export class PgToolService {
       "projects",
       "items",
       "tasks",
+      "task_claims",
       "decisions",
       "links",
       "events",
@@ -666,8 +679,8 @@ export class PgToolService {
     if (typeof input.staleOlderThanSeconds === "number") {
       query = query.andWhere("last_seen_at", "<", cutoffFromSeconds(input.staleOlderThanSeconds));
     }
-    const rows = await query.limit(Number(input.limit ?? 50));
-    return rows.map(clientOut);
+    const rows = await query.limit(Number(input.limit ?? 10));
+    return input.compact === true ? rows.map(compactClient) : rows.map(clientOut);
   }
 
   private async gatewayClientsPage(input: Row) {
@@ -776,7 +789,7 @@ export class PgToolService {
     if (input.status) {
       query = query.where("status", String(input.status));
     }
-    return (await query).map(projectOut);
+    return (await query).map(input.compact === true ? compactProject : projectOut);
   }
 
   private async projectsPage(input: Row) {
@@ -1688,7 +1701,8 @@ export class PgToolService {
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
       .orderBy(queryText ? "rank" : "created_at", "desc")
       .limit(Number(input.limit ?? 10));
-    return rows.map(artifactSearchOut);
+    const artifacts = rows.map(artifactSearchOut);
+    return input.compact === true ? artifacts.map(compactArtifactSearchRecord) : artifacts;
   }
 
   private async artifactSearchPage(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -1773,8 +1787,9 @@ export class PgToolService {
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
       .orderBy("path", "asc")
-      .limit(Number(input.limit ?? 50));
-    return rows.map(artifactOut);
+      .limit(Number(input.limit ?? 20));
+    const artifacts = rows.map(artifactOut);
+    return input.compact === true ? artifacts.map(compactArtifactRecord) : artifacts;
   }
 
   private async artifactsPage(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -1849,9 +1864,9 @@ export class PgToolService {
     const isText = isTextArtifact(contentType, artifactPath);
     const isMarkdown = isMarkdownArtifact(contentType, artifactPath);
     const sizeBytes = Number(row.size_bytes ?? 0);
-    const maxBytes = Math.min(Number(input.maxBytes ?? 64 * 1024), sizeBytes);
-    const excerptChars = Number(input.excerptChars ?? 4000);
-    const outlineLimit = Number(input.outlineLimit ?? 40);
+    const maxBytes = Math.min(Number(input.maxBytes ?? 16 * 1024), sizeBytes);
+    const excerptChars = Number(input.excerptChars ?? 1000);
+    const outlineLimit = Number(input.outlineLimit ?? 20);
 
     if (!isText || maxBytes <= 0) {
       return {
@@ -2083,7 +2098,8 @@ export class PgToolService {
     if (input.milestone) {
       query = query.andWhere("milestone", String(input.milestone));
     }
-    return (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
+    const tasks = (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
+    return input.compact === true ? tasks.map(compactTask) : tasks;
   }
 
   private async tasksPage(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -3131,7 +3147,7 @@ export class PgToolService {
   private async contextPack(input: Row, context: NormalizedGatewayRequestContext) {
     const mode = typeof input.mode === "string" ? input.mode : "normal";
     const profile = typeof input.profile === "string" ? input.profile : "general";
-    const tokenBudget = Number(input.tokenBudget ?? defaultTokenBudget(mode));
+    const tokenBudget = Number(input.tokenBudget ?? defaultTokenBudget(mode, profile));
     const limits = contextPackLimits(mode, (input.limits ?? {}) as Row);
     const includeCommon = input.includeCommon !== false;
 
@@ -3794,6 +3810,13 @@ function compactArtifactRecord(record: Row) {
   };
 }
 
+function compactArtifactSearchRecord(record: Row) {
+  return {
+    ...compactArtifactRecord(record),
+    rank: Number(record.rank ?? 0)
+  };
+}
+
 function preferredArtifactReadTool(record: Row) {
   const contentType = String(record.contentType ?? record.content_type ?? "");
   const artifactPath = String(record.path ?? "");
@@ -3984,7 +4007,10 @@ function contextPackLimits(mode: string, overrides: Row) {
   };
 }
 
-function defaultTokenBudget(mode: string): number {
+function defaultTokenBudget(mode: string, profile = "general"): number {
+  if (profile === "chatgpt") {
+    return mode === "deep" ? 3000 : mode === "normal" ? 2000 : 1500;
+  }
   return mode === "brief" ? 1500 : mode === "deep" ? 6000 : 3000;
 }
 
@@ -4162,6 +4188,15 @@ function clientOut(row: Row) {
     metadata: jsonObject(row.metadata),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
+  };
+}
+
+function compactClient(row: Row) {
+  return {
+    id: String(row.id),
+    label: stringOrNull(row.label),
+    kind: stringOrNull(jsonObject(row.metadata).kind),
+    lastSeenAt: stringOrNull(row.last_seen_at)
   };
 }
 

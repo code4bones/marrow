@@ -37,6 +37,9 @@ Implemented capabilities:
 - compact start-of-work context through `context.pack`
 - compact incremental refresh through `context.changed_since`
 - compact continuation records through `handoff.create`
+- token-efficiency guardrails: compact list/search modes, smaller artifact
+  preview defaults, ChatGPT-oriented `context.pack` budget, and tool
+  descriptions that steer agents toward pointer-first workflows
 - backup and restore runbook for PostgreSQL plus artifact bytes
 - tests, typecheck, lint, and build scripts
 
