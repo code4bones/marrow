@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-export const decisionStatusSchema = z.enum(["draft", "active", "superseded", "rejected"]);
+export const decisionStatusSchema = z.enum(["draft", "active", "superseded", "rejected", "archived"]);
 
 export const recordDecisionSchema = z.object({
   project: z.string().nullable().optional(),

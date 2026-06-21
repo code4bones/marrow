@@ -74,25 +74,28 @@ try {
   assert(created.createTask.status === "todo", "GraphQL createTask did not create a todo task.");
   console.log("ok - graphql create mutations");
 
-  const memoryCreated = await callGateway("memory.create", {
-    project: projectId,
-    type: "note",
-    title: "GraphQL pagination smoke memory",
-    body: "GraphQL pagination smoke memory validates memorySearchPage totalCount and items.",
-    tags: ["smoke", "graphql", "pagination"]
-  });
-  assert(memoryCreated.ok, "GraphQL smoke memory.create failed.");
-  const memoryId = String((memoryCreated.data as { item?: { id?: string } }).item?.id);
-  assert(memoryId.startsWith("I-"), "GraphQL smoke memory.create did not return an I-* item.");
-  const linkCreated = await callGateway("link.create", {
-    project: projectId,
-    fromId: memoryId,
-    toId: taskId,
-    relation: "documents"
-  });
-  assert(linkCreated.ok, "GraphQL smoke link.create failed.");
-  const linkId = String((linkCreated.data as { link?: { id?: string } }).link?.id);
-  assert(linkId.startsWith("L-"), "GraphQL smoke link.create did not return an L-* link.");
+  const memoryCreated = await graphql<{ createMemory: { id: string } }>(
+    `mutation CreateMemory($project: String!) {
+      createMemory(input: {
+        project: $project,
+        type: "note",
+        title: "GraphQL pagination smoke memory",
+        body: "GraphQL pagination smoke memory validates memorySearchPage totalCount and items.",
+        tags: ["smoke", "graphql", "pagination"]
+      }) { id }
+    }`,
+    { project: projectId }
+  );
+  const memoryId = memoryCreated.createMemory.id;
+  assert(memoryId.startsWith("I-"), "GraphQL createMemory did not return an I-* item.");
+  const linkCreated = await graphql<{ createLink: { id: string } }>(
+    `mutation CreateLink($project: String!, $fromId: String!, $toId: String!) {
+      createLink(input: { project: $project, fromId: $fromId, toId: $toId, relation: "documents" }) { id }
+    }`,
+    { project: projectId, fromId: memoryId, toId: taskId }
+  );
+  const linkId = linkCreated.createLink.id;
+  assert(linkId.startsWith("L-"), "GraphQL createLink did not return an L-* link.");
 
   const data = await graphql<{
     project: { id: string; slug: string; title: string };
@@ -259,6 +262,90 @@ try {
   assert(updated.updateArtifactMetadata.title === "GraphQL Smoke Artifact Updated", "GraphQL updateArtifactMetadata did not update title.");
   assert(updated.archiveArtifact.artifact.status === "archived", "GraphQL archiveArtifact did not archive artifact.");
   console.log("ok - graphql update/archive mutations");
+
+  const maintenanceCreated = await graphql<{
+    recordDecision: { id: string; status: string };
+    recordEvent: { id: string; type: string };
+    putTextArtifact: { id: string };
+  }>(
+    `mutation MaintenanceCreate($project: String!) {
+      recordDecision(input: {
+        project: $project,
+        title: "GraphQL maintenance smoke decision",
+        decision: "Exercise archive and hard-delete mutations.",
+        tags: ["smoke", "graphql", "maintenance"]
+      }) { id status }
+      recordEvent(input: {
+        project: $project,
+        type: "graphql.smoke.event",
+        title: "GraphQL smoke event",
+        body: "This event should be hard-deleted by smoke."
+      }) { id type }
+      putTextArtifact(input: {
+        project: $project,
+        path: "docs/graphql-delete-smoke.md",
+        title: "GraphQL Delete Smoke Artifact",
+        text: "temporary delete smoke artifact",
+        contentType: "text/markdown; charset=utf-8",
+        tags: ["smoke", "graphql", "delete"]
+      }) { id }
+    }`,
+    { project: projectId }
+  );
+  const decisionId = maintenanceCreated.recordDecision.id;
+  const eventId = maintenanceCreated.recordEvent.id;
+  const deleteArtifactId = maintenanceCreated.putTextArtifact.id;
+  const maintenanceDeleted = await graphql<{
+    archiveMemory: { action: string; memory: { id: string; status: string } };
+    archiveDecision: { action: string; decision: { id: string; status: string } };
+    deleteLink: { deletedLink: { id: string }; event: { type: string } };
+    deleteEvent: { deletedEvent: { id: string } };
+    deleteArtifact: { deletedArtifact: { id: string }; deletedLinks: number; event: { type: string } };
+    deleteMemory: { deletedMemory: { id: string }; deletedLinks: number; event: { type: string } };
+    deleteDecision: { deletedDecision: { id: string }; deletedLinks: number; event: { type: string } };
+  }>(
+    `mutation MaintenanceDelete($memoryId: ID!, $decisionId: ID!, $linkId: ID!, $eventId: ID!, $artifactId: ID!) {
+      archiveMemory(id: $memoryId, reason: "GraphQL smoke archive memory.") {
+        action
+        memory { id status }
+      }
+      archiveDecision(id: $decisionId, reason: "GraphQL smoke archive decision.") {
+        action
+        decision { id status }
+      }
+      deleteLink(id: $linkId, reason: "GraphQL smoke delete link.") {
+        deletedLink { id }
+        event { type }
+      }
+      deleteEvent(id: $eventId, reason: "GraphQL smoke delete event.") {
+        deletedEvent { id }
+      }
+      deleteArtifact(id: $artifactId, reason: "GraphQL smoke hard-delete artifact.") {
+        deletedArtifact { id }
+        deletedLinks
+        event { type }
+      }
+      deleteMemory(id: $memoryId, reason: "GraphQL smoke hard-delete memory.") {
+        deletedMemory { id }
+        deletedLinks
+        event { type }
+      }
+      deleteDecision(id: $decisionId, reason: "GraphQL smoke hard-delete decision.") {
+        deletedDecision { id }
+        deletedLinks
+        event { type }
+      }
+    }`,
+    { memoryId, decisionId, linkId, eventId, artifactId: deleteArtifactId }
+  );
+  assert(maintenanceDeleted.archiveMemory.memory.status === "archived", "GraphQL archiveMemory did not archive memory.");
+  assert(maintenanceDeleted.archiveDecision.decision.status === "archived", "GraphQL archiveDecision did not archive decision.");
+  assert(maintenanceDeleted.deleteLink.deletedLink.id === linkId, "GraphQL deleteLink returned wrong link.");
+  assert(maintenanceDeleted.deleteEvent.deletedEvent.id === eventId, "GraphQL deleteEvent returned wrong event.");
+  assert(maintenanceDeleted.deleteArtifact.deletedArtifact.id === deleteArtifactId, "GraphQL deleteArtifact returned wrong artifact.");
+  assert(maintenanceDeleted.deleteMemory.deletedMemory.id === memoryId, "GraphQL deleteMemory returned wrong memory.");
+  assert(maintenanceDeleted.deleteDecision.deletedDecision.id === decisionId, "GraphQL deleteDecision returned wrong decision.");
+  console.log("ok - graphql maintenance archive/delete mutations");
 
   const tempTask = await graphql<{ createTask: { id: string } }>(
     `mutation TempTask($task: CreateTaskInput!) {

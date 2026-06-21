@@ -165,13 +165,29 @@ const typeDefs = `#graphql
     createProject(input: CreateProjectInput!): Project!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
 
+    createMemory(input: CreateMemoryInput!): MemoryRecord!
+    updateMemory(input: UpdateMemoryInput!): MemoryRecord!
+    archiveMemory(id: ID!, reason: String): ArchiveMemoryResult!
+    deleteMemory(id: ID!, reason: String): DeleteMemoryResult!
+
     createTask(input: CreateTaskInput!): Task!
     updateTaskStatus(id: ID!, status: String!, note: String): Task!
     deleteTask(id: ID!, reason: String): DeleteTaskResult!
 
+    recordDecision(input: RecordDecisionInput!): Decision!
+    archiveDecision(id: ID!, reason: String): ArchiveDecisionResult!
+    deleteDecision(id: ID!, reason: String): DeleteDecisionResult!
+
     putTextArtifact(input: PutTextArtifactInput!): Artifact!
     updateArtifactMetadata(input: UpdateArtifactMetadataInput!): Artifact!
     archiveArtifact(id: ID, project: String, path: String, reason: String): ArtifactArchiveResult!
+    deleteArtifact(id: ID, project: String, path: String, reason: String): DeleteArtifactResult!
+
+    recordEvent(input: RecordEventInput!): Event!
+    deleteEvent(id: ID!, reason: String): DeleteEventResult!
+
+    createLink(input: CreateLinkInput!): Link!
+    deleteLink(id: ID!, reason: String): DeleteLinkResult!
   }
 
   input ProjectSummaryLimitsInput {
@@ -234,6 +250,52 @@ const typeDefs = `#graphql
     forbiddenFiles: [String!]
     dependsOn: [String!]
     notes: String
+  }
+
+  input CreateMemoryInput {
+    id: ID
+    project: String
+    common: Boolean
+    type: String!
+    title: String!
+    body: String!
+    status: String
+    tags: [String!]
+  }
+
+  input UpdateMemoryInput {
+    id: ID!
+    title: String
+    body: String
+    status: String
+    tags: [String!]
+  }
+
+  input RecordDecisionInput {
+    project: String
+    title: String!
+    status: String
+    context: String
+    decision: String!
+    rationale: String
+    consequences: String
+    tags: [String!]
+    supersedesId: String
+  }
+
+  input RecordEventInput {
+    project: String
+    type: String!
+    title: String
+    body: String
+    relatedId: String
+  }
+
+  input CreateLinkInput {
+    project: String
+    fromId: String!
+    toId: String!
+    relation: String!
   }
 
   input PutTextArtifactInput {
@@ -351,6 +413,18 @@ const typeDefs = `#graphql
     pageInfo: PageInfo!
   }
 
+  type ArchiveMemoryResult {
+    action: String!
+    memory: MemoryRecord!
+    event: Event
+  }
+
+  type DeleteMemoryResult {
+    deletedMemory: MemoryRecord!
+    deletedLinks: Int!
+    event: Event!
+  }
+
   type Task {
     id: ID!
     projectId: String
@@ -375,6 +449,7 @@ const typeDefs = `#graphql
 
   type DeleteTaskResult {
     deletedTask: Task!
+    deletedLinks: Int
     event: Event!
   }
 
@@ -396,6 +471,18 @@ const typeDefs = `#graphql
   type PaginatedDecisions {
     items: [Decision!]!
     pageInfo: PageInfo!
+  }
+
+  type ArchiveDecisionResult {
+    action: String!
+    decision: Decision!
+    event: Event
+  }
+
+  type DeleteDecisionResult {
+    deletedDecision: Decision!
+    deletedLinks: Int!
+    event: Event!
   }
 
   type Artifact {
@@ -493,6 +580,12 @@ const typeDefs = `#graphql
     event: Event
   }
 
+  type DeleteArtifactResult {
+    deletedArtifact: Artifact!
+    deletedLinks: Int!
+    event: Event!
+  }
+
   type MarkdownOutlineItem {
     level: Int!
     title: String!
@@ -514,6 +607,10 @@ const typeDefs = `#graphql
     pageInfo: PageInfo!
   }
 
+  type DeleteEventResult {
+    deletedEvent: Event!
+  }
+
   type Link {
     id: ID!
     projectId: String
@@ -526,6 +623,11 @@ const typeDefs = `#graphql
   type PaginatedLinks {
     items: [Link!]!
     pageInfo: PageInfo!
+  }
+
+  type DeleteLinkResult {
+    deletedLink: Link!
+    event: Event!
   }
 
   type NextCall {
@@ -635,18 +737,42 @@ const resolvers = {
       (await callTool<Row>(context, "project.create", cleanInput(args.input as Row))).project,
     deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
+    createMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "memory.create", cleanInput(args.input as Row))).item,
+    updateMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "memory.update", cleanInput(args.input as Row))).item,
+    archiveMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "memory.archive", cleanInput(args)),
+    deleteMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "memory.delete", cleanInput(args)),
     createTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.create", cleanInput(args.input as Row))).task,
     updateTaskStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
     deleteTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "task.delete", cleanInput(args)),
+    recordDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "decision.record", cleanInput(args.input as Row))).decision,
+    archiveDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "decision.archive", cleanInput(args)),
+    deleteDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "decision.delete", cleanInput(args)),
     putTextArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.put_text", cleanInput(args.input as Row))).artifact,
     updateArtifactMetadata: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.update_metadata", requireOne(cleanInput(args.input as Row), ["id", "path"], "updateArtifactMetadata"))).artifact,
     archiveArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await callTool<Row>(context, "artifact.archive", requireOne(cleanInput(args), ["id", "path"], "archiveArtifact"))
+      await callTool<Row>(context, "artifact.archive", requireOne(cleanInput(args), ["id", "path"], "archiveArtifact")),
+    deleteArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "artifact.delete", requireOne(cleanInput(args), ["id", "path"], "deleteArtifact")),
+    recordEvent: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "event.record", cleanInput(args.input as Row))).event,
+    deleteEvent: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "event.delete", cleanInput(args)),
+    createLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "link.create", cleanInput(args.input as Row))).link,
+    deleteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "link.delete", cleanInput(args))
   }
 };
 

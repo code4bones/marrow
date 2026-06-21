@@ -131,6 +131,16 @@ const contextChangedSinceSchema = z.object({
 const taskDeleteSchema = getTaskSchema.extend({
   reason: z.string().optional()
 });
+const idReasonSchema = z.object({
+  id: z.string().min(1),
+  reason: z.string().optional()
+});
+const memoryArchiveSchema = idReasonSchema;
+const memoryDeleteSchema = idReasonSchema;
+const decisionArchiveSchema = idReasonSchema;
+const decisionDeleteSchema = idReasonSchema;
+const eventDeleteSchema = idReasonSchema;
+const linkDeleteSchema = idReasonSchema;
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -239,6 +249,7 @@ const artifactArchiveSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const artifactDeleteSchema = artifactArchiveSchema;
 const preflightByQuerySchema = z.object({
   query: z.string().min(1),
   project: z.string().optional(),
@@ -398,6 +409,14 @@ const deleteCountsSchema = z.object({
   artifacts: z.number(),
   currentProjectKeys: z.number().optional()
 });
+const archiveRecordSchema = z.object({
+  action: z.string(),
+  event: eventLikeSchema
+}).catchall(z.unknown());
+const deleteRecordSchema = z.object({
+  event: eventLikeSchema.optional(),
+  deletedLinks: z.number().optional()
+}).catchall(z.unknown());
 const nextCallSchema = z
   .object({
     tool: z.string(),
@@ -629,6 +648,20 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "write"
   },
   {
+    name: "memory.archive",
+    description: "Archive a shared memory item without deleting it. Prefer this before hard delete for durable project knowledge.",
+    schema: memoryArchiveSchema,
+    outputSchema: output(archiveRecordSchema.extend({ memory: looseRecordSchema })),
+    access: "write"
+  },
+  {
+    name: "memory.delete",
+    description: "Hard-delete a shared memory item and cleanup links that point to it. Use only after an explicit user request.",
+    schema: memoryDeleteSchema,
+    outputSchema: output(deleteRecordSchema.extend({ deletedMemory: looseRecordSchema })),
+    access: "write"
+  },
+  {
     name: "memory.hygiene_report",
     description:
       "Return compact memory quality signals for project/common scope: large records, stale active records, duplicate title groups, and suggested next calls.",
@@ -698,6 +731,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "write"
   },
   {
+    name: "artifact.delete",
+    description: "Hard-delete an artifact metadata row and remove its stored bytes. Use only after an explicit user request.",
+    schema: artifactDeleteSchema,
+    outputSchema: output(deleteRecordSchema.extend({ deletedArtifact: artifactSchema })),
+    access: "write"
+  },
+  {
     name: "task.create",
     description: "Create a shared executable task for a project.",
     schema: createTaskSchema,
@@ -745,6 +785,20 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "write"
   },
   {
+    name: "decision.archive",
+    description: "Archive a shared decision without deleting it. Archived decisions stay available by explicit status filters.",
+    schema: decisionArchiveSchema,
+    outputSchema: output(archiveRecordSchema.extend({ decision: looseRecordSchema })),
+    access: "write"
+  },
+  {
+    name: "decision.delete",
+    description: "Hard-delete a shared decision and cleanup links that point to it. Use only after an explicit user request.",
+    schema: decisionDeleteSchema,
+    outputSchema: output(deleteRecordSchema.extend({ deletedDecision: looseRecordSchema })),
+    access: "write"
+  },
+  {
     name: "decision.list",
     description: "List shared project and common decisions.",
     schema: listDecisionsSchema
@@ -766,6 +820,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: listEventsSchema
   },
   {
+    name: "event.delete",
+    description: "Hard-delete one event from the timeline. Use only for explicit cleanup or test data removal.",
+    schema: eventDeleteSchema,
+    outputSchema: output(z.object({ deletedEvent: looseRecordSchema })),
+    access: "write"
+  },
+  {
     name: "link.create",
     description: "Create a shared relationship between records.",
     schema: createLinkSchema,
@@ -775,6 +836,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "link.list",
     description: "List shared links for a record.",
     schema: listLinksSchema
+  },
+  {
+    name: "link.delete",
+    description: "Hard-delete one shared relationship link. Use only after an explicit user request.",
+    schema: linkDeleteSchema,
+    outputSchema: output(deleteRecordSchema.extend({ deletedLink: looseRecordSchema })),
+    access: "write"
   },
   {
     name: "preflight",

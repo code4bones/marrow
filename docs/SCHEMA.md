@@ -313,6 +313,7 @@ draft
 active
 superseded
 rejected
+archived
 ```
 
 ### Project override rule

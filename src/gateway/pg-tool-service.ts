@@ -146,6 +146,10 @@ export class PgToolService {
           return ok("Memory searched.", { results: await this.searchMemory(parsed, requestContext) });
         case "memory.update":
           return ok("Memory item updated.", { item: await this.updateMemory(parsed, requestContext) });
+        case "memory.archive":
+          return ok("Memory item archived.", await this.archiveMemory(parsed, requestContext));
+        case "memory.delete":
+          return ok("Memory item deleted.", await this.deleteMemory(parsed, requestContext));
         case "memory.hygiene_report":
           return ok("Memory hygiene report loaded.", await this.memoryHygieneReport(parsed, requestContext));
         case "artifact.put":
@@ -166,6 +170,8 @@ export class PgToolService {
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "artifact.archive":
           return ok("Artifact archived.", await this.archiveArtifact(parsed, requestContext));
+        case "artifact.delete":
+          return ok("Artifact deleted.", await this.deleteArtifact(parsed, requestContext));
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
@@ -182,6 +188,10 @@ export class PgToolService {
           return ok("Decision recorded.", { decision: await this.recordDecision(parsed, requestContext) });
         case "decision.supersede":
           return ok("Decision superseded.", await this.supersedeDecision(parsed, requestContext));
+        case "decision.archive":
+          return ok("Decision archived.", await this.archiveDecision(parsed, requestContext));
+        case "decision.delete":
+          return ok("Decision deleted.", await this.deleteDecision(parsed, requestContext));
         case "decision.list":
           return ok("Decisions listed.", { decisions: await this.listDecisions(parsed, requestContext) });
         case "decision.get":
@@ -190,10 +200,14 @@ export class PgToolService {
           return ok("Event recorded.", { event: await this.recordEvent(parsed, requestContext) });
         case "event.list":
           return ok("Events listed.", { events: await this.listEvents(parsed, requestContext) });
+        case "event.delete":
+          return ok("Event deleted.", await this.deleteEvent(parsed));
         case "link.create":
           return ok("Link created.", { link: await this.createLink(parsed, requestContext) });
         case "link.list":
           return ok("Links listed.", { links: await this.listLinks(parsed) });
+        case "link.delete":
+          return ok("Link deleted.", await this.deleteLink(parsed, requestContext));
         case "preflight":
           return ok("Preflight context loaded.", await this.preflight(parsed));
         case "preflight.by_query":
@@ -969,6 +983,14 @@ export class PgToolService {
     throw new AppError("NOT_FOUND", `Record ${id} does not exist.`, { id });
   }
 
+  private async deleteLinksForRecord(id: string, db: Knex | Knex.Transaction = this.db): Promise<number> {
+    return Number(
+      await db("links")
+        .where((builder) => builder.where("from_id", id).orWhere("to_id", id))
+        .del()
+    );
+  }
+
   private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input);
     await this.setKv(currentProjectKey(context.clientId), project.id);
@@ -1308,6 +1330,68 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return itemOut(row);
+  }
+
+  private async archiveMemory(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("items").where({ id }).first();
+    if (!current) {
+      throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
+    }
+    if (String(current.status) === "archived") {
+      return {
+        action: "already_archived",
+        memory: itemOut(current),
+        event: null
+      };
+    }
+
+    const [row] = await this.db("items")
+      .where({ id })
+      .update({
+        status: "archived",
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    const event = await this.recordEventForProject(stringOrNull(row.project_id), {
+      type: "item.archived",
+      title: `Memory item archived: ${String(row.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: row.id
+    }, context);
+    return {
+      action: "archived",
+      memory: itemOut(row),
+      event
+    };
+  }
+
+  private async deleteMemory(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("items").where({ id }).first();
+    if (!current) {
+      throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
+    }
+
+    let deletedLinks = 0;
+    await this.db.transaction(async (trx) => {
+      deletedLinks = await this.deleteLinksForRecord(id, trx);
+      await trx("items").where({ id }).del();
+    });
+    const event = await this.recordEventForProject(stringOrNull(current.project_id), {
+      type: "item.deleted",
+      title: `Memory item deleted: ${String(current.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: id
+    }, context);
+    return {
+      deletedMemory: itemOut(current),
+      deletedLinks,
+      event
+    };
   }
 
   private async memoryHygieneReport(input: Row, context: NormalizedGatewayRequestContext) {
@@ -1872,6 +1956,28 @@ export class PgToolService {
     };
   }
 
+  private async deleteArtifact(input: Row, context: NormalizedGatewayRequestContext) {
+    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const id = String(current.id);
+    let deletedLinks = 0;
+    await this.db.transaction(async (trx) => {
+      deletedLinks = await this.deleteLinksForRecord(id, trx);
+      await trx("artifacts").where({ id }).del();
+    });
+    await rm(artifactAbsolutePath(String(current.storage_path)), { force: true });
+    const event = await this.recordEventForProject(stringOrNull(current.project_id), {
+      type: "artifact.deleted",
+      title: `Artifact deleted: ${String(current.path)}`,
+      body: stringOrNull(input.reason),
+      related_id: id
+    }, context);
+    return {
+      deletedArtifact: artifactOut(current),
+      deletedLinks,
+      event
+    };
+  }
+
   private async artifactRowById(id: string): Promise<Row> {
     const row = await this.db("artifacts").where({ id }).first();
     if (!row) {
@@ -1961,7 +2067,11 @@ export class PgToolService {
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
-    await this.db("tasks").where({ id }).del();
+    let deletedLinks = 0;
+    await this.db.transaction(async (trx) => {
+      deletedLinks = await this.deleteLinksForRecord(id, trx);
+      await trx("tasks").where({ id }).del();
+    });
     const event = await this.recordEventForProject(String(current.project_id), {
       type: "task.deleted",
       title: `Task deleted: ${String(current.title)}`,
@@ -1970,6 +2080,7 @@ export class PgToolService {
     }, context);
     return {
       deletedTask: taskOut(current),
+      deletedLinks,
       event
     };
   }
@@ -2192,6 +2303,74 @@ export class PgToolService {
     return decisionOut(row);
   }
 
+  private async archiveDecision(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("decisions").where({ id }).first();
+    if (!current) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (String(current.status) === "archived") {
+      return {
+        action: "already_archived",
+        decision: decisionOut(current),
+        event: null
+      };
+    }
+
+    const [row] = await this.db("decisions")
+      .where({ id })
+      .update({
+        status: "archived",
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    const event = await this.recordEventForProject(stringOrNull(row.project_id), {
+      type: "decision.archived",
+      title: `Decision archived: ${String(row.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: row.id
+    }, context);
+    return {
+      action: "archived",
+      decision: decisionOut(row),
+      event
+    };
+  }
+
+  private async deleteDecision(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("decisions").where({ id }).first();
+    if (!current) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+
+    let deletedLinks = 0;
+    await this.db.transaction(async (trx) => {
+      await trx("decisions").where({ supersedes_id: id }).update({
+        supersedes_id: null,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso()
+      });
+      deletedLinks = await this.deleteLinksForRecord(id, trx);
+      await trx("decisions").where({ id }).del();
+    });
+    const event = await this.recordEventForProject(stringOrNull(current.project_id), {
+      type: "decision.deleted",
+      title: `Decision deleted: ${String(current.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: id
+    }, context);
+    return {
+      deletedDecision: decisionOut(current),
+      deletedLinks,
+      event
+    };
+  }
+
   private async recordEvent(input: Row, context: NormalizedGatewayRequestContext) {
     const project = input.project === null ? null : await this.resolveProject(input.project, context);
     return this.recordEventForProject(project?.id ?? null, {
@@ -2234,6 +2413,18 @@ export class PgToolService {
     return this.pageRows(base, input, (query) => query.select("*").orderBy("created_at", "desc"), eventOut);
   }
 
+  private async deleteEvent(input: Row) {
+    const id = String(input.id);
+    const current = await this.db("events").where({ id }).first();
+    if (!current) {
+      throw new AppError("NOT_FOUND", `Event ${id} does not exist.`, { id });
+    }
+    await this.db("events").where({ id }).del();
+    return {
+      deletedEvent: eventOut(current)
+    };
+  }
+
   private async createLink(input: Row, context: NormalizedGatewayRequestContext) {
     await this.assertRecordExists(String(input.fromId));
     await this.assertRecordExists(String(input.toId));
@@ -2271,6 +2462,25 @@ export class PgToolService {
       query = query.andWhere("relation", String(input.relation));
     }
     return (await query.orderBy("created_at", "desc").limit(Number(input.limit ?? 50))).map(linkOut);
+  }
+
+  private async deleteLink(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("links").where({ id }).first();
+    if (!current) {
+      throw new AppError("LINK_NOT_FOUND", `Link ${id} does not exist.`, { id });
+    }
+    await this.db("links").where({ id }).del();
+    const event = await this.recordEventForProject(stringOrNull(current.project_id), {
+      type: "link.deleted",
+      title: `Link deleted: ${String(current.from_id)} ${String(current.relation)} ${String(current.to_id)}`,
+      body: stringOrNull(input.reason),
+      related_id: id
+    }, context);
+    return {
+      deletedLink: linkOut(current),
+      event
+    };
   }
 
   private async linksPage(input: Row, context?: NormalizedGatewayRequestContext) {

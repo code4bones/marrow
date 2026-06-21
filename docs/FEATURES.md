@@ -170,6 +170,7 @@ Decision statuses:
 * `active`
 * `superseded`
 * `rejected`
+* `archived`
 
 Required operations:
 
@@ -177,6 +178,8 @@ Required operations:
 * list decisions
 * get decision
 * search decisions
+* archive decision
+* delete decision after explicit confirmation
 
 Purpose:
 

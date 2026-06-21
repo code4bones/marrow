@@ -115,13 +115,19 @@ ${GW_ENDPOINT}/graphql
 
 The GraphQL slice maps to existing gateway tools for gateway status, projects,
 project summaries, memory search, tasks, decisions, artifacts, artifact text,
-events, and controlled mutations for project/task/artifact maintenance. The
+events, links, and controlled mutations for full PMemUI maintenance. The
 endpoint uses the same gateway authorization as `/mcp` and `/call`; GraphQL
 queries require OAuth `memory:read`, while mutations require `memory:read` and
 `memory:write`. On production this resolves to
 `https://pmem.undoo.ru/api/graphql`. `OPTIONS /graphql` and
 `OPTIONS ${API_ENDPOINT}/graphql` support browser CORS preflight. See
 `docs/GRAPHQL_API.md`.
+
+GraphQL mutations cover create/update/archive/delete flows for memory items,
+tasks, decisions, artifacts, events, and links. Hard-delete operations are
+available for explicit cleanup and remove relationship links that point at the
+deleted record where applicable. Decisions now support an `archived` lifecycle
+status in addition to `draft`, `active`, `superseded`, and `rejected`.
 
 PMemUI table queries have paginated variants such as `projectsPage`,
 `tasksPage`, `decisionsPage`, `memoryItemsPage`, `artifactsPage`,

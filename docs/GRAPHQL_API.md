@@ -284,6 +284,48 @@ selectors. Use `*Page` fields for UI tables.
 
 ## Available Mutations
 
+Project, memory, task, decision, link, event, and artifact lifecycle mutations
+are available for PMemUI maintenance screens. Mutations require write scope and
+should be guarded by explicit UI confirmation when they archive or delete data.
+
+Memory lifecycle:
+
+```graphql
+mutation MemoryMaintenance($project: String!, $id: ID!) {
+  createMemory(input: {
+    project: $project
+    type: "note"
+    title: "Useful context"
+    body: "Details for future agents."
+    tags: ["frontend"]
+  }) {
+    id
+    title
+    status
+  }
+
+  updateMemory(input: {
+    id: $id
+    status: "archived"
+  }) {
+    id
+    status
+  }
+
+  archiveMemory(id: $id, reason: "No longer relevant") {
+    action
+    memory { id status }
+    event { id type }
+  }
+
+  deleteMemory(id: $id, reason: "Explicit user-confirmed cleanup") {
+    deletedMemory { id title }
+    deletedLinks
+    event { id type }
+  }
+}
+```
+
 Project and task lifecycle:
 
 ```graphql
@@ -302,7 +344,36 @@ Task deletion:
 mutation DeleteTask($id: ID!) {
   deleteTask(id: $id, reason: "Removed after explicit user confirmation") {
     deletedTask { id title }
+    deletedLinks
     event { id type createdAt }
+  }
+}
+```
+
+Decision lifecycle:
+
+```graphql
+mutation DecisionMaintenance($project: String!, $id: ID!) {
+  recordDecision(input: {
+    project: $project
+    title: "Use record(id) for PMemUI detail navigation"
+    decision: "Clickable IDs resolve through the generic record lookup."
+    tags: ["frontend", "graphql"]
+  }) {
+    id
+    status
+  }
+
+  archiveDecision(id: $id, reason: "Superseded by architecture update") {
+    action
+    decision { id status }
+    event { id type }
+  }
+
+  deleteDecision(id: $id, reason: "Explicit user-confirmed cleanup") {
+    deletedDecision { id title }
+    deletedLinks
+    event { id type }
   }
 }
 ```
@@ -340,6 +411,46 @@ mutation ArchiveArtifact($id: ID!) {
     artifact { id status archivedAt }
     event { id type createdAt }
   }
+
+  deleteArtifact(id: $id, reason: "Explicit user-confirmed cleanup") {
+    deletedArtifact { id path }
+    deletedLinks
+    event { id type }
+  }
+}
+```
+
+Links and events:
+
+```graphql
+mutation LinkAndEventMaintenance($project: String!, $fromId: String!, $toId: String!, $linkId: ID!, $eventId: ID!) {
+  createLink(input: {
+    project: $project
+    fromId: $fromId
+    toId: $toId
+    relation: "documents"
+  }) {
+    id
+    relation
+  }
+
+  deleteLink(id: $linkId, reason: "Explicit user-confirmed cleanup") {
+    deletedLink { id fromId toId relation }
+    event { id type }
+  }
+
+  recordEvent(input: {
+    project: $project
+    type: "ui.note"
+    title: "Useful UI timeline note"
+  }) {
+    id
+    type
+  }
+
+  deleteEvent(id: $eventId, reason: "Remove test event") {
+    deletedEvent { id type }
+  }
 }
 ```
 
@@ -369,6 +480,10 @@ mutation DeleteProject($slug: String!) {
 - Treat `gatewayStatus`, `gatewayVersion`, and `gatewayDiagnostics` as JSON
   scalars for diagnostics views.
 - Use destructive mutations only after explicit UI confirmation.
+- Prefer archive mutations for durable knowledge; use hard-delete for explicit
+  cleanup, test data removal, or records the user intentionally wants removed.
+- Hard-delete mutations remove relationship links that point at the deleted
+  record and return `deletedLinks` where applicable.
 - For `deleteProject`, try `cascade=false` first and display
   `PROJECT_NOT_EMPTY` details before allowing cascade delete.
 - Subscriptions are intentionally not part of the current GraphQL slice. Add
