@@ -26,7 +26,7 @@ is set, so local checks can exercise the same public path shape.
 
 The endpoint runs in the same gateway process as `/mcp`, `/call`, OAuth, and
 artifact downloads. It uses the same gateway authorization for GraphQL Sandbox,
-queries, operations, and future mutation/subscription traffic:
+queries, operations, and mutation traffic:
 
 ```http
 Authorization: Bearer <MCP_TOKEN or OAuth access token>
@@ -45,9 +45,13 @@ X-Project-Memory-Client-Kind: frontend
 GraphQL is the browser-facing API boundary for PMemUI. The frontend should call
 `${GW_ENDPOINT}/graphql`, not PostgreSQL and not MCP transport directly.
 
-The first implementation is read-oriented and maps to existing gateway tools.
-Resolvers call `PgToolService.call()` so validation, project resolution,
-artifact text handling, and gateway client tracking stay centralized.
+Resolvers map to existing gateway tools through `PgToolService.call()` so
+validation, project resolution, artifact text handling, event recording, and
+gateway client tracking stay centralized.
+
+GraphQL `query` operations require `memory:read` for OAuth tokens. GraphQL
+`mutation` operations require both `memory:read` and `memory:write`. Static
+gateway bearer tokens from `.env` continue to authorize all operations.
 
 ## Available Queries
 
@@ -135,6 +139,83 @@ query Search($project: String!, $query: String!) {
 }
 ```
 
+## Available Mutations
+
+Project and task lifecycle:
+
+```graphql
+mutation TaskStatus($id: ID!) {
+  updateTaskStatus(id: $id, status: "doing", note: "Started from PMemUI") {
+    id
+    status
+    updatedAt
+  }
+}
+```
+
+Task deletion:
+
+```graphql
+mutation DeleteTask($id: ID!) {
+  deleteTask(id: $id, reason: "Removed after explicit user confirmation") {
+    deletedTask { id title }
+    event { id type createdAt }
+  }
+}
+```
+
+Text artifact upload:
+
+```graphql
+mutation PutTextArtifact($input: PutTextArtifactInput!) {
+  putTextArtifact(input: $input) {
+    id
+    path
+    title
+    contentType
+    sizeBytes
+  }
+}
+```
+
+Artifact metadata and archive:
+
+```graphql
+mutation ArchiveArtifact($id: ID!) {
+  updateArtifactMetadata(input: {
+    id: $id
+    title: "Updated title"
+    tags: ["docs", "frontend"]
+  }) {
+    id
+    title
+    tags
+  }
+
+  archiveArtifact(id: $id, reason: "Superseded by a newer artifact") {
+    action
+    artifact { id status archivedAt }
+    event { id type createdAt }
+  }
+}
+```
+
+Project delete:
+
+```graphql
+mutation DeleteProject($slug: String!) {
+  deleteProject(
+    slug: $slug
+    cascade: false
+    reason: "Explicit user-confirmed cleanup"
+  ) {
+    deletedProject { id slug title }
+    cascade
+    counts { tasks items decisions links events artifacts currentProjectKeys }
+  }
+}
+```
+
 ## Frontend Rules
 
 - Use `projectSummary` as the default project overview query.
@@ -143,10 +224,11 @@ query Search($project: String!, $query: String!) {
 - Keep GraphQL queries scoped by project where practical.
 - Treat `gatewayStatus`, `gatewayVersion`, and `gatewayDiagnostics` as JSON
   scalars for diagnostics views.
-- Destructive mutations and subscriptions are intentionally not part of the
-  first GraphQL slice. Add them only with explicit UI confirmation flows, OAuth
-  write-scope handling for mutations, and a concrete transport choice for
-  subscriptions.
+- Use destructive mutations only after explicit UI confirmation.
+- For `deleteProject`, try `cascade=false` first and display
+  `PROJECT_NOT_EMPTY` details before allowing cascade delete.
+- Subscriptions are intentionally not part of the current GraphQL slice. Add
+  them only after choosing the concrete transport and reconnect semantics.
 
 ## CORS
 

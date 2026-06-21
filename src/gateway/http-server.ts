@@ -182,7 +182,7 @@ async function handleRequest(
     }
 
     if (isGraphqlRequestPath(requestPath)) {
-      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt);
+      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt, auth);
       return;
     }
 
@@ -273,9 +273,21 @@ async function handleGraphqlRequest(
   response: ServerResponse,
   requestId: string,
   context: GatewayRequestContext,
-  startedAt: number
+  startedAt: number,
+  auth: AuthorizationState
 ): Promise<void> {
   try {
+    const body = request.method === "POST" ? await readJson(request) : undefined;
+    const requiredScopes = graphqlRequiredScopes(request, body);
+    const scopeAuth = isAuthorizedForScopes(options, request, auth, requiredScopes);
+    if (!scopeAuth.ok) {
+      sendUnauthorized(response, requestId, scopeAuth.challenge);
+      logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+        requiredScopes,
+        graphqlOperationType: requiredScopes.includes("memory:write") ? "mutation" : "query"
+      });
+      return;
+    }
     const result = await handleGatewayGraphqlRequest({
       graphql,
       request,
@@ -283,10 +295,12 @@ async function handleGraphqlRequest(
       requestContext: context,
       requestId,
       service,
-      logger: options.logger
+      logger: options.logger,
+      body
     });
     logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, {
-      graphqlOperationName: result.operationName
+      graphqlOperationName: result.operationName,
+      requiredScopes
     });
   } catch (error) {
     options.logger?.error({ requestId, clientId: context.clientId, error }, "gateway graphql request failed");
@@ -454,6 +468,29 @@ function mcpToolName(value: unknown): string | undefined {
     return undefined;
   }
   return typeof value.params.name === "string" ? value.params.name : undefined;
+}
+
+function graphqlRequiredScopes(request: IncomingMessage, body: unknown): string[] {
+  return graphqlLooksLikeMutation(request, body) ? ["memory:read", "memory:write"] : ["memory:read"];
+}
+
+function graphqlLooksLikeMutation(request: IncomingMessage, body: unknown): boolean {
+  const requestUrl = parseRequestUrl(request);
+  const queries = [
+    requestUrl.searchParams.get("query"),
+    ...graphqlBodyQueries(body)
+  ].filter((query): query is string => Boolean(query));
+  return queries.some((query) => /\bmutation\b/i.test(query));
+}
+
+function graphqlBodyQueries(body: unknown): string[] {
+  if (Array.isArray(body)) {
+    return body.flatMap((item) => graphqlBodyQueries(item));
+  }
+  if (!isRecord(body)) {
+    return [];
+  }
+  return typeof body.query === "string" ? [body.query] : [];
 }
 
 function requestContext(request: IncomingMessage, requestId: string): GatewayRequestContext {

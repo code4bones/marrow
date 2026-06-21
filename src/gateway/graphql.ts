@@ -89,6 +89,19 @@ const typeDefs = `#graphql
     events(project: String, common: Boolean, relatedId: String, limit: Int): [Event!]!
   }
 
+  type Mutation {
+    createProject(input: CreateProjectInput!): Project!
+    deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
+
+    createTask(input: CreateTaskInput!): Task!
+    updateTaskStatus(id: ID!, status: String!, note: String): Task!
+    deleteTask(id: ID!, reason: String): DeleteTaskResult!
+
+    putTextArtifact(input: PutTextArtifactInput!): Artifact!
+    updateArtifactMetadata(input: UpdateArtifactMetadataInput!): Artifact!
+    archiveArtifact(id: ID, project: String, path: String, reason: String): ArtifactArchiveResult!
+  }
+
   input ProjectSummaryLimitsInput {
     tasks: Int
     decisions: Int
@@ -97,6 +110,48 @@ const typeDefs = `#graphql
     artifacts: Int
     memory: Int
     events: Int
+  }
+
+  input CreateProjectInput {
+    slug: String!
+    title: String!
+    description: String
+    rootPath: String
+  }
+
+  input CreateTaskInput {
+    project: String!
+    title: String!
+    milestone: String
+    priority: Int
+    scope: String
+    acceptance: String
+    allowedFiles: [String!]
+    forbiddenFiles: [String!]
+    dependsOn: [String!]
+    notes: String
+  }
+
+  input PutTextArtifactInput {
+    id: ID
+    project: String
+    common: Boolean
+    path: String!
+    title: String
+    description: String
+    contentType: String
+    text: String!
+    tags: [String!]
+    overwrite: Boolean
+  }
+
+  input UpdateArtifactMetadataInput {
+    id: ID
+    project: String
+    path: String
+    title: String
+    description: String
+    tags: [String!]
   }
 
   type Project {
@@ -136,6 +191,22 @@ const typeDefs = `#graphql
     events: Int!
   }
 
+  type ProjectDeleteCounts {
+    tasks: Int!
+    items: Int!
+    decisions: Int!
+    links: Int!
+    events: Int!
+    artifacts: Int!
+    currentProjectKeys: Int
+  }
+
+  type DeleteProjectResult {
+    deletedProject: Project!
+    cascade: Boolean!
+    counts: ProjectDeleteCounts!
+  }
+
   type MemoryRecord {
     id: ID!
     projectId: String
@@ -166,6 +237,11 @@ const typeDefs = `#graphql
     notes: String
     createdAt: String
     updatedAt: String
+  }
+
+  type DeleteTaskResult {
+    deletedTask: Task!
+    event: Event!
   }
 
   type Decision {
@@ -262,6 +338,12 @@ const typeDefs = `#graphql
     base64Included: Boolean!
   }
 
+  type ArtifactArchiveResult {
+    action: String!
+    artifact: Artifact!
+    event: Event
+  }
+
   type MarkdownOutlineItem {
     level: Int!
     title: String!
@@ -336,6 +418,24 @@ const resolvers = {
       delete input.common;
       return (await callTool<Row>(context, "event.list", input)).events;
     }
+  },
+  Mutation: {
+    createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.create", cleanInput(args.input as Row))).project,
+    deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
+    createTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.create", cleanInput(args.input as Row))).task,
+    updateTaskStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
+    deleteTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.delete", cleanInput(args)),
+    putTextArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "artifact.put_text", cleanInput(args.input as Row))).artifact,
+    updateArtifactMetadata: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "artifact.update_metadata", requireOne(cleanInput(args.input as Row), ["id", "path"], "updateArtifactMetadata"))).artifact,
+    archiveArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "artifact.archive", requireOne(cleanInput(args), ["id", "path"], "archiveArtifact"))
   }
 };
 
@@ -361,6 +461,7 @@ export async function handleGatewayGraphqlRequest(input: {
   requestId: string;
   service: GatewayGraphqlToolService;
   logger?: AppLogger;
+  body?: unknown;
 }): Promise<GatewayGraphqlRequestResult> {
   const { request, response, requestId } = input;
   if (request.method === "OPTIONS") {
@@ -373,7 +474,7 @@ export async function handleGatewayGraphqlRequest(input: {
   }
 
   const requestUrl = new URL(request.url ?? "/", "http://gateway.local");
-  const body = request.method === "POST" ? await readGraphqlBody(request) : undefined;
+  const body = input.body ?? (request.method === "POST" ? await readGraphqlBody(request) : undefined);
   const operationName = operationNameFromBody(body);
   const httpGraphQLResponse = await input.graphql.server.executeHTTPGraphQLRequest({
     httpGraphQLRequest: {

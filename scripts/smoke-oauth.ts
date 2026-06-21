@@ -248,6 +248,44 @@ try {
   );
   console.log("ok - oauth read-only token cannot call write tools");
 
+  const readOnlyGraphqlQuery = await postJson(
+    `${started.url}/graphql?client_id=${pmemClientId}`,
+    {
+      query: "{ gatewayStatus }"
+    },
+    readOnlyAccessToken
+  );
+  assert(readOnlyGraphqlQuery.status === 200, "Read-only OAuth token could not execute a GraphQL query.");
+  assert(
+    readNestedString(readOnlyGraphqlQuery.body, ["data", "gatewayStatus", "storage"]) === "postgresql",
+    "Read-only OAuth GraphQL query did not execute."
+  );
+  const readOnlyGraphqlMutation = await postJson(
+    `${started.url}/graphql?client_id=${pmemClientId}`,
+    {
+      query: 'mutation { deleteTask(id: "T-OAUTH-SMOKE-MISSING") { deletedTask { id } } }'
+    },
+    readOnlyAccessToken
+  );
+  assert(readOnlyGraphqlMutation.status === 401, "Read-only OAuth token was allowed to execute a GraphQL mutation.");
+  assert(
+    readOnlyGraphqlMutation.headers.get("www-authenticate")?.includes("memory:write"),
+    "Read-only OAuth GraphQL denial did not advertise memory:write."
+  );
+  const writeGraphqlMutation = await postJson(
+    `${started.url}/graphql?client_id=${pmemClientId}`,
+    {
+      query: 'mutation { deleteTask(id: "T-OAUTH-SMOKE-MISSING") { deletedTask { id } } }'
+    },
+    accessToken
+  );
+  assert(writeGraphqlMutation.status === 200, "OAuth memory:write token did not reach GraphQL mutation resolver.");
+  assert(
+    JSON.stringify(writeGraphqlMutation.body).includes("TASK_NOT_FOUND"),
+    "OAuth memory:write GraphQL mutation did not reach the task resolver."
+  );
+  console.log("ok - oauth GraphQL scopes are enforced");
+
   const reusedCode = await postFormJson(`${started.url}/oauth/token`, {
     grant_type: "authorization_code",
     code,

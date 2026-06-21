@@ -36,28 +36,43 @@ try {
   assert(status.gatewayStatus.storage === "postgresql", "GraphQL gatewayStatus did not expose PostgreSQL storage.");
   console.log("ok - graphql gatewayStatus");
 
-  const project = await callGateway("project.create", {
-    slug: projectSlug,
-    title: `Gateway GraphQL Smoke ${unique}`
-  });
-  projectId = expectData<{ project: { id: string } }>(project).project.id;
-
-  await callGateway("task.create", {
-    project: projectId,
-    title: "Gateway GraphQL smoke task",
-    scope: "Verify GraphQL task list.",
-    acceptance: "GraphQL returns this task.",
-    priority: 1
-  });
-
-  await callGateway("artifact.put_text", {
-    project: projectId,
-    path: "docs/graphql-smoke.md",
-    title: "GraphQL Smoke Artifact",
-    text: "# GraphQL Smoke\n\nThis text should be readable without base64.",
-    contentType: "text/markdown; charset=utf-8",
-    tags: ["smoke", "graphql"]
-  });
+  const created = await graphql<{
+    createProject: { id: string; slug: string };
+    createTask: { id: string; title: string; status: string };
+    putTextArtifact: { id: string; path: string; title: string };
+  }>(
+    `mutation CreateSmoke($project: CreateProjectInput!, $task: CreateTaskInput!, $artifact: PutTextArtifactInput!) {
+      createProject(input: $project) { id slug }
+      createTask(input: $task) { id title status }
+      putTextArtifact(input: $artifact) { id path title }
+    }`,
+    {
+      project: {
+        slug: projectSlug,
+        title: `Gateway GraphQL Smoke ${unique}`
+      },
+      task: {
+        project: projectSlug,
+        title: "Gateway GraphQL smoke task",
+        scope: "Verify GraphQL task list.",
+        acceptance: "GraphQL returns this task.",
+        priority: 1
+      },
+      artifact: {
+        project: projectSlug,
+        path: "docs/graphql-smoke.md",
+        title: "GraphQL Smoke Artifact",
+        text: "# GraphQL Smoke\n\nThis text should be readable without base64.",
+        contentType: "text/markdown; charset=utf-8",
+        tags: ["smoke", "graphql"]
+      }
+    }
+  );
+  projectId = created.createProject.id;
+  const taskId = created.createTask.id;
+  const artifactId = created.putTextArtifact.id;
+  assert(created.createTask.status === "todo", "GraphQL createTask did not create a todo task.");
+  console.log("ok - graphql create mutations");
 
   const data = await graphql<{
     project: { id: string; slug: string; title: string };
@@ -94,14 +109,66 @@ try {
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
   console.log("ok - graphql project explorer queries");
 
-  const deleted = await callGateway("project.delete", {
-    id: projectId,
-    cascade: true,
-    reason: "Gateway GraphQL smoke cleanup."
-  });
-  assert(expectData<{ deletedProject: { id: string } }>(deleted).deletedProject.id === projectId, "project.delete returned wrong project.");
+  const updated = await graphql<{
+    updateTaskStatus: { id: string; status: string };
+    updateArtifactMetadata: { id: string; title: string; tags: string[] };
+    archiveArtifact: { action: string; artifact: { id: string; status: string } };
+  }>(
+    `mutation UpdateSmoke($taskId: ID!, $artifactId: ID!) {
+      updateTaskStatus(id: $taskId, status: "doing", note: "GraphQL smoke status update.") { id status }
+      updateArtifactMetadata(input: { id: $artifactId, title: "GraphQL Smoke Artifact Updated", tags: ["smoke", "graphql", "updated"] }) {
+        id
+        title
+        tags
+      }
+      archiveArtifact(id: $artifactId, reason: "GraphQL smoke archive.") {
+        action
+        artifact { id status }
+      }
+    }`,
+    { taskId, artifactId }
+  );
+  assert(updated.updateTaskStatus.status === "doing", "GraphQL updateTaskStatus did not update status.");
+  assert(updated.updateArtifactMetadata.title === "GraphQL Smoke Artifact Updated", "GraphQL updateArtifactMetadata did not update title.");
+  assert(updated.archiveArtifact.artifact.status === "archived", "GraphQL archiveArtifact did not archive artifact.");
+  console.log("ok - graphql update/archive mutations");
+
+  const tempTask = await graphql<{ createTask: { id: string } }>(
+    `mutation TempTask($task: CreateTaskInput!) {
+      createTask(input: $task) { id }
+    }`,
+    {
+      task: {
+        project: projectId,
+        title: "Gateway GraphQL smoke delete task",
+        priority: 99
+      }
+    }
+  );
+  const deletedTask = await graphql<{ deleteTask: { deletedTask: { id: string }; event: { type: string } } }>(
+    `mutation DeleteTask($id: ID!) {
+      deleteTask(id: $id, reason: "GraphQL smoke task cleanup.") {
+        deletedTask { id }
+        event { type }
+      }
+    }`,
+    { id: tempTask.createTask.id }
+  );
+  assert(deletedTask.deleteTask.deletedTask.id === tempTask.createTask.id, "GraphQL deleteTask returned wrong task.");
+  console.log("ok - graphql deleteTask mutation");
+
+  const deleted = await graphql<{ deleteProject: { deletedProject: { id: string }; cascade: boolean } }>(
+    `mutation DeleteProject($id: ID!) {
+      deleteProject(id: $id, cascade: true, reason: "Gateway GraphQL smoke cleanup.") {
+        deletedProject { id }
+        cascade
+      }
+    }`,
+    { id: projectId }
+  );
+  assert(deleted.deleteProject.deletedProject.id === projectId, "GraphQL deleteProject returned wrong project.");
   projectId = undefined;
-  console.log("ok - graphql smoke cleanup");
+  console.log("ok - graphql deleteProject cleanup");
 
   console.log(`Gateway GraphQL smoke test passed using ${graphqlUrl}`);
 } finally {
@@ -155,11 +222,6 @@ async function callGateway(tool: string, input: unknown): Promise<ToolResponse<u
   });
   assert(response.ok, `Gateway call ${tool} returned HTTP ${response.status}.`);
   return (await response.json()) as ToolResponse<unknown>;
-}
-
-function expectData<T>(response: ToolResponse<unknown>): T {
-  assert(response.ok, response.ok ? "Unexpected gateway failure." : response.error.message);
-  return response.data as T;
 }
 
 function assert(condition: unknown, message: string): asserts condition {
