@@ -11,6 +11,7 @@ type Row = Record<string, unknown>;
 export interface GatewayGraphqlToolService {
   call(toolName: string, input: unknown, context?: GatewayRequestContext): Promise<ToolResponse<unknown>>;
   graphqlPage(pageName: string, input: unknown, context?: GatewayRequestContext): Promise<Row>;
+  graphqlProjectGraph(input: unknown, context?: GatewayRequestContext): Promise<Row>;
   graphqlRecord(id: string, context?: GatewayRequestContext): Promise<Row>;
 }
 
@@ -51,6 +52,7 @@ const typeDefs = `#graphql
     projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
+    projectGraph(projectId: ID!, depth: Int = 2): ProjectGraph!
     record(id: ID!): RecordLookup!
 
     memory(id: ID!): MemoryRecord!
@@ -377,6 +379,24 @@ const typeDefs = `#graphql
     events: Int!
   }
 
+  type GraphNode {
+    id: ID!
+    kind: String!
+    title: String!
+    status: String
+  }
+
+  type GraphEdge {
+    from: ID!
+    to: ID!
+    relation: String!
+  }
+
+  type ProjectGraph {
+    nodes: [GraphNode!]!
+    edges: [GraphEdge!]!
+  }
+
   type ProjectDeleteCounts {
     tasks: Int!
     items: Int!
@@ -671,6 +691,8 @@ const resolvers = {
       (await callTool<Row>(context, "project.get", requireOne(cleanInput(args), ["id", "slug"], "project"))).project,
     projectSummary: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.summary", cleanInput(args)),
+    projectGraph: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await projectGraphQuery(context, cleanInput(args)),
     record: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await recordQuery(context, String(args.id)),
     memory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -859,6 +881,22 @@ async function pageQuery(
 ): Promise<Row> {
   try {
     return await context.service.graphqlPage(pageName, input, context.requestContext);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new GraphQLError(error.message, {
+        extensions: {
+          code: error.code,
+          details: error.details
+        }
+      });
+    }
+    throw error;
+  }
+}
+
+async function projectGraphQuery(context: GatewayGraphqlContext, input: Row): Promise<Row> {
+  try {
+    return await context.service.graphqlProjectGraph(input, context.requestContext);
   } catch (error) {
     if (error instanceof AppError) {
       throw new GraphQLError(error.message, {

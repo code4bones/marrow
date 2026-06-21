@@ -96,6 +96,21 @@ try {
   );
   const linkId = linkCreated.createLink.id;
   assert(linkId.startsWith("L-"), "GraphQL createLink did not return an L-* link.");
+  const dependencyCreated = await graphql<{ createTask: { id: string; dependsOn: string[] } }>(
+    `mutation CreateDependentTask($task: CreateTaskInput!) {
+      createTask(input: $task) { id dependsOn }
+    }`,
+    {
+      task: {
+        project: projectId,
+        title: "Gateway GraphQL smoke dependent task",
+        dependsOn: [taskId],
+        priority: 2
+      }
+    }
+  );
+  const dependentTaskId = dependencyCreated.createTask.id;
+  assert(dependencyCreated.createTask.dependsOn.includes(taskId), "GraphQL createTask did not persist dependsOn.");
 
   const data = await graphql<{
     project: { id: string; slug: string; title: string };
@@ -131,6 +146,35 @@ try {
   assert(data.projectSummary.counts.tasks >= 1, "GraphQL projectSummary did not report task count.");
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
   console.log("ok - graphql project explorer queries");
+
+  const graph = await graphql<{
+    projectGraph: {
+      nodes: Array<{ id: string; kind: string; title: string; status: string | null }>;
+      edges: Array<{ from: string; to: string; relation: string }>;
+    };
+  }>(
+    `query ProjectGraph($projectId: ID!) {
+      projectGraph(projectId: $projectId, depth: 2) {
+        nodes { id kind title status }
+        edges { from to relation }
+      }
+    }`,
+    { projectId }
+  );
+  const graphNodeIds = graph.projectGraph.nodes.map((node) => node.id);
+  assert(graphNodeIds.includes(projectId), "GraphQL projectGraph missed project node.");
+  assert(graphNodeIds.includes(taskId), "GraphQL projectGraph missed task node.");
+  assert(graphNodeIds.includes(dependentTaskId), "GraphQL projectGraph missed dependent task node.");
+  assert(graphNodeIds.includes(memoryId), "GraphQL projectGraph missed memory node.");
+  assert(
+    graph.projectGraph.edges.some((edge) => edge.from === memoryId && edge.to === taskId && edge.relation === "documents"),
+    "GraphQL projectGraph missed link edge."
+  );
+  assert(
+    graph.projectGraph.edges.some((edge) => edge.from === taskId && edge.to === dependentTaskId && edge.relation === "blocks"),
+    "GraphQL projectGraph missed task dependency edge."
+  );
+  console.log("ok - graphql project graph query");
 
   const recordNavigation = await graphql<{
     taskRecord: { kind: string; record: { __typename: string; id: string; title: string; scope: string | null } };

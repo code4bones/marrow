@@ -13,6 +13,19 @@ import { defaultGatewayOutputSchema, gatewayToolCanonicalName, gatewayToolSpecs 
 
 type Row = Record<string, unknown>;
 
+type GraphNode = {
+  id: string;
+  kind: string;
+  title: string;
+  status: string | null;
+};
+
+type GraphEdge = {
+  from: string;
+  to: string;
+  relation: string;
+};
+
 export interface GatewayRequestContext {
   clientId?: string;
   clientLabel?: string;
@@ -264,6 +277,12 @@ export class PgToolService {
     const requestContext = normalizeContext(context);
     await this.touchClient(requestContext, { cleanupAnonymous: true });
     return this.recordLookup(String(id));
+  }
+
+  async graphqlProjectGraph(input: unknown, context: GatewayRequestContext = {}): Promise<Row> {
+    const requestContext = normalizeContext(context);
+    await this.touchClient(requestContext, { cleanupAnonymous: true });
+    return this.projectGraph((input ?? {}) as Row, requestContext);
   }
 
   async close(): Promise<void> {
@@ -2532,6 +2551,146 @@ export class PgToolService {
     );
   }
 
+  private async projectGraph(input: Row, context?: NormalizedGatewayRequestContext) {
+    const projectId = typeof input.projectId === "string" ? input.projectId.trim() : "";
+    if (!projectId) {
+      throw new AppError("VALIDATION_ERROR", "projectGraph requires projectId.", { input });
+    }
+
+    const project = await this.resolveProject(projectId, context);
+    const depth = boundedInteger(input.depth, 2, 1, 5);
+    const nodes = new Map<string, GraphNode>();
+    const edges = new Map<string, GraphEdge>();
+
+    const addNode = (node: GraphNode) => {
+      nodes.set(node.id, node);
+    };
+    const addEdge = (edge: GraphEdge) => {
+      if (!edge.from || !edge.to || !edge.relation) {
+        return;
+      }
+      edges.set(`${edge.from}\0${edge.to}\0${edge.relation}`, edge);
+    };
+
+    addNode(graphNodeOut("PROJECT", project));
+
+    const [items, tasks, decisions, artifacts, events] = await Promise.all([
+      this.db("items").select("id", "title", "status", "type", "project_id").where({ project_id: project.id }),
+      this.db("tasks").select("id", "title", "status", "project_id", "depends_on").where({ project_id: project.id }),
+      this.db("decisions").select("id", "title", "status", "project_id", "supersedes_id").where({ project_id: project.id }),
+      this.db("artifacts").select("id", "title", "status", "project_id", "path").where({ project_id: project.id }),
+      this.db("events").select("id", "type", "title", "project_id", "related_id").where({ project_id: project.id })
+    ]);
+
+    for (const row of items) {
+      addNode(graphNodeOut("MEMORY", row));
+    }
+    for (const row of tasks) {
+      addNode(graphNodeOut("TASK", row));
+      for (const dependencyId of stringArray(row.depends_on)) {
+        addEdge({ from: dependencyId, to: String(row.id), relation: "blocks" });
+      }
+    }
+    for (const row of decisions) {
+      addNode(graphNodeOut("DECISION", row));
+      const supersedesId = stringOrNull(row.supersedes_id);
+      if (supersedesId) {
+        addEdge({ from: String(row.id), to: supersedesId, relation: "supersedes" });
+      }
+    }
+    for (const row of artifacts) {
+      addNode(graphNodeOut("ARTIFACT", row));
+    }
+    for (const row of events) {
+      addNode(graphNodeOut("EVENT", row));
+      const relatedId = stringOrNull(row.related_id);
+      if (relatedId) {
+        addEdge({ from: String(row.id), to: relatedId, relation: "related" });
+      }
+    }
+
+    for (let level = 1; level <= depth; level += 1) {
+      const linkRows = await this.projectGraphLinkRows(project.id, Array.from(nodes.keys()));
+      for (const link of linkRows) {
+        addEdge({
+          from: String(link.from_id),
+          to: String(link.to_id),
+          relation: String(link.relation)
+        });
+      }
+
+      const missingEndpointIds = this.missingGraphEndpointIds(edges, nodes);
+      if (level >= depth || missingEndpointIds.length === 0) {
+        break;
+      }
+
+      const expandedNodes = await this.graphNodesByIds(missingEndpointIds);
+      if (expandedNodes.length === 0) {
+        break;
+      }
+      for (const node of expandedNodes) {
+        addNode(node);
+      }
+    }
+
+    return {
+      nodes: Array.from(nodes.values()).sort((left, right) => graphNodeSortKey(left).localeCompare(graphNodeSortKey(right))),
+      edges: Array.from(edges.values())
+        .filter((edge) => nodes.has(edge.from) && nodes.has(edge.to))
+        .sort((left, right) => graphEdgeSortKey(left).localeCompare(graphEdgeSortKey(right)))
+    };
+  }
+
+  private async projectGraphLinkRows(projectId: string, ids: string[]): Promise<Row[]> {
+    return await this.db("links")
+      .select("id", "project_id", "from_id", "to_id", "relation")
+      .where((builder) => {
+        builder.where("project_id", projectId);
+        if (ids.length > 0) {
+          builder.orWhereIn("from_id", ids).orWhereIn("to_id", ids);
+        }
+      })
+      .orderBy("created_at", "desc");
+  }
+
+  private missingGraphEndpointIds(edges: Map<string, GraphEdge>, nodes: Map<string, GraphNode>): string[] {
+    const ids = new Set<string>();
+    for (const edge of edges.values()) {
+      if (!nodes.has(edge.from)) {
+        ids.add(edge.from);
+      }
+      if (!nodes.has(edge.to)) {
+        ids.add(edge.to);
+      }
+    }
+    return Array.from(ids).sort();
+  }
+
+  private async graphNodesByIds(ids: string[]): Promise<GraphNode[]> {
+    const uniqueIds = Array.from(new Set(ids.filter((id) => id.length > 0)));
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const [projects, items, tasks, decisions, artifacts, events] = await Promise.all([
+      this.db("projects").select("id", "slug", "title", "status").whereIn("id", uniqueIds),
+      this.db("items").select("id", "title", "status", "type", "project_id").whereIn("id", uniqueIds),
+      this.db("tasks").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
+      this.db("decisions").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
+      this.db("artifacts").select("id", "title", "status", "project_id", "path").whereIn("id", uniqueIds),
+      this.db("events").select("id", "type", "title", "project_id").whereIn("id", uniqueIds)
+    ]);
+
+    return [
+      ...projects.map((row) => graphNodeOut("PROJECT", row)),
+      ...items.map((row) => graphNodeOut("MEMORY", row)),
+      ...tasks.map((row) => graphNodeOut("TASK", row)),
+      ...decisions.map((row) => graphNodeOut("DECISION", row)),
+      ...artifacts.map((row) => graphNodeOut("ARTIFACT", row)),
+      ...events.map((row) => graphNodeOut("EVENT", row))
+    ];
+  }
+
   private async preflight(input: Row) {
     const task = await this.getTask(String(input.taskId));
     const project = await this.getProject({ id: task.projectId });
@@ -3680,6 +3839,42 @@ function clientOut(row: Row) {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function graphNodeOut(kind: string, row: Row): GraphNode {
+  return {
+    id: String(row.id),
+    kind,
+    title: graphNodeTitle(kind, row),
+    status: stringOrNull(row.status)
+  };
+}
+
+function graphNodeTitle(kind: string, row: Row): string {
+  const title = stringOrNull(row.title);
+  if (title) {
+    return title;
+  }
+  if (kind === "PROJECT") {
+    return stringOrNull(row.slug) ?? String(row.id);
+  }
+  if (kind === "ARTIFACT") {
+    return stringOrNull(row.path) ?? String(row.id);
+  }
+  if (kind === "EVENT") {
+    return stringOrNull(row.type) ?? String(row.id);
+  }
+  return String(row.id);
+}
+
+function graphNodeSortKey(node: GraphNode): string {
+  const order = ["PROJECT", "TASK", "DECISION", "MEMORY", "ARTIFACT", "EVENT"];
+  const index = order.includes(node.kind) ? order.indexOf(node.kind) : order.length;
+  return `${String(index).padStart(2, "0")}:${node.id}`;
+}
+
+function graphEdgeSortKey(edge: GraphEdge): string {
+  return `${edge.from}:${edge.relation}:${edge.to}`;
 }
 
 function recordLookupTables(id: string): string[] {

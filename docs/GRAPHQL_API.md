@@ -230,6 +230,31 @@ user typed a search query and ranked excerpts are useful. Use `linksPage` for
 the raw `L-*` table, or `links(id: "...")` to show relationships around one
 record.
 
+Project graph:
+
+```graphql
+query ProjectGraph($projectId: ID!) {
+  projectGraph(projectId: $projectId, depth: 2) {
+    nodes {
+      id
+      kind
+      title
+      status
+    }
+    edges {
+      from
+      to
+      relation
+    }
+  }
+}
+```
+
+`projectGraph` returns project-scoped nodes plus real related endpoints up to
+the requested depth. Edges come from stored links, task dependencies
+(`blocks`), decision supersession (`supersedes`), and event related IDs
+(`related`). Click any node with `record(id)` to open the shared detail drawer.
+
 Search result tables also have paginated variants:
 
 ```graphql
