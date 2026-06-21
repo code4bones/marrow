@@ -85,6 +85,7 @@ const typeDefs = `#graphql
     tasks(project: String!, status: String, milestone: String, limit: Int): [Task!]!
     tasksPage(project: String!, status: String, milestone: String, pagination: PaginationInput): PaginatedTasks!
     task(id: ID!): Task!
+    taskClaims(taskId: ID!, includeInactive: Boolean): [TaskClaim!]!
     nextTask(project: String!): Task
 
     decisions(project: String, includeCommon: Boolean, status: String, limit: Int): [Decision!]!
@@ -173,7 +174,13 @@ const typeDefs = `#graphql
     deleteMemory(id: ID!, reason: String): DeleteMemoryResult!
 
     createTask(input: CreateTaskInput!): Task!
-    updateTaskStatus(id: ID!, status: String!, note: String): Task!
+    updateTaskStatus(id: ID!, status: String!, note: String, force: Boolean, reason: String): Task!
+    claimTask(input: TaskClaimInput!): TaskClaimResult!
+    heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
+    completeTaskClaim(claimId: ID!, note: String): TaskClaimResult!
+    releaseTaskClaim(claimId: ID!, note: String): TaskClaimResult!
+    completeTask(id: ID!, claimId: ID, acceptanceEvidence: String, force: Boolean, reason: String): TaskCompleteResult!
+    addTaskNote(input: TaskNoteInput!): TaskNoteResult!
     deleteTask(id: ID!, reason: String): DeleteTaskResult!
 
     recordDecision(input: RecordDecisionInput!): Decision!
@@ -252,6 +259,23 @@ const typeDefs = `#graphql
     forbiddenFiles: [String!]
     dependsOn: [String!]
     notes: String
+  }
+
+  input TaskClaimInput {
+    taskId: ID!
+    role: String
+    scope: String
+    note: String
+    leaseSeconds: Int
+  }
+
+  input TaskNoteInput {
+    taskId: ID!
+    type: String
+    title: String
+    body: String!
+    tags: [String!]
+    relation: String
   }
 
   input CreateMemoryInput {
@@ -399,6 +423,7 @@ const typeDefs = `#graphql
 
   type ProjectDeleteCounts {
     tasks: Int!
+    taskClaims: Int
     items: Int!
     decisions: Int!
     links: Int!
@@ -458,6 +483,7 @@ const typeDefs = `#graphql
     forbiddenFiles: [String!]!
     dependsOn: [String!]!
     notes: String
+    activeClaimCount: Int!
     createdAt: String
     updatedAt: String
   }
@@ -465,6 +491,41 @@ const typeDefs = `#graphql
   type PaginatedTasks {
     items: [Task!]!
     pageInfo: PageInfo!
+  }
+
+  type TaskClaim {
+    id: ID!
+    taskId: String!
+    projectId: String!
+    clientId: String!
+    clientLabel: String
+    clientKind: String
+    role: String!
+    scope: String
+    status: String!
+    leaseExpiresAt: String!
+    heartbeatAt: String!
+    note: String
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type TaskClaimResult {
+    claim: TaskClaim!
+    task: Task
+    event: Event
+  }
+
+  type TaskCompleteResult {
+    task: Task!
+    completedClaim: TaskClaim
+    event: Event
+  }
+
+  type TaskNoteResult {
+    item: MemoryRecord!
+    link: Link!
+    event: Event!
   }
 
   type DeleteTaskResult {
@@ -709,6 +770,8 @@ const resolvers = {
       await pageQuery(context, "tasks", cleanInput(args)),
     task: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.get", cleanInput(args))).task,
+    taskClaims: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.claims", cleanInput(args))).claims,
     nextTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.next", cleanInput(args))).task,
     decisions: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -771,6 +834,18 @@ const resolvers = {
       (await callTool<Row>(context, "task.create", cleanInput(args.input as Row))).task,
     updateTaskStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
+    claimTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.claim", cleanInput(args.input as Row)),
+    heartbeatTaskClaim: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.claim_heartbeat", cleanInput(args))).claim,
+    completeTaskClaim: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.claim_complete", cleanInput(args)),
+    releaseTaskClaim: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.release", cleanInput(args)),
+    completeTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.complete", cleanInput(args)),
+    addTaskNote: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "task.add_note", cleanInput(args.input as Row)),
     deleteTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "task.delete", cleanInput(args)),
     recordDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

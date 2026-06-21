@@ -147,6 +147,96 @@ try {
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
   console.log("ok - graphql project explorer queries");
 
+  const claimTaskCreated = await graphql<{ createTask: { id: string; status: string; activeClaimCount: number } }>(
+    `mutation ClaimTask($task: CreateTaskInput!) {
+      createTask(input: $task) { id status activeClaimCount }
+    }`,
+    {
+      task: {
+        project: projectId,
+        title: "Gateway GraphQL smoke claimed task",
+        acceptance: "Claim flow can complete this task.",
+        priority: 3
+      }
+    }
+  );
+  const claimTaskId = claimTaskCreated.createTask.id;
+  assert(claimTaskCreated.createTask.activeClaimCount === 0, "GraphQL createTask returned unexpected activeClaimCount.");
+  const claimed = await graphql<{
+    claimTask: { claim: { id: string; status: string; role: string }; task: { id: string; status: string; activeClaimCount: number } };
+  }>(
+    `mutation ClaimTaskFlow($input: TaskClaimInput!) {
+      claimTask(input: $input) {
+        claim { id status role }
+        task { id status activeClaimCount }
+      }
+    }`,
+    {
+      input: {
+        taskId: claimTaskId,
+        role: "test",
+        scope: "GraphQL smoke claim flow",
+        leaseSeconds: 600
+      }
+    }
+  );
+  const claimId = claimed.claimTask.claim.id;
+  assert(claimed.claimTask.claim.status === "active", "GraphQL claimTask did not create an active claim.");
+  assert(claimed.claimTask.task.status === "doing", "GraphQL claimTask did not move todo task to doing.");
+  assert(claimed.claimTask.task.activeClaimCount === 1, "GraphQL claimTask did not increment activeClaimCount.");
+  const heartbeat = await graphql<{ heartbeatTaskClaim: { id: string; status: string; note: string | null } }>(
+    `mutation ClaimHeartbeat($claimId: ID!) {
+      heartbeatTaskClaim(claimId: $claimId, leaseSeconds: 600, note: "GraphQL smoke heartbeat.") {
+        id
+        status
+        note
+      }
+    }`,
+    { claimId }
+  );
+  assert(heartbeat.heartbeatTaskClaim.status === "active", "GraphQL heartbeatTaskClaim did not keep claim active.");
+  assert(heartbeat.heartbeatTaskClaim.note?.includes("heartbeat"), "GraphQL heartbeatTaskClaim did not append note.");
+  const taskNote = await graphql<{ addTaskNote: { item: { id: string; type: string }; link: { fromId: string; toId: string; relation: string } } }>(
+    `mutation AddTaskNote($input: TaskNoteInput!) {
+      addTaskNote(input: $input) {
+        item { id type }
+        link { fromId toId relation }
+      }
+    }`,
+    {
+      input: {
+        taskId: claimTaskId,
+        type: "test_result",
+        body: "GraphQL smoke verified task claim note creation."
+      }
+    }
+  );
+  assert(taskNote.addTaskNote.item.id.startsWith("I-"), "GraphQL addTaskNote did not create memory item.");
+  assert(taskNote.addTaskNote.link.toId === claimTaskId, "GraphQL addTaskNote did not link note to task.");
+  assert(taskNote.addTaskNote.link.relation === "test_result_for", "GraphQL addTaskNote used wrong default relation.");
+  const claims = await graphql<{ taskClaims: Array<{ id: string; status: string }> }>(
+    `query TaskClaims($taskId: ID!) {
+      taskClaims(taskId: $taskId) { id status }
+    }`,
+    { taskId: claimTaskId }
+  );
+  assert(claims.taskClaims.some((claim) => claim.id === claimId), "GraphQL taskClaims missed active claim.");
+  const completedClaimTask = await graphql<{
+    completeTask: { task: { id: string; status: string; activeClaimCount: number }; completedClaim: { id: string; status: string } | null };
+  }>(
+    `mutation CompleteClaimedTask($taskId: ID!, $claimId: ID!) {
+      completeTask(id: $taskId, claimId: $claimId, acceptanceEvidence: "GraphQL smoke claim flow passed.") {
+        task { id status activeClaimCount }
+        completedClaim { id status }
+      }
+    }`,
+    { taskId: claimTaskId, claimId }
+  );
+  assert(completedClaimTask.completeTask.task.status === "done", "GraphQL completeTask did not close claimed task.");
+  assert(completedClaimTask.completeTask.task.activeClaimCount === 0, "GraphQL completeTask left active claims.");
+  assert(completedClaimTask.completeTask.completedClaim?.status === "completed", "GraphQL completeTask did not complete claim.");
+  console.log("ok - graphql task claim flow");
+
   const graph = await graphql<{
     projectGraph: {
       nodes: Array<{ id: string; kind: string; title: string; status: string | null }>;

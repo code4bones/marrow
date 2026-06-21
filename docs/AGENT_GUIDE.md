@@ -132,10 +132,12 @@ project.resolve, when repository identity is available
 project.current
 task.next or task.get
 preflight
-task.update_status(status="doing")
+task.claim(role=<your role>, scope=<your part>)
 implement
 validate
-task.update_status(status="done")
+task.add_note, when you produced useful implementation/test/review context
+task.claim_complete(claimId=<claim id>)
+task.complete, only when acceptance is satisfied and no other active claims remain
 event.record, if useful
 memory.create / decision.record, only for durable knowledge
 ```
@@ -163,6 +165,32 @@ project.current
 
 Ask the user only if multiple plausible projects exist or the project identity
 is unclear.
+
+## Task Claims
+
+Use `task.claim` before implementation work on a recorded task. A claim is a
+time-bounded lease for your part of the work, not ownership of the whole task.
+Keep the returned `claim.id`; later calls use that handle even if the agent does
+not know its own stable client id.
+
+Use:
+
+```text
+task.claim(role="backend"|"frontend"|"test"|"docs"|"review"|"devops"|"coordination"|"other")
+task.claim_heartbeat(claimId=<claim id>)
+task.claim_complete(claimId=<claim id>)
+task.release(claimId=<claim id>)
+task.claims(taskId=<task id>)
+```
+
+Do not close a task just because your own claim is complete. Use
+`task.complete` only when the task acceptance criteria are satisfied and no
+other active claims remain. `task.complete` refuses to close a task with active
+claims unless `force=true` is supplied with a reason or acceptance evidence.
+
+Use `task.add_note` for durable task traces such as implementation notes,
+handoffs, test results, and review notes. It creates an `I-*` item and links it
+to the task; do not turn `tasks.notes` into a chat log.
 
 ## Preflight Discipline
 
@@ -452,7 +480,7 @@ project.current
 task.next
 context.pack(taskId=<task id>)
 preflight
-task.update_status(status="doing")
+task.claim
 ```
 
 Find previous knowledge:
@@ -483,7 +511,9 @@ failed_attempt.record
 Finish task:
 
 ```text
-task.update_status(status="done")
+task.add_note, if useful durable task context was produced
+task.claim_complete
+task.complete, only when the whole task is ready to close
 event.record, if important
 decision.record, if a durable decision was made
 decision.supersede, if replacing an old decision

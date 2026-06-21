@@ -33,5 +33,7 @@ export const nextTaskSchema = z.object({
 export const updateTaskStatusSchema = z.object({
   id: z.string().min(1),
   status: taskStatusSchema,
-  note: z.string().optional()
+  note: z.string().optional(),
+  force: z.boolean().optional(),
+  reason: z.string().optional()
 });

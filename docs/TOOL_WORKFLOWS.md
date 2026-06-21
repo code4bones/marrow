@@ -88,7 +88,7 @@ Use this before and during implementation.
 project.current
 task.get
 preflight
-task.update_status(status="doing")
+task.claim(role=<your role>, scope=<your part>)
 ```
 
 Then work only inside the task scope.
@@ -96,7 +96,9 @@ Then work only inside the task scope.
 After implementation:
 
 ```text
-task.update_status(status="done")
+task.add_note, if durable implementation/test/review context was produced
+task.claim_complete(claimId=<claim id>)
+task.complete, only when acceptance is satisfied and no active claims remain
 event.record, if important history is not already captured
 memory.upsert, if new reusable context should be preserved
 failed_attempt.record, if a failed attempt should be preserved
@@ -390,12 +392,14 @@ project.current
 task.next
 context.pack(taskId=<task id>, mode="brief"|"normal")
 preflight
-task.update_status(status="doing")
+task.claim(role=<your role>, scope=<your part>)
 memory.search, if more context is needed
 decision.get or memory.get, if ids from preflight/knownFaults need full detail
 implement
 npm run lint / typecheck / test / build, as appropriate
-task.update_status(status="done")
+task.add_note, if durable implementation/test/review context was produced
+task.claim_complete(claimId=<claim id>)
+task.complete, only when acceptance is satisfied and no active claims remain
 memory.upsert / decision.record / decision.supersede / event.record, if new durable knowledge exists
 handoff.create, if another agent or later session may continue the work
 ```

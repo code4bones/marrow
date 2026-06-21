@@ -62,6 +62,7 @@ Core MVP tables:
 * `projects`
 * `items`
 * `tasks`
+* `task_claims`
 * `decisions`
 * `links`
 * `events`
@@ -279,6 +280,64 @@ Examples:
 2. lowest priority number first
 3. oldest `created_at` first
 
+## `task_claims`
+
+Stores collaborative task leases. A claim means one agent is actively working
+on a part of a task; it is not ownership of the whole task.
+
+```sql
+CREATE TABLE task_claims (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_label TEXT,
+  client_kind TEXT,
+  role TEXT NOT NULL DEFAULT 'other',
+  scope TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  lease_expires_at TIMESTAMPTZ NOT NULL,
+  heartbeat_at TIMESTAMPTZ NOT NULL,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id),
+  FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+```
+
+Allowed statuses:
+
+```text
+active
+released
+completed
+expired
+cancelled
+```
+
+Allowed roles:
+
+```text
+backend
+frontend
+test
+docs
+review
+devops
+coordination
+other
+```
+
+Agents do not need to know their own permanent identifier. `task.claim` returns
+`claim.id`, and subsequent heartbeat/complete/release calls use that claim id.
+`client_id` is recorded from gateway request context when available.
+
+Tasks are not automatically closed when active claim count reaches zero.
+Closing a task is an explicit `task.complete` operation and is refused while
+other active claims exist unless `force=true` is supplied with a reason or
+acceptance evidence.
+
 ## `decisions`
 
 Stores architectural, product, workflow, and project decisions.
@@ -382,6 +441,10 @@ task.created
 task.started
 task.completed
 task.blocked
+task.claimed
+task.claim_completed
+task.claim_released
+task.note_added
 decision.recorded
 attempt.failed
 item.created

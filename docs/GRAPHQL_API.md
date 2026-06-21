@@ -194,7 +194,7 @@ Paginated table fields are available for the main PMemUI grids:
 ```graphql
 query ProjectTables($project: String!) {
   tasksPage(project: $project, pagination: { limit: 25, offset: 0 }) {
-    items { id title status priority updatedAt }
+    items { id title status priority activeClaimCount updatedAt }
     pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
   }
 
@@ -229,6 +229,31 @@ Use `memoryItemsPage` for the raw `I-*` table. Use `memorySearchPage` when the
 user typed a search query and ranked excerpts are useful. Use `linksPage` for
 the raw `L-*` table, or `links(id: "...")` to show relationships around one
 record.
+
+Task claims:
+
+```graphql
+query TaskClaims($taskId: ID!) {
+  task(id: $taskId) {
+    id
+    status
+    activeClaimCount
+  }
+  taskClaims(taskId: $taskId, includeInactive: true) {
+    id
+    role
+    scope
+    status
+    clientLabel
+    leaseExpiresAt
+    heartbeatAt
+  }
+}
+```
+
+Use `activeClaimCount` in task tables to show collaborative activity without
+loading full claim history for every row. Open the task detail drawer and call
+`taskClaims` when the user needs to see who is working on the task.
 
 Project graph:
 
@@ -362,6 +387,49 @@ mutation TaskStatus($id: ID!) {
   }
 }
 ```
+
+Task claim lifecycle:
+
+```graphql
+mutation ClaimTask($taskId: ID!) {
+  claimTask(input: {
+    taskId: $taskId
+    role: "frontend"
+    scope: "Build task dependency flowchart"
+    leaseSeconds: 3600
+  }) {
+    claim { id status role leaseExpiresAt }
+    task { id status activeClaimCount }
+  }
+}
+
+mutation AddTaskTrace($taskId: ID!) {
+  addTaskNote(input: {
+    taskId: $taskId
+    type: "implementation_note"
+    body: "Implemented the flowchart view and wired record(id) click-through."
+  }) {
+    item { id type title }
+    link { id fromId toId relation }
+  }
+}
+
+mutation CompleteClaimedTask($taskId: ID!, $claimId: ID!) {
+  completeTask(
+    id: $taskId
+    claimId: $claimId
+    acceptanceEvidence: "Frontend smoke passed and no active claims remain."
+  ) {
+    task { id status activeClaimCount }
+    completedClaim { id status }
+    event { id type }
+  }
+}
+```
+
+`completeTask` does not auto-close from claim count. It refuses to close while
+other active claims remain unless `force=true` is supplied with a reason or
+acceptance evidence.
 
 Task deletion:
 

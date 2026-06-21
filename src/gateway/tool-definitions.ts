@@ -131,6 +131,38 @@ const contextChangedSinceSchema = z.object({
 const taskDeleteSchema = getTaskSchema.extend({
   reason: z.string().optional()
 });
+const taskClaimRoleSchema = z.enum(["backend", "frontend", "test", "docs", "review", "devops", "coordination", "other"]);
+const taskClaimSchema = z.object({
+  taskId: z.string().min(1),
+  role: taskClaimRoleSchema.optional(),
+  scope: z.string().min(1).optional(),
+  note: z.string().optional(),
+  leaseSeconds: z.number().int().min(60).max(86_400).optional()
+});
+const taskClaimIdSchema = z.object({
+  claimId: z.string().min(1),
+  note: z.string().optional(),
+  leaseSeconds: z.number().int().min(60).max(86_400).optional()
+});
+const taskClaimsSchema = z.object({
+  taskId: z.string().min(1),
+  includeInactive: z.boolean().optional()
+});
+const taskCompleteSchema = z.object({
+  id: z.string().min(1),
+  claimId: z.string().min(1).optional(),
+  acceptanceEvidence: z.string().min(1).optional(),
+  force: z.boolean().optional(),
+  reason: z.string().optional()
+});
+const taskNoteSchema = z.object({
+  taskId: z.string().min(1),
+  type: z.enum(["implementation_note", "handoff", "test_result", "review_note", "coordination_note"]).optional(),
+  title: z.string().min(1).optional(),
+  body: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+  relation: z.string().min(1).optional()
+});
 const idReasonSchema = z.object({
   id: z.string().min(1),
   reason: z.string().optional()
@@ -400,8 +432,37 @@ const artifactReadTextSchemaOut = artifactSchema.extend({
   outline: z.array(markdownOutlineItemSchema)
 });
 const eventLikeSchema = looseRecordSchema.nullable();
+const taskClaimOutSchema = z
+  .object({
+    id: z.string(),
+    taskId: z.string(),
+    projectId: z.string(),
+    clientId: z.string(),
+    clientLabel: z.string().nullable(),
+    clientKind: z.string().nullable(),
+    role: z.string(),
+    scope: z.string().nullable(),
+    status: z.string(),
+    leaseExpiresAt: z.string(),
+    heartbeatAt: z.string(),
+    note: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string()
+  })
+  .catchall(z.unknown());
+const taskClaimResultSchema = z.object({
+  claim: taskClaimOutSchema,
+  task: looseRecordSchema.optional(),
+  event: eventLikeSchema.optional()
+});
+const taskNoteResultSchema = z.object({
+  item: looseRecordSchema,
+  link: looseRecordSchema,
+  event: eventLikeSchema
+});
 const deleteCountsSchema = z.object({
   tasks: z.number(),
+  taskClaims: z.number().optional(),
   items: z.number(),
   decisions: z.number(),
   links: z.number(),
@@ -757,7 +818,59 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "task.delete",
     description: "Hard-delete a shared task by id. Use only after an explicit user request or smoke-test cleanup.",
     schema: taskDeleteSchema,
-    outputSchema: output(z.object({ deletedTask: looseRecordSchema, event: eventLikeSchema })),
+    outputSchema: output(deleteRecordSchema.extend({ deletedTask: looseRecordSchema })),
+    access: "write"
+  },
+  {
+    name: "task.claim",
+    description:
+      "Claim a task with a time-bounded lease for collaborative work. Returns claim.id; agents can use that handle even when they do not know their own client id.",
+    schema: taskClaimSchema,
+    outputSchema: output(taskClaimResultSchema),
+    access: "write"
+  },
+  {
+    name: "task.claim_heartbeat",
+    description: "Extend a live task claim lease by claimId. Use while actively working on a claimed task.",
+    schema: taskClaimIdSchema,
+    outputSchema: output(z.object({ claim: taskClaimOutSchema })),
+    access: "write"
+  },
+  {
+    name: "task.claim_complete",
+    description:
+      "Mark one task claim completed by claimId. This records that one agent finished its part; it does not close the task.",
+    schema: taskClaimIdSchema.omit({ leaseSeconds: true }),
+    outputSchema: output(taskClaimResultSchema),
+    access: "write"
+  },
+  {
+    name: "task.release",
+    description: "Release one task claim by claimId when the agent stops working without completing that part.",
+    schema: taskClaimIdSchema.omit({ leaseSeconds: true }),
+    outputSchema: output(taskClaimResultSchema),
+    access: "write"
+  },
+  {
+    name: "task.claims",
+    description: "List active or historical claims for a task so agents and UI can see who is working on what.",
+    schema: taskClaimsSchema,
+    outputSchema: output(z.object({ claims: z.array(taskClaimOutSchema) }))
+  },
+  {
+    name: "task.complete",
+    description:
+      "Close a task as done. Refuses while other active claims exist unless force=true with a reason or acceptance evidence.",
+    schema: taskCompleteSchema,
+    outputSchema: output(z.object({ task: looseRecordSchema, completedClaim: taskClaimOutSchema.nullable().optional(), event: eventLikeSchema })),
+    access: "write"
+  },
+  {
+    name: "task.add_note",
+    description:
+      "Create a task-linked memory item (I-*) for implementation notes, handoffs, test results, reviews, or coordination traces.",
+    schema: taskNoteSchema,
+    outputSchema: output(taskNoteResultSchema),
     access: "write"
   },
   {

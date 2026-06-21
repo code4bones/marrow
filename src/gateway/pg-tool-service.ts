@@ -26,6 +26,9 @@ type GraphEdge = {
   relation: string;
 };
 
+const taskClaimRoles = ["backend", "frontend", "test", "docs", "review", "devops", "coordination", "other"] as const;
+const defaultTaskClaimLeaseSeconds = 60 * 60;
+
 export interface GatewayRequestContext {
   clientId?: string;
   clientLabel?: string;
@@ -193,6 +196,20 @@ export class PgToolService {
           return ok("Task loaded.", { task: await this.getTask(String(parsed.id)) });
         case "task.delete":
           return ok("Task deleted.", await this.deleteTask(parsed, requestContext));
+        case "task.claim":
+          return ok("Task claimed.", await this.claimTask(parsed, requestContext));
+        case "task.claim_heartbeat":
+          return ok("Task claim heartbeat recorded.", { claim: await this.heartbeatTaskClaim(parsed, requestContext) });
+        case "task.claim_complete":
+          return ok("Task claim completed.", await this.completeTaskClaim(parsed, requestContext));
+        case "task.release":
+          return ok("Task claim released.", await this.releaseTaskClaim(parsed, requestContext));
+        case "task.claims":
+          return ok("Task claims loaded.", { claims: await this.listTaskClaims(parsed) });
+        case "task.complete":
+          return ok("Task completed.", await this.completeTask(parsed, requestContext));
+        case "task.add_note":
+          return ok("Task note added.", await this.addTaskNote(parsed, requestContext));
         case "task.next":
           return ok("Next task loaded.", { task: await this.nextTask(parsed, requestContext) });
         case "task.update_status":
@@ -916,8 +933,7 @@ export class PgToolService {
   }
 
   private async listOpenProjectTasks(projectId: string, limit: number): Promise<Row[]> {
-    const rows = await this.db("tasks")
-      .select("*")
+    const rows = await this.taskSelectWithActiveClaimCount(this.db("tasks"))
       .where("project_id", projectId)
       .whereIn("status", ["doing", "todo", "blocked"])
       .orderByRaw("case status when 'doing' then 0 when 'todo' then 1 when 'blocked' then 2 else 3 end")
@@ -947,8 +963,9 @@ export class PgToolService {
   }
 
   private async projectDeleteCounts(projectId: string) {
-    const [tasks, items, decisions, links, events, artifacts] = await Promise.all([
+    const [tasks, taskClaims, items, decisions, links, events, artifacts] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
+      this.countQueryRows(this.db("task_claims").where("project_id", projectId)),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
       this.countQueryRows(this.db("decisions").where("project_id", projectId)),
       this.countQueryRows(this.db("links").where("project_id", projectId)),
@@ -957,6 +974,7 @@ export class PgToolService {
     ]);
     return {
       tasks,
+      taskClaims,
       items,
       decisions,
       links,
@@ -989,6 +1007,14 @@ export class PgToolService {
         hasPreviousPage: page.offset > 0
       }
     };
+  }
+
+  private taskSelectWithActiveClaimCount(query: Knex.QueryBuilder): Knex.QueryBuilder {
+    return query.select("tasks.*").select(
+      this.db.raw(
+        "(select count(*)::int from task_claims where task_claims.task_id = tasks.id and task_claims.status = 'active' and task_claims.lease_expires_at > now()) as active_claim_count"
+      )
+    );
   }
 
   private async recordLookup(id: string): Promise<Row> {
@@ -2050,7 +2076,7 @@ export class PgToolService {
 
   private async listTasks(input: Row, context?: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
-    let query = this.db("tasks").select("*").where("project_id", project.id);
+    let query = this.taskSelectWithActiveClaimCount(this.db("tasks")).where("project_id", project.id);
     if (input.status) {
       query = query.andWhere("status", String(input.status));
     }
@@ -2069,11 +2095,11 @@ export class PgToolService {
     if (input.milestone) {
       base.andWhere("milestone", String(input.milestone));
     }
-    return this.pageRows(base, input, (query) => query.select("*").orderBy("priority").orderBy("created_at"), taskOut);
+    return this.pageRows(base, input, (query) => this.taskSelectWithActiveClaimCount(query).orderBy("priority").orderBy("created_at"), taskOut);
   }
 
   private async getTask(id: string) {
-    const row = await this.db("tasks").where({ id }).first();
+    const row = await this.taskSelectWithActiveClaimCount(this.db("tasks")).where({ id }).first();
     if (!row) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
@@ -2106,7 +2132,7 @@ export class PgToolService {
 
   private async nextTask(input: Row, context?: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
-    const row = await this.db("tasks")
+    const row = await this.taskSelectWithActiveClaimCount(this.db("tasks"))
       .where({ project_id: project.id, status: "todo" })
       .orderBy("priority")
       .orderBy("created_at")
@@ -2119,6 +2145,17 @@ export class PgToolService {
     const current = await this.db("tasks").where({ id }).first();
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    if (String(input.status) === "done") {
+      return (await this.completeTask(
+        {
+          id,
+          acceptanceEvidence: stringOrNull(input.note) ?? undefined,
+          force: input.force,
+          reason: input.reason
+        },
+        context
+      )).task;
     }
     const note = stringOrNull(input.note);
     const notes = note ? (current.notes ? `${current.notes}\n\n${note}` : note) : current.notes;
@@ -2140,6 +2177,293 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return taskOut(row);
+  }
+
+  private async claimTask(input: Row, context: NormalizedGatewayRequestContext) {
+    const taskId = String(input.taskId);
+    const task = await this.taskRow(taskId);
+    if (["done", "cancelled"].includes(String(task.status))) {
+      throw new AppError("VALIDATION_ERROR", `Task ${taskId} cannot be claimed because it is ${String(task.status)}.`, {
+        taskId,
+        status: task.status
+      });
+    }
+
+    await this.expireTaskClaims(taskId);
+    const now = nowIso();
+    const leaseExpiresAt = taskClaimLeaseExpiresAt(input.leaseSeconds);
+    const row = {
+      id: await this.nextId("task_claims", `TC-${projectKeyFromId(String(task.project_id))}`),
+      task_id: taskId,
+      project_id: String(task.project_id),
+      client_id: context.clientId,
+      client_label: context.clientLabel,
+      client_kind: typeof context.metadata.kind === "string" ? context.metadata.kind : null,
+      role: taskClaimRole(input.role),
+      scope: stringOrNull(input.scope),
+      status: "active",
+      lease_expires_at: leaseExpiresAt,
+      heartbeat_at: now,
+      note: stringOrNull(input.note),
+      ...writeActorFields(context),
+      created_at: now,
+      updated_at: now
+    };
+
+    await this.db.transaction(async (trx) => {
+      await trx("task_claims").insert(row);
+      if (String(task.status) === "todo") {
+        await trx("tasks").where({ id: taskId }).update({
+          status: "doing",
+          updated_by: context.clientId,
+          source_instance_id: context.clientId,
+          updated_at: now,
+          version: Number(task.version ?? 1) + 1
+        });
+      }
+    });
+
+    const event = await this.recordEventForProject(String(task.project_id), {
+      type: "task.claimed",
+      title: `Task claimed: ${String(task.title)}`,
+      body: taskClaimEventBody(row),
+      related_id: taskId
+    }, context);
+    return {
+      claim: taskClaimOut(row),
+      task: await this.getTask(taskId),
+      event
+    };
+  }
+
+  private async heartbeatTaskClaim(input: Row, context: NormalizedGatewayRequestContext) {
+    const claim = await this.activeTaskClaim(String(input.claimId));
+    const now = nowIso();
+    const [row] = await this.db("task_claims")
+      .where({ id: claim.id })
+      .update({
+        lease_expires_at: taskClaimLeaseExpiresAt(input.leaseSeconds),
+        heartbeat_at: now,
+        note: appendText(stringOrNull(claim.note), stringOrNull(input.note)),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: now,
+        version: Number(claim.version ?? 1) + 1
+      })
+      .returning("*");
+    return taskClaimOut(row);
+  }
+
+  private async completeTaskClaim(input: Row, context: NormalizedGatewayRequestContext) {
+    return this.finishTaskClaim(input, "completed", "task.claim_completed", "Task claim completed", context);
+  }
+
+  private async releaseTaskClaim(input: Row, context: NormalizedGatewayRequestContext) {
+    return this.finishTaskClaim(input, "released", "task.claim_released", "Task claim released", context);
+  }
+
+  private async finishTaskClaim(
+    input: Row,
+    status: "completed" | "released",
+    eventType: string,
+    eventTitle: string,
+    context: NormalizedGatewayRequestContext
+  ) {
+    const claim = await this.activeTaskClaim(String(input.claimId));
+    const now = nowIso();
+    const [row] = await this.db("task_claims")
+      .where({ id: claim.id })
+      .update({
+        status,
+        note: appendText(stringOrNull(claim.note), stringOrNull(input.note)),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: now,
+        version: Number(claim.version ?? 1) + 1
+      })
+      .returning("*");
+    const task = await this.getTask(String(row.task_id));
+    const event = await this.recordEventForProject(String(row.project_id), {
+      type: eventType,
+      title: `${eventTitle}: ${String(row.id)}`,
+      body: taskClaimEventBody(row),
+      related_id: String(row.task_id)
+    }, context);
+    return {
+      claim: taskClaimOut(row),
+      task,
+      event
+    };
+  }
+
+  private async listTaskClaims(input: Row) {
+    const taskId = String(input.taskId);
+    await this.assertTaskExists(taskId);
+    await this.expireTaskClaims(taskId);
+    let query = this.db("task_claims").select("*").where({ task_id: taskId });
+    if (input.includeInactive !== true) {
+      query = query.andWhere({ status: "active" }).andWhere("lease_expires_at", ">", nowIso());
+    }
+    const rows = await query
+      .orderByRaw("case status when 'active' then 0 when 'completed' then 1 when 'released' then 2 when 'expired' then 3 else 4 end")
+      .orderBy("updated_at", "desc");
+    return rows.map(taskClaimOut);
+  }
+
+  private async completeTask(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.taskRow(id);
+    let completedClaim: Row | null = null;
+
+    if (input.claimId) {
+      completedClaim = (await this.completeTaskClaim({ claimId: input.claimId, note: input.acceptanceEvidence }, context)).claim;
+    }
+
+    await this.expireTaskClaims(id);
+    const activeClaims = await this.activeTaskClaims(id);
+    const force = input.force === true;
+    if (activeClaims.length > 0 && !force) {
+      throw new AppError(
+        "TASK_HAS_ACTIVE_CLAIMS",
+        `Task ${id} still has ${activeClaims.length} active claim(s). Complete/release claims first, or use force=true with a reason.`,
+        { taskId: id, activeClaims: activeClaims.map(taskClaimOut) }
+      );
+    }
+    const reason = stringOrNull(input.reason);
+    const evidence = stringOrNull(input.acceptanceEvidence);
+    if (activeClaims.length > 0 && force && !reason && !evidence) {
+      throw new AppError("VALIDATION_ERROR", "Forced task completion requires reason or acceptanceEvidence.", { taskId: id });
+    }
+
+    const now = nowIso();
+    let cancelledClaims = 0;
+    if (activeClaims.length > 0 && force) {
+      cancelledClaims = Number(
+        await this.db("task_claims")
+          .where({ task_id: id, status: "active" })
+          .andWhere("lease_expires_at", ">", now)
+          .update({
+            status: "cancelled",
+            note: appendText(null, `Cancelled by forced task completion.${reason ? ` Reason: ${reason}` : ""}`),
+            updated_by: context.clientId,
+            source_instance_id: context.clientId,
+            updated_at: now
+          })
+      );
+    }
+
+    const note = [evidence ? `Acceptance evidence: ${evidence}` : null, reason ? `Completion reason: ${reason}` : null]
+      .filter((value): value is string => Boolean(value))
+      .join("\n");
+    const [row] = await this.db("tasks")
+      .where({ id })
+      .update({
+        status: "done",
+        notes: appendText(stringOrNull(current.notes), note || null),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: now,
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    const event = await this.recordEventForProject(String(row.project_id), {
+      type: "task.completed",
+      title: `Task completed: ${String(row.title)}`,
+      body: [
+        evidence,
+        reason,
+        cancelledClaims > 0 ? `Cancelled active claims: ${cancelledClaims}` : null
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join("\n"),
+      related_id: id
+    }, context);
+    return {
+      task: await this.getTask(id),
+      completedClaim,
+      event
+    };
+  }
+
+  private async addTaskNote(input: Row, context: NormalizedGatewayRequestContext) {
+    const task = await this.getTask(String(input.taskId));
+    const type = typeof input.type === "string" ? input.type : "coordination_note";
+    const item = await this.createMemory({
+      project: task.projectId,
+      type,
+      title: stringOrNull(input.title) ?? `${taskNoteTypeTitle(type)}: ${task.title}`,
+      body: String(input.body),
+      tags: ["task-note", type, ...stringArray(input.tags)]
+    }, context);
+    const link = await this.createLink({
+      project: task.projectId,
+      fromId: item.id,
+      toId: task.id,
+      relation: stringOrNull(input.relation) ?? taskNoteDefaultRelation(type)
+    }, context);
+    const event = await this.recordEventForProject(task.projectId, {
+      type: "task.note_added",
+      title: `Task note added: ${task.title}`,
+      body: `${item.id} ${link.relation} ${task.id}`,
+      related_id: item.id
+    }, context);
+    return { item, link, event };
+  }
+
+  private async assertTaskExists(id: string): Promise<void> {
+    await this.taskRow(id);
+  }
+
+  private async taskRow(id: string): Promise<Row> {
+    const row = await this.db("tasks").where({ id }).first();
+    if (!row) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    return row;
+  }
+
+  private async taskClaimRow(id: string): Promise<Row> {
+    const row = await this.db("task_claims").where({ id }).first();
+    if (!row) {
+      throw new AppError("TASK_CLAIM_NOT_FOUND", `Task claim ${id} does not exist.`, { id });
+    }
+    return row;
+  }
+
+  private async activeTaskClaim(id: string): Promise<Row> {
+    const row = await this.taskClaimRow(id);
+    await this.expireTaskClaims(String(row.task_id));
+    const current = await this.taskClaimRow(id);
+    if (String(current.status) !== "active" || new Date(String(current.lease_expires_at)).getTime() <= Date.now()) {
+      throw new AppError("TASK_CLAIM_NOT_ACTIVE", `Task claim ${id} is not active.`, {
+        id,
+        status: taskClaimEffectiveStatus(current)
+      });
+    }
+    return current;
+  }
+
+  private async activeTaskClaims(taskId: string): Promise<Row[]> {
+    return await this.db("task_claims")
+      .select("*")
+      .where({ task_id: taskId, status: "active" })
+      .andWhere("lease_expires_at", ">", nowIso())
+      .orderBy("updated_at", "desc");
+  }
+
+  private async expireTaskClaims(taskId?: string): Promise<number> {
+    const query = this.db("task_claims")
+      .where({ status: "active" })
+      .andWhere("lease_expires_at", "<=", nowIso());
+    if (taskId) {
+      query.andWhere({ task_id: taskId });
+    }
+    return Number(
+      await query.update({
+        status: "expired",
+        updated_at: nowIso()
+      })
+    );
   }
 
   private async recordDecision(input: Row, context: NormalizedGatewayRequestContext) {
@@ -4008,9 +4332,97 @@ function taskOut(row: Row) {
     forbiddenFiles: stringArray(row.forbidden_files),
     dependsOn: stringArray(row.depends_on),
     notes: stringOrNull(row.notes),
+    activeClaimCount: Number(row.active_claim_count ?? 0),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function taskClaimOut(row: Row) {
+  return {
+    id: String(row.id),
+    taskId: String(row.task_id),
+    projectId: String(row.project_id),
+    clientId: String(row.client_id),
+    clientLabel: stringOrNull(row.client_label),
+    clientKind: stringOrNull(row.client_kind),
+    role: String(row.role),
+    scope: stringOrNull(row.scope),
+    status: taskClaimEffectiveStatus(row),
+    leaseExpiresAt: String(row.lease_expires_at),
+    heartbeatAt: String(row.heartbeat_at),
+    note: stringOrNull(row.note),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at)
+  };
+}
+
+function taskClaimEffectiveStatus(row: Row): string {
+  const status = String(row.status);
+  if (status === "active" && new Date(String(row.lease_expires_at)).getTime() <= Date.now()) {
+    return "expired";
+  }
+  return status;
+}
+
+function taskClaimRole(value: unknown): string {
+  return typeof value === "string" && taskClaimRoles.includes(value as (typeof taskClaimRoles)[number]) ? value : "other";
+}
+
+function taskClaimLeaseExpiresAt(value: unknown): string {
+  const seconds = boundedInteger(value, defaultTaskClaimLeaseSeconds, 60, 86_400);
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function taskClaimEventBody(row: Row): string {
+  return [
+    `claimId: ${String(row.id)}`,
+    `clientId: ${String(row.client_id)}`,
+    `clientLabel: ${String(row.client_label ?? "")}`,
+    `role: ${String(row.role)}`,
+    stringOrNull(row.scope) ? `scope: ${String(row.scope)}` : null,
+    `leaseExpiresAt: ${String(row.lease_expires_at)}`,
+    stringOrNull(row.note) ? `note: ${String(row.note)}` : null
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
+}
+
+function appendText(existing: string | null, addition: string | null): string | null {
+  if (!addition) {
+    return existing;
+  }
+  return existing ? `${existing}\n\n${addition}` : addition;
+}
+
+function taskNoteTypeTitle(type: string): string {
+  switch (type) {
+    case "implementation_note":
+      return "Implementation note";
+    case "handoff":
+      return "Handoff";
+    case "test_result":
+      return "Test result";
+    case "review_note":
+      return "Review note";
+    default:
+      return "Coordination note";
+  }
+}
+
+function taskNoteDefaultRelation(type: string): string {
+  switch (type) {
+    case "handoff":
+      return "handoff_for";
+    case "test_result":
+      return "test_result_for";
+    case "review_note":
+      return "review_note_for";
+    case "implementation_note":
+      return "implementation_note_for";
+    default:
+      return "note_for";
+  }
 }
 
 function decisionOut(row: Row) {

@@ -124,7 +124,7 @@ queries require OAuth `memory:read`, while mutations require `memory:read` and
 `docs/GRAPHQL_API.md`.
 
 GraphQL mutations cover create/update/archive/delete flows for memory items,
-tasks, decisions, artifacts, events, and links. Hard-delete operations are
+tasks, task claims, task-linked notes, decisions, artifacts, events, and links. Hard-delete operations are
 available for explicit cleanup and remove relationship links that point at the
 deleted record where applicable. Decisions now support an `archived` lifecycle
 status in addition to `draft`, `active`, `superseded`, and `rejected`.
@@ -312,6 +312,13 @@ Implemented tools:
 - `task.list`
 - `task.get`
 - `task.delete` (gateway)
+- `task.claim` (gateway)
+- `task.claim_heartbeat` (gateway)
+- `task.claim_complete` (gateway)
+- `task.release` (gateway)
+- `task.claims` (gateway)
+- `task.complete` (gateway)
+- `task.add_note` (gateway)
 - `task.next`
 - `task.update_status`
 - `decision.record`
@@ -378,6 +385,10 @@ Automatic event examples:
 - `task.blocked`
 - `task.cancelled`
 - `task.deleted`
+- `task.claimed`
+- `task.claim_completed`
+- `task.claim_released`
+- `task.note_added`
 - `decision.recorded`
 - `link.created`
 
