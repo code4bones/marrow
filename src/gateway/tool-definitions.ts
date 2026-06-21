@@ -22,6 +22,7 @@ export interface GatewayToolSpec {
   name: string;
   description: string;
   schema: z.ZodObject;
+  outputSchema?: z.ZodType;
 }
 
 const emptySchema = z.object({});
@@ -306,6 +307,152 @@ const handoffSearchSchema = z.object({
   limit: z.number().int().min(1).max(50).optional()
 });
 
+const looseRecordSchema = z.object({}).catchall(z.unknown());
+const errorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: looseRecordSchema.optional()
+});
+const defaultOutputDataSchema = z.any();
+export const defaultGatewayOutputSchema = toolOutputSchema(defaultOutputDataSchema);
+
+const artifactSchema = z.object({
+  id: z.string(),
+  projectId: z.string().nullable(),
+  scope: z.enum(["project", "common"]),
+  path: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: z.string(),
+  contentType: z.string(),
+  sizeBytes: z.number(),
+  sha256: z.string(),
+  tags: z.array(z.string()),
+  downloadPath: z.string(),
+  archivedAt: z.string().nullable(),
+  archivedBy: z.string().nullable(),
+  archiveReason: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+const artifactWithContentSchema = artifactSchema.extend({
+  contentBase64: z.string().optional()
+});
+const artifactSearchResultSchema = artifactSchema.extend({
+  rank: z.number()
+});
+const markdownOutlineItemSchema = z.object({
+  level: z.number(),
+  title: z.string(),
+  line: z.number()
+});
+const artifactPreviewSchema = artifactSchema.extend({
+  preview: z.object({
+    isText: z.boolean(),
+    isMarkdown: z.boolean(),
+    truncated: z.boolean(),
+    readBytes: z.number().optional(),
+    maxBytes: z.number().optional(),
+    excerpt: z.string().nullable(),
+    outline: z.array(markdownOutlineItemSchema),
+    note: z.string().optional()
+  })
+});
+const artifactReadTextSchemaOut = artifactSchema.extend({
+  text: z.string(),
+  textInfo: z.object({
+    isText: z.boolean(),
+    isMarkdown: z.boolean(),
+    encoding: z.string(),
+    readBytes: z.number(),
+    maxBytes: z.number(),
+    maxChars: z.number(),
+    maxLines: z.number(),
+    truncated: z.boolean(),
+    truncatedByBytes: z.boolean(),
+    truncatedByChars: z.boolean(),
+    truncatedByLines: z.boolean(),
+    redacted: z.boolean(),
+    redactions: z.number(),
+    base64Included: z.literal(false)
+  }),
+  outline: z.array(markdownOutlineItemSchema)
+});
+const eventLikeSchema = looseRecordSchema.nullable();
+const nextCallSchema = z.object({
+  tool: z.string(),
+  input: looseRecordSchema,
+  reason: z.string()
+});
+const compactArtifactSchema = z.object({
+  id: z.string(),
+  scope: z.string(),
+  path: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  contentType: z.string(),
+  sizeBytes: z.number(),
+  tags: z.array(z.string()),
+  downloadPath: z.string(),
+  preferredNextTool: z.string()
+});
+const projectSummaryDataSchema = z.object({
+  summary: z.string(),
+  budget: looseRecordSchema,
+  project: looseRecordSchema,
+  query: z.string(),
+  includeCommon: z.boolean(),
+  counts: looseRecordSchema,
+  openTasks: z.array(looseRecordSchema),
+  handoffs: z.array(looseRecordSchema),
+  decisions: z.array(looseRecordSchema),
+  knownFaults: z.array(looseRecordSchema),
+  artifacts: z.array(compactArtifactSchema),
+  memory: z.array(looseRecordSchema),
+  recentEvents: z.array(looseRecordSchema),
+  nextCalls: z.array(nextCallSchema)
+});
+const contextPackDataSchema = z.object({
+  summary: z.string(),
+  budget: looseRecordSchema,
+  project: looseRecordSchema.nullable().optional(),
+  task: looseRecordSchema.nullable().optional(),
+  query: z.string(),
+  mustRead: z.array(looseRecordSchema),
+  handoffs: z.array(looseRecordSchema),
+  decisions: z.array(looseRecordSchema),
+  knownFaults: z.array(looseRecordSchema),
+  memory: z.array(looseRecordSchema),
+  artifacts: z.array(compactArtifactSchema),
+  recentEvents: z.array(looseRecordSchema),
+  nextCalls: z.array(nextCallSchema)
+});
+const preflightByQueryDataSchema = z.object({
+  project: looseRecordSchema.nullable().optional(),
+  query: z.string(),
+  relevantDecisions: z.array(looseRecordSchema),
+  commonRules: z.array(looseRecordSchema),
+  relatedItems: z.array(looseRecordSchema),
+  failedAttempts: z.array(looseRecordSchema),
+  knownFaults: z.array(looseRecordSchema),
+  artifacts: z.array(looseRecordSchema),
+  recentEvents: z.array(looseRecordSchema),
+  summary: z.string()
+});
+
+function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
+  return z.object({
+    ok: z.boolean(),
+    summary: z.string().optional(),
+    data: dataSchema.optional(),
+    error: errorSchema.optional()
+  });
+}
+
+function output(dataSchema: z.ZodType): z.ZodType {
+  return toolOutputSchema(dataSchema);
+}
+
 export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.about",
@@ -392,7 +539,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "project.summary",
     description:
       "Return a compact token-conscious project state card: open tasks, recent handoffs, decisions, known faults, artifacts, memory, events, and next calls.",
-    schema: projectSummarySchema
+    schema: projectSummarySchema,
+    outputSchema: output(projectSummaryDataSchema)
   },
   {
     name: "project.set_current",
@@ -446,51 +594,60 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "artifact.put",
     description:
       "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
-    schema: artifactPutSchema
+    schema: artifactPutSchema,
+    outputSchema: output(z.object({ artifact: artifactSchema }))
   },
   {
     name: "artifact.put_text",
     description:
       "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
-    schema: artifactPutTextSchema
+    schema: artifactPutTextSchema,
+    outputSchema: output(z.object({ artifact: artifactSchema }))
   },
   {
     name: "artifact.search",
     description: "Search shared artifact metadata and return download paths for matching files.",
-    schema: artifactSearchSchema
+    schema: artifactSearchSchema,
+    outputSchema: output(z.object({ results: z.array(artifactSearchResultSchema) }))
   },
   {
     name: "artifact.list",
     description: "List artifacts by project/common scope, path prefix, tags, and lifecycle status for navigation.",
-    schema: artifactListSchema
+    schema: artifactListSchema,
+    outputSchema: output(z.object({ artifacts: z.array(artifactSchema) }))
   },
   {
     name: "artifact.get",
     description:
       "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
-    schema: artifactGetSchema
+    schema: artifactGetSchema,
+    outputSchema: output(z.object({ artifact: artifactWithContentSchema }))
   },
   {
     name: "artifact.peek",
     description:
       "Get a compact artifact preview without base64 content. Text/Markdown artifacts return an excerpt and outline; binary artifacts return metadata only. Prefer artifact.read_text when text content is needed.",
-    schema: artifactPeekSchema
+    schema: artifactPeekSchema,
+    outputSchema: output(z.object({ artifact: artifactPreviewSchema }))
   },
   {
     name: "artifact.read_text",
     description:
       "Read bounded UTF-8 text from a text/Markdown artifact without base64 content. Prefer this for ChatGPT and other agents that need artifact text in model context.",
-    schema: artifactReadTextSchema
+    schema: artifactReadTextSchema,
+    outputSchema: output(z.object({ artifact: artifactReadTextSchemaOut }))
   },
   {
     name: "artifact.update_metadata",
     description: "Update artifact title, description, and tags without re-uploading bytes.",
-    schema: artifactUpdateMetadataSchema
+    schema: artifactUpdateMetadataSchema,
+    outputSchema: output(z.object({ artifact: artifactSchema }))
   },
   {
     name: "artifact.archive",
     description: "Archive an artifact without deleting bytes. Archived artifacts are hidden from default search.",
-    schema: artifactArchiveSchema
+    schema: artifactArchiveSchema,
+    outputSchema: output(z.object({ action: z.string(), artifact: artifactSchema, event: eventLikeSchema }))
   },
   {
     name: "task.create",
@@ -567,13 +724,15 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "preflight.by_query",
     description:
       "Return preflight-like shared context for ad-hoc work before a task exists. Includes decisions, memory, knownFaults, artifacts, and recent events.",
-    schema: preflightByQuerySchema
+    schema: preflightByQuerySchema,
+    outputSchema: output(preflightByQueryDataSchema)
   },
   {
     name: "context.pack",
     description:
       "Build a compact token-conscious start-of-work context package for a task or query. Returns summaries, stop-signals, pointers, and next tool calls instead of full record bodies or base64 content.",
-    schema: contextPackSchema
+    schema: contextPackSchema,
+    outputSchema: output(contextPackDataSchema)
   },
   {
     name: "context.changed_since",

@@ -111,6 +111,10 @@ Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `A
 
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
+Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the
+common `{ ok, summary, data, error }` response envelope; artifact and compact
+context tools provide more specific `data` shapes for tool chaining.
+
 Gateway logging uses `pino`:
 
 ```text

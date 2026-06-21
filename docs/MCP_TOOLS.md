@@ -44,7 +44,11 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 
 ## General response format
 
-All tools should return structured responses.
+All tools return structured responses and publish an MCP `outputSchema` through
+`tools/list`. Every gateway tool has at least the common response envelope
+schema. Artifact, compact-context, and preflight-query tools also describe their
+important `data.*` fields so agents can reliably find returned IDs, artifact
+text, `textInfo`, search results, and suggested next calls.
 
 Success:
 
@@ -184,7 +188,7 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.15.0",
+    "packageVersion": "1.16.0",
     "mode": "gateway",
     "storage": "postgresql",
     "tools": 53,
@@ -279,7 +283,7 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.15.0",
+      "packageVersion": "1.16.0",
       "tools": 53
     },
     "database": {

@@ -4,11 +4,12 @@ import { existsSync } from "node:fs";
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as z from "zod/v4";
 import { nowIso } from "../shared/dates.js";
 import { AppError } from "../shared/errors.js";
 import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/ids/id.service.js";
 import { fail, ok, type ToolResponse } from "../shared/mcp/tool-response.js";
-import { gatewayToolSpecs } from "./tool-definitions.js";
+import { defaultGatewayOutputSchema, gatewayToolSpecs } from "./tool-definitions.js";
 
 type Row = Record<string, unknown>;
 
@@ -72,7 +73,11 @@ export class PgToolService {
   constructor(private readonly db: Knex) {}
 
   listTools() {
-    return gatewayToolSpecs.map(({ name, description }) => ({ name, description }));
+    return gatewayToolSpecs.map(({ name, description, outputSchema }) => ({
+      name,
+      description,
+      outputSchema: z.toJSONSchema(outputSchema ?? defaultGatewayOutputSchema)
+    }));
   }
 
   async call(

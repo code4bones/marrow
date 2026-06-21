@@ -232,7 +232,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.15.0.tgz
+npm install -g ./deadragdoll-pm3m-1.16.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -250,6 +250,11 @@ package into PostgreSQL plus `ARTIFACT_DIR`. Clients do not seed templates
 locally; they discover gateway templates with `artifact.search`,
 `artifact.list`, `artifact.peek`, `artifact.read_text`, `artifact.put_text`, and `artifact.get`. Run `pm3m seed templates` on the gateway
 only when you need to repeat just the template sync.
+
+Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the
+common response envelope, and artifact/context tools describe concrete result
+fields such as `data.artifact.text`, `data.artifact.textInfo`, and
+`data.results`.
 
 There is intentionally no `postinstall` side effect. Installing the package
 does not start or reload PM2 automatically; service changes should happen only

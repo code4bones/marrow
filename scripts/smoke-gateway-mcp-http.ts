@@ -73,6 +73,13 @@ try {
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
+  assert(tools.tools.every((tool) => isRecord(tool.outputSchema)), "Not every gateway MCP tool listed an outputSchema.");
+  const artifactReadTextTool = tools.tools.find((tool) => tool.name === "artifact.read_text");
+  assert(isRecord(artifactReadTextTool?.outputSchema), "artifact.read_text did not list an outputSchema.");
+  assert(JSON.stringify(artifactReadTextTool.outputSchema).includes("textInfo"), "artifact.read_text outputSchema missed textInfo.");
+  const artifactPutTextTool = tools.tools.find((tool) => tool.name === "artifact.put_text");
+  assert(isRecord(artifactPutTextTool?.outputSchema), "artifact.put_text did not list an outputSchema.");
+  assert(JSON.stringify(artifactPutTextTool.outputSchema).includes("artifact"), "artifact.put_text outputSchema missed artifact.");
   assert(toolNames.includes("gateway.about"), "gateway.about tool was not listed.");
   assert(toolNames.includes("gateway.version"), "gateway.version tool was not listed.");
   assert(toolNames.includes("gateway.diagnostics"), "gateway.diagnostics tool was not listed.");
