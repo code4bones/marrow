@@ -1,3 +1,16 @@
+export interface PageInfo {
+  totalCount: number;
+  limit: number;
+  offset: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  pageInfo: PageInfo;
+}
+
 export interface Project {
   id: string;
   slug: string;

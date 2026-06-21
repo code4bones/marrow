@@ -11,7 +11,7 @@ export function AppShell() {
         <NavigationRail />
       </Sider>
       <Layout>
-        <Content style={{ padding: 24, overflow: 'auto' }}>
+        <Content style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <Outlet />
         </Content>
       </Layout>
