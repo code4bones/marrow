@@ -6,7 +6,9 @@ import { DecisionsPage } from '../../pages/decisions';
 import { DiagnosticsPage } from '../../pages/diagnostics';
 import { EventsPage } from '../../pages/events';
 import { FaultsPage } from '../../pages/faults';
+import { LinksPage } from '../../pages/links';
 import { LoginPage } from '../../pages/login';
+import { MemoryPage } from '../../pages/memory';
 import { ProjectsPage } from '../../pages/projects';
 import { TasksPage } from '../../pages/tasks';
 import { AppShell } from '../AppShell';
@@ -40,6 +42,8 @@ export function AppRouter() {
         <Route path="projects/:slug/faults"     element={<FaultsPage />} />
         <Route path="projects/:slug/artifacts"  element={<ArtifactsPage />} />
         <Route path="projects/:slug/events"     element={<EventsPage />} />
+        <Route path="projects/:slug/memory"     element={<MemoryPage />} />
+        <Route path="projects/:slug/links"      element={<LinksPage />} />
 
         {/* Global */}
         <Route path="common"      element={<CommonPage />} />

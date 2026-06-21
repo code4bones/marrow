@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Select, Table, Tag, Typography } from 'antd';
+import { Alert, Select, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import type { Decision, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
+import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -21,7 +22,7 @@ const STATUS_OPTIONS = [
 const columns: ColumnsType<Decision> = [
   {
     title: 'ID', dataIndex: 'id', width: 160, fixed: 'left',
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    render: (v) => <RecordLink id={v} />,
   },
   { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
   { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },

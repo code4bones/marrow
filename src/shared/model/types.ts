@@ -106,6 +106,31 @@ export interface MemoryRecord {
   updatedAt: string | null;
 }
 
+export interface Link {
+  id: string;
+  projectId: string | null;
+  fromId: string;
+  toId: string;
+  relation: string;
+  createdAt: string | null;
+}
+
+export type RecordPayload =
+  | (Task     & { __typename: 'Task' })
+  | (Decision & { __typename: 'Decision' })
+  | (Artifact & { __typename: 'Artifact' })
+  | (MemoryRecord & { __typename: 'MemoryRecord' })
+  | (Event    & { __typename: 'Event' })
+  | (Link     & { __typename: 'Link' })
+  | (Project  & { __typename: 'Project' });
+
+export interface RecordWrapper {
+  id: string;
+  kind: string;
+  projectId: string | null;
+  record: RecordPayload | null;
+}
+
 export interface ProjectSummary {
   summary: string;
   project: Project;

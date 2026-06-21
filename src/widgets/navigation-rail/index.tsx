@@ -7,6 +7,8 @@ import {
   DatabaseOutlined,
   FolderOpenOutlined,
   HomeOutlined,
+  InboxOutlined,
+  LinkOutlined,
   LogoutOutlined,
   PartitionOutlined,
   ThunderboltOutlined,
@@ -24,6 +26,8 @@ const PROJECT_SECTIONS: ItemType[] = [
   { key: 'faults',     icon: <BugOutlined />,         label: 'Faults' },
   { key: 'artifacts',  icon: <DatabaseOutlined />,    label: 'Artifacts' },
   { key: 'events',     icon: <ThunderboltOutlined />, label: 'Events' },
+  { key: 'memory',     icon: <InboxOutlined />,       label: 'Memory' },
+  { key: 'links',      icon: <LinkOutlined />,        label: 'Links' },
 ];
 
 const GLOBAL_ITEMS: ItemType[] = [

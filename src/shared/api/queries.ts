@@ -68,6 +68,70 @@ export const GET_FAULTS_PAGE = gql`
   }
 `;
 
+export const GET_RECORD = gql`
+  query GetRecord($id: ID!) {
+    record(id: $id) {
+      id kind projectId
+      record {
+        __typename
+        ... on Task {
+          id title status priority milestone scope
+          acceptance allowedFiles forbiddenFiles dependsOn notes
+          createdAt updatedAt
+        }
+        ... on Decision {
+          id title status context decision rationale
+          consequences tags supersedesId createdAt updatedAt
+        }
+        ... on Artifact {
+          id path title scope description status
+          contentType sizeBytes tags downloadPath createdAt updatedAt
+        }
+        ... on MemoryRecord {
+          id type title status excerpt body tags createdAt updatedAt
+        }
+        ... on Event {
+          id type title relatedId createdAt
+        }
+        ... on Link {
+          id fromId toId relation createdAt
+        }
+        ... on Project {
+          id slug title description status rootPath updatedAt
+        }
+      }
+    }
+  }
+`;
+
+export const GET_MEMORY_ITEMS_PAGE = gql`
+  query GetMemoryItemsPage($project: String, $type: String, $status: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
+    memoryItemsPage(project: $project, type: $type, status: $status, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
+      items { id type title status excerpt tags createdAt updatedAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
+    }
+  }
+`;
+
+export const GET_LINKS_PAGE = gql`
+  query GetLinksPage($project: String, $relation: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
+    linksPage(project: $project, relation: $relation, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
+      items { id fromId toId relation createdAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
+    }
+  }
+`;
+
+export const GET_ARTIFACT_TEXT = gql`
+  query GetArtifactText($id: ID!) {
+    artifactText(id: $id, maxLines: 300) {
+      text
+      textInfo { truncated isMarkdown }
+      outline { level title line }
+    }
+  }
+`;
+
 export const GET_GATEWAY_STATUS = gql`
   query GetGatewayStatus {
     gatewayStatus

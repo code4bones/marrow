@@ -1,5 +1,6 @@
 import { Layout } from 'antd';
 import { Outlet } from 'react-router-dom';
+import { DetailDrawer } from '../widgets/detail-drawer';
 import { NavigationRail } from '../widgets/navigation-rail';
 
 const { Sider, Content } = Layout;
@@ -15,6 +16,7 @@ export function AppShell() {
           <Outlet />
         </Content>
       </Layout>
+      <DetailDrawer />
     </Layout>
   );
 }

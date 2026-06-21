@@ -7,6 +7,7 @@ import { GET_TASKS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import type { Paginated, Task } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
+import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -22,7 +23,7 @@ const STATUS_OPTIONS = [
 const columns: ColumnsType<Task> = [
   {
     title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    render: (v) => <RecordLink id={v} />,
   },
   { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
   { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },

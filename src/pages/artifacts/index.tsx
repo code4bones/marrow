@@ -6,6 +6,7 @@ import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import type { Artifact, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
+import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -18,7 +19,11 @@ function sizeLabel(bytes: number | null) {
 
 const columns: ColumnsType<Artifact> = [
   {
-    title: 'Path', dataIndex: 'path', minWidth: 220, fixed: 'left', ellipsis: true,
+    title: 'ID', dataIndex: 'id', width: 140, fixed: 'left',
+    render: (v) => <RecordLink id={v} />,
+  },
+  {
+    title: 'Path', dataIndex: 'path', minWidth: 220, ellipsis: true,
     render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
   },
   { title: 'Title', dataIndex: 'title', minWidth: 180, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },

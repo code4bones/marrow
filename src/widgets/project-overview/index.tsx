@@ -10,13 +10,14 @@ import { Alert, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'an
 import type { ColumnsType } from 'antd/es/table';
 import { GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import type { Artifact, Decision, Event, ProjectSummary, Task } from '../../shared/model/types';
+import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
 const taskColumns: ColumnsType<Task> = [
   {
     title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    render: (v) => <RecordLink id={v} />,
   },
   { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
   { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
@@ -28,7 +29,7 @@ const taskColumns: ColumnsType<Task> = [
 const decisionColumns: ColumnsType<Decision> = [
   {
     title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    render: (v) => <RecordLink id={v} />,
   },
   { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
   { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
@@ -41,7 +42,11 @@ const decisionColumns: ColumnsType<Decision> = [
 
 const artifactColumns: ColumnsType<Artifact> = [
   {
-    title: 'Path', dataIndex: 'path', minWidth: 200, fixed: 'left', ellipsis: true,
+    title: 'ID', dataIndex: 'id', width: 140, fixed: 'left',
+    render: (v) => <RecordLink id={v} />,
+  },
+  {
+    title: 'Path', dataIndex: 'path', minWidth: 200, ellipsis: true,
     render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
   },
   { title: 'Type', dataIndex: 'contentType', width: 180, ellipsis: true },
@@ -59,9 +64,7 @@ const eventColumns: ColumnsType<Event> = [
   { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
   {
     title: 'Related', dataIndex: 'relatedId', width: 140,
-    render: (v) => v
-      ? <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>
-      : <Typography.Text type="secondary">—</Typography.Text>,
+    render: (v) => <RecordLink id={v} />,
   },
   { title: 'At', dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
 ];
