@@ -1,7 +1,7 @@
 import type { Knex } from "knex";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as z from "zod/v4";
@@ -122,6 +122,8 @@ export class PgToolService {
           return ok("Projects listed.", { projects: await this.listProjects(parsed) });
         case "project.get":
           return ok("Project loaded.", { project: await this.getProject(parsed) });
+        case "project.delete":
+          return ok("Project deleted.", await this.deleteProject(parsed));
         case "project.resolve":
           return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed));
         case "project.summary":
@@ -170,6 +172,8 @@ export class PgToolService {
           return ok("Tasks listed.", { tasks: await this.listTasks(parsed, requestContext) });
         case "task.get":
           return ok("Task loaded.", { task: await this.getTask(String(parsed.id)) });
+        case "task.delete":
+          return ok("Task deleted.", await this.deleteTask(parsed, requestContext));
         case "task.next":
           return ok("Next task loaded.", { task: await this.nextTask(parsed, requestContext) });
         case "task.update_status":
@@ -684,6 +688,45 @@ export class PgToolService {
     return projectOut(row);
   }
 
+  private async deleteProject(input: Row) {
+    const project = await this.getProject(input);
+    const counts = await this.projectDeleteCounts(project.id);
+    const dependentRows = counts.tasks + counts.items + counts.decisions + counts.links + counts.events + counts.artifacts;
+    const cascade = input.cascade === true;
+    if (dependentRows > 0 && !cascade) {
+      throw new AppError("PROJECT_NOT_EMPTY", "Project has dependent records. Re-run with cascade=true to delete it.", {
+        project,
+        counts
+      });
+    }
+
+    const artifactRows = await this.db("artifacts").select("storage_path").where({ project_id: project.id });
+    let currentProjectKeys = 0;
+    await this.db.transaction(async (trx) => {
+      const deletedKeys = await trx("kv")
+        .where({ value: project.id })
+        .where((builder) => {
+          builder.where({ key: "current_project_id" }).orWhere("key", "like", "current_project_id:%");
+        })
+        .del();
+      currentProjectKeys = Number(deletedKeys);
+      await trx("projects").where({ id: project.id }).del();
+    });
+
+    for (const artifact of artifactRows) {
+      await rm(artifactAbsolutePath(String(artifact.storage_path)), { force: true });
+    }
+
+    return {
+      deletedProject: project,
+      cascade,
+      counts: {
+        ...counts,
+        currentProjectKeys
+      }
+    };
+  }
+
   private async resolveProjectCandidates(input: Row) {
     const rows = await this.db("projects").select("*").where({ status: "active" });
     const candidates = rows
@@ -808,6 +851,25 @@ export class PgToolService {
       decisions,
       artifacts,
       events
+    };
+  }
+
+  private async projectDeleteCounts(projectId: string) {
+    const [tasks, items, decisions, links, events, artifacts] = await Promise.all([
+      this.countQueryRows(this.db("tasks").where("project_id", projectId)),
+      this.countQueryRows(this.db("items").where("project_id", projectId)),
+      this.countQueryRows(this.db("decisions").where("project_id", projectId)),
+      this.countQueryRows(this.db("links").where("project_id", projectId)),
+      this.countQueryRows(this.db("events").where("project_id", projectId)),
+      this.countQueryRows(this.db("artifacts").where("project_id", projectId))
+    ]);
+    return {
+      tasks,
+      items,
+      decisions,
+      links,
+      events,
+      artifacts
     };
   }
 
@@ -1614,6 +1676,25 @@ export class PgToolService {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     return taskOut(row);
+  }
+
+  private async deleteTask(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.db("tasks").where({ id }).del();
+    const event = await this.recordEventForProject(String(current.project_id), {
+      type: "task.deleted",
+      title: `Task deleted: ${String(current.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: id
+    }, context);
+    return {
+      deletedTask: taskOut(current),
+      event
+    };
   }
 
   private async nextTask(input: Row, context?: NormalizedGatewayRequestContext) {

@@ -188,10 +188,10 @@ Output:
     "name": "Project Memory",
     "shortName": "pmem",
     "packageName": "@deadragdoll/pm3m",
-    "packageVersion": "1.19.0",
+    "packageVersion": "1.20.0",
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 53,
+    "tools": 55,
     "node": {
       "version": "v24.16.0"
     },
@@ -231,7 +231,7 @@ Output:
     "status": {
       "mode": "gateway",
       "storage": "postgresql",
-      "tools": 53
+      "tools": 55
     },
     "migrations": {
       "completed": ["001_init.cjs", "002_artifacts.cjs"],
@@ -283,8 +283,8 @@ Output:
     "generatedAt": "2026-06-19T22:59:00.000+03:00",
     "version": {
       "packageName": "@deadragdoll/pm3m",
-      "packageVersion": "1.19.0",
-      "tools": 53
+      "packageVersion": "1.20.0",
+      "tools": 55
     },
     "database": {
       "engine": "postgresql",
@@ -436,7 +436,7 @@ Output:
   "status": {
     "mode": "gateway",
     "storage": "postgresql",
-    "tools": 53,
+    "tools": 55,
     "records": {
       "projects": 1,
       "items": 10,
@@ -1217,6 +1217,62 @@ Output:
 
 ---
 
+### `project.delete`
+
+Hard-delete a project by `id` or `slug`.
+
+Input:
+
+```json
+{
+  "slug": "test-xchange",
+  "cascade": true,
+  "reason": "Remove temporary test project."
+}
+```
+
+Output:
+
+```json
+{
+  "deletedProject": {
+    "id": "P-TEST",
+    "slug": "test-xchange"
+  },
+  "cascade": true,
+  "counts": {
+    "tasks": 1,
+    "items": 0,
+    "decisions": 0,
+    "links": 0,
+    "events": 2,
+    "artifacts": 0,
+    "currentProjectKeys": 1
+  }
+}
+```
+
+Behavior:
+
+* accepts `id` or `slug`
+* refuses non-empty projects unless `cascade=true`
+* deletes project-scoped tasks, memory, decisions, links, events, artifacts, and current-project keys through database cascade
+* removes project artifact bytes from gateway artifact storage
+* use only after an explicit user request
+
+If the project is not empty and `cascade` is not `true`, the tool returns:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "PROJECT_NOT_EMPTY"
+  }
+}
+```
+
+---
+
 ### `project.resolve`
 
 Resolve a likely project from repository context.
@@ -1840,6 +1896,41 @@ Output:
   "task": {}
 }
 ```
+
+---
+
+### `task.delete`
+
+Hard-delete a task by id.
+
+Input:
+
+```json
+{
+  "id": "T-MEMORY-001",
+  "reason": "Remove temporary smoke task."
+}
+```
+
+Output:
+
+```json
+{
+  "deletedTask": {
+    "id": "T-MEMORY-001",
+    "title": "Temporary smoke task"
+  },
+  "event": {
+    "type": "task.deleted"
+  }
+}
+```
+
+Behavior:
+
+* accepts only `id`
+* records a `task.deleted` event in the same project
+* use only after an explicit user request or smoke-test cleanup
 
 ---
 

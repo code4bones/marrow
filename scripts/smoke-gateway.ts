@@ -41,6 +41,8 @@ try {
   assert(tools.tools?.some((tool) => tool.name === "gateway.client_get"), "Gateway tools route did not expose gateway.client_get.");
   assert(tools.tools?.some((tool) => tool.name === "gateway.client_forget"), "Gateway tools route did not expose gateway.client_forget.");
   assert(tools.tools?.some((tool) => tool.name === "gateway.client_prune"), "Gateway tools route did not expose gateway.client_prune.");
+  assert(tools.tools?.some((tool) => tool.name === "project.delete"), "Gateway tools route did not expose project.delete.");
+  assert(tools.tools?.some((tool) => tool.name === "task.delete"), "Gateway tools route did not expose task.delete.");
   console.log("ok - gateway tools");
 
   const unique = Date.now();
@@ -202,6 +204,21 @@ try {
   state.taskId = expectData<{ task: { id: string } }>(task).task.id;
   console.log("ok - task.create");
 
+  const temporaryTask = await callGateway("task.create", {
+    project: state.projectId,
+    title: "Gateway smoke delete task",
+    scope: "Temporary task used to verify task.delete.",
+    acceptance: "task.delete removes this task.",
+    priority: 99
+  });
+  const temporaryTaskId = expectData<{ task: { id: string } }>(temporaryTask).task.id;
+  const deleteTask = await callGateway("task.delete", {
+    id: temporaryTaskId,
+    reason: "Gateway smoke cleanup for task.delete."
+  });
+  assert(expectData<{ deletedTask: { id: string } }>(deleteTask).deletedTask.id === temporaryTaskId, "task.delete returned wrong task.");
+  console.log("ok - task.delete");
+
   const search = await callGateway("memory.search", {
     query: "PostgreSQL full text smoke",
     project: state.projectId,
@@ -229,6 +246,31 @@ try {
   const clientsData = expectData<{ clients: { id: string }[] }>(clients);
   assert(clientsData.clients.some((client) => client.id === clientId), "Gateway clients did not include smoke client.");
   console.log("ok - gateway.clients");
+
+  const blockedProjectDelete = await callGateway("project.delete", { id: state.projectId });
+  assertFailureCode(blockedProjectDelete, "PROJECT_NOT_EMPTY", "project.delete without cascade did not reject a non-empty project.");
+
+  if (state.anonymousProjectId) {
+    const anonymousProjectDelete = await callGateway("project.delete", {
+      id: state.anonymousProjectId,
+      cascade: true,
+      reason: "Gateway smoke cleanup for anonymous project."
+    });
+    assert(
+      expectData<{ deletedProject: { id: string } }>(anonymousProjectDelete).deletedProject.id === state.anonymousProjectId,
+      "project.delete returned wrong anonymous project."
+    );
+    state.anonymousProjectId = undefined;
+  }
+
+  const projectDelete = await callGateway("project.delete", {
+    id: state.projectId,
+    cascade: true,
+    reason: "Gateway smoke cleanup for primary project."
+  });
+  assert(expectData<{ deletedProject: { id: string } }>(projectDelete).deletedProject.id === state.projectId, "project.delete returned wrong project.");
+  state.projectId = undefined;
+  console.log("ok - project.delete");
 
   console.log(`Gateway smoke test passed using ${started.url}`);
 } finally {
@@ -276,6 +318,12 @@ async function callGatewayWithoutClient(tool: string, input: unknown): Promise<T
 function expectData<T>(response: ToolResponse<unknown>): T {
   assert(response.ok, response.ok ? "Unexpected gateway failure." : response.error.message);
   return response.data as T;
+}
+
+function assertFailureCode(response: ToolResponse<unknown>, code: string, message: string): void {
+  if (response.ok || response.error.code !== code) {
+    throw new Error(`${message} Response: ${JSON.stringify(response)}`);
+  }
 }
 
 async function getJson(url: string): Promise<unknown> {

@@ -254,6 +254,7 @@ Implemented tools:
 - `project.create`
 - `project.list`
 - `project.get`
+- `project.delete` (gateway)
 - `project.resolve` (gateway)
 - `project.summary` (gateway)
 - `project.set_current`
@@ -268,6 +269,7 @@ Implemented tools:
 - `task.create`
 - `task.list`
 - `task.get`
+- `task.delete` (gateway)
 - `task.next`
 - `task.update_status`
 - `decision.record`
@@ -327,6 +329,7 @@ Automatic event examples:
 - `task.completed`
 - `task.blocked`
 - `task.cancelled`
+- `task.deleted`
 - `decision.recorded`
 - `link.created`
 

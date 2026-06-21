@@ -102,6 +102,10 @@ const projectResolveSchema = z
   .refine((value) => Boolean(value.id || value.slug || value.title || value.rootPath || value.remoteUrl || value.query), {
     message: "At least one resolver field is required."
   });
+const projectDeleteSchema = projectLookupSchema.extend({
+  cascade: z.boolean().optional(),
+  reason: z.string().optional()
+});
 const projectSummarySchema = z.object({
   project: z.string().optional(),
   query: z.string().min(1).optional(),
@@ -123,6 +127,9 @@ const contextChangedSinceSchema = z.object({
   since: z.string().min(1),
   includeCommon: z.boolean().optional(),
   limit: z.number().int().min(1).max(100).optional()
+});
+const taskDeleteSchema = getTaskSchema.extend({
+  reason: z.string().optional()
 });
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
@@ -317,25 +324,27 @@ const errorSchema = z.object({
 const defaultOutputDataSchema = z.any();
 export const defaultGatewayOutputSchema = toolOutputSchema(defaultOutputDataSchema);
 
-const artifactSchema = z.object({
-  id: z.string(),
-  projectId: z.string().nullable(),
-  scope: z.enum(["project", "common"]),
-  path: z.string(),
-  title: z.string(),
-  description: z.string().nullable(),
-  status: z.string(),
-  contentType: z.string(),
-  sizeBytes: z.number(),
-  sha256: z.string(),
-  tags: z.array(z.string()),
-  downloadPath: z.string(),
-  archivedAt: z.string().nullable(),
-  archivedBy: z.string().nullable(),
-  archiveReason: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string()
-});
+const artifactSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string().nullable(),
+    scope: z.enum(["project", "common"]),
+    path: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    status: z.string(),
+    contentType: z.string(),
+    sizeBytes: z.number(),
+    sha256: z.string(),
+    tags: z.array(z.string()),
+    downloadPath: z.string(),
+    archivedAt: z.string().nullable(),
+    archivedBy: z.string().nullable(),
+    archiveReason: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string()
+  })
+  .catchall(z.unknown());
 const artifactWithContentSchema = artifactSchema.extend({
   contentBase64: z.string().optional()
 });
@@ -380,54 +389,72 @@ const artifactReadTextSchemaOut = artifactSchema.extend({
   outline: z.array(markdownOutlineItemSchema)
 });
 const eventLikeSchema = looseRecordSchema.nullable();
-const nextCallSchema = z.object({
-  tool: z.string(),
-  input: looseRecordSchema,
-  reason: z.string()
+const deleteCountsSchema = z.object({
+  tasks: z.number(),
+  items: z.number(),
+  decisions: z.number(),
+  links: z.number(),
+  events: z.number(),
+  artifacts: z.number(),
+  currentProjectKeys: z.number().optional()
 });
-const compactArtifactSchema = z.object({
-  id: z.string(),
-  scope: z.string(),
-  path: z.string(),
-  title: z.string(),
-  description: z.string().nullable(),
-  contentType: z.string(),
-  sizeBytes: z.number(),
-  tags: z.array(z.string()),
-  downloadPath: z.string(),
-  preferredNextTool: z.string()
-});
-const projectSummaryDataSchema = z.object({
-  summary: z.string(),
-  budget: looseRecordSchema,
-  project: looseRecordSchema,
-  query: z.string(),
-  includeCommon: z.boolean(),
-  counts: looseRecordSchema,
-  openTasks: z.array(looseRecordSchema),
-  handoffs: z.array(looseRecordSchema),
-  decisions: z.array(looseRecordSchema),
-  knownFaults: z.array(looseRecordSchema),
-  artifacts: z.array(compactArtifactSchema),
-  memory: z.array(looseRecordSchema),
-  recentEvents: z.array(looseRecordSchema),
-  nextCalls: z.array(nextCallSchema)
-});
-const contextPackDataSchema = z.object({
-  summary: z.string(),
-  budget: looseRecordSchema,
-  project: looseRecordSchema.nullable().optional(),
-  task: looseRecordSchema.nullable().optional(),
-  query: z.string(),
-  mustRead: z.array(looseRecordSchema),
-  handoffs: z.array(looseRecordSchema),
-  decisions: z.array(looseRecordSchema),
-  knownFaults: z.array(looseRecordSchema),
-  memory: z.array(looseRecordSchema),
-  artifacts: z.array(compactArtifactSchema),
-  recentEvents: z.array(looseRecordSchema),
-  nextCalls: z.array(nextCallSchema)
-});
+const nextCallSchema = z
+  .object({
+    tool: z.string(),
+    input: looseRecordSchema,
+    reason: z.string()
+  })
+  .catchall(z.unknown());
+const compactArtifactSchema = z
+  .object({
+    id: z.string(),
+    scope: z.string(),
+    path: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    status: z.enum(["active", "archived"]).optional(),
+    contentType: z.string(),
+    sizeBytes: z.number(),
+    tags: z.array(z.string()),
+    downloadPath: z.string(),
+    preferredNextTool: z.string()
+  })
+  .catchall(z.unknown());
+const projectSummaryDataSchema = z
+  .object({
+    summary: z.string(),
+    budget: looseRecordSchema,
+    project: looseRecordSchema,
+    query: z.string(),
+    includeCommon: z.boolean(),
+    counts: looseRecordSchema,
+    openTasks: z.array(looseRecordSchema),
+    handoffs: z.array(looseRecordSchema),
+    decisions: z.array(looseRecordSchema),
+    knownFaults: z.array(looseRecordSchema),
+    artifacts: z.array(compactArtifactSchema),
+    memory: z.array(looseRecordSchema),
+    recentEvents: z.array(looseRecordSchema),
+    nextCalls: z.array(nextCallSchema)
+  })
+  .catchall(z.unknown());
+const contextPackDataSchema = z
+  .object({
+    summary: z.string(),
+    budget: looseRecordSchema,
+    project: looseRecordSchema.nullable().optional(),
+    task: looseRecordSchema.nullable().optional(),
+    query: z.string(),
+    mustRead: z.array(looseRecordSchema),
+    handoffs: z.array(looseRecordSchema),
+    decisions: z.array(looseRecordSchema),
+    knownFaults: z.array(looseRecordSchema),
+    memory: z.array(looseRecordSchema),
+    artifacts: z.array(compactArtifactSchema),
+    recentEvents: z.array(looseRecordSchema),
+    nextCalls: z.array(nextCallSchema)
+  })
+  .catchall(z.unknown());
 const preflightByQueryDataSchema = z.object({
   project: looseRecordSchema.nullable().optional(),
   query: z.string(),
@@ -532,6 +559,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "project.get",
     description: "Get a shared project by id or slug.",
     schema: projectLookupSchema
+  },
+  {
+    name: "project.delete",
+    description:
+      "Hard-delete a shared project by id or slug. Refuses non-empty projects unless cascade=true. Use only after an explicit user request.",
+    schema: projectDeleteSchema,
+    outputSchema: output(z.object({ deletedProject: looseRecordSchema, cascade: z.boolean(), counts: deleteCountsSchema })),
+    access: "write"
   },
   {
     name: "project.resolve",
@@ -677,6 +712,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "task.get",
     description: "Get a shared task by id.",
     schema: getTaskSchema
+  },
+  {
+    name: "task.delete",
+    description: "Hard-delete a shared task by id. Use only after an explicit user request or smoke-test cleanup.",
+    schema: taskDeleteSchema,
+    outputSchema: output(z.object({ deletedTask: looseRecordSchema, event: eventLikeSchema })),
+    access: "write"
   },
   {
     name: "task.next",

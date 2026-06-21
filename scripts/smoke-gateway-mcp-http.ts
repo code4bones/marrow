@@ -108,6 +108,7 @@ try {
   assert(toolNames.includes("gateway.client_forget"), "gateway.client_forget tool was not listed.");
   assert(toolNames.includes("gateway.client_prune"), "gateway.client_prune tool was not listed.");
   assert(toolNames.includes("project.create"), "project.create tool was not listed.");
+  assert(toolNames.includes("project.delete"), "project.delete tool was not listed.");
   assert(toolNames.includes("project.resolve"), "project.resolve tool was not listed.");
   assert(toolNames.includes("project.summary"), "project.summary tool was not listed.");
   assert(toolNames.includes("memory.upsert"), "memory.upsert tool was not listed.");
@@ -120,6 +121,7 @@ try {
   assert(toolNames.includes("artifact.list"), "artifact.list tool was not listed.");
   assert(toolNames.includes("artifact.peek"), "artifact.peek tool was not listed.");
   assert(toolNames.includes("artifact.read_text"), "artifact.read_text tool was not listed.");
+  assert(toolNames.includes("task.delete"), "task.delete tool was not listed.");
   assert(toolNames.includes("memory.search"), "memory.search tool was not listed.");
   assert(toolNames.includes("preflight"), "preflight tool was not listed.");
   assert(toolNames.includes("preflight.by_query"), "preflight.by_query tool was not listed.");
@@ -138,6 +140,8 @@ try {
   );
   assert(claudeToolNames.includes("gateway_status"), "Claude-safe gateway_status tool was not listed.");
   assert(claudeToolNames.includes("project_create"), "Claude-safe project_create tool was not listed.");
+  assert(claudeToolNames.includes("project_delete"), "Claude-safe project_delete tool was not listed.");
+  assert(claudeToolNames.includes("task_delete"), "Claude-safe task_delete tool was not listed.");
   assert(!claudeToolNames.includes("gateway.status"), "Claude-safe tool list still included dotted names.");
   const claudeStatusResult = await claudeClient.callTool({
     name: "gateway_status",
@@ -811,6 +815,31 @@ try {
   assertOk(taskResult.structuredContent, "task.create failed.");
   state.taskId = readNestedString(taskResult.structuredContent, ["data", "task", "id"]);
 
+  const deleteTaskCreateResult = await client.callTool({
+    name: "task.create",
+    arguments: {
+      project: state.projectId,
+      title: "Delete gateway MCP HTTP smoke task",
+      scope: "Temporary task used only to verify task.delete.",
+      acceptance: "task.delete removes the task by id.",
+      priority: 99
+    }
+  });
+  assertOk(deleteTaskCreateResult.structuredContent, "temporary task.create for task.delete failed.");
+  const deleteTaskId = readNestedString(deleteTaskCreateResult.structuredContent, ["data", "task", "id"]);
+  const deleteTaskResult = await client.callTool({
+    name: "task.delete",
+    arguments: {
+      id: deleteTaskId,
+      reason: "Smoke cleanup for task.delete."
+    }
+  });
+  assertOk(deleteTaskResult.structuredContent, "task.delete failed.");
+  assert(
+    readNestedString(deleteTaskResult.structuredContent, ["data", "deletedTask", "id"]) === deleteTaskId,
+    "task.delete returned the wrong deleted task."
+  );
+
   const failedAttemptResult = await client.callTool({
     name: "failed_attempt.record",
     arguments: {
@@ -926,6 +955,47 @@ try {
     ),
     "context.changed_since did not return compact changed handoff."
   );
+
+  const projectDeleteBlockedResult = await client.callTool({
+    name: "project.delete",
+    arguments: {
+      id: state.projectId
+    }
+  });
+  assertFailureCode(
+    projectDeleteBlockedResult.structuredContent,
+    "PROJECT_NOT_EMPTY",
+    "project.delete without cascade did not fail for a non-empty project."
+  );
+
+  if (state.secondProjectId) {
+    const secondProjectDeleteResult = await client.callTool({
+      name: "project.delete",
+      arguments: {
+        id: state.secondProjectId,
+        cascade: true,
+        reason: "Smoke cleanup for secondary project."
+      }
+    });
+    assertOk(secondProjectDeleteResult.structuredContent, "project.delete cascade failed for secondary project.");
+    state.secondProjectId = undefined;
+  }
+
+  const projectDeleteResult = await client.callTool({
+    name: "project.delete",
+    arguments: {
+      id: state.projectId,
+      cascade: true,
+      reason: "Smoke cleanup for primary project."
+    }
+  });
+  assertOk(projectDeleteResult.structuredContent, "project.delete cascade failed for primary project.");
+  assert(
+    readNestedString(projectDeleteResult.structuredContent, ["data", "deletedProject", "id"]) === state.projectId,
+    "project.delete returned the wrong deleted project."
+  );
+  state.projectId = undefined;
+  console.log("ok - gateway MCP HTTP pruned smoke projects through tools");
 
   console.log(`ok - gateway MCP HTTP workflow completed for ${state.taskId}`);
   console.log(`Gateway MCP HTTP smoke test passed using ${started.url}/mcp`);

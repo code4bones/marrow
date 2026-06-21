@@ -10,6 +10,7 @@ export type ErrorCode =
   | "ITEM_NOT_FOUND"
   | "LINK_NOT_FOUND"
   | "NOT_FOUND"
+  | "PROJECT_NOT_EMPTY"
   | "PROJECT_NOT_FOUND"
   | "TASK_NOT_FOUND"
   | "UNAUTHORIZED"
