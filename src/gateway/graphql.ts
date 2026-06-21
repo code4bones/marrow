@@ -11,6 +11,7 @@ type Row = Record<string, unknown>;
 export interface GatewayGraphqlToolService {
   call(toolName: string, input: unknown, context?: GatewayRequestContext): Promise<ToolResponse<unknown>>;
   graphqlPage(pageName: string, input: unknown, context?: GatewayRequestContext): Promise<Row>;
+  graphqlRecord(id: string, context?: GatewayRequestContext): Promise<Row>;
 }
 
 export interface GatewayGraphqlContext {
@@ -42,7 +43,9 @@ const typeDefs = `#graphql
     projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
+    record(id: ID!): RecordLookup!
 
+    memory(id: ID!): MemoryRecord!
     memorySearch(
       project: String
       query: String!
@@ -129,8 +132,10 @@ const typeDefs = `#graphql
     ): ArtifactText!
 
     events(project: String, common: Boolean, relatedId: String, limit: Int): [Event!]!
+    event(id: ID!): Event!
     eventsPage(project: String, common: Boolean, relatedId: String, pagination: PaginationInput): PaginatedEvents!
 
+    link(id: ID!): Link!
     links(
       id: ID!
       direction: String
@@ -182,6 +187,25 @@ const typeDefs = `#graphql
     totalCount: Int!
     hasNextPage: Boolean!
     hasPreviousPage: Boolean!
+  }
+
+  enum RecordKind {
+    PROJECT
+    MEMORY
+    TASK
+    DECISION
+    ARTIFACT
+    EVENT
+    LINK
+  }
+
+  union RecordPayload = Project | MemoryRecord | Task | Decision | Artifact | Event | Link
+
+  type RecordLookup {
+    id: ID!
+    kind: RecordKind!
+    projectId: String
+    record: RecordPayload!
   }
 
   input CreateProjectInput {
@@ -513,6 +537,11 @@ const jsonScalar = new GraphQLScalarType({
 
 const resolvers = {
   JSON: jsonScalar,
+  RecordPayload: {
+    __resolveType(value: Row) {
+      return typeof value.__typename === "string" ? value.__typename : null;
+    }
+  },
   Query: {
     gatewayVersion: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "gateway.version", {})).version,
@@ -532,6 +561,10 @@ const resolvers = {
       (await callTool<Row>(context, "project.get", requireOne(cleanInput(args), ["id", "slug"], "project"))).project,
     projectSummary: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.summary", cleanInput(args)),
+    record: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await recordQuery(context, String(args.id)),
+    memory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await typedRecordQuery(context, String(args.id), "MEMORY")).record,
     memorySearch: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "memory.search", cleanInput(args))).results,
     memorySearchPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -572,6 +605,8 @@ const resolvers = {
       delete input.common;
       return (await callTool<Row>(context, "event.list", input)).events;
     },
+    event: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await typedRecordQuery(context, String(args.id), "EVENT")).record,
     eventsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
       const input = cleanInput(args);
       if (input.common === true) {
@@ -580,6 +615,8 @@ const resolvers = {
       delete input.common;
       return await pageQuery(context, "events", input);
     },
+    link: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await typedRecordQuery(context, String(args.id), "LINK")).record,
     links: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "link.list", cleanInput(args))).links,
     linksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -697,6 +734,35 @@ async function pageQuery(
     }
     throw error;
   }
+}
+
+async function recordQuery(context: GatewayGraphqlContext, id: string): Promise<Row> {
+  try {
+    return await context.service.graphqlRecord(id, context.requestContext);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new GraphQLError(error.message, {
+        extensions: {
+          code: error.code,
+          details: error.details
+        }
+      });
+    }
+    throw error;
+  }
+}
+
+async function typedRecordQuery(context: GatewayGraphqlContext, id: string, kind: string): Promise<Row> {
+  const lookup = await recordQuery(context, id);
+  if (lookup.kind !== kind) {
+    throw new GraphQLError(`Record ${id} is ${lookup.kind}, not ${kind}.`, {
+      extensions: {
+        code: "TYPE_MISMATCH",
+        details: { id, actualKind: lookup.kind, expectedKind: kind }
+      }
+    });
+  }
+  return lookup;
 }
 
 function requireOne(input: Row, fields: string[], label: string): Row {
