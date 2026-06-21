@@ -175,8 +175,18 @@ query ProjectTables($project: String!) {
     pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
   }
 
+  memoryItemsPage(project: $project, includeCommon: true, pagination: { limit: 25, offset: 0 }) {
+    items { id scope type title status tags updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
   artifactsPage(project: $project, pagination: { limit: 25, offset: 0 }) {
     items { id path title contentType sizeBytes updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
+  linksPage(project: $project, includeCommon: true, pagination: { limit: 25, offset: 0 }) {
+    items { id projectId fromId toId relation createdAt }
     pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
   }
 
@@ -186,6 +196,11 @@ query ProjectTables($project: String!) {
   }
 }
 ```
+
+Use `memoryItemsPage` for the raw `I-*` table. Use `memorySearchPage` when the
+user typed a search query and ranked excerpts are useful. Use `linksPage` for
+the raw `L-*` table, or `links(id: "...")` to show relationships around one
+record.
 
 Search result tables also have paginated variants:
 

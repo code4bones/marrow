@@ -59,6 +59,15 @@ const typeDefs = `#graphql
       status: String
       pagination: PaginationInput
     ): PaginatedMemoryRecords!
+    memoryItemsPage(
+      project: String
+      common: Boolean
+      includeCommon: Boolean
+      type: String
+      status: String
+      tags: [String!]
+      pagination: PaginationInput
+    ): PaginatedMemoryRecords!
 
     tasks(project: String!, status: String, milestone: String, limit: Int): [Task!]!
     tasksPage(project: String!, status: String, milestone: String, pagination: PaginationInput): PaginatedTasks!
@@ -121,6 +130,22 @@ const typeDefs = `#graphql
 
     events(project: String, common: Boolean, relatedId: String, limit: Int): [Event!]!
     eventsPage(project: String, common: Boolean, relatedId: String, pagination: PaginationInput): PaginatedEvents!
+
+    links(
+      id: ID!
+      direction: String
+      relation: String
+      limit: Int
+    ): [Link!]!
+    linksPage(
+      id: ID
+      project: String
+      common: Boolean
+      includeCommon: Boolean
+      direction: String
+      relation: String
+      pagination: PaginationInput
+    ): PaginatedLinks!
   }
 
   type Mutation {
@@ -253,6 +278,7 @@ const typeDefs = `#graphql
     openTasks: Int!
     items: Int!
     decisions: Int!
+    links: Int!
     artifacts: Int!
     events: Int!
   }
@@ -456,6 +482,20 @@ const typeDefs = `#graphql
     pageInfo: PageInfo!
   }
 
+  type Link {
+    id: ID!
+    projectId: String
+    fromId: String!
+    toId: String!
+    relation: String!
+    createdAt: String
+  }
+
+  type PaginatedLinks {
+    items: [Link!]!
+    pageInfo: PageInfo!
+  }
+
   type NextCall {
     tool: String!
     input: JSON!
@@ -496,6 +536,8 @@ const resolvers = {
       (await callTool<Row>(context, "memory.search", cleanInput(args))).results,
     memorySearchPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await pageQuery(context, "memorySearch", cleanInput(args)),
+    memoryItemsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "memoryItems", cleanInput(args)),
     tasks: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.list", cleanInput(args))).tasks,
     tasksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -537,7 +579,11 @@ const resolvers = {
       }
       delete input.common;
       return await pageQuery(context, "events", input);
-    }
+    },
+    links: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "link.list", cleanInput(args))).links,
+    linksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "links", cleanInput(args))
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

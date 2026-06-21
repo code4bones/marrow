@@ -11,5 +11,7 @@ export const createLinkSchema = z.object({
 
 export const listLinksSchema = z.object({
   id: z.string().min(1),
-  direction: linkDirectionSchema.optional()
+  direction: linkDirectionSchema.optional(),
+  relation: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(200).optional()
 });

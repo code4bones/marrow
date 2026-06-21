@@ -124,8 +124,9 @@ queries require OAuth `memory:read`, while mutations require `memory:read` and
 `docs/GRAPHQL_API.md`.
 
 PMemUI table queries have paginated variants such as `projectsPage`,
-`tasksPage`, `decisionsPage`, `artifactsPage`, `artifactSearchPage`,
-`memorySearchPage`, `eventsPage`, and `gatewayClientsPage`. They accept
+`tasksPage`, `decisionsPage`, `memoryItemsPage`, `artifactsPage`,
+`artifactSearchPage`, `memorySearchPage`, `linksPage`, `eventsPage`, and
+`gatewayClientsPage`. They accept
 `PaginationInput { limit, offset }` and return `{ items, pageInfo }` with
 `totalCount`, `hasNextPage`, and `hasPreviousPage`. Pagination is executed in
 PostgreSQL with `COUNT(*)`, `LIMIT`, and `OFFSET`.

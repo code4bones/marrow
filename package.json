@@ -1,6 +1,6 @@
 {
   "name": "@deadragdoll/pm3m",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Local-first MCP server for project-oriented agent memory.",
   "type": "module",
   "main": "dist/src/index.js",

@@ -225,6 +225,8 @@ export class PgToolService {
         return this.projectsPage(parsed);
       case "gatewayClients":
         return this.gatewayClientsPage(parsed);
+      case "memoryItems":
+        return this.memoryItemsPage(parsed, requestContext);
       case "memorySearch":
         return this.memorySearchPage(parsed, requestContext);
       case "tasks":
@@ -237,6 +239,8 @@ export class PgToolService {
         return this.artifactSearchPage(parsed, requestContext);
       case "events":
         return this.eventsPage(parsed, requestContext);
+      case "links":
+        return this.linksPage(parsed, requestContext);
       default:
         throw new AppError("VALIDATION_ERROR", `GraphQL page ${pageName} is not registered.`);
     }
@@ -1129,6 +1133,49 @@ export class PgToolService {
       throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
     }
     return itemOut(row);
+  }
+
+  private async memoryItemsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const commonOnly = input.common === true || input.project === null;
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project, context)
+        : await this.tryCurrentProject(context);
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Memory item list requires a project or includeCommon=true.");
+    }
+
+    const base = this.db("items");
+    base.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (input.type) {
+      base.andWhere("type", String(input.type));
+    }
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    }
+    if (Array.isArray(input.tags) && input.tags.length > 0) {
+      base.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
+    }
+
+    return this.pageRows(
+      base,
+      input,
+      (query) =>
+        query
+          .select("*")
+          .orderByRaw("case when project_id is null then 1 else 0 end asc")
+          .orderBy("updated_at", "desc"),
+      itemOut
+    );
   }
 
   private async searchMemory(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -2203,7 +2250,59 @@ export class PgToolService {
     } else {
       query = query.where((builder) => builder.where("from_id", String(input.id)).orWhere("to_id", String(input.id)));
     }
-    return (await query.orderBy("created_at", "desc")).map(linkOut);
+    if (input.relation) {
+      query = query.andWhere("relation", String(input.relation));
+    }
+    return (await query.orderBy("created_at", "desc").limit(Number(input.limit ?? 50))).map(linkOut);
+  }
+
+  private async linksPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const base = this.db("links");
+    if (input.id) {
+      const direction = input.direction ?? "both";
+      if (direction === "from") {
+        base.where("from_id", String(input.id));
+      } else if (direction === "to") {
+        base.where("to_id", String(input.id));
+      } else {
+        base.where((builder) => builder.where("from_id", String(input.id)).orWhere("to_id", String(input.id)));
+      }
+    } else {
+      const commonOnly = input.common === true || input.project === null;
+      const includeCommon = commonOnly ? true : input.includeCommon !== false;
+      const project = commonOnly
+        ? null
+        : input.project
+          ? await this.resolveProject(input.project, context)
+          : await this.tryCurrentProject(context);
+      if (!project && !includeCommon) {
+        throw new AppError("CURRENT_PROJECT_NOT_SET", "Link list requires an id, a project, or includeCommon=true.");
+      }
+
+      base.andWhere((builder) => {
+        if (project) {
+          builder.orWhere("project_id", project.id);
+        }
+        if (includeCommon) {
+          builder.orWhereNull("project_id");
+        }
+      });
+    }
+
+    if (input.relation) {
+      base.andWhere("relation", String(input.relation));
+    }
+
+    return this.pageRows(
+      base,
+      input,
+      (query) =>
+        query
+          .select("*")
+          .orderByRaw("case when project_id is null then 1 else 0 end asc")
+          .orderBy("created_at", "desc"),
+      linkOut
+    );
   }
 
   private async preflight(input: Row) {
@@ -3360,6 +3459,7 @@ function itemOut(row: Row) {
   return {
     id: String(row.id),
     projectId: stringOrNull(row.project_id),
+    scope: row.project_id ? "project" : "common",
     type: String(row.type),
     title: String(row.title),
     body: String(row.body),

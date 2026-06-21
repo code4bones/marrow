@@ -74,13 +74,25 @@ try {
   assert(created.createTask.status === "todo", "GraphQL createTask did not create a todo task.");
   console.log("ok - graphql create mutations");
 
-  await callGateway("memory.create", {
+  const memoryCreated = await callGateway("memory.create", {
     project: projectId,
     type: "note",
     title: "GraphQL pagination smoke memory",
     body: "GraphQL pagination smoke memory validates memorySearchPage totalCount and items.",
     tags: ["smoke", "graphql", "pagination"]
   });
+  assert(memoryCreated.ok, "GraphQL smoke memory.create failed.");
+  const memoryId = String((memoryCreated.data as { item?: { id?: string } }).item?.id);
+  assert(memoryId.startsWith("I-"), "GraphQL smoke memory.create did not return an I-* item.");
+  const linkCreated = await callGateway("link.create", {
+    project: projectId,
+    fromId: memoryId,
+    toId: taskId,
+    relation: "documents"
+  });
+  assert(linkCreated.ok, "GraphQL smoke link.create failed.");
+  const linkId = String((linkCreated.data as { link?: { id?: string } }).link?.id);
+  assert(linkId.startsWith("L-"), "GraphQL smoke link.create did not return an L-* link.");
 
   const data = await graphql<{
     project: { id: string; slug: string; title: string };
@@ -123,10 +135,13 @@ try {
     tasksPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
     artifactsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
     artifactSearchPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    memoryItemsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
     memorySearchPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
     eventsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    links: Array<{ id: string; fromId: string; toId: string; relation: string }>;
+    linksPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
   }>(
-    `query Pages($project: String!) {
+    `query Pages($project: String!, $memoryId: ID!) {
       projectsPage(status: "active", pagination: { limit: 2, offset: 0 }) {
         items { id }
         pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
@@ -147,6 +162,10 @@ try {
         items { id }
         pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
       }
+      memoryItemsPage(project: $project, pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
       memorySearchPage(project: $project, query: "GraphQL pagination smoke", pagination: { limit: 1, offset: 0 }) {
         items { id }
         pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
@@ -155,16 +174,29 @@ try {
         items { id }
         pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
       }
+      links(id: $memoryId) {
+        id
+        fromId
+        toId
+        relation
+      }
+      linksPage(project: $project, pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
     }`,
-    { project: projectId }
+    { project: projectId, memoryId }
   );
   assertPage(pages.projectsPage.pageInfo, 2, 0, 1, "projectsPage");
   assertPage(pages.gatewayClientsPage.pageInfo, 5, 0, 1, "gatewayClientsPage");
   assertPage(pages.tasksPage.pageInfo, 1, 0, 1, "tasksPage");
   assertPage(pages.artifactsPage.pageInfo, 1, 0, 1, "artifactsPage");
   assertPage(pages.artifactSearchPage.pageInfo, 1, 0, 1, "artifactSearchPage");
+  assertPage(pages.memoryItemsPage.pageInfo, 1, 0, 1, "memoryItemsPage");
   assertPage(pages.memorySearchPage.pageInfo, 1, 0, 1, "memorySearchPage");
   assertPage(pages.eventsPage.pageInfo, 2, 0, 1, "eventsPage");
+  assert(pages.links.some((link) => link.id === linkId), "GraphQL links query missed smoke link.");
+  assertPage(pages.linksPage.pageInfo, 1, 0, 1, "linksPage");
   console.log("ok - graphql paginated table queries");
 
   const updated = await graphql<{
