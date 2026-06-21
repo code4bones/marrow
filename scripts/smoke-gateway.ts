@@ -303,7 +303,7 @@ try {
     await db("gateway_clients").where({ id: state.forgetClientId }).del();
   }
   await db("gateway_clients").where({ id: clientId }).del();
-  await new Promise<void>((resolve) => started.server.close(() => resolve()));
+  await started.stop();
   await service.close();
 }
 

@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     logger.info("project memory gateway shutting down");
-    await new Promise<void>((resolve) => started.server.close(() => resolve()));
+    await started.stop();
     await service.close();
     logger.flush();
   };

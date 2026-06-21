@@ -1018,7 +1018,7 @@ try {
   }
   await db("gateway_clients").where({ id: clientId }).del();
   await db("gateway_clients").where({ id: secondClientId }).del();
-  await new Promise<void>((resolveServerClose) => started.server.close(() => resolveServerClose()));
+  await started.stop();
   await service.close();
 }
 

@@ -11,6 +11,11 @@ import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
 import type { OAuthFacade } from "./oauth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
+import {
+  createGatewayGraphqlServer,
+  handleGatewayGraphqlRequest,
+  type GatewayGraphqlServer
+} from "./graphql.js";
 
 export interface GatewayServerOptions {
   host: string;
@@ -23,6 +28,7 @@ export interface GatewayServerOptions {
 export interface StartedGatewayServer {
   server: Server;
   url: string;
+  stop(): Promise<void>;
 }
 
 interface ToolCallBody {
@@ -39,26 +45,40 @@ export async function startGatewayServer(
   service: PgToolService,
   options: GatewayServerOptions
 ): Promise<StartedGatewayServer> {
+  const graphql = await createGatewayGraphqlServer();
   const server = createServer((request, response) => {
-    void handleRequest(service, options, request, response);
+    void handleRequest(service, options, graphql, request, response);
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.port, options.host, () => {
-      server.off("error", reject);
-      resolve();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(options.port, options.host, () => {
+        server.off("error", reject);
+        resolve();
+      });
     });
-  });
+  } catch (error) {
+    await graphql.stop();
+    throw error;
+  }
 
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : options.port;
-  return { server, url: `http://${options.host}:${port}` };
+  return {
+    server,
+    url: `http://${options.host}:${port}`,
+    async stop() {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await graphql.stop();
+    }
+  };
 }
 
 async function handleRequest(
   service: PgToolService,
   options: GatewayServerOptions,
+  graphql: GatewayGraphqlServer,
   request: IncomingMessage,
   response: ServerResponse
 ): Promise<void> {
@@ -140,10 +160,29 @@ async function handleRequest(
       return;
     }
 
+    if (request.method === "OPTIONS" && isGraphqlRequestPath(requestPath)) {
+      const result = await handleGatewayGraphqlRequest({
+        graphql,
+        request,
+        response,
+        requestContext: context,
+        requestId,
+        service,
+        logger: options.logger
+      });
+      logRequest(options, request, result.status, Date.now() - startedAt, requestId, context);
+      return;
+    }
+
     const auth = isAuthorized(options, request);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth.challenge);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context);
+      return;
+    }
+
+    if (isGraphqlRequestPath(requestPath)) {
+      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt);
       return;
     }
 
@@ -223,6 +262,38 @@ async function handleRequest(
       "gateway request failed"
     );
     send(500, fail(error));
+  }
+}
+
+async function handleGraphqlRequest(
+  service: PgToolService,
+  options: GatewayServerOptions,
+  graphql: GatewayGraphqlServer,
+  request: IncomingMessage,
+  response: ServerResponse,
+  requestId: string,
+  context: GatewayRequestContext,
+  startedAt: number
+): Promise<void> {
+  try {
+    const result = await handleGatewayGraphqlRequest({
+      graphql,
+      request,
+      response,
+      requestContext: context,
+      requestId,
+      service,
+      logger: options.logger
+    });
+    logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, {
+      graphqlOperationName: result.operationName
+    });
+  } catch (error) {
+    options.logger?.error({ requestId, clientId: context.clientId, error }, "gateway graphql request failed");
+    if (!response.headersSent) {
+      sendJson(response, 500, fail(error), requestId);
+    }
+    logRequest(options, request, response.statusCode || 500, Date.now() - startedAt, requestId, context);
   }
 }
 
@@ -462,6 +533,23 @@ function protectedResourceFromRequestPath(oauth: OAuthFacade, requestPath: strin
     return undefined;
   }
   return oauth.resourceFromMetadataPath(requestPath.slice(prefix.length));
+}
+
+function isGraphqlRequestPath(requestPath: string): boolean {
+  if (requestPath === "/graphql") {
+    return true;
+  }
+  const endpoint = normalizedApiEndpoint();
+  return Boolean(endpoint && requestPath === `${endpoint}/graphql`);
+}
+
+function normalizedApiEndpoint(): string | null {
+  const raw = process.env.API_ENDPOINT?.trim();
+  if (!raw || raw === "/") {
+    return null;
+  }
+  const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  return withLeadingSlash.replace(/\/+$/, "");
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

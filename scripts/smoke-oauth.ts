@@ -322,7 +322,7 @@ try {
   console.log(`OAuth smoke test passed using ${started.url}`);
 } finally {
   await db("gateway_clients").where({ id: pmemClientId }).del();
-  await new Promise<void>((resolve) => started.server.close(() => resolve()));
+  await started.stop();
   await service.close();
 }
 

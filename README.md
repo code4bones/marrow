@@ -87,6 +87,9 @@ See [docs/FRONTEND_UI_CONCEPT.md](docs/FRONTEND_UI_CONCEPT.md) for the future
 React/TypeScript/Vite/Zustand/GraphQL UI concept for browsing and maintaining
 shared pmem knowledge.
 
+See [docs/GRAPHQL_API.md](docs/GRAPHQL_API.md) for the shared gateway GraphQL
+endpoint intended for the PMemUI frontend.
+
 See [docs/TOOL_WORKFLOWS.md](docs/TOOL_WORKFLOWS.md) for recommended tool chains agents should follow.
 
 See [docs/AGENT_STATE_MACHINE.md](docs/AGENT_STATE_MACHINE.md) for the agent state machine and clarification triggers.

@@ -107,6 +107,20 @@ Shared agents should connect to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
+PMemUI and browser-facing clients can use the gateway GraphQL endpoint:
+
+```text
+${GW_ENDPOINT}/graphql
+```
+
+The first GraphQL slice is read-oriented and maps to existing gateway tools for
+gateway status, projects, project summaries, memory search, tasks, decisions,
+artifacts, artifact text, and events. The endpoint uses the same gateway
+authorization as `/mcp` and `/call`; on production this resolves to
+`https://pmem.undoo.ru/api/graphql`. `OPTIONS /graphql` and
+`OPTIONS ${API_ENDPOINT}/graphql` support browser CORS preflight. See
+`docs/GRAPHQL_API.md`.
+
 Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, optional `MCP_TOKEN`, optional `ARTIFACT_DIR`, and `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`. OAuth facade variables include `PROJECT_MEMORY_PUBLIC_URL`, `PROJECT_MEMORY_OAUTH_ISSUER`, `PROJECT_MEMORY_OAUTH_AUDIENCE`, `PROJECT_MEMORY_MAGIC_TOKEN` or `PROJECT_MEMORY_MAGIC_TOKEN_HASH`, `PROJECT_MEMORY_ALLOWED_REDIRECT_URIS`, optional `PROJECT_MEMORY_OAUTH_CLIENT_ID`, optional `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`, optional authorization-code TTL, and optional OAuth scope/key settings. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
 
 OAuth tokens are checked per tool. Read-only tools require `memory:read`; write
@@ -319,6 +333,7 @@ Future frontend direction is documented in `docs/FRONTEND_UI_CONCEPT.md`. That
 document describes a React/TypeScript/Vite/Zustand/GraphQL operational UI for
 browsing projects, tasks, decisions, faults, artifacts, events, clients, and
 diagnostics without changing the current backend-first MVP scope.
+The initial gateway GraphQL API contract is documented in `docs/GRAPHQL_API.md`.
 
 ## Event Behavior
 
