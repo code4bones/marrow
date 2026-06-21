@@ -123,6 +123,13 @@ queries require OAuth `memory:read`, while mutations require `memory:read` and
 `OPTIONS ${API_ENDPOINT}/graphql` support browser CORS preflight. See
 `docs/GRAPHQL_API.md`.
 
+PMemUI table queries have paginated variants such as `projectsPage`,
+`tasksPage`, `decisionsPage`, `artifactsPage`, `artifactSearchPage`,
+`memorySearchPage`, `eventsPage`, and `gatewayClientsPage`. They accept
+`PaginationInput { limit, offset }` and return `{ items, pageInfo }` with
+`totalCount`, `hasNextPage`, and `hasPreviousPage`. Pagination is executed in
+PostgreSQL with `COUNT(*)`, `LIMIT`, and `OFFSET`.
+
 Gateway-specific `.env` variables control the server process: `BIND`, `PORT`, `API_ENDPOINT`, optional `MCP_TOKEN`, optional `ARTIFACT_DIR`, and `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`. OAuth facade variables include `PROJECT_MEMORY_PUBLIC_URL`, `PROJECT_MEMORY_OAUTH_ISSUER`, `PROJECT_MEMORY_OAUTH_AUDIENCE`, `PROJECT_MEMORY_MAGIC_TOKEN` or `PROJECT_MEMORY_MAGIC_TOKEN_HASH`, `PROJECT_MEMORY_ALLOWED_REDIRECT_URIS`, optional `PROJECT_MEMORY_OAUTH_CLIENT_ID`, optional `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`, optional authorization-code TTL, and optional OAuth scope/key settings. Client-specific `.env` variables control agent connections: `GW_ENDPOINT` points to the public gateway base URL, and clients append routes such as `/mcp`; `MCP_CLIENT_AUTH` carries the bearer token expected by the gateway. Client identity is provided through `X-Project-Memory-Client-*` request headers when needed.
 
 OAuth tokens are checked per tool. Read-only tools require `memory:read`; write

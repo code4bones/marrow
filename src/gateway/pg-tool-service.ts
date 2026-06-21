@@ -216,6 +216,32 @@ export class PgToolService {
     }
   }
 
+  async graphqlPage(pageName: string, input: unknown, context: GatewayRequestContext = {}): Promise<Row> {
+    const requestContext = normalizeContext(context);
+    await this.touchClient(requestContext, { cleanupAnonymous: true });
+    const parsed = (input ?? {}) as Row;
+    switch (pageName) {
+      case "projects":
+        return this.projectsPage(parsed);
+      case "gatewayClients":
+        return this.gatewayClientsPage(parsed);
+      case "memorySearch":
+        return this.memorySearchPage(parsed, requestContext);
+      case "tasks":
+        return this.tasksPage(parsed, requestContext);
+      case "decisions":
+        return this.decisionsPage(parsed, requestContext);
+      case "artifacts":
+        return this.artifactsPage(parsed, requestContext);
+      case "artifactSearch":
+        return this.artifactSearchPage(parsed, requestContext);
+      case "events":
+        return this.eventsPage(parsed, requestContext);
+      default:
+        throw new AppError("VALIDATION_ERROR", `GraphQL page ${pageName} is not registered.`);
+    }
+  }
+
   async close(): Promise<void> {
     await this.db.destroy();
   }
@@ -584,6 +610,21 @@ export class PgToolService {
     return rows.map(clientOut);
   }
 
+  private async gatewayClientsPage(input: Row) {
+    const base = this.db("gateway_clients");
+    if (typeof input.anonymous === "boolean") {
+      if (input.anonymous) {
+        base.where("id", "like", `${anonymousClientPrefix}%`);
+      } else {
+        base.where("id", "not like", `${anonymousClientPrefix}%`);
+      }
+    }
+    if (typeof input.staleOlderThanSeconds === "number") {
+      base.andWhere("last_seen_at", "<", cutoffFromSeconds(input.staleOlderThanSeconds));
+    }
+    return this.pageRows(base, input, (query) => query.select("*").orderBy("updated_at", "desc"), clientOut);
+  }
+
   private async getClient(input: Row) {
     const row = await this.clientRow(String(input.id));
     return {
@@ -676,6 +717,14 @@ export class PgToolService {
       query = query.where("status", String(input.status));
     }
     return (await query).map(projectOut);
+  }
+
+  private async projectsPage(input: Row) {
+    const base = this.db("projects");
+    if (input.status) {
+      base.where("status", String(input.status));
+    }
+    return this.pageRows(base, input, (query) => query.select("*").orderBy("slug"), projectOut);
   }
 
   private async getProject(input: Row) {
@@ -876,6 +925,27 @@ export class PgToolService {
   private async countQueryRows(query: Knex.QueryBuilder): Promise<number> {
     const row = (await query.count({ count: "*" }).first()) as Row | undefined;
     return Number(row?.count ?? 0);
+  }
+
+  private async pageRows<T>(
+    baseQuery: Knex.QueryBuilder,
+    input: Row,
+    applyListShape: (query: Knex.QueryBuilder) => Knex.QueryBuilder,
+    mapRow: (row: Row) => T
+  ) {
+    const page = paginationInput(input.pagination);
+    const totalCount = await this.countQueryRows(baseQuery.clone());
+    const rows = (await applyListShape(baseQuery.clone()).limit(page.limit).offset(page.offset)) as Row[];
+    return {
+      items: rows.map(mapRow),
+      pageInfo: {
+        limit: page.limit,
+        offset: page.offset,
+        totalCount,
+        hasNextPage: page.offset + rows.length < totalCount,
+        hasPreviousPage: page.offset > 0
+      }
+    };
   }
 
   private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
@@ -1103,6 +1173,51 @@ export class PgToolService {
       .orderBy("rank", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(searchOut);
+  }
+
+  private async memorySearchPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Search requires a project or includeCommon=true.");
+    }
+
+    const queryText = String(input.query);
+    const base = this.db("items").whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    base.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (input.type) {
+      base.andWhere("type", String(input.type));
+    }
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    }
+
+    return this.pageRows(
+      base,
+      input,
+      (query) =>
+        query
+          .select(
+            "id",
+            "project_id",
+            "type",
+            "title",
+            "body",
+            "status",
+            "tags",
+            this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText])
+          )
+          .orderByRaw("case when project_id is null then 1 else 0 end asc")
+          .orderBy("rank", "desc"),
+      searchOut
+    );
   }
 
   private async updateMemory(input: Row, context: NormalizedGatewayRequestContext) {
@@ -1383,6 +1498,50 @@ export class PgToolService {
     return rows.map(artifactSearchOut);
   }
 
+  private async artifactSearchPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact search requires a project or includeCommon=true.");
+    }
+
+    const queryText = typeof input.query === "string" ? input.query : null;
+    const base = this.db("artifacts");
+    if (queryText) {
+      base.whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    }
+    base.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (Array.isArray(input.tags) && input.tags.length > 0) {
+      base.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
+    }
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    } else if (input.includeArchived !== true) {
+      base.andWhere("status", "active");
+    }
+
+    return this.pageRows(
+      base,
+      input,
+      (query) => {
+        query.select("*");
+        if (queryText) {
+          query.select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]));
+        }
+        query.orderByRaw("case when project_id is null then 1 else 0 end asc");
+        return query.orderBy(queryText ? "rank" : "created_at", "desc");
+      },
+      artifactSearchOut
+    );
+  }
+
   private async listArtifacts(input: Row, context?: NormalizedGatewayRequestContext) {
     const commonOnly = input.common === true || input.project === null;
     const includeCommon = commonOnly ? true : input.includeCommon !== false;
@@ -1423,6 +1582,48 @@ export class PgToolService {
       .orderBy("path", "asc")
       .limit(Number(input.limit ?? 50));
     return rows.map(artifactOut);
+  }
+
+  private async artifactsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const commonOnly = input.common === true || input.project === null;
+    const includeCommon = commonOnly ? true : input.includeCommon !== false;
+    const project = commonOnly
+      ? null
+      : input.project
+        ? await this.resolveProject(input.project, context)
+        : await this.tryCurrentProject(context);
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Artifact list requires a project or includeCommon=true.");
+    }
+
+    const base = this.db("artifacts");
+    base.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (typeof input.pathPrefix === "string") {
+      const prefix = normalizeArtifactPath(input.pathPrefix);
+      base.andWhere("path", "like", `${prefix}%`);
+    }
+    if (Array.isArray(input.tags) && input.tags.length > 0) {
+      base.andWhereRaw("tags @> ?::jsonb", [JSON.stringify(stringArray(input.tags))]);
+    }
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    } else if (input.includeArchived !== true) {
+      base.andWhere("status", "active");
+    }
+
+    return this.pageRows(
+      base,
+      input,
+      (query) => query.select("*").orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("path", "asc"),
+      artifactOut
+    );
   }
 
   private async getArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -1670,6 +1871,18 @@ export class PgToolService {
     return (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
   }
 
+  private async tasksPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    const base = this.db("tasks").where("project_id", project.id);
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    }
+    if (input.milestone) {
+      base.andWhere("milestone", String(input.milestone));
+    }
+    return this.pageRows(base, input, (query) => query.select("*").orderBy("priority").orderBy("created_at"), taskOut);
+  }
+
   private async getTask(id: string) {
     const row = await this.db("tasks").where({ id }).first();
     if (!row) {
@@ -1884,6 +2097,29 @@ export class PgToolService {
     return rows.map(decisionOut);
   }
 
+  private async decisionsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
+    const base = this.db("decisions");
+    base.where((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    if (input.status) {
+      base.andWhere("status", String(input.status));
+    }
+    return this.pageRows(
+      base,
+      input,
+      (query) => query.select("*").orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("created_at", "desc"),
+      decisionOut
+    );
+  }
+
   private async getDecision(id: string) {
     const row = await this.db("decisions").where({ id }).first();
     if (!row) {
@@ -1916,6 +2152,22 @@ export class PgToolService {
       query = query.andWhere("related_id", String(input.relatedId));
     }
     return (await query.orderBy("created_at", "desc").limit(Number(input.limit ?? 20))).map(eventOut);
+  }
+
+  private async eventsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const base = this.db("events");
+    if (input.project !== undefined) {
+      if (input.project === null) {
+        base.whereNull("project_id");
+      } else {
+        const project = await this.resolveProject(input.project, context);
+        base.where("project_id", project.id);
+      }
+    }
+    if (input.relatedId) {
+      base.andWhere("related_id", String(input.relatedId));
+    }
+    return this.pageRows(base, input, (query) => query.select("*").orderBy("created_at", "desc"), eventOut);
   }
 
   private async createLink(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2545,6 +2797,21 @@ function artifactOut(row: Row) {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function paginationInput(value: unknown): { limit: number; offset: number } {
+  const input = typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Row) : {};
+  const limit = boundedInteger(input.limit, 50, 1, 200);
+  const offset = boundedInteger(input.offset, 0, 0, 1_000_000);
+  return { limit, offset };
+}
+
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
 function artifactSearchOut(row: Row) {

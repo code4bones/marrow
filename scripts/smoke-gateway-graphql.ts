@@ -74,6 +74,14 @@ try {
   assert(created.createTask.status === "todo", "GraphQL createTask did not create a todo task.");
   console.log("ok - graphql create mutations");
 
+  await callGateway("memory.create", {
+    project: projectId,
+    type: "note",
+    title: "GraphQL pagination smoke memory",
+    body: "GraphQL pagination smoke memory validates memorySearchPage totalCount and items.",
+    tags: ["smoke", "graphql", "pagination"]
+  });
+
   const data = await graphql<{
     project: { id: string; slug: string; title: string };
     tasks: Array<{ id: string; title: string; status: string }>;
@@ -108,6 +116,56 @@ try {
   assert(data.projectSummary.counts.tasks >= 1, "GraphQL projectSummary did not report task count.");
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
   console.log("ok - graphql project explorer queries");
+
+  const pages = await graphql<{
+    projectsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    gatewayClientsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    tasksPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    artifactsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    artifactSearchPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    memorySearchPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+    eventsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
+  }>(
+    `query Pages($project: String!) {
+      projectsPage(status: "active", pagination: { limit: 2, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      gatewayClientsPage(pagination: { limit: 5, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      tasksPage(project: $project, pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      artifactsPage(project: $project, includeArchived: true, pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      artifactSearchPage(project: $project, query: "GraphQL", includeArchived: true, pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      memorySearchPage(project: $project, query: "GraphQL pagination smoke", pagination: { limit: 1, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+      eventsPage(project: $project, pagination: { limit: 2, offset: 0 }) {
+        items { id }
+        pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+      }
+    }`,
+    { project: projectId }
+  );
+  assertPage(pages.projectsPage.pageInfo, 2, 0, 1, "projectsPage");
+  assertPage(pages.gatewayClientsPage.pageInfo, 5, 0, 1, "gatewayClientsPage");
+  assertPage(pages.tasksPage.pageInfo, 1, 0, 1, "tasksPage");
+  assertPage(pages.artifactsPage.pageInfo, 1, 0, 1, "artifactsPage");
+  assertPage(pages.artifactSearchPage.pageInfo, 1, 0, 1, "artifactSearchPage");
+  assertPage(pages.memorySearchPage.pageInfo, 1, 0, 1, "memorySearchPage");
+  assertPage(pages.eventsPage.pageInfo, 2, 0, 1, "eventsPage");
+  console.log("ok - graphql paginated table queries");
 
   const updated = await graphql<{
     updateTaskStatus: { id: string; status: string };
@@ -222,6 +280,25 @@ async function callGateway(tool: string, input: unknown): Promise<ToolResponse<u
   });
   assert(response.ok, `Gateway call ${tool} returned HTTP ${response.status}.`);
   return (await response.json()) as ToolResponse<unknown>;
+}
+
+type PageInfo = {
+  limit: number;
+  offset: number;
+  totalCount: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+function assertPage(pageInfo: PageInfo, limit: number, offset: number, minTotalCount: number, label: string): void {
+  assert(pageInfo.limit === limit, `${label} returned wrong limit.`);
+  assert(pageInfo.offset === offset, `${label} returned wrong offset.`);
+  assert(pageInfo.totalCount >= minTotalCount, `${label} returned too small totalCount.`);
+  assert(pageInfo.hasPreviousPage === (offset > 0), `${label} returned wrong hasPreviousPage.`);
+  assert(
+    pageInfo.hasNextPage === offset + limit < pageInfo.totalCount,
+    `${label} returned wrong hasNextPage.`
+  );
 }
 
 function assert(condition: unknown, message: string): asserts condition {

@@ -65,6 +65,17 @@ query Gateway {
 }
 ```
 
+Gateway clients can be fetched as a bounded list or as a paginated table:
+
+```graphql
+query GatewayClientsTable {
+  gatewayClientsPage(pagination: { limit: 25, offset: 0 }) {
+    items { id label lastSeenAt metadata }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+}
+```
+
 Projects:
 
 ```graphql
@@ -76,6 +87,17 @@ query Projects {
     status
     rootPath
     updatedAt
+  }
+}
+```
+
+Paginated project table:
+
+```graphql
+query ProjectsTable {
+  projectsPage(status: "active", pagination: { limit: 25, offset: 0 }) {
+    items { id slug title status updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
   }
 }
 ```
@@ -138,6 +160,84 @@ query Search($project: String!, $query: String!) {
   }
 }
 ```
+
+Paginated table fields are available for the main PMemUI grids:
+
+```graphql
+query ProjectTables($project: String!) {
+  tasksPage(project: $project, pagination: { limit: 25, offset: 0 }) {
+    items { id title status priority updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
+  decisionsPage(project: $project, includeCommon: true, pagination: { limit: 25, offset: 0 }) {
+    items { id title status updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
+  artifactsPage(project: $project, pagination: { limit: 25, offset: 0 }) {
+    items { id path title contentType sizeBytes updatedAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
+  eventsPage(project: $project, pagination: { limit: 50, offset: 0 }) {
+    items { id type title relatedId createdAt }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+}
+```
+
+Search result tables also have paginated variants:
+
+```graphql
+query SearchTables($project: String!, $query: String!) {
+  memorySearchPage(project: $project, query: $query, includeCommon: true, pagination: { limit: 25, offset: 0 }) {
+    items { id scope type title excerpt tags }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+
+  artifactSearchPage(project: $project, query: $query, includeCommon: true, pagination: { limit: 25, offset: 0 }) {
+    items { id scope path title contentType preferredNextTool }
+    pageInfo { limit offset totalCount hasNextPage hasPreviousPage }
+  }
+}
+```
+
+## Pagination
+
+PMemUI table queries use offset pagination for the first frontend slice:
+
+```graphql
+input PaginationInput {
+  limit: Int = 50
+  offset: Int = 0
+}
+
+type PageInfo {
+  limit: Int!
+  offset: Int!
+  totalCount: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+```
+
+Each paginated field returns:
+
+```graphql
+type PaginatedTasks {
+  items: [Task!]!
+  pageInfo: PageInfo!
+}
+```
+
+The gateway executes pagination at PostgreSQL level with `COUNT(*)`,
+`LIMIT`, and `OFFSET`. `limit` is bounded server-side. This shape is chosen for
+PMemUI data grids because the frontend can show total rows, page size, current
+page, and next/previous controls without guessing.
+
+Keep existing non-paginated list fields for compact agent workflows and simple
+selectors. Use `*Page` fields for UI tables.
 
 ## Available Mutations
 
@@ -222,6 +322,7 @@ mutation DeleteProject($slug: String!) {
 - Use `artifactText` for Markdown/text content.
 - Do not request base64 for text previews or reads.
 - Keep GraphQL queries scoped by project where practical.
+- Use `*Page` fields for PMemUI tables that need page size and total row count.
 - Treat `gatewayStatus`, `gatewayVersion`, and `gatewayDiagnostics` as JSON
   scalars for diagnostics views.
 - Use destructive mutations only after explicit UI confirmation.

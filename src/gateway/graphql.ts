@@ -10,6 +10,7 @@ type Row = Record<string, unknown>;
 
 export interface GatewayGraphqlToolService {
   call(toolName: string, input: unknown, context?: GatewayRequestContext): Promise<ToolResponse<unknown>>;
+  graphqlPage(pageName: string, input: unknown, context?: GatewayRequestContext): Promise<Row>;
 }
 
 export interface GatewayGraphqlContext {
@@ -34,8 +35,11 @@ const typeDefs = `#graphql
     gatewayVersion: JSON!
     gatewayStatus: JSON!
     gatewayDiagnostics: JSON!
+    gatewayClients(anonymous: Boolean, staleOlderThanSeconds: Int, limit: Int): [GatewayClient!]!
+    gatewayClientsPage(anonymous: Boolean, staleOlderThanSeconds: Int, pagination: PaginationInput): PaginatedGatewayClients!
 
     projects(status: String): [Project!]!
+    projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
 
@@ -47,12 +51,22 @@ const typeDefs = `#graphql
       status: String
       limit: Int
     ): [MemoryRecord!]!
+    memorySearchPage(
+      project: String
+      query: String!
+      includeCommon: Boolean
+      type: String
+      status: String
+      pagination: PaginationInput
+    ): PaginatedMemoryRecords!
 
     tasks(project: String!, status: String, milestone: String, limit: Int): [Task!]!
+    tasksPage(project: String!, status: String, milestone: String, pagination: PaginationInput): PaginatedTasks!
     task(id: ID!): Task!
     nextTask(project: String!): Task
 
     decisions(project: String, includeCommon: Boolean, status: String, limit: Int): [Decision!]!
+    decisionsPage(project: String, includeCommon: Boolean, status: String, pagination: PaginationInput): PaginatedDecisions!
     decision(id: ID!): Decision!
 
     artifacts(
@@ -65,6 +79,16 @@ const typeDefs = `#graphql
       status: String
       limit: Int
     ): [Artifact!]!
+    artifactsPage(
+      project: String
+      common: Boolean
+      includeCommon: Boolean
+      pathPrefix: String
+      tags: [String!]
+      includeArchived: Boolean
+      status: String
+      pagination: PaginationInput
+    ): PaginatedArtifacts!
     artifact(id: ID, project: String, path: String): Artifact!
     artifactSearch(
       project: String
@@ -75,6 +99,15 @@ const typeDefs = `#graphql
       tags: [String!]
       limit: Int
     ): [ArtifactSearchResult!]!
+    artifactSearchPage(
+      project: String
+      query: String
+      includeCommon: Boolean
+      includeArchived: Boolean
+      status: String
+      tags: [String!]
+      pagination: PaginationInput
+    ): PaginatedArtifactSearchResults!
     artifactText(
       id: ID
       project: String
@@ -87,6 +120,7 @@ const typeDefs = `#graphql
     ): ArtifactText!
 
     events(project: String, common: Boolean, relatedId: String, limit: Int): [Event!]!
+    eventsPage(project: String, common: Boolean, relatedId: String, pagination: PaginationInput): PaginatedEvents!
   }
 
   type Mutation {
@@ -110,6 +144,19 @@ const typeDefs = `#graphql
     artifacts: Int
     memory: Int
     events: Int
+  }
+
+  input PaginationInput {
+    limit: Int = 50
+    offset: Int = 0
+  }
+
+  type PageInfo {
+    limit: Int!
+    offset: Int!
+    totalCount: Int!
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
   }
 
   input CreateProjectInput {
@@ -163,6 +210,25 @@ const typeDefs = `#graphql
     rootPath: String
     createdAt: String
     updatedAt: String
+  }
+
+  type PaginatedProjects {
+    items: [Project!]!
+    pageInfo: PageInfo!
+  }
+
+  type GatewayClient {
+    id: ID!
+    label: String
+    lastSeenAt: String
+    metadata: JSON!
+    createdAt: String
+    updatedAt: String
+  }
+
+  type PaginatedGatewayClients {
+    items: [GatewayClient!]!
+    pageInfo: PageInfo!
   }
 
   type ProjectSummary {
@@ -222,6 +288,11 @@ const typeDefs = `#graphql
     updatedAt: String
   }
 
+  type PaginatedMemoryRecords {
+    items: [MemoryRecord!]!
+    pageInfo: PageInfo!
+  }
+
   type Task {
     id: ID!
     projectId: String
@@ -237,6 +308,11 @@ const typeDefs = `#graphql
     notes: String
     createdAt: String
     updatedAt: String
+  }
+
+  type PaginatedTasks {
+    items: [Task!]!
+    pageInfo: PageInfo!
   }
 
   type DeleteTaskResult {
@@ -259,6 +335,11 @@ const typeDefs = `#graphql
     updatedAt: String
   }
 
+  type PaginatedDecisions {
+    items: [Decision!]!
+    pageInfo: PageInfo!
+  }
+
   type Artifact {
     id: ID!
     projectId: String
@@ -277,6 +358,11 @@ const typeDefs = `#graphql
     archiveReason: String
     createdAt: String
     updatedAt: String
+  }
+
+  type PaginatedArtifacts {
+    items: [Artifact!]!
+    pageInfo: PageInfo!
   }
 
   type ArtifactSearchResult {
@@ -299,6 +385,11 @@ const typeDefs = `#graphql
     updatedAt: String
     rank: Float
     preferredNextTool: String
+  }
+
+  type PaginatedArtifactSearchResults {
+    items: [ArtifactSearchResult!]!
+    pageInfo: PageInfo!
   }
 
   type ArtifactText {
@@ -360,6 +451,11 @@ const typeDefs = `#graphql
     createdAt: String
   }
 
+  type PaginatedEvents {
+    items: [Event!]!
+    pageInfo: PageInfo!
+  }
+
   type NextCall {
     tool: String!
     input: JSON!
@@ -384,30 +480,46 @@ const resolvers = {
       (await callTool<Row>(context, "gateway.status", {})).status,
     gatewayDiagnostics: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "gateway.diagnostics", {})).diagnostics,
+    gatewayClients: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "gateway.clients", cleanInput(args))).clients,
+    gatewayClientsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "gatewayClients", cleanInput(args)),
     projects: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.list", cleanInput(args))).projects,
+    projectsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "projects", cleanInput(args)),
     project: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.get", requireOne(cleanInput(args), ["id", "slug"], "project"))).project,
     projectSummary: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.summary", cleanInput(args)),
     memorySearch: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "memory.search", cleanInput(args))).results,
+    memorySearchPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "memorySearch", cleanInput(args)),
     tasks: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.list", cleanInput(args))).tasks,
+    tasksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "tasks", cleanInput(args)),
     task: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.get", cleanInput(args))).task,
     nextTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.next", cleanInput(args))).task,
     decisions: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.list", cleanInput(args))).decisions,
+    decisionsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "decisions", cleanInput(args)),
     decision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.get", cleanInput(args))).decision,
     artifacts: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.list", cleanInput(args))).artifacts,
+    artifactsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "artifacts", cleanInput(args)),
     artifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.get", requireOne(cleanInput(args), ["id", "path"], "artifact"))).artifact,
     artifactSearch: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.search", cleanInput(args))).results,
+    artifactSearchPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "artifactSearch", cleanInput(args)),
     artifactText: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.read_text", requireOne(cleanInput(args), ["id", "path"], "artifactText"))).artifact,
     events: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
@@ -417,6 +529,14 @@ const resolvers = {
       }
       delete input.common;
       return (await callTool<Row>(context, "event.list", input)).events;
+    },
+    eventsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const input = cleanInput(args);
+      if (input.common === true) {
+        input.project = null;
+      }
+      delete input.common;
+      return await pageQuery(context, "events", input);
     }
   },
   Mutation: {
@@ -511,6 +631,26 @@ async function callTool<T extends Row>(
     });
   }
   return result.data as T;
+}
+
+async function pageQuery(
+  context: GatewayGraphqlContext,
+  pageName: string,
+  input: Row
+): Promise<Row> {
+  try {
+    return await context.service.graphqlPage(pageName, input, context.requestContext);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new GraphQLError(error.message, {
+        extensions: {
+          code: error.code,
+          details: error.details
+        }
+      });
+    }
+    throw error;
+  }
 }
 
 function requireOne(input: Row, fields: string[], label: string): Row {
