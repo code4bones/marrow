@@ -315,6 +315,11 @@ The agent state machine and clarification triggers are documented in `docs/AGENT
 
 Collaboration readiness is documented in `docs/COLLABORATION.md`; collaboration is a design constraint, while remote sync remains outside the current MVP.
 
+Future frontend direction is documented in `docs/FRONTEND_UI_CONCEPT.md`. That
+document describes a React/TypeScript/Vite/Zustand/GraphQL operational UI for
+browsing projects, tasks, decisions, faults, artifacts, events, clients, and
+diagnostics without changing the current backend-first MVP scope.
+
 ## Event Behavior
 
 The implementation records events for write operations that should leave project history.

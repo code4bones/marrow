@@ -83,6 +83,10 @@ See [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md) for a practical develop
 
 See [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for the operational guide agents should follow when deciding whether and how to use pmem.
 
+See [docs/FRONTEND_UI_CONCEPT.md](docs/FRONTEND_UI_CONCEPT.md) for the future
+React/TypeScript/Vite/Zustand/GraphQL UI concept for browsing and maintaining
+shared pmem knowledge.
+
 See [docs/TOOL_WORKFLOWS.md](docs/TOOL_WORKFLOWS.md) for recommended tool chains agents should follow.
 
 See [docs/AGENT_STATE_MACHINE.md](docs/AGENT_STATE_MACHINE.md) for the agent state machine and clarification triggers.
