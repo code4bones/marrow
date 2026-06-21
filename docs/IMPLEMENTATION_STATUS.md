@@ -114,6 +114,13 @@ tools such as `project.create`, `task.create`, `artifact.put_text`,
 `memory.update`, `handoff.create`, and status/archive-changing tools require
 both `memory:read` and `memory:write`.
 
+OAuth resource validation accepts the configured audience and the MCP endpoint
+resource (`PROJECT_MEMORY_PUBLIC_URL + "/mcp"`) so stricter clients such as
+Claude Custom Connectors can bind tokens to `/api/mcp` while ChatGPT-style
+clients can continue using the gateway base resource. The gateway also serves
+RFC 8414 path-insertion discovery routes such as
+`/.well-known/oauth-authorization-server/api` when nginx forwards them.
+
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
 Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the

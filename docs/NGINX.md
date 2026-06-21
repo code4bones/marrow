@@ -45,7 +45,11 @@ GET  /project-memory/tools
 POST /project-memory/call
 GET  /project-memory/artifacts/<id>/download
 GET  /project-memory/.well-known/oauth-protected-resource
+GET  /project-memory/.well-known/oauth-protected-resource/mcp
 GET  /project-memory/.well-known/oauth-authorization-server
+GET  /.well-known/oauth-authorization-server/project-memory
+GET  /.well-known/openid-configuration/project-memory
+GET  /.well-known/oauth-protected-resource/project-memory/mcp
 GET  /project-memory/.well-known/jwks.json
 GET  /project-memory/oauth/authorize
 POST /project-memory/oauth/authorize
@@ -87,7 +91,7 @@ PROJECT_MEMORY_PUBLIC_URL=https://memory.example.internal/project-memory
 PROJECT_MEMORY_OAUTH_ISSUER=https://memory.example.internal/project-memory
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://memory.example.internal/project-memory
 PROJECT_MEMORY_MAGIC_TOKEN=...
-PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
+PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...,https://claude.ai/api/mcp/auth_callback
 PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
 # Optional confidential-client secret; omit to use public PKCE client auth.
 PROJECT_MEMORY_OAUTH_CLIENT_SECRET=...
@@ -104,6 +108,15 @@ pm3m oauth key
 The OAuth discovery and token routes are public by design. The nginx include
 maps the prefixed public routes to the gateway's internal unprefixed OAuth
 routes.
+
+Claude Custom Connectors follow RFC 8414 path-insertion discovery for issuers
+with path components. If `PROJECT_MEMORY_OAUTH_ISSUER` is
+`https://memory.example.internal/project-memory`, Claude may request
+`/.well-known/oauth-authorization-server/project-memory` and
+`/.well-known/openid-configuration/project-memory` at the domain root. The nginx
+include proxies those root well-known routes to the gateway as well. For your
+own `API_ENDPOINT`, replace `project-memory` in the examples with that public
+prefix, for example `/api`.
 
 When `PROJECT_MEMORY_OAUTH_CLIENT_SECRET` is set, the authorization server
 metadata advertises `client_secret_post` and `client_secret_basic`. Without it,

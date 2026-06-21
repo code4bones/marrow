@@ -12,6 +12,7 @@ const unique = Date.now();
 const staticToken = `oauth-smoke-static-${unique}`;
 const magicToken = `oauth-smoke-magic-${unique}`;
 const publicUrl = "https://pmem-smoke.example/api";
+const mcpResourceUrl = `${publicUrl}/mcp`;
 const redirectUri = "https://chatgpt.com/connector/oauth/pmem-smoke";
 const clientId = `chatgpt-smoke-${unique}`;
 const clientSecret = `chatgpt-smoke-secret-${unique}`;
@@ -47,6 +48,11 @@ try {
     readNestedArray(protectedResource, ["authorization_servers"]).includes(publicUrl),
     "Protected resource metadata did not list the issuer."
   );
+  const mcpProtectedResource = await getJson(`${started.url}/.well-known/oauth-protected-resource/api/mcp`);
+  assert(
+    readNestedString(mcpProtectedResource, ["resource"]) === mcpResourceUrl,
+    "MCP protected resource metadata returned the wrong resource."
+  );
   console.log("ok - oauth protected resource metadata");
 
   const authorizationServer = await getJson(`${started.url}/.well-known/oauth-authorization-server`);
@@ -62,6 +68,16 @@ try {
     readNestedArray(authorizationServer, ["token_endpoint_auth_methods_supported"]).includes("client_secret_basic"),
     "Authorization metadata did not advertise client_secret_basic."
   );
+  const pathInsertedAuthorizationServer = await getJson(`${started.url}/.well-known/oauth-authorization-server/api`);
+  assert(
+    readNestedString(pathInsertedAuthorizationServer, ["issuer"]) === publicUrl,
+    "Path-insertion authorization metadata returned the wrong issuer."
+  );
+  const pathInsertedOpenIdConfiguration = await getJson(`${started.url}/.well-known/openid-configuration/api`);
+  assert(
+    readNestedString(pathInsertedOpenIdConfiguration, ["issuer"]) === publicUrl,
+    "Path-insertion OpenID metadata returned the wrong issuer."
+  );
   console.log("ok - oauth authorization server metadata");
 
   const jwks = await getJson(`${started.url}/.well-known/jwks.json`);
@@ -76,6 +92,24 @@ try {
   assert(
     unauthorized.headers.get("www-authenticate")?.includes("/.well-known/oauth-protected-resource"),
     "Missing auth did not return OAuth resource metadata challenge."
+  );
+  const unauthorizedMcp = await postJson(`${started.url}/mcp?client_id=${pmemClientId}`, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: {
+        name: "oauth-smoke",
+        version: "0.1.0"
+      }
+    }
+  });
+  assert(unauthorizedMcp.status === 401, "Missing MCP auth did not return HTTP 401.");
+  assert(
+    unauthorizedMcp.headers.get("www-authenticate")?.includes("/.well-known/oauth-protected-resource/mcp"),
+    "Missing MCP auth did not point at MCP-specific protected resource metadata."
   );
   console.log("ok - oauth auth challenge");
 
@@ -142,6 +176,24 @@ try {
   assert(!("expires_in" in (token.body as Record<string, unknown>)), "Token endpoint returned finite expires_in.");
   assert(!("exp" in jwtPayload(accessToken)), "OAuth access token included an exp claim.");
   console.log("ok - oauth token exchange");
+
+  const mcpResourceAuthorizeUrl = new URL(authorizeUrl);
+  mcpResourceAuthorizeUrl.searchParams.set("resource", mcpResourceUrl);
+  mcpResourceAuthorizeUrl.searchParams.set("state", "oauth-smoke-mcp-resource-state");
+  const mcpResourceCode = await requestAuthorizationCode(started.url, mcpResourceAuthorizeUrl, magicToken);
+  const mcpResourceToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: mcpResourceCode,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+    code_verifier: codeVerifier,
+    resource: mcpResourceUrl
+  });
+  assert(mcpResourceToken.status === 200, `MCP resource token endpoint failed: ${JSON.stringify(mcpResourceToken.body)}`);
+  const mcpResourceAccessToken = readNestedString(mcpResourceToken.body, ["access_token"]);
+  assert(jwtPayload(mcpResourceAccessToken).aud === mcpResourceUrl, "MCP resource token used the wrong audience.");
+  console.log("ok - oauth MCP resource token exchange");
 
   const readOnlyAuthorizeUrl = new URL(authorizeUrl);
   readOnlyAuthorizeUrl.searchParams.set("scope", "memory:read");
@@ -232,7 +284,7 @@ try {
   assert(readNestedBoolean(oauthWriteCall.body, ["ok"]) === true, "OAuth memory:write bearer call did not execute.");
   console.log("ok - oauth memory:write authorizes write tools");
 
-  await assertMcpWriteCall(started.url, `${pmemClientId}-mcp-write`, accessToken, true);
+  await assertMcpWriteCall(started.url, `${pmemClientId}-mcp-write`, mcpResourceAccessToken, true);
   await assertMcpWriteCall(started.url, `${pmemClientId}-mcp-read-only`, readOnlyAccessToken, false);
   console.log("ok - oauth MCP scopes are enforced for write tools");
 

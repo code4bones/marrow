@@ -473,11 +473,14 @@ PROJECT_MEMORY_OAUTH_ISSUER="https://mcp.example.com"
 PROJECT_MEMORY_OAUTH_AUDIENCE="https://mcp.example.com"
 PROJECT_MEMORY_MAGIC_TOKEN="change-me"
 PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS="300"
-PROJECT_MEMORY_ALLOWED_REDIRECT_URIS="https://chatgpt.com/connector/oauth/..."
+PROJECT_MEMORY_ALLOWED_REDIRECT_URIS="https://chatgpt.com/connector/oauth/...,https://claude.ai/api/mcp/auth_callback"
 PROJECT_MEMORY_OAUTH_CLIENT_ID="chatgpt"
 # Optional. Enables client_secret_post and client_secret_basic.
 PROJECT_MEMORY_OAUTH_CLIENT_SECRET="change-me-too"
 PROJECT_MEMORY_OAUTH_SCOPES="memory:read memory:write"
+# Optional extra allowed OAuth resource identifiers. The gateway also accepts
+# PROJECT_MEMORY_OAUTH_AUDIENCE and PROJECT_MEMORY_PUBLIC_URL + "/mcp".
+PROJECT_MEMORY_OAUTH_RESOURCES="https://mcp.example.com/mcp"
 ```
 
 If same-origin:
@@ -512,6 +515,8 @@ PROJECT_MEMORY_PUBLIC_URL == PROJECT_MEMORY_OAUTH_ISSUER
 - [ ] Verify `aud` or `resource`.
 - [ ] Verify `nbf` if present.
 - [x] Verify scopes per tool.
+- [x] Support MCP-specific resource identifiers such as `/api/mcp`.
+- [x] Serve authorization metadata for RFC 8414 path-insertion discovery.
 - [ ] Return `401` with `WWW-Authenticate` challenge when missing/invalid.
 - [ ] Add tool `securitySchemes`.
 

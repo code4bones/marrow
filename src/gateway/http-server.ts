@@ -74,12 +74,24 @@ async function handleRequest(
   };
 
   try {
-    if (options.oauth && request.method === "GET" && requestPath === "/.well-known/oauth-protected-resource") {
-      send(200, options.oauth.metadata.protectedResource());
+    if (
+      options.oauth &&
+      request.method === "GET" &&
+      (requestPath === "/.well-known/oauth-protected-resource" ||
+        requestPath.startsWith("/.well-known/oauth-protected-resource/"))
+    ) {
+      send(200, options.oauth.metadata.protectedResource(protectedResourceFromRequestPath(options.oauth, requestPath)));
       return;
     }
 
-    if (options.oauth && request.method === "GET" && requestPath === "/.well-known/oauth-authorization-server") {
+    if (
+      options.oauth &&
+      request.method === "GET" &&
+      (requestPath === "/.well-known/oauth-authorization-server" ||
+        requestPath.startsWith("/.well-known/oauth-authorization-server/") ||
+        requestPath === "/.well-known/openid-configuration" ||
+        requestPath.startsWith("/.well-known/openid-configuration/"))
+    ) {
       send(200, options.oauth.metadata.authorizationServer());
       return;
     }
@@ -418,7 +430,7 @@ function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): 
     if (auth.ok) {
       return { ok: true, source: "oauth" };
     }
-    return { ok: false, challenge: options.oauth.challengeHeader() };
+    return { ok: false, challenge: options.oauth.challengeHeader(["memory:read"], options.oauth.resourceForPath(parseRequestUrl(request).pathname)) };
   }
 
   if (!options.token) {
@@ -441,7 +453,15 @@ function isAuthorizedForScopes(
   if (scopedAuth.ok) {
     return auth;
   }
-  return { ok: false, challenge: options.oauth.challengeHeader(requiredScopes) };
+  return { ok: false, challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname)) };
+}
+
+function protectedResourceFromRequestPath(oauth: OAuthFacade, requestPath: string): string | undefined {
+  const prefix = "/.well-known/oauth-protected-resource";
+  if (requestPath === prefix) {
+    return undefined;
+  }
+  return oauth.resourceFromMetadataPath(requestPath.slice(prefix.length));
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

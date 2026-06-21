@@ -48,6 +48,7 @@ type OAuthConfig = {
   publicUrl: string;
   issuer: string;
   audience: string;
+  resourceUrls: string[];
   clientId?: string;
   clientSecret?: string;
   magicToken?: string;
@@ -81,10 +82,12 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
   }
 
   const privateKey = privateKeyFromEnv(env.PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM);
+  const audience = trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_AUDIENCE ?? publicUrl);
   return createOAuthFacade({
     publicUrl,
     issuer: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_ISSUER ?? publicUrl),
-    audience: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_AUDIENCE ?? publicUrl),
+    audience,
+    resourceUrls: uniqueStrings([audience, joinUrlPath(publicUrl, "mcp"), ...listEnv(env.PROJECT_MEMORY_OAUTH_RESOURCES)]),
     clientId: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_ID),
     clientSecret: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET),
     magicToken: env.PROJECT_MEMORY_MAGIC_TOKEN,
@@ -104,9 +107,9 @@ export function createOAuthFacade(config: OAuthConfig) {
 
   return {
     metadata: {
-      protectedResource() {
+      protectedResource(resource?: string) {
         return {
-          resource: config.audience,
+          resource: resource && isAllowedResource(resource, config) ? resource : config.audience,
           authorization_servers: [config.issuer],
           scopes_supported: config.scopes,
           resource_documentation: `${config.publicUrl}/docs`
@@ -131,8 +134,14 @@ export function createOAuthFacade(config: OAuthConfig) {
         };
       }
     },
-    challengeHeader(requiredScopes: string[] = ["memory:read"]) {
-      return `Bearer resource_metadata="${config.publicUrl}/.well-known/oauth-protected-resource", scope="${requiredScopes.join(" ")}"`;
+    challengeHeader(requiredScopes: string[] = ["memory:read"], resource?: string) {
+      return `Bearer resource_metadata="${protectedResourceMetadataUrl(config, resource)}", scope="${requiredScopes.join(" ")}"`;
+    },
+    resourceForPath(pathname: string) {
+      return joinUrlPath(config.publicUrl, trimSlashes(pathname));
+    },
+    resourceFromMetadataPath(suffix: string) {
+      return resourceFromMetadataPath(config, suffix);
     },
     authorizeForm(url: URL) {
       const validation = validateAuthorizeParams(url.searchParams, config);
@@ -278,7 +287,7 @@ function validateAuthorizeParams(
   }
 
   const resource = params.get("resource") ?? config.audience;
-  if (resource !== config.audience) {
+  if (!isAllowedResource(resource, config)) {
     return { ok: false, error: "resource is not allowed." };
   }
 
@@ -390,7 +399,7 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (payload.iss !== config.issuer || payload.aud !== config.audience) {
+  if (payload.iss !== config.issuer || typeof payload.aud !== "string" || !isAllowedResource(payload.aud, config)) {
     return { ok: false, reason: "claims" };
   }
   if (typeof payload.nbf === "number" && payload.nbf > now) {
@@ -608,4 +617,63 @@ function listEnv(value: string | undefined, fallback: string[] = []): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed && parsed.length > 0 ? parsed : fallback;
+}
+
+function isAllowedResource(resource: string, config: OAuthConfig): boolean {
+  return config.resourceUrls.includes(trimTrailingSlash(resource));
+}
+
+function protectedResourceMetadataUrl(config: OAuthConfig, resource: string | undefined): string {
+  if (!resource || trimTrailingSlash(resource) === config.audience) {
+    return `${config.publicUrl}/.well-known/oauth-protected-resource`;
+  }
+  const suffix = resourceMetadataSuffix(config, resource);
+  return suffix
+    ? `${config.publicUrl}/.well-known/oauth-protected-resource/${suffix}`
+    : `${config.publicUrl}/.well-known/oauth-protected-resource`;
+}
+
+function resourceMetadataSuffix(config: OAuthConfig, resource: string): string | undefined {
+  const normalizedResource = trimTrailingSlash(resource);
+  if (!isAllowedResource(normalizedResource, config)) {
+    return undefined;
+  }
+  const publicUrl = new URL(config.publicUrl);
+  const resourceUrl = new URL(normalizedResource);
+  if (resourceUrl.origin !== publicUrl.origin) {
+    return undefined;
+  }
+  const publicPath = trimSlashes(publicUrl.pathname);
+  const resourcePath = trimSlashes(resourceUrl.pathname);
+  if (publicPath && resourcePath.startsWith(`${publicPath}/`)) {
+    return resourcePath.slice(publicPath.length + 1);
+  }
+  return resourcePath || undefined;
+}
+
+function resourceFromMetadataPath(config: OAuthConfig, suffix: string): string {
+  const cleanSuffix = trimSlashes(suffix);
+  if (!cleanSuffix) {
+    return config.audience;
+  }
+  const publicUrl = new URL(config.publicUrl);
+  const publicPath = trimSlashes(publicUrl.pathname);
+  if (publicPath && cleanSuffix.startsWith(`${publicPath}/`)) {
+    return `${publicUrl.origin}/${cleanSuffix}`;
+  }
+  return joinUrlPath(config.publicUrl, cleanSuffix);
+}
+
+function joinUrlPath(base: string, suffix: string): string {
+  const cleanBase = trimTrailingSlash(base);
+  const cleanSuffix = trimSlashes(suffix);
+  return cleanSuffix ? `${cleanBase}/${cleanSuffix}` : cleanBase;
+}
+
+function trimSlashes(value: string): string {
+  return value.trim().replace(/^\/+|\/+$/g, "");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map(trimTrailingSlash).filter(Boolean))];
 }
