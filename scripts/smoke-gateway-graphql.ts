@@ -129,6 +129,40 @@ try {
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
   console.log("ok - graphql project explorer queries");
 
+  const recordNavigation = await graphql<{
+    taskRecord: { kind: string; record: { __typename: string; id: string; title: string } };
+    artifactRecord: { kind: string; record: { __typename: string; id: string; path: string } };
+    memory: { id: string; body: string };
+    link: { id: string; fromId: string; toId: string; relation: string };
+  }>(
+    `query RecordNavigation($taskId: ID!, $artifactId: ID!, $memoryId: ID!, $linkId: ID!) {
+      taskRecord: record(id: $taskId) {
+        kind
+        record {
+          __typename
+          ... on Task { id title }
+        }
+      }
+      artifactRecord: record(id: $artifactId) {
+        kind
+        record {
+          __typename
+          ... on Artifact { id path }
+        }
+      }
+      memory(id: $memoryId) { id body }
+      link(id: $linkId) { id fromId toId relation }
+    }`,
+    { taskId, artifactId, memoryId, linkId }
+  );
+  assert(recordNavigation.taskRecord.kind === "TASK", "GraphQL record did not resolve task kind.");
+  assert(recordNavigation.taskRecord.record.__typename === "Task", "GraphQL record did not resolve Task payload.");
+  assert(recordNavigation.artifactRecord.kind === "ARTIFACT", "GraphQL record did not resolve artifact kind.");
+  assert(recordNavigation.artifactRecord.record.path === "docs/graphql-smoke.md", "GraphQL record returned wrong artifact.");
+  assert(recordNavigation.memory.body.includes("validates memorySearchPage"), "GraphQL memory(id) did not return body.");
+  assert(recordNavigation.link.fromId === memoryId && recordNavigation.link.toId === taskId, "GraphQL link(id) returned wrong endpoints.");
+  console.log("ok - graphql record navigation queries");
+
   const pages = await graphql<{
     projectsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
     gatewayClientsPage: { items: Array<{ id: string }>; pageInfo: PageInfo };
@@ -235,16 +269,31 @@ try {
       }
     }
   );
-  const deletedTask = await graphql<{ deleteTask: { deletedTask: { id: string }; event: { type: string } } }>(
+  const deletedTask = await graphql<{ deleteTask: { deletedTask: { id: string }; event: { id: string; type: string } } }>(
     `mutation DeleteTask($id: ID!) {
       deleteTask(id: $id, reason: "GraphQL smoke task cleanup.") {
         deletedTask { id }
-        event { type }
+        event { id type }
       }
     }`,
     { id: tempTask.createTask.id }
   );
   assert(deletedTask.deleteTask.deletedTask.id === tempTask.createTask.id, "GraphQL deleteTask returned wrong task.");
+  const eventLookup = await graphql<{ event: { id: string; type: string }; eventRecord: { kind: string; record: { __typename: string; id: string } } }>(
+    `query EventLookup($id: ID!) {
+      event(id: $id) { id type }
+      eventRecord: record(id: $id) {
+        kind
+        record {
+          __typename
+          ... on Event { id }
+        }
+      }
+    }`,
+    { id: deletedTask.deleteTask.event.id }
+  );
+  assert(eventLookup.event.type === "task.deleted", "GraphQL event(id) returned wrong event.");
+  assert(eventLookup.eventRecord.kind === "EVENT", "GraphQL record did not resolve event kind.");
   console.log("ok - graphql deleteTask mutation");
 
   const deleted = await graphql<{ deleteProject: { deletedProject: { id: string }; cascade: boolean } }>(

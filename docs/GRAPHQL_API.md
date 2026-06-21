@@ -108,7 +108,7 @@ Project overview:
 query ProjectOverview($project: String!) {
   projectSummary(project: $project) {
     project { id slug title status }
-    counts { tasks openTasks items decisions artifacts events }
+    counts { tasks openTasks items decisions links artifacts events }
     openTasks { id title status priority }
     decisions { id title status decision }
     knownFaults { id title excerpt tags }
@@ -118,6 +118,34 @@ query ProjectOverview($project: String!) {
   }
 }
 ```
+
+Record navigation by identifier:
+
+```graphql
+query RecordDetails($id: ID!) {
+  record(id: $id) {
+    id
+    kind
+    projectId
+    record {
+      __typename
+      ... on Task { id title status scope acceptance notes }
+      ... on MemoryRecord { id scope type title body status tags updatedAt }
+      ... on Decision { id title status context decision rationale consequences }
+      ... on Artifact { id path title contentType sizeBytes downloadPath }
+      ... on Event { id type title body relatedId createdAt }
+      ... on Link { id fromId toId relation createdAt }
+      ... on Project { id slug title status rootPath }
+    }
+  }
+}
+```
+
+Use `record(id)` for clickable IDs such as `T-PMEM-004`, `I-MEMORY-015`,
+`L-MEMORY-011`, `E-MEMORY-156`, or `A-COMMON-003`. The `kind` field tells the UI
+which detail panel to render, and GraphQL fragments provide the record content.
+For text artifacts, use `artifactText(id: "...")` after resolving the artifact
+metadata; binary artifacts should use `downloadPath`.
 
 Artifact text:
 

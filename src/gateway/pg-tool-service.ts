@@ -966,7 +966,7 @@ export class PgToolService {
       }
       return recordLookupOut(table, row);
     }
-    throw new AppError("RECORD_NOT_FOUND", `Record ${id} does not exist.`, { id });
+    throw new AppError("NOT_FOUND", `Record ${id} does not exist.`, { id });
   }
 
   private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
@@ -3557,7 +3557,7 @@ function recordLookupOut(table: string, row: Row): Row {
       };
     }
     default:
-      throw new AppError("RECORD_NOT_FOUND", `Unsupported record table ${table}.`, { table });
+      throw new AppError("NOT_FOUND", `Unsupported record table ${table}.`, { table });
   }
 }
 
