@@ -620,7 +620,24 @@ function listEnv(value: string | undefined, fallback: string[] = []): string[] {
 }
 
 function isAllowedResource(resource: string, config: OAuthConfig): boolean {
-  return config.resourceUrls.includes(trimTrailingSlash(resource));
+  const normalized = trimTrailingSlash(resource);
+  if (config.resourceUrls.includes(normalized)) {
+    return true;
+  }
+  const parsed = safeUrl(normalized);
+  if (!parsed || parsed.hash) {
+    return false;
+  }
+  return config.resourceUrls.some((allowed) => {
+    const allowedUrl = safeUrl(allowed);
+    if (!allowedUrl) {
+      return false;
+    }
+    return (
+      parsed.origin === allowedUrl.origin &&
+      trimTrailingSlash(parsed.pathname) === trimTrailingSlash(allowedUrl.pathname)
+    );
+  });
 }
 
 function protectedResourceMetadataUrl(config: OAuthConfig, resource: string | undefined): string {
@@ -676,4 +693,12 @@ function trimSlashes(value: string): string {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map(trimTrailingSlash).filter(Boolean))];
+}
+
+function safeUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
 }

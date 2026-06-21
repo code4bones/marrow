@@ -195,6 +195,26 @@ try {
   assert(jwtPayload(mcpResourceAccessToken).aud === mcpResourceUrl, "MCP resource token used the wrong audience.");
   console.log("ok - oauth MCP resource token exchange");
 
+  const queryResourceUrl = `${mcpResourceUrl}?client_id=oauth-smoke`;
+  const queryResourceAuthorizeUrl = new URL(authorizeUrl);
+  queryResourceAuthorizeUrl.searchParams.set("resource", queryResourceUrl);
+  queryResourceAuthorizeUrl.searchParams.set("state", "oauth-smoke-query-resource-state");
+  const queryResourceCode = await requestAuthorizationCode(started.url, queryResourceAuthorizeUrl, magicToken);
+  const queryResourceToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: queryResourceCode,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+    code_verifier: codeVerifier,
+    resource: queryResourceUrl
+  });
+  assert(
+    queryResourceToken.status === 200,
+    `Query resource token endpoint failed: ${JSON.stringify(queryResourceToken.body)}`
+  );
+  console.log("ok - oauth query-bearing MCP resource token exchange");
+
   const readOnlyAuthorizeUrl = new URL(authorizeUrl);
   readOnlyAuthorizeUrl.searchParams.set("scope", "memory:read");
   readOnlyAuthorizeUrl.searchParams.set("state", "oauth-smoke-read-only-state");
