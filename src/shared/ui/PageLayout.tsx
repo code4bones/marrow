@@ -6,9 +6,11 @@ interface Props {
   subtitle?: string;
   headerExtra?: ReactNode;
   children: ReactNode;
+  /** Remove padding/scroll from body — use when children manage their own layout (e.g. tabs with graphs) */
+  fill?: boolean;
 }
 
-export function PageLayout({ title, subtitle, headerExtra, children }: Props) {
+export function PageLayout({ title, subtitle, headerExtra, children, fill }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
@@ -26,7 +28,10 @@ export function PageLayout({ title, subtitle, headerExtra, children }: Props) {
           {headerExtra && <div style={{ flexShrink: 0 }}>{headerExtra}</div>}
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+      <div style={fill
+        ? { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+        : { flex: 1, overflowY: 'auto', padding: '16px 24px' }
+      }>
         {children}
       </div>
     </div>

@@ -6,9 +6,10 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Alert, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { ProjectGraphView } from '../graph-view/ProjectGraphView';
 import type { Artifact, Decision, Event, ProjectSummary, Task } from '../../shared/model/types';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -151,60 +152,52 @@ export function ProjectOverview({ slug }: { slug: string }) {
         </Row>
       </div>
 
-      {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-        {s.openTasks.length > 0 && (
-          <Section title="Open Tasks">
-            <Table<Task>
-              dataSource={s.openTasks}
-              columns={taskColumns}
-              rowKey="id"
-              size="small"
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Section>
-        )}
-
-        {s.decisions.length > 0 && (
-          <Section title="Active Decisions">
-            <Table<Decision>
-              dataSource={s.decisions}
-              columns={decisionColumns}
-              rowKey="id"
-              size="small"
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Section>
-        )}
-
-        {s.artifacts.length > 0 && (
-          <Section title="Artifacts">
-            <Table<Artifact>
-              dataSource={s.artifacts}
-              columns={artifactColumns}
-              rowKey="id"
-              size="small"
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Section>
-        )}
-
-        {s.recentEvents.length > 0 && (
-          <Section title="Recent Events">
-            <Table<Event>
-              dataSource={s.recentEvents}
-              columns={eventColumns}
-              rowKey="id"
-              size="small"
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Section>
-        )}
-      </div>
+      {/* Tabs: Summary | Graph */}
+      <Tabs
+        defaultActiveKey="summary"
+        size="small"
+        className="tabs-fill"
+        tabBarStyle={{ paddingLeft: 24, marginBottom: 0, flexShrink: 0 }}
+        items={[
+          {
+            key: 'summary',
+            label: 'Summary',
+            children: (
+              <div style={{ overflowY: 'auto', padding: '16px 24px', height: '100%' }}>
+                {s.openTasks.length > 0 && (
+                  <Section title="Open Tasks">
+                    <Table<Task> dataSource={s.openTasks} columns={taskColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  </Section>
+                )}
+                {s.decisions.length > 0 && (
+                  <Section title="Active Decisions">
+                    <Table<Decision> dataSource={s.decisions} columns={decisionColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  </Section>
+                )}
+                {s.artifacts.length > 0 && (
+                  <Section title="Artifacts">
+                    <Table<Artifact> dataSource={s.artifacts} columns={artifactColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  </Section>
+                )}
+                {s.recentEvents.length > 0 && (
+                  <Section title="Recent Events">
+                    <Table<Event> dataSource={s.recentEvents} columns={eventColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  </Section>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'graph',
+            label: 'Knowledge Graph',
+            children: (
+              <div style={{ height: '100%' }}>
+                <ProjectGraphView slug={slug} />
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

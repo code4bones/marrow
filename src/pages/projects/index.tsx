@@ -2,6 +2,8 @@ import { useQuery } from '@apollo/client/react';
 import { Alert, List, Skeleton, Typography } from 'antd';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { CreateProjectModal } from '../../features/project/CreateProjectModal';
+import { DeleteProjectButton } from '../../features/project/DeleteProjectButton';
 import { GET_PROJECTS } from '../../shared/api/queries';
 import type { Project } from '../../shared/model/types';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
@@ -17,27 +19,24 @@ export function ProjectsPage() {
   useEffect(() => {
     if (slug) setSelectedProject(slug);
   }, [slug, setSelectedProject]);
-  const { data, loading, error } = useQuery<{ projects: Project[] }>(GET_PROJECTS);
+
+  const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS);
+
+  const handleProjectDeleted = () => {
+    setSelectedProject(null);
+    navigate('/projects');
+    refetch();
+  };
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Left: project list */}
-      <div
-        style={{
-          width: 240,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          borderRight: '1px solid #303030',
-        }}
-      >
-        <div style={{ padding: '16px 16px 8px' }}>
-          <Typography.Text
-            type="secondary"
-            style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}
-          >
+      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #303030' }}>
+        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
             Projects
           </Typography.Text>
+          <CreateProjectModal onDone={() => refetch()} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
@@ -62,23 +61,12 @@ export function ProjectsPage() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                    <Typography.Text
-                      strong
-                      style={{
-                        fontSize: 13,
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
+                    <Typography.Text strong style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {p.title}
                     </Typography.Text>
                     <StatusBadge status={p.status} />
                   </div>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    {p.slug}
-                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{p.slug}</Typography.Text>
                   <Timestamp value={p.updatedAt} />
                 </List.Item>
               )}
@@ -90,16 +78,14 @@ export function ProjectsPage() {
       {/* Right: project content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {slug ? (
-          <ProjectOverview slug={slug} />
+          <>
+            <ProjectOverview slug={slug} />
+            <div style={{ padding: '8px 16px', borderTop: '1px solid #303030', flexShrink: 0 }}>
+              <DeleteProjectButton slug={slug} onDone={handleProjectDeleted} />
+            </div>
+          </>
         ) : (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography.Text type="secondary">Select a project</Typography.Text>
           </div>
         )}

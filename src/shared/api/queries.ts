@@ -68,6 +68,66 @@ export const GET_FAULTS_PAGE = gql`
   }
 `;
 
+// ── Mutations ─────────────────────────────────────────────────────────────────
+
+export const UPDATE_TASK_STATUS = gql`
+  mutation UpdateTaskStatus($id: ID!, $status: String!, $note: String) {
+    updateTaskStatus(id: $id, status: $status, note: $note) {
+      id status updatedAt
+    }
+  }
+`;
+
+export const CREATE_TASK = gql`
+  mutation CreateTask($input: CreateTaskInput!) {
+    createTask(input: $input) {
+      id title status priority milestone updatedAt
+    }
+  }
+`;
+
+export const DELETE_TASK = gql`
+  mutation DeleteTask($id: ID!, $reason: String) {
+    deleteTask(id: $id, reason: $reason)
+  }
+`;
+
+export const PUT_TEXT_ARTIFACT = gql`
+  mutation PutTextArtifact($input: PutTextArtifactInput!) {
+    putTextArtifact(input: $input) {
+      id path title status contentType sizeBytes updatedAt
+    }
+  }
+`;
+
+export const UPDATE_ARTIFACT_METADATA = gql`
+  mutation UpdateArtifactMetadata($input: UpdateArtifactMetadataInput!) {
+    updateArtifactMetadata(input: $input) {
+      id path title description tags updatedAt
+    }
+  }
+`;
+
+export const ARCHIVE_ARTIFACT = gql`
+  mutation ArchiveArtifact($id: ID, $reason: String) {
+    archiveArtifact(id: $id, reason: $reason)
+  }
+`;
+
+export const CREATE_PROJECT = gql`
+  mutation CreateProject($input: CreateProjectInput!) {
+    createProject(input: $input) {
+      id slug title description status rootPath updatedAt
+    }
+  }
+`;
+
+export const DELETE_PROJECT = gql`
+  mutation DeleteProject($slug: String!, $cascade: Boolean, $reason: String) {
+    deleteProject(slug: $slug, cascade: $cascade, reason: $reason)
+  }
+`;
+
 export const GET_RECORD = gql`
   query GetRecord($id: ID!) {
     record(id: $id) {

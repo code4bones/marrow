@@ -36,3 +36,22 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
+
+/* Fill-mode tabs: tab content stretches to available height */
+.tabs-fill {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.tabs-fill > .ant-tabs-content-holder {
+  flex: 1;
+  overflow: hidden;
+}
+.tabs-fill > .ant-tabs-content-holder > .ant-tabs-content {
+  height: 100%;
+}
+.tabs-fill > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  height: 100%;
+  overflow: hidden;
+}
