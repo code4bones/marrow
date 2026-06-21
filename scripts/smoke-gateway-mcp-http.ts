@@ -4,15 +4,24 @@ import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
+import type { AppLogger } from "../src/shared/logging/logger.js";
 import { createPgKnex } from "../src/shared/pg/knex.js";
 
 const db = createPgKnex();
 const service = new PgToolService(db);
 const token = `gateway-mcp-http-smoke-token-${Date.now()}`;
+const logRecords: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+const testLogger = {
+  info: (fields: unknown, message?: string) => pushLogRecord("info", fields, message),
+  warn: (fields: unknown, message?: string) => pushLogRecord("warn", fields, message),
+  error: (fields: unknown, message?: string) => pushLogRecord("error", fields, message),
+  debug: (fields: unknown, message?: string) => pushLogRecord("debug", fields, message)
+} as unknown as AppLogger;
 const started = await startGatewayServer(service, {
   host: "127.0.0.1",
   port: 0,
-  token
+  token,
+  logger: testLogger
 });
 const clientId = `gateway-mcp-http-smoke-${Date.now()}`;
 const secondClientId = `gateway-mcp-http-smoke-second-${Date.now()}`;
@@ -498,6 +507,7 @@ try {
   state.artifactId = readNestedString(artifactResult.structuredContent, ["data", "artifact", "id"]);
   const artifactPutText = readNestedRecord(artifactResult.structuredContent, ["data", "artifact"]);
   assert(!("contentBase64" in artifactPutText), "artifact.put_text returned base64 content.");
+  assertArtifactPutTextWasLogged(artifactContent);
 
   const artifactConflictResult = await client.callTool({
     name: "artifact.put_text",
@@ -917,6 +927,32 @@ function assertFailureCode(value: unknown, code: string, message: string): void 
   if (!isRecord(value) || value.ok !== false || !isRecord(value.error) || value.error.code !== code) {
     throw new Error(`${message} Response: ${JSON.stringify(value)}`);
   }
+}
+
+function assertArtifactPutTextWasLogged(expectedText: string): void {
+  const record = logRecords.find(
+    (item) =>
+      item.message === "gateway request completed" &&
+      item.fields.mcpMethod === "tools/call" &&
+      item.fields.mcpTool === "artifact.put_text"
+  );
+  assert(record, "artifact.put_text request was not present in gateway completed request logs.");
+  const requestBody = readNestedRecord(record.fields, ["requestBody"]);
+  const argumentsBody = readNestedRecord(requestBody, ["params", "arguments"]);
+  assert(typeof argumentsBody.text === "string", "artifact.put_text log did not include sanitized text argument.");
+  assert(argumentsBody.text.includes("Use preflight before editing files."), "artifact.put_text log missed text content.");
+  assert(argumentsBody.text.includes("[REDACTED]"), "artifact.put_text log did not redact secret-like text content.");
+  assert(!argumentsBody.text.includes("smoke-secret"), "artifact.put_text log leaked secret-like text content.");
+  assert(argumentsBody.text !== expectedText, "artifact.put_text log kept unredacted text argument.");
+  assert(!JSON.stringify(record.fields).includes("contentBase64"), "artifact.put_text log unexpectedly included contentBase64.");
+}
+
+function pushLogRecord(level: string, fields: unknown, message?: string): void {
+  logRecords.push({
+    level,
+    message: typeof message === "string" ? message : "",
+    fields: isRecord(fields) ? fields : {}
+  });
 }
 
 function readNestedString(value: unknown, path: string[]): string {

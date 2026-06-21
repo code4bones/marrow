@@ -518,7 +518,15 @@ LOG_LEVEL=info
 LOG_DIR=./logs/
 LOG_PRETTY=true
 LOG_INCLUDE_TIME=true
+LOG_BODY_MAX_CHARS=6000
+LOG_FIELD_MAX_CHARS=1200
+LOG_ARRAY_MAX_ITEMS=30
+LOG_OBJECT_MAX_KEYS=80
 ```
+
+Gateway request logs include MCP method, tool name, and sanitized request body
+summaries. Secret-like fields and values are redacted, `contentBase64` is
+omitted, and large bodies are truncated according to the `LOG_*` limits.
 
 Run migrations before starting or after deploys that add tables:
 
@@ -544,7 +552,7 @@ For a server that already has Node, PostgreSQL, and PM2 installed, the package
 can be deployed from a tarball without cloning the repository:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.14.0.tgz
+npm install -g ./deadragdoll-pm3m-1.15.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m

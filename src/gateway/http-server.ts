@@ -29,6 +29,8 @@ interface ToolCallBody {
   input?: unknown;
 }
 
+type LogFields = Record<string, unknown>;
+
 export async function startGatewayServer(
   service: PgToolService,
   options: GatewayServerOptions
@@ -62,9 +64,9 @@ async function handleRequest(
   const requestPath = requestUrl.pathname;
   const context = requestContext(request, requestId);
 
-  const send = (status: number, body: unknown) => {
+  const send = (status: number, body: unknown, extra?: LogFields) => {
     sendJson(response, status, body, requestId);
-    logRequest(options, request, status, Date.now() - startedAt, requestId, context);
+    logRequest(options, request, status, Date.now() - startedAt, requestId, context, extra);
   };
 
   try {
@@ -91,24 +93,34 @@ async function handleRequest(
     }
 
     if (options.oauth && request.method === "POST" && requestPath === "/oauth/authorize") {
-      const result = options.oauth.authorize(await readForm(request), clientIp(request));
+      const form = await readForm(request);
+      const logFields = {
+        requestBody: formLogBody(form),
+        oauthClientId: form.get("client_id") ?? undefined
+      };
+      const result = options.oauth.authorize(form, clientIp(request));
       if (result.status === 302) {
         response.writeHead(302, {
           location: result.location,
           "x-request-id": requestId
         });
         response.end();
-        logRequest(options, request, 302, Date.now() - startedAt, requestId, context);
+        logRequest(options, request, 302, Date.now() - startedAt, requestId, context, logFields);
       } else {
         sendHtml(response, result.status, result.html, requestId);
-        logRequest(options, request, result.status, Date.now() - startedAt, requestId, context);
+        logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, logFields);
       }
       return;
     }
 
     if (options.oauth && request.method === "POST" && requestPath === "/oauth/token") {
-      const result = options.oauth.token(await readForm(request), request);
-      send(result.status, result.body);
+      const form = await readForm(request);
+      const result = options.oauth.token(form, request);
+      send(result.status, result.body, {
+        requestBody: formLogBody(form),
+        oauthGrantType: form.get("grant_type") ?? undefined,
+        oauthClientId: form.get("client_id") ?? undefined
+      });
       return;
     }
 
@@ -149,22 +161,28 @@ async function handleRequest(
     if (request.method === "POST" && requestPath === "/call") {
       const body = (await readJson(request)) as ToolCallBody;
       if (typeof body.tool !== "string") {
-        send(400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")));
+        send(400, fail(new AppError("VALIDATION_ERROR", "Request body must include a string tool.")), {
+          requestBody: sanitizeLogBody(body)
+        });
         return;
       }
       const toolStartedAt = Date.now();
       const result = await service.call(body.tool, body.input ?? {}, context);
-      options.logger?.debug(
+      options.logger?.info(
         {
           requestId,
           clientId: context.clientId,
           tool: body.tool,
+          toolInput: sanitizeLogBody(body.input ?? {}),
           durationMs: Date.now() - toolStartedAt,
           ok: result.ok
         },
         "gateway tool call completed"
       );
-      send(200, result);
+      send(200, result, {
+        tool: body.tool,
+        requestBody: sanitizeLogBody(body)
+      });
       return;
     }
 
@@ -241,13 +259,16 @@ async function handleMcpRequest(
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
+  let logFields: LogFields | undefined;
 
   try {
     await server.connect(transport);
-    await transport.handleRequest(request, response, await readJson(request));
-    logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
+    const body = await readJson(request);
+    logFields = mcpLogFields(body);
+    await transport.handleRequest(request, response, body);
+    logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context, logFields);
   } catch (error) {
-    options.logger?.error({ requestId, clientId: context.clientId, error }, "gateway mcp request failed");
+    options.logger?.error({ requestId, clientId: context.clientId, ...logFields, error }, "gateway mcp request failed");
     if (!response.headersSent) {
       sendJson(
         response,
@@ -262,12 +283,47 @@ async function handleMcpRequest(
         },
         requestId
       );
-      logRequest(options, request, 500, Date.now() - startedAt, requestId, context);
+      logRequest(options, request, 500, Date.now() - startedAt, requestId, context, logFields);
     }
   } finally {
     await transport.close();
     await server.close();
   }
+}
+
+function mcpLogFields(body: unknown): LogFields {
+  if (Array.isArray(body)) {
+    return {
+      mcpBatchSize: body.length,
+      mcpRequests: sanitizeLogBody(body.map((item) => mcpMessageSummary(item)))
+    };
+  }
+
+  const summary = mcpMessageSummary(body);
+  return {
+    ...summary,
+    requestBody: sanitizeLogBody(body)
+  };
+}
+
+function mcpMessageSummary(value: unknown): LogFields {
+  if (!isRecord(value)) {
+    return { mcpMessageType: typeof value };
+  }
+
+  const method = typeof value.method === "string" ? value.method : undefined;
+  const id = typeof value.id === "string" || typeof value.id === "number" ? value.id : undefined;
+  const params = isRecord(value.params) ? value.params : {};
+  const tool = typeof params.name === "string" ? params.name : undefined;
+  const fields: LogFields = {
+    mcpMethod: method,
+    mcpId: id
+  };
+  if (tool) {
+    fields.mcpTool = tool;
+    fields.toolArguments = sanitizeLogBody(params.arguments ?? {});
+  }
+  return fields;
 }
 
 function requestContext(request: IncomingMessage, requestId: string): GatewayRequestContext {
@@ -340,6 +396,21 @@ async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
   return new URLSearchParams(await readText(request));
 }
 
+function formLogBody(form: URLSearchParams): unknown {
+  const record: Record<string, unknown> = {};
+  for (const [key, value] of form.entries()) {
+    const safeValue = isSensitiveFormKey(key) ? "[REDACTED]" : value;
+    if (record[key] === undefined) {
+      record[key] = safeValue;
+    } else if (Array.isArray(record[key])) {
+      (record[key] as unknown[]).push(safeValue);
+    } else {
+      record[key] = [record[key], safeValue];
+    }
+  }
+  return sanitizeLogBody(record);
+}
+
 async function readText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -386,13 +457,123 @@ function clientIp(request: IncomingMessage): string {
   return headerString(request, "x-forwarded-for")?.split(",")[0]?.trim() || request.socket.remoteAddress || "unknown";
 }
 
+function sanitizeLogBody(value: unknown): unknown {
+  const sanitized = sanitizeLogValue(value);
+  const serialized = JSON.stringify(sanitized);
+  const maxChars = numberEnv("LOG_BODY_MAX_CHARS", 6000, 500, 100000);
+  if (serialized.length <= maxChars) {
+    return sanitized;
+  }
+  return {
+    truncated: true,
+    maxChars,
+    chars: serialized.length,
+    preview: serialized.slice(0, maxChars)
+  };
+}
+
+function sanitizeLogValue(value: unknown, depth = 0): unknown {
+  if (depth > 8) {
+    return "[MaxDepth]";
+  }
+  if (value === null || value === undefined || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return sanitizeLogString(value);
+  }
+  if (Array.isArray(value)) {
+    const maxItems = numberEnv("LOG_ARRAY_MAX_ITEMS", 30, 1, 500);
+    const items = value.slice(0, maxItems).map((item) => sanitizeLogValue(item, depth + 1));
+    if (value.length > maxItems) {
+      items.push(`[${value.length - maxItems} more items]`);
+    }
+    return items;
+  }
+  if (!isRecord(value)) {
+    return String(value);
+  }
+
+  const maxKeys = numberEnv("LOG_OBJECT_MAX_KEYS", 80, 1, 1000);
+  const entries = Object.entries(value);
+  const output: Record<string, unknown> = {};
+  for (const [key, fieldValue] of entries.slice(0, maxKeys)) {
+    output[key] = sanitizeLogField(key, fieldValue, depth + 1);
+  }
+  if (entries.length > maxKeys) {
+    output._omittedKeys = entries.length - maxKeys;
+  }
+  return output;
+}
+
+function sanitizeLogField(key: string, value: unknown, depth: number): unknown {
+  if (isBase64ContentKey(key)) {
+    const chars = typeof value === "string" ? value.length : undefined;
+    return chars === undefined ? "[BASE64_OMITTED]" : `[BASE64_OMITTED chars=${chars}]`;
+  }
+  if (isSensitiveKey(key)) {
+    return "[REDACTED]";
+  }
+  return sanitizeLogValue(value, depth);
+}
+
+function sanitizeLogString(value: string): string {
+  const redacted = redactSensitiveLogText(value);
+  const maxChars = numberEnv("LOG_FIELD_MAX_CHARS", 1200, 80, 20000);
+  if (redacted.length <= maxChars) {
+    return redacted;
+  }
+  return `${redacted.slice(0, maxChars)}...[truncated chars=${redacted.length}]`;
+}
+
+function redactSensitiveLogText(value: string): string {
+  return value
+    .replace(/(authorization\s*:\s*bearer\s+)[^\s"'`]+/gi, "$1[REDACTED]")
+    .replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]")
+    .replace(
+      /((?:api[_-]?key|token|secret|password|private[_-]?key|client[_-]?secret)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s]+)/gi,
+      "$1[REDACTED]"
+    )
+    .replace(
+      /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+      "[REDACTED PRIVATE KEY]"
+    );
+}
+
+function isSensitiveFormKey(key: string): boolean {
+  return ["code", "code_verifier", "client_secret", "magic_token", "password"].includes(key.toLowerCase());
+}
+
+function isSensitiveKey(key: string): boolean {
+  return /authorization|cookie|token|secret|password|private[_-]?key|api[_-]?key|client[_-]?secret|code_verifier|magic/i.test(
+    key
+  );
+}
+
+function isBase64ContentKey(key: string): boolean {
+  return key.toLowerCase() === "contentbase64";
+}
+
+function numberEnv(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function logRequest(
   options: GatewayServerOptions,
   request: IncomingMessage,
   status: number,
   durationMs: number,
   requestId: string,
-  context: GatewayRequestContext
+  context: GatewayRequestContext,
+  extra: LogFields = {}
 ): void {
   const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
   options.logger?.[level](
@@ -402,7 +583,8 @@ function logRequest(
       url: request.url,
       status,
       durationMs,
-      clientId: context.clientId
+      clientId: context.clientId,
+      ...extra
     },
     "gateway request completed"
   );

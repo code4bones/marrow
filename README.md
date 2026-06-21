@@ -232,7 +232,7 @@ For package deployments, install the packed artifact globally and run the
 gateway commands from the deployment directory that contains `.env`:
 
 ```bash
-npm install -g ./deadragdoll-pm3m-1.14.0.tgz
+npm install -g ./deadragdoll-pm3m-1.15.0.tgz
 
 mkdir -p /opt/pm3m
 cd /opt/pm3m
@@ -380,9 +380,18 @@ LOG_LEVEL=info
 LOG_DIR=./logs/
 LOG_PRETTY=false
 LOG_INCLUDE_TIME=true
+LOG_BODY_MAX_CHARS=6000
+LOG_FIELD_MAX_CHARS=1200
+LOG_ARRAY_MAX_ITEMS=30
+LOG_OBJECT_MAX_KEYS=80
 ```
 
 The gateway writes pretty logs to stderr when `LOG_PRETTY=true`; `LOG_INCLUDE_TIME` controls the pretty console timestamp. The file `${LOG_DIR}/project-memory-gateway.log` always uses pino JSON lines with local timestamps for monitoring ingestion. Set `LOG_DIR=false` to disable file logging.
+
+HTTP gateway logs include MCP method, tool name, and sanitized request bodies
+for `/mcp`, `/call`, and OAuth form posts. Secret-like fields and values are
+redacted, `contentBase64` is omitted, and large bodies are truncated with the
+`LOG_BODY_MAX_CHARS` / `LOG_FIELD_MAX_CHARS` limits.
 
 For the internal nginx server template, see `deploy/nginx/project-memory-gateway.server.conf`. For reusable locations only, see `deploy/nginx/project-memory-gateway.locations.conf`.
 

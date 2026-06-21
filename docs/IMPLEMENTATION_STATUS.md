@@ -118,9 +118,18 @@ LOG_LEVEL=info
 LOG_DIR=./logs/
 LOG_PRETTY=false
 LOG_INCLUDE_TIME=true
+LOG_BODY_MAX_CHARS=6000
+LOG_FIELD_MAX_CHARS=1200
+LOG_ARRAY_MAX_ITEMS=30
+LOG_OBJECT_MAX_KEYS=80
 ```
 
 Console logs are written to stderr and can be formatted with `LOG_PRETTY=true`; `LOG_INCLUDE_TIME` controls the pretty console timestamp. File logs are written as pino JSON lines with local timestamps to `${LOG_DIR}/project-memory-gateway.log` unless `LOG_DIR=false`.
+
+Completed gateway request logs include MCP method, MCP tool name, sanitized
+request bodies, and OAuth form summaries. Secret-like fields are redacted,
+`contentBase64` is omitted, and large values are truncated with the `LOG_*`
+body limits.
 
 ## Source Layout
 
