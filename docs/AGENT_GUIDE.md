@@ -31,6 +31,12 @@ Avoid during normal coding flow:
 - `artifact.get(includeContent=true)` unless exact bytes/base64 are required
 - `gateway.clients`, `gateway.diagnostics`, and other debug tools unless diagnosing PMem itself
 
+Many PMem tools return `data.efficiencyHints`. Treat this as an operating
+signal, not decoration. If `base64Included=true`, `fullBodiesIncluded=true`, or
+`compactAfterThis=true`, keep only the useful facts and compact the chat before
+continuing implementation. Follow `preferredNextTools` before making broader
+list/read calls.
+
 ## First Rule
 
 If the user asks what `pmem`, `project-memory`, or this MCP server is, call:

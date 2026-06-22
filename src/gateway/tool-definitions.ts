@@ -367,6 +367,19 @@ const errorSchema = z.object({
   message: z.string(),
   details: looseRecordSchema.optional()
 });
+const efficiencyHintsSchema = z
+  .object({
+    rule: z.string(),
+    severity: z.enum(["info", "warn"]),
+    strategy: z.string(),
+    fullBodiesIncluded: z.boolean(),
+    base64Included: z.boolean(),
+    estimatedChars: z.number().optional(),
+    warnings: z.array(z.string()),
+    preferredNextTools: z.array(z.string()).optional(),
+    compactAfterThis: z.boolean().optional()
+  })
+  .catchall(z.unknown());
 const defaultOutputDataSchema = z.any();
 export const defaultGatewayOutputSchema = toolOutputSchema(defaultOutputDataSchema);
 
@@ -393,6 +406,14 @@ const artifactSchema = z
   .catchall(z.unknown());
 const artifactWithContentSchema = artifactSchema.extend({
   contentBase64: z.string().optional()
+});
+const artifactOutputDataSchema = z.object({
+  artifact: artifactSchema,
+  efficiencyHints: efficiencyHintsSchema.optional()
+});
+const artifactWithContentOutputDataSchema = z.object({
+  artifact: artifactWithContentSchema,
+  efficiencyHints: efficiencyHintsSchema.optional()
 });
 const artifactSearchResultSchema = artifactSchema.extend({
   rank: z.number()
@@ -433,6 +454,14 @@ const artifactReadTextSchemaOut = artifactSchema.extend({
     base64Included: z.literal(false)
   }),
   outline: z.array(markdownOutlineItemSchema)
+});
+const artifactPreviewOutputDataSchema = z.object({
+  artifact: artifactPreviewSchema,
+  efficiencyHints: efficiencyHintsSchema.optional()
+});
+const artifactReadTextOutputDataSchema = z.object({
+  artifact: artifactReadTextSchemaOut,
+  efficiencyHints: efficiencyHintsSchema.optional()
 });
 const eventLikeSchema = looseRecordSchema.nullable();
 const taskClaimOutSchema = z
@@ -520,7 +549,8 @@ const projectSummaryDataSchema = z
     artifacts: z.array(compactArtifactSchema),
     memory: z.array(looseRecordSchema),
     recentEvents: z.array(looseRecordSchema),
-    nextCalls: z.array(nextCallSchema)
+    nextCalls: z.array(nextCallSchema),
+    efficiencyHints: efficiencyHintsSchema.optional()
   })
   .catchall(z.unknown());
 const contextPackDataSchema = z
@@ -537,7 +567,8 @@ const contextPackDataSchema = z
     memory: z.array(looseRecordSchema),
     artifacts: z.array(compactArtifactSchema),
     recentEvents: z.array(looseRecordSchema),
-    nextCalls: z.array(nextCallSchema)
+    nextCalls: z.array(nextCallSchema),
+    efficiencyHints: efficiencyHintsSchema.optional()
   })
   .catchall(z.unknown());
 const preflightByQueryDataSchema = z.object({
@@ -550,7 +581,8 @@ const preflightByQueryDataSchema = z.object({
   knownFaults: z.array(looseRecordSchema),
   artifacts: z.array(looseRecordSchema),
   recentEvents: z.array(looseRecordSchema),
-  summary: z.string()
+  summary: z.string(),
+  efficiencyHints: efficiencyHintsSchema.optional()
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -595,7 +627,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "gateway.manuals",
     description:
       "Return Project Memory manual metadata by default. Set includeContent=true only when the caller needs the actual Markdown text in context.",
-    schema: gatewayManualsSchema
+    schema: gatewayManualsSchema,
+    outputSchema: output(z.object({ manuals: z.array(looseRecordSchema), efficiencyHints: efficiencyHintsSchema }))
   },
   {
     name: "gateway.status",
@@ -738,7 +771,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutSchema,
-    outputSchema: output(z.object({ artifact: artifactSchema })),
+    outputSchema: output(artifactOutputDataSchema),
     access: "write"
   },
   {
@@ -746,7 +779,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
     schema: artifactPutTextSchema,
-    outputSchema: output(z.object({ artifact: artifactSchema })),
+    outputSchema: output(artifactOutputDataSchema),
     access: "write"
   },
   {
@@ -768,21 +801,21 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
     schema: artifactGetSchema,
-    outputSchema: output(z.object({ artifact: artifactWithContentSchema }))
+    outputSchema: output(artifactWithContentOutputDataSchema)
   },
   {
     name: "artifact.peek",
     description:
       "Get a compact artifact preview without base64 content. Defaults keep excerpts small; increase excerptChars only when needed, and use artifact.read_text only after selecting a specific artifact.",
     schema: artifactPeekSchema,
-    outputSchema: output(z.object({ artifact: artifactPreviewSchema }))
+    outputSchema: output(artifactPreviewOutputDataSchema)
   },
   {
     name: "artifact.read_text",
     description:
       "Read bounded UTF-8 text from one selected text/Markdown artifact without base64 content. This can be token-expensive; set maxChars/maxLines and compact the chat after large reads.",
     schema: artifactReadTextSchema,
-    outputSchema: output(z.object({ artifact: artifactReadTextSchemaOut }))
+    outputSchema: output(artifactReadTextOutputDataSchema)
   },
   {
     name: "artifact.update_metadata",
@@ -987,7 +1020,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "context.changed_since",
     description:
       "Return compact project/common changes since an ISO timestamp cursor so agents can refresh context without broad reloads.",
-    schema: contextChangedSinceSchema
+    schema: contextChangedSinceSchema,
+    outputSchema: output(looseRecordSchema.extend({ efficiencyHints: efficiencyHintsSchema.optional() }))
   },
   {
     name: "handoff.create",

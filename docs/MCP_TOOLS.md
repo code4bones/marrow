@@ -50,6 +50,27 @@ schema. Artifact, compact-context, and preflight-query tools also describe their
 important `data.*` fields so agents can reliably find returned IDs, artifact
 text, `textInfo`, search results, and suggested next calls.
 
+Token-sensitive tools may also return `data.efficiencyHints`:
+
+```json
+{
+  "rule": "Use PMem as a lazy index first...",
+  "severity": "warn",
+  "strategy": "bounded-text-no-base64",
+  "fullBodiesIncluded": true,
+  "base64Included": false,
+  "estimatedChars": 14000,
+  "warnings": ["Large text read detected. Compact the chat before implementation."],
+  "preferredNextTools": ["context.pack", "handoff.create"],
+  "compactAfterThis": true
+}
+```
+
+Agents should inspect this block after `gateway.manuals(includeContent=true)`,
+`artifact.get(includeContent=true)`, `artifact.peek`, `artifact.read_text`,
+`project.summary`, `preflight.by_query`, `context.pack`, and
+`context.changed_since`.
+
 Success:
 
 ```json
@@ -972,6 +993,12 @@ Output:
     "outline": [
       { "level": 1, "title": "AGENTS.md", "line": 1 }
     ]
+  },
+  "efficiencyHints": {
+    "strategy": "bounded-text-no-base64",
+    "fullBodiesIncluded": true,
+    "base64Included": false,
+    "compactAfterThis": false
   }
 }
 ```
@@ -2481,6 +2508,8 @@ Output:
 
 `context.pack` intentionally returns compact cards and next-call pointers. It
 does not include full record bodies or artifact base64 content.
+Read `efficiencyHints` before following `nextCalls`; if the response warns that
+the chat should be compacted, compact before loading full records or artifacts.
 
 ---
 

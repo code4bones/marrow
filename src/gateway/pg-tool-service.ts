@@ -120,8 +120,13 @@ export class PgToolService {
           return ok("Gateway diagnostics loaded.", { diagnostics: await this.gatewayDiagnostics() });
         case "gateway.backup_manifest":
           return ok("Gateway backup manifest loaded.", { manifest: await this.gatewayBackupManifest() });
-        case "gateway.manuals":
-          return ok("Project Memory manuals loaded.", { manuals: await this.gatewayManuals(parsed) });
+        case "gateway.manuals": {
+          const manuals = await this.gatewayManuals(parsed);
+          return ok("Project Memory manuals loaded.", {
+            manuals,
+            efficiencyHints: manualEfficiencyHints(parsed, manuals)
+          });
+        }
         case "gateway.status":
           return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
         case "gateway.clients":
@@ -169,19 +174,40 @@ export class PgToolService {
         case "memory.hygiene_report":
           return ok("Memory hygiene report loaded.", await this.memoryHygieneReport(parsed, requestContext));
         case "artifact.put":
-          return ok("Artifact stored.", { artifact: await this.putArtifact(parsed, requestContext) });
+          return ok("Artifact stored.", {
+            artifact: await this.putArtifact(parsed, requestContext),
+            efficiencyHints: artifactWriteEfficiencyHints("artifact.put")
+          });
         case "artifact.put_text":
-          return ok("Text artifact stored.", { artifact: await this.putTextArtifact(parsed, requestContext) });
+          return ok("Text artifact stored.", {
+            artifact: await this.putTextArtifact(parsed, requestContext),
+            efficiencyHints: artifactWriteEfficiencyHints("artifact.put_text")
+          });
         case "artifact.search":
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed, requestContext) });
         case "artifact.list":
           return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed, requestContext) });
-        case "artifact.get":
-          return ok("Artifact loaded.", { artifact: await this.getArtifact(parsed, requestContext) });
-        case "artifact.peek":
-          return ok("Artifact preview loaded.", { artifact: await this.peekArtifact(parsed, requestContext) });
-        case "artifact.read_text":
-          return ok("Artifact text loaded.", { artifact: await this.readTextArtifact(parsed, requestContext) });
+        case "artifact.get": {
+          const artifact = await this.getArtifact(parsed, requestContext);
+          return ok("Artifact loaded.", {
+            artifact,
+            efficiencyHints: artifactGetEfficiencyHints(parsed, artifact)
+          });
+        }
+        case "artifact.peek": {
+          const artifact = await this.peekArtifact(parsed, requestContext);
+          return ok("Artifact preview loaded.", {
+            artifact,
+            efficiencyHints: artifactPeekEfficiencyHints(artifact)
+          });
+        }
+        case "artifact.read_text": {
+          const artifact = await this.readTextArtifact(parsed, requestContext);
+          return ok("Artifact text loaded.", {
+            artifact,
+            efficiencyHints: artifactReadTextEfficiencyHints(artifact)
+          });
+        }
         case "artifact.update_metadata":
           return ok("Artifact metadata updated.", { artifact: await this.updateArtifactMetadata(parsed, requestContext) });
         case "artifact.archive":
@@ -943,7 +969,8 @@ export class PgToolService {
       budget: {
         ...summary.budget,
         estimatedChars: JSON.stringify(summary).length
-      }
+      },
+      efficiencyHints: compactContextEfficiencyHints("project.summary", JSON.stringify(summary).length)
     };
   }
 
@@ -3142,7 +3169,8 @@ export class PgToolService {
         ? await this.listEvents({ project: project.id, limit: limits.events ?? 10 })
         : await this.listEvents({ project: null, limit: limits.events ?? 10 }),
       summary:
-        "Use this shared query context before creating a task or editing files. Treat knownFaults as stop-signals before repeating an approach."
+        "Use this shared query context before creating a task or editing files. Treat knownFaults as stop-signals before repeating an approach.",
+      efficiencyHints: compactContextEfficiencyHints("preflight.by_query")
     };
   }
 
@@ -3217,7 +3245,8 @@ export class PgToolService {
       budget: {
         ...(pack.budget as Row),
         estimatedChars: JSON.stringify(pack).length
-      }
+      },
+      efficiencyHints: compactContextEfficiencyHints("context.pack", JSON.stringify(pack).length)
     };
   }
 
@@ -3267,7 +3296,8 @@ export class PgToolService {
         events: changes.events.length
       },
       changes,
-      nextCalls: changedSinceNextCalls({ project, memory, handoffs, decisions, artifacts })
+      nextCalls: changedSinceNextCalls({ project, memory, handoffs, decisions, artifacts }),
+      efficiencyHints: compactContextEfficiencyHints("context.changed_since")
     };
   }
 
@@ -3833,6 +3863,120 @@ function compactEventRecord(record: Row) {
     relatedId: stringOrNull(record.relatedId),
     createdAt: stringOrNull(record.createdAt)
   };
+}
+
+function tokenEfficiencyBase(overrides: Row = {}) {
+  return {
+    rule: "Use PMem as a lazy index first: compact first, select exact records, then read full content only by id/path.",
+    severity: "info",
+    strategy: "compact-first",
+    fullBodiesIncluded: false,
+    base64Included: false,
+    warnings: [],
+    preferredNextTools: ["context.pack", "project.summary", "artifact.search", "artifact.peek"],
+    compactAfterThis: false,
+    ...overrides
+  };
+}
+
+function manualEfficiencyHints(input: Row, manuals: Row[]) {
+  const includeContent = input.includeContent === true;
+  const estimatedChars = JSON.stringify(manuals).length;
+  const warnings = includeContent
+    ? ["Manual content was included. Compact the chat after reading if you will continue implementation work."]
+    : ["Manual content was not included. Request includeContent=true only for the specific manual you need."];
+  return tokenEfficiencyBase({
+    severity: includeContent || estimatedChars > 12_000 ? "warn" : "info",
+    strategy: includeContent ? "manual-full-content" : "manual-metadata-first",
+    fullBodiesIncluded: includeContent,
+    estimatedChars,
+    warnings,
+    preferredNextTools: includeContent ? ["context.pack", "preflight.by_query"] : ["gateway.manuals"],
+    compactAfterThis: includeContent || estimatedChars > 12_000
+  });
+}
+
+function artifactWriteEfficiencyHints(tool: "artifact.put" | "artifact.put_text") {
+  return tokenEfficiencyBase({
+    strategy: tool === "artifact.put_text" ? "text-without-base64" : "exact-bytes-or-binary",
+    base64Included: tool === "artifact.put",
+    warnings:
+      tool === "artifact.put_text"
+        ? ["Text was stored without base64. Prefer artifact.read_text for future reads."]
+        : ["Base64 upload was used. Prefer artifact.put_text for UTF-8 Markdown/text artifacts."],
+    preferredNextTools: ["artifact.peek", "artifact.read_text", "artifact.search"]
+  });
+}
+
+function artifactGetEfficiencyHints(input: Row, artifact: Row) {
+  const base64Included = typeof artifact.contentBase64 === "string";
+  const estimatedChars = JSON.stringify(artifact).length;
+  const warnings = base64Included
+    ? [
+        "Inline base64 content was returned. Use artifact.peek or artifact.read_text for Markdown/text unless exact bytes are required.",
+        "Compact the chat after consuming base64 content."
+      ]
+    : ["Only artifact metadata was returned. Use artifact.peek or artifact.read_text before requesting includeContent=true."];
+  return tokenEfficiencyBase({
+    severity: base64Included || input.includeContent === true ? "warn" : "info",
+    strategy: base64Included ? "base64-inline-content" : "metadata-only",
+    fullBodiesIncluded: base64Included,
+    base64Included,
+    estimatedChars,
+    warnings,
+    preferredNextTools: ["artifact.peek", "artifact.read_text"],
+    compactAfterThis: base64Included || estimatedChars > 12_000
+  });
+}
+
+function artifactPeekEfficiencyHints(artifact: Row) {
+  const estimatedChars = JSON.stringify(artifact).length;
+  const preview = (artifact.preview ?? {}) as Row;
+  const truncated = preview.truncated === true;
+  return tokenEfficiencyBase({
+    strategy: "bounded-preview-no-base64",
+    estimatedChars,
+    warnings: truncated
+      ? ["Preview was truncated. Read full text only if this selected artifact is necessary for the task."]
+      : ["Preview stayed within bounded defaults. Prefer this before artifact.read_text."],
+    preferredNextTools: truncated ? ["artifact.read_text", "context.pack"] : ["artifact.search", "context.pack"],
+    compactAfterThis: estimatedChars > 12_000
+  });
+}
+
+function artifactReadTextEfficiencyHints(artifact: Row) {
+  const estimatedChars = JSON.stringify(artifact).length;
+  const textInfo = (artifact.textInfo ?? {}) as Row;
+  const truncated = textInfo.truncated === true;
+  const readBytes = Number(textInfo.readBytes ?? 0);
+  const warnings = [
+    "Full text was read without base64. Keep only task-relevant excerpts in working context.",
+    ...(truncated ? ["Text was truncated. Increase maxChars/maxLines only after confirming this file is required."] : []),
+    ...(estimatedChars > 12_000 || readBytes > 24_000 ? ["Large text read detected. Compact the chat before implementation."] : [])
+  ];
+  return tokenEfficiencyBase({
+    severity: estimatedChars > 12_000 || readBytes > 24_000 ? "warn" : "info",
+    strategy: "bounded-text-no-base64",
+    fullBodiesIncluded: true,
+    base64Included: false,
+    estimatedChars,
+    warnings,
+    preferredNextTools: ["context.pack", "handoff.create"],
+    compactAfterThis: estimatedChars > 12_000 || readBytes > 24_000
+  });
+}
+
+function compactContextEfficiencyHints(tool: string, estimatedChars?: number) {
+  return tokenEfficiencyBase({
+    strategy: "compact-cards-and-next-calls",
+    estimatedChars,
+    warnings: [
+      "This response intentionally omits full bodies and base64 content.",
+      "Follow nextCalls only for records or artifacts that are necessary for the current task."
+    ],
+    preferredNextTools: ["memory.get", "artifact.peek", "artifact.read_text", "preflight"],
+    sourceTool: tool
+  });
 }
 
 function mustReadPointers(faults: Row[]) {

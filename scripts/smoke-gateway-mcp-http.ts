@@ -96,6 +96,13 @@ try {
   const artifactReadTextTool = tools.tools.find((tool) => tool.name === "artifact.read_text");
   assert(isRecord(artifactReadTextTool?.outputSchema), "artifact.read_text did not list an outputSchema.");
   assert(JSON.stringify(artifactReadTextTool.outputSchema).includes("textInfo"), "artifact.read_text outputSchema missed textInfo.");
+  assert(
+    JSON.stringify(artifactReadTextTool.outputSchema).includes("efficiencyHints"),
+    "artifact.read_text outputSchema missed efficiencyHints."
+  );
+  const contextPackTool = tools.tools.find((tool) => tool.name === "context.pack");
+  assert(isRecord(contextPackTool?.outputSchema), "context.pack did not list an outputSchema.");
+  assert(JSON.stringify(contextPackTool.outputSchema).includes("efficiencyHints"), "context.pack outputSchema missed efficiencyHints.");
   const artifactPutTextTool = tools.tools.find((tool) => tool.name === "artifact.put_text");
   assert(isRecord(artifactPutTextTool?.outputSchema), "artifact.put_text did not list an outputSchema.");
   assert(JSON.stringify(artifactPutTextTool.outputSchema).includes("artifact"), "artifact.put_text outputSchema missed artifact.");
@@ -634,6 +641,11 @@ try {
     "context.pack did not report compact-cards strategy."
   );
   assert(JSON.stringify(contextPackResult.structuredContent).includes("contentBase64") === false, "context.pack returned base64 content.");
+  assert(
+    readNestedString(contextPackResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
+      "compact-cards-and-next-calls",
+    "context.pack did not return token efficiency hints."
+  );
   const contextPackArtifacts = readNestedArray(contextPackResult.structuredContent, ["data", "artifacts"]).map((item) =>
     isRecord(item) ? item.id : undefined
   );
@@ -670,6 +682,11 @@ try {
   assertOk(artifactPeekResult.structuredContent, "artifact.peek failed.");
   const artifactPeek = readNestedRecord(artifactPeekResult.structuredContent, ["data", "artifact"]);
   assert(!("contentBase64" in artifactPeek), "artifact.peek returned base64 content.");
+  assert(
+    readNestedString(artifactPeekResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
+      "bounded-preview-no-base64",
+    "artifact.peek did not return token efficiency hints."
+  );
   assert(
     readNestedString(artifactPeekResult.structuredContent, ["data", "artifact", "preview", "excerpt"]).includes(
       "Use preflight before editing files."
@@ -712,6 +729,11 @@ try {
     readNestedRecord(artifactReadTextResult.structuredContent, ["data", "artifact", "textInfo"]).base64Included === false,
     "artifact.read_text textInfo did not mark base64 as excluded."
   );
+  assert(
+    readNestedString(artifactReadTextResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
+      "bounded-text-no-base64",
+    "artifact.read_text did not return token efficiency hints."
+  );
 
   const artifactGetResult = await client.callTool({
     name: "artifact.get",
@@ -725,6 +747,10 @@ try {
     readNestedString(artifactGetResult.structuredContent, ["data", "artifact", "contentBase64"]) ===
       Buffer.from(artifactContent, "utf8").toString("base64"),
     "artifact.get did not return expected inline content."
+  );
+  assert(
+    readNestedRecord(artifactGetResult.structuredContent, ["data", "efficiencyHints"]).base64Included === true,
+    "artifact.get includeContent did not warn about base64."
   );
 
   state.orphanArtifactPath = `gateway-smoke/orphan-${unique}.md`;
