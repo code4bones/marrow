@@ -81,6 +81,8 @@ const state: {
   failedAttemptId?: string;
   artifactId?: string;
   artifactPath?: string;
+  orphanArtifactId?: string;
+  orphanArtifactPath?: string;
 } = {};
 
 try {
@@ -725,6 +727,35 @@ try {
     "artifact.get did not return expected inline content."
   );
 
+  state.orphanArtifactPath = `gateway-smoke/orphan-${unique}.md`;
+  const orphanArtifactResult = await client.callTool({
+    name: "artifact.put_text",
+    arguments: {
+      common: true,
+      path: state.orphanArtifactPath,
+      title: "Gateway smoke orphan artifact",
+      description: "Smoke test artifact for missing stored bytes handling.",
+      contentType: "text/markdown; charset=utf-8",
+      text: "# Orphan\n\nThis file is removed after metadata is written.\n",
+      tags: ["smoke", "orphan"],
+      overwrite: true
+    }
+  });
+  assertOk(orphanArtifactResult.structuredContent, "orphan artifact.put_text failed.");
+  state.orphanArtifactId = readNestedString(orphanArtifactResult.structuredContent, ["data", "artifact", "id"]);
+  await rm(resolve(process.env.ARTIFACT_DIR ?? "artifacts", "common", state.orphanArtifactPath), { force: true });
+  const orphanReadTextResult = await client.callTool({
+    name: "artifact.read_text",
+    arguments: {
+      id: state.orphanArtifactId
+    }
+  });
+  assertFailureCode(
+    orphanReadTextResult.structuredContent,
+    "ARTIFACT_BYTES_MISSING",
+    "artifact.read_text did not return explicit missing-bytes error for orphan artifact."
+  );
+
   const artifactMetadataResult = await client.callTool({
     name: "artifact.update_metadata",
     arguments: {
@@ -1050,8 +1081,14 @@ try {
   if (state.artifactId) {
     await db("artifacts").where({ id: state.artifactId }).del();
   }
+  if (state.orphanArtifactId) {
+    await db("artifacts").where({ id: state.orphanArtifactId }).del();
+  }
   if (state.artifactPath) {
     await rm(resolve(process.env.ARTIFACT_DIR ?? "artifacts", "common", state.artifactPath), { force: true });
+  }
+  if (state.orphanArtifactPath) {
+    await rm(resolve(process.env.ARTIFACT_DIR ?? "artifacts", "common", state.orphanArtifactPath), { force: true });
   }
   await db("gateway_clients").where({ id: clientId }).del();
   await db("gateway_clients").where({ id: secondClientId }).del();

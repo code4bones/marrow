@@ -308,9 +308,11 @@ export class PgToolService {
 
   async artifactDownload(id: string): Promise<ArtifactDownload> {
     const row = await this.artifactRowById(id);
+    const absolutePath = artifactAbsolutePath(String(row.storage_path));
+    ensureArtifactBytesExist(row, absolutePath);
     return {
       artifact: artifactOut(row),
-      absolutePath: artifactAbsolutePath(String(row.storage_path))
+      absolutePath
     };
   }
 
@@ -1847,7 +1849,7 @@ export class PgToolService {
           downloadPath: output.downloadPath
         });
       }
-      const content = await readFile(artifactAbsolutePath(String(row.storage_path)));
+      const content = await readArtifactBytes(row);
       return {
         ...output,
         contentBase64: content.toString("base64")
@@ -1882,7 +1884,7 @@ export class PgToolService {
       };
     }
 
-    const buffer = await readArtifactPrefix(artifactAbsolutePath(String(row.storage_path)), maxBytes);
+    const buffer = await readArtifactPrefixForRow(row, maxBytes);
     const text = buffer.toString("utf8");
     const truncated = sizeBytes > buffer.byteLength || text.length > excerptChars;
     const excerpt = text.slice(0, excerptChars);
@@ -1921,7 +1923,7 @@ export class PgToolService {
     const maxLines = Number(input.maxLines ?? 500);
     const outlineLimit = Number(input.outlineLimit ?? 40);
     const buffer =
-      maxBytes > 0 ? await readArtifactPrefix(artifactAbsolutePath(String(row.storage_path)), maxBytes) : Buffer.alloc(0);
+      maxBytes > 0 ? await readArtifactPrefixForRow(row, maxBytes) : Buffer.alloc(0);
     const decoded = buffer.toString("utf8");
     const limited = limitText(decoded, maxChars, maxLines);
     const redaction = input.redactSecrets === false ? { text: limited.text, redactions: 0 } : redactSensitiveText(limited.text);
@@ -4589,6 +4591,56 @@ function artifactAbsolutePath(storagePath: string): string {
     throw new AppError("VALIDATION_ERROR", "Artifact storage path escaped artifact root.", { storagePath });
   }
   return absolutePath;
+}
+
+function artifactBytesMissingError(row: Row, absolutePath: string): AppError {
+  return new AppError("ARTIFACT_BYTES_MISSING", `Artifact ${String(row.id)} metadata exists, but bytes are not available on this gateway.`, {
+    id: String(row.id),
+    projectId: row.project_id ?? null,
+    path: String(row.path),
+    storagePath: String(row.storage_path),
+    absolutePath,
+    status: String(row.status),
+    suggestedActions: [
+      "send the read request to the gateway that owns this ARTIFACT_DIR",
+      "restore or sync the missing file under this gateway ARTIFACT_DIR",
+      "re-upload the artifact through this gateway with artifact.put or artifact.put_text using overwrite=true"
+    ]
+  });
+}
+
+function ensureArtifactBytesExist(row: Row, absolutePath: string): void {
+  if (!existsSync(absolutePath)) {
+    throw artifactBytesMissingError(row, absolutePath);
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+async function readArtifactBytes(row: Row): Promise<Buffer> {
+  const absolutePath = artifactAbsolutePath(String(row.storage_path));
+  try {
+    return await readFile(absolutePath);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      throw artifactBytesMissingError(row, absolutePath);
+    }
+    throw error;
+  }
+}
+
+async function readArtifactPrefixForRow(row: Row, maxBytes: number): Promise<Buffer> {
+  const absolutePath = artifactAbsolutePath(String(row.storage_path));
+  try {
+    return await readArtifactPrefix(absolutePath, maxBytes);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      throw artifactBytesMissingError(row, absolutePath);
+    }
+    throw error;
+  }
 }
 
 async function readArtifactPrefix(absolutePath: string, maxBytes: number): Promise<Buffer> {

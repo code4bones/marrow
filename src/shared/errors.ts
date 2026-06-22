@@ -2,6 +2,7 @@ import { ZodError } from "zod/v4";
 
 export type ErrorCode =
   | "ARTIFACT_CONFLICT"
+  | "ARTIFACT_BYTES_MISSING"
   | "CURRENT_PROJECT_NOT_SET"
   | "ARTIFACT_NOT_FOUND"
   | "DB_ERROR"
