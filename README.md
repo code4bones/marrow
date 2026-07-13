@@ -100,6 +100,8 @@ See [docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](docs/PROJECT_MEMORY_COLLA
 
 See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the shared gateway.
 
+See [docs/CHAT_CONNECTOR_OAUTH_GUIDE.md](docs/CHAT_CONNECTOR_OAUTH_GUIDE.md) for the reusable OAuth facade pattern used to connect MCP servers to ChatGPT and Claude web connectors.
+
 See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for the PostgreSQL plus artifact backup and restore runbook.
 
 ## Setup
