@@ -1,17 +1,33 @@
-import { Button, Card, Form, Input, Typography } from 'antd';
+import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
 
+interface LoginFormValues {
+  email: string;
+  password: string;
+}
+
 export function LoginPage() {
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<LoginFormValues>();
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const onFinish = ({ token }: { token: string }) => {
-    login(token.trim());
-    navigate('/projects', { replace: true });
+  const onFinish = async ({ email, password }: LoginFormValues) => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(email.trim(), password);
+      navigate('/projects', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -29,19 +45,27 @@ export function LoginPage() {
           Project Memory
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          Enter your access token to continue
+          Sign in with your account
         </Text>
-        <Form form={form} layout="vertical" onFinish={onFinish}>
+        {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
+        <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
           <Form.Item
-            name="token"
-            label="Bearer Token"
-            rules={[{ required: true, message: 'Token is required' }]}
+            name="email"
+            label="Email"
+            rules={[{ required: true, message: 'Email is required' }]}
           >
-            <Input.Password placeholder="pmem_..." autoFocus />
+            <Input type="email" autoComplete="username" autoFocus />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label="Password"
+            rules={[{ required: true, message: 'Password is required' }]}
+          >
+            <Input.Password autoComplete="current-password" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" block>
-              Connect
+            <Button type="primary" htmlType="submit" block loading={submitting}>
+              Sign in
             </Button>
           </Form.Item>
         </Form>

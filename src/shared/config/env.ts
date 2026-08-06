@@ -6,4 +6,5 @@ export const GRAPHQL_WS_URL = GRAPHQL_HTTP_URL.replace(/^https/, 'wss').replace(
   'ws',
 );
 
-export const TOKEN_KEY = 'pmem_token';
+// e.g. https://pmem.undoo.ru/api/graphql -> https://pmem.undoo.ru/api
+export const API_BASE_URL = GRAPHQL_HTTP_URL.replace(/\/graphql$/, '');

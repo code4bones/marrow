@@ -172,7 +172,7 @@ export function NavigationRail() {
           icon={<LogoutOutlined />}
           danger
           size="small"
-          onClick={logout}
+          onClick={() => void logout()}
           style={{ width: '100%', textAlign: 'left' }}
         >
           Logout
