@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createPgKnex } from "../src/shared/pg/knex.js";
+import { hashPassword } from "../src/gateway/auth.js";
 import { seedBundledTemplates } from "./seed-templates.js";
 
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
@@ -184,14 +185,114 @@ async function runAdmin(action: string, args: string[]): Promise<void> {
     case "create":
       await createAdmin(args);
       break;
+    case "set-password":
+      await setAdminPassword(args);
+      break;
     case "help":
     case "--help":
     case "-h":
       printAdminHelp();
       break;
     default:
-      throw new Error(`Unknown admin action "${action}". Use create.`);
+      throw new Error(`Unknown admin action "${action}". Use create or set-password.`);
   }
+}
+
+async function setAdminPassword(args: string[]): Promise<void> {
+  dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
+
+  const { email, password: passwordArg } = parseAdminCreateArgs(args);
+  if (!email) {
+    throw new Error(
+      "pm3m admin set-password requires --email <address>. Example: pm3m admin set-password --email owner@example.com"
+    );
+  }
+
+  const db = createPgKnex();
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await db("users").where({ email: normalizedEmail }).first();
+    if (!user) {
+      throw new Error(`No user with email ${normalizedEmail} found. Run "pm3m admin create" first.`);
+    }
+
+    const password = passwordArg ?? (await promptHiddenPassword("New password: "));
+    if (password.length < 8) {
+      throw new Error("Password must be at least 8 characters.");
+    }
+    if (!passwordArg) {
+      const confirmation = await promptHiddenPassword("Confirm password: ");
+      if (confirmation !== password) {
+        throw new Error("Passwords did not match.");
+      }
+    }
+
+    const now = new Date();
+    await db("users")
+      .where({ id: user.id })
+      .update({
+        password_hash: await hashPassword(password),
+        // Shell access is a stronger trust signal than an email link; this
+        // command is only reachable by someone with shell access to the
+        // machine, same as "pm3m admin create" — see D-MEMORY-008.
+        email_verified_at: user.email_verified_at ?? now,
+        status: "active",
+        updated_at: now
+      });
+
+    console.log(`Password set for ${normalizedEmail} (${user.id}). The account is active and email-verified.`);
+  } finally {
+    await db.destroy();
+  }
+}
+
+function promptHiddenPassword(promptText: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin;
+    if (!stdin.isTTY) {
+      reject(new Error("No TTY available for a hidden password prompt. Pass --password instead."));
+      return;
+    }
+    process.stdout.write(promptText);
+    let value = "";
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    const ENTER = new Set(["\n", "\r", "\u0004"]);
+    const CTRL_C = "\u0003";
+    const BACKSPACE = new Set(["\u007f", "\b"]);
+
+    const onData = (chunk: string) => {
+      for (const char of chunk) {
+        if (ENTER.has(char)) {
+          cleanup();
+          process.stdout.write("\n");
+          resolve(value);
+          return;
+        }
+        if (char === CTRL_C) {
+          cleanup();
+          process.stdout.write("\n");
+          process.exit(1);
+        }
+        if (BACKSPACE.has(char)) {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += char;
+      }
+    };
+
+    function cleanup(): void {
+      stdin.removeListener("data", onData);
+      stdin.setRawMode(wasRaw ?? false);
+      stdin.pause();
+    }
+
+    stdin.on("data", onData);
+  });
 }
 
 async function createAdmin(args: string[]): Promise<void> {
@@ -263,9 +364,10 @@ async function createAdmin(args: string[]): Promise<void> {
   }
 }
 
-function parseAdminCreateArgs(args: string[]): { email?: string; force: boolean } {
+function parseAdminCreateArgs(args: string[]): { email?: string; force: boolean; password?: string } {
   let email: string | undefined;
   let force = false;
+  let password: string | undefined;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--email") {
@@ -273,9 +375,12 @@ function parseAdminCreateArgs(args: string[]): { email?: string; force: boolean 
       i += 1;
     } else if (arg === "--force") {
       force = true;
+    } else if (arg === "--password") {
+      password = args[i + 1];
+      i += 1;
     }
   }
-  return { email, force };
+  return { email, force, password };
 }
 
 function sha256Hex(input: string): string {
@@ -299,6 +404,15 @@ Usage:
                           link (/auth/claim?token=...) to set a password.
                           Fails if an admin already exists unless --force
                           is passed.
+  pm3m admin set-password --email <address> [--password <value>]
+                          Set (or reset) a user's password directly, no
+                          HTTP claim/verify-email round trip — shell access
+                          to this machine is already the trust root (see
+                          D-MEMORY-008), so this is safe for whoever can run
+                          pm3m here. Marks the account active and email-
+                          verified. Prompts with hidden input if --password
+                          is omitted (requires a TTY); pass --password for
+                          non-interactive/scripted use.
 `);
 }
 
@@ -468,6 +582,7 @@ Usage:
   pm3m seed templates     Seed or update bundled common artifact templates
   pm3m oauth key          Print PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM for .env
   pm3m admin create       Create the first admin user (bootstrap, one-time)
+  pm3m admin set-password Set/reset a user's password directly (no email flow)
   pm3m status             Show PostgreSQL migration status
   pm3m rollback           Roll back the latest PostgreSQL migration batch
   pm3m gateway            Run the gateway directly without PM2
