@@ -10,6 +10,14 @@ import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js"
 import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
 import type { OAuthFacade } from "./oauth.js";
+import {
+  clearSessionCookieHeader,
+  getSessionToken,
+  isForwardedHttps,
+  sessionCookieHeader,
+  type AuthFacade,
+  type SessionIdentity
+} from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import {
   createGatewayGraphqlServer,
@@ -23,6 +31,7 @@ export interface GatewayServerOptions {
   logger?: AppLogger;
   token?: string;
   oauth?: OAuthFacade;
+  auth?: AuthFacade;
 }
 
 export interface StartedGatewayServer {
@@ -38,7 +47,7 @@ interface ToolCallBody {
 
 type LogFields = Record<string, unknown>;
 type AuthorizationState =
-  | { ok: true; source: "static" | "oauth" | "none" }
+  | { ok: true; source: "static" | "oauth" | "session" | "none" }
   | { ok: false; challenge?: string; reason?: string };
 
 export async function startGatewayServer(
@@ -86,7 +95,8 @@ async function handleRequest(
   const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
   const requestUrl = parseRequestUrl(request);
   const requestPath = requestUrl.pathname;
-  const context = requestContext(request, requestId);
+  const sessionAuth = options.auth ? await options.auth.identifyFromRequest(request) : null;
+  const context = requestContext(request, requestId, sessionAuth);
 
   const send = (status: number, body: unknown, extra?: LogFields) => {
     sendJson(response, status, body, requestId);
@@ -174,7 +184,31 @@ async function handleRequest(
       return;
     }
 
-    const auth = isAuthorized(options, request);
+    if (options.auth && requestPath.startsWith("/auth/")) {
+      try {
+        const handled = await handleAuthRoute(
+          options.auth,
+          request,
+          response,
+          requestUrl,
+          requestPath,
+          sessionAuth,
+          send
+        );
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        if (error instanceof AppError) {
+          const status = error.code === "VALIDATION_ERROR" ? 400 : error.code === "UNAUTHORIZED" ? 401 : 500;
+          send(status, fail(error));
+          return;
+        }
+        throw error;
+      }
+    }
+
+    const auth = isAuthorized(options, request, sessionAuth);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth.challenge);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
@@ -426,6 +460,104 @@ async function handleMcpRequest(
   }
 }
 
+async function handleAuthRoute(
+  auth: AuthFacade,
+  request: IncomingMessage,
+  response: ServerResponse,
+  requestUrl: URL,
+  requestPath: string,
+  sessionAuth: SessionIdentity | null,
+  send: (status: number, body: unknown, extra?: LogFields) => void
+): Promise<boolean> {
+  if (request.method === "POST" && requestPath === "/auth/invite") {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to create invites.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { email?: unknown };
+    if (typeof body.email !== "string" || !body.email.trim()) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "email is required.")));
+      return true;
+    }
+    const result = await auth.invite(body.email, sessionAuth.userId);
+    send(200, { ok: true, data: { email: result.email, claimPath: `/auth/claim?token=${result.token}` } });
+    return true;
+  }
+
+  if (request.method === "GET" && requestPath === "/auth/claim") {
+    const token = queryString(requestUrl, "token");
+    if (!token) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "token is required.")));
+      return true;
+    }
+    const result = await auth.claimContext(token);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/claim") {
+    const body = (await readJson(request)) as { token?: unknown; password?: unknown };
+    if (typeof body.token !== "string" || typeof body.password !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "token and password are required.")));
+      return true;
+    }
+    const result = await auth.claim(body.token, body.password);
+    send(200, {
+      ok: true,
+      data: {
+        email: result.email,
+        emailVerified: result.emailVerified,
+        verifyEmailPath: result.verifyToken ? `/auth/verify-email?token=${result.verifyToken}` : undefined
+      }
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/verify-email") {
+    const token = queryString(requestUrl, "token");
+    if (!token) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "token is required.")));
+      return true;
+    }
+    await auth.verifyEmail(token);
+    send(200, { ok: true, data: { verified: true } });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/login") {
+    const body = (await readJson(request)) as { email?: unknown; password?: unknown };
+    if (typeof body.email !== "string" || typeof body.password !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "email and password are required.")));
+      return true;
+    }
+    const result = await auth.login(body.email, body.password, {
+      userAgent: headerString(request, "user-agent"),
+      ip: clientIp(request)
+    });
+    if (result.status === "pending_totp") {
+      send(200, { ok: true, data: { status: "pending_totp", userId: result.userId } }, {
+        requestBody: { email: body.email }
+      });
+      return true;
+    }
+    response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
+    send(200, { ok: true, data: { status: "session", user: result.user } }, { requestBody: { email: body.email } });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/logout") {
+    const rawToken = getSessionToken(request);
+    if (rawToken) {
+      await auth.logout(rawToken);
+    }
+    response.setHeader("set-cookie", clearSessionCookieHeader(isForwardedHttps(request)));
+    send(200, { ok: true, data: { loggedOut: true } });
+    return true;
+  }
+
+  return false;
+}
+
 function mcpLogFields(body: unknown): LogFields {
   if (Array.isArray(body)) {
     return {
@@ -506,19 +638,23 @@ function graphqlBodyQueries(body: unknown): string[] {
   return typeof body.query === "string" ? [body.query] : [];
 }
 
-function requestContext(request: IncomingMessage, requestId: string): GatewayRequestContext {
+function requestContext(
+  request: IncomingMessage,
+  requestId: string,
+  sessionAuth: SessionIdentity | null
+): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
   const explicitClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
-  const clientId = explicitClientId ?? `anonymous:${requestId}`;
+  const clientId = explicitClientId ?? (sessionAuth ? `user:${sessionAuth.userId}` : `anonymous:${requestId}`);
   const clientLabel =
     headerString(request, "x-project-memory-client-label") ??
     queryString(requestUrl, "client_label") ??
-    (explicitClientId ? clientId : "anonymous");
+    (sessionAuth ? sessionAuth.email : explicitClientId ? clientId : "anonymous");
   return {
     clientId,
     clientLabel,
     metadata: {
-      anonymous: explicitClientId ? false : true,
+      anonymous: explicitClientId ? false : !sessionAuth,
       kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
     }
@@ -541,9 +677,17 @@ function headerString(request: IncomingMessage, name: string): string | undefine
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function isAuthorized(options: GatewayServerOptions, request: IncomingMessage): AuthorizationState {
+function isAuthorized(
+  options: GatewayServerOptions,
+  request: IncomingMessage,
+  sessionAuth: SessionIdentity | null
+): AuthorizationState {
   if (options.token && request.headers.authorization === `Bearer ${options.token}`) {
     return { ok: true, source: "static" };
+  }
+
+  if (sessionAuth) {
+    return { ok: true, source: "session" };
   }
 
   if (options.oauth) {

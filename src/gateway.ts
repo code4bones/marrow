@@ -2,6 +2,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { startGatewayServer } from "./gateway/http-server.js";
+import { createAuthFacade } from "./gateway/auth.js";
 import { createOAuthFacadeFromEnv } from "./gateway/oauth.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
@@ -23,7 +24,8 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8765);
   const token = process.env.MCP_TOKEN;
   const oauth = createOAuthFacadeFromEnv();
-  const started = await startGatewayServer(service, { host, port, token, oauth, logger });
+  const auth = createAuthFacade(db);
+  const started = await startGatewayServer(service, { host, port, token, oauth, auth, logger });
 
   logger.info(
     {

@@ -36,6 +36,7 @@
     "seed:templates": "node dist/scripts/seed-templates.js",
     "smoke": "node dist/scripts/smoke.js",
     "smoke:gateway": "node dist/scripts/smoke-gateway.js",
+    "smoke:gateway:auth": "node dist/scripts/smoke-gateway-auth.js",
     "smoke:gateway:graphql": "node dist/scripts/smoke-gateway-graphql.js",
     "smoke:gateway:mcp-http": "node dist/scripts/smoke-gateway-mcp-http.js",
     "smoke:oauth": "node dist/scripts/smoke-oauth.js",

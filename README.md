@@ -460,6 +460,7 @@ npm run build
 npm run smoke
 npm run smoke:gateway
 npm run smoke:gateway:mcp-http
+npm run smoke:gateway:auth
 npm run smoke:stdio
 npm run smoke:package
 ```
@@ -470,9 +471,11 @@ npm run smoke:package
 
 `smoke:gateway:mcp-http` verifies the full shared path: MCP Streamable HTTP client -> HTTP gateway -> PostgreSQL.
 
+`smoke:gateway:auth` verifies the per-user access model end to end: invite -> claim -> verify-email -> login -> GraphQL over the resulting session cookie -> logout. See `docs/AUTH.md`.
+
 ## Notes
 
-- The server is local-first.
-- There is no UI, auth, remote sync, cloud dependency, embeddings, or vector search in the MVP.
+- The server is local-first, with an optional shared PostgreSQL gateway mode.
+- PMemUI (browser UI) and per-user auth (email+password+session, invite-based, see `docs/AUTH.md`) exist for the gateway mode; there is still no remote sync, cloud dependency, embeddings, or vector search.
 - Project-specific memory and common memory are separate. Default search includes current project plus common knowledge.
 - `preflight` is the main workflow guardrail before editing project files.
