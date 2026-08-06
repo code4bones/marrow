@@ -143,6 +143,16 @@ try {
   assert(memberLoginBody.data.user.role === "member", "Claimed invite did not default to the member role.");
   console.log("ok - auth login succeeds once verified, issues session");
 
+  const me = await fetch(`${started.url}/auth/me`, { headers: { cookie: memberCookie! } });
+  assert(me.status === 200, `GET /auth/me failed. Status: ${me.status}`);
+  const meBody = (await me.json()) as { data: { id: string; email: string; role: string } };
+  assert(meBody.data.email === memberEmail, "/auth/me returned the wrong user.");
+  console.log("ok - auth me resolves the session cookie to the current user");
+
+  const meWithoutCookie = await fetch(`${started.url}/auth/me`);
+  assert(meWithoutCookie.status === 401, `GET /auth/me without a cookie was not rejected. Status: ${meWithoutCookie.status}`);
+  console.log("ok - auth me requires a session");
+
   const graphqlWithSession = await fetch(graphqlUrl, {
     method: "POST",
     headers: { "content-type": "application/json", cookie: memberCookie! },

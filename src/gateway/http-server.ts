@@ -555,6 +555,18 @@ async function handleAuthRoute(
     return true;
   }
 
+  if (request.method === "GET" && requestPath === "/auth/me") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    send(200, {
+      ok: true,
+      data: { id: sessionAuth.userId, email: sessionAuth.email, role: sessionAuth.role }
+    });
+    return true;
+  }
+
   return false;
 }
 
