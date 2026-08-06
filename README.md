@@ -100,6 +100,10 @@ See [docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](docs/PROJECT_MEMORY_COLLA
 
 See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the shared gateway.
 
+See [docs/AUTH.md](docs/AUTH.md) for the users/sessions/tokens schema and the `pm3m admin create` bootstrap command (per-user access model, first piece).
+
+See [docs/AUTH_LAYERING.md](docs/AUTH_LAYERING.md) for the rule on stacking edge auth (Basic Auth, forward-auth) in front of an app that manages its own `Authorization` header, and a worked incident from PMemUI's first public deploy.
+
 See [docs/CHAT_CONNECTOR_OAUTH_GUIDE.md](docs/CHAT_CONNECTOR_OAUTH_GUIDE.md) for the reusable OAuth facade pattern used to connect MCP servers to ChatGPT and Claude web connectors.
 
 See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for the PostgreSQL plus artifact backup and restore runbook.

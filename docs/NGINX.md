@@ -133,3 +133,9 @@ Scheme: http
 ```
 
 Use `/project-memory/ready` for readiness checks where supported.
+
+If you add an Nginx Proxy Manager Access List (Basic Auth) or any other
+`Authorization`-based edge check in front of a host that also serves a
+gateway-backed frontend, see [docs/AUTH_LAYERING.md](AUTH_LAYERING.md) first —
+scope it to exclude the API path prefix, or it will collide with the app's
+own `Authorization: Bearer` header.

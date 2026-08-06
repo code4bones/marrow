@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import dotenv from "dotenv";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -24,6 +24,9 @@ try {
       break;
     case "oauth":
       runOauth(process.argv[3] ?? "help");
+      break;
+    case "admin":
+      await runAdmin(process.argv[3] ?? "help", process.argv.slice(4));
       break;
     case "status":
       await runMigrations("status");
@@ -174,6 +177,129 @@ function runOauth(target: string): void {
     default:
       throw new Error(`Unknown oauth target "${target}". Use key.`);
   }
+}
+
+async function runAdmin(action: string, args: string[]): Promise<void> {
+  switch (action) {
+    case "create":
+      await createAdmin(args);
+      break;
+    case "help":
+    case "--help":
+    case "-h":
+      printAdminHelp();
+      break;
+    default:
+      throw new Error(`Unknown admin action "${action}". Use create.`);
+  }
+}
+
+async function createAdmin(args: string[]): Promise<void> {
+  dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
+
+  const { email, force } = parseAdminCreateArgs(args);
+  if (!email) {
+    throw new Error(
+      "pm3m admin create requires --email <address>. Example: pm3m admin create --email owner@example.com"
+    );
+  }
+
+  const db = createPgKnex();
+  try {
+    const existingAdmin = await db("users").where({ role: "admin" }).first();
+    if (existingAdmin && !force) {
+      throw new Error(
+        `An admin already exists (${existingAdmin.email}). Bootstrap is one-time; pass --force to create another admin anyway.`
+      );
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingByEmail = await db("users").where({ email: normalizedEmail }).first();
+    if (existingByEmail) {
+      throw new Error(`A user with email ${normalizedEmail} already exists (id ${existingByEmail.id}).`);
+    }
+
+    const now = new Date();
+    const userId = randomUUID();
+    await db("users").insert({
+      id: userId,
+      email: normalizedEmail,
+      password_hash: null,
+      // Shell access to the host that runs pm3m is a stronger trust signal
+      // than clicking an email link, so the bootstrap admin's email is
+      // considered verified immediately — see D-MEMORY-008.
+      email_verified_at: now,
+      totp_enabled: false,
+      role: "admin",
+      status: "active",
+      created_at: now,
+      updated_at: now
+    });
+
+    const rawToken = base64url(randomBytes(32));
+    await db("tokens").insert({
+      id: randomUUID(),
+      user_id: userId,
+      email: normalizedEmail,
+      purpose: "password_reset",
+      token_hash: sha256Hex(rawToken),
+      expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      created_by: userId,
+      created_at: now
+    });
+
+    const base = trimTrailingSlash(process.env.PROJECT_MEMORY_PUBLIC_URL ?? "");
+    const claimPath = `/auth/claim?token=${rawToken}`;
+    const link = base ? `${base}${claimPath}` : claimPath;
+
+    console.log(`Admin user created: ${normalizedEmail} (${userId})`);
+    console.log("One-time link to set a password (valid 24h, single use):");
+    console.log(link);
+    if (!base) {
+      console.log("PROJECT_MEMORY_PUBLIC_URL is not set in .env — prepend your PMemUI base URL to the path above.");
+    }
+  } finally {
+    await db.destroy();
+  }
+}
+
+function parseAdminCreateArgs(args: string[]): { email?: string; force: boolean } {
+  let email: string | undefined;
+  let force = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--email") {
+      email = args[i + 1];
+      i += 1;
+    } else if (arg === "--force") {
+      force = true;
+    }
+  }
+  return { email, force };
+}
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function base64url(input: Buffer): string {
+  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function printAdminHelp(): void {
+  console.log(`pm3m admin
+
+Usage:
+  pm3m admin create --email <address> [--force]
+                          Create the first admin user and print a one-time
+                          link (/auth/claim?token=...) to set a password.
+                          Fails if an admin already exists unless --force
+                          is passed.
+`);
 }
 
 function printOauthPrivateKey(): void {
@@ -341,6 +467,7 @@ Usage:
   pm3m migrate [latest]   Apply PostgreSQL migrations using .env from the current directory
   pm3m seed templates     Seed or update bundled common artifact templates
   pm3m oauth key          Print PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM for .env
+  pm3m admin create       Create the first admin user (bootstrap, one-time)
   pm3m status             Show PostgreSQL migration status
   pm3m rollback           Roll back the latest PostgreSQL migration batch
   pm3m gateway            Run the gateway directly without PM2
