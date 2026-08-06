@@ -191,6 +191,8 @@ try {
   assert(graphqlAfterLogout.status === 401, `Revoked session cookie still authorized. Status: ${graphqlAfterLogout.status}`);
   console.log("ok - auth logout invalidates the cookie for later requests");
 
+  await verifyClaimingUnclaimedAdmin();
+
   console.log(`Gateway auth smoke test passed using ${started.url}`);
 } finally {
   if (memberUserId) {
@@ -206,6 +208,60 @@ try {
   }
   await started.stop();
   await service.close();
+}
+
+// Runs entirely inside one transaction that's always rolled back at the end
+// (even on success), so it can freely seed/inspect "no claimed admin exists"
+// state without touching real data — the live DB always has real users.
+async function verifyClaimingUnclaimedAdmin(): Promise<void> {
+  const rollbackMarker = {};
+  await db
+    .transaction(async (trx) => {
+      // Every other claimed admin (real prod data, plus this script's own
+      // adminUserId seeded earlier and not yet cleaned up) must not leak
+      // into this check — demote them for the lifetime of this transaction
+      // only, restored by the rollback at the end.
+      await trx("users").where({ role: "admin" }).whereNotNull("password_hash").update({ role: "member" });
+
+      const unclaimedEmail = `gateway-auth-smoke-unclaimed-${unique}@example.test`;
+      const unclaimedId = randomUUID();
+      const now = new Date();
+      await trx("users").insert({
+        id: unclaimedId,
+        email: unclaimedEmail,
+        password_hash: null,
+        email_verified_at: now,
+        totp_enabled: false,
+        role: "admin",
+        status: "active",
+        created_at: now,
+        updated_at: now
+      });
+
+      const scopedAuth = createAuthFacade(trx);
+      const statusBefore = await scopedAuth.bootstrapStatus();
+      assert(!statusBefore.adminExists, "An admin row with no password_hash must not count as adminExists=true.");
+
+      const result = await scopedAuth.bootstrapFirstAdmin(unclaimedEmail, "claimed-password-1", {});
+      assert(result.status === "session", "bootstrapFirstAdmin should issue a session for the claimed admin.");
+      assert(
+        result.status === "session" && result.user.id === unclaimedId,
+        "bootstrapFirstAdmin should claim the existing unclaimed admin row (same id), not insert a duplicate."
+      );
+
+      const claimedRow = await trx("users").where({ id: unclaimedId }).first();
+      assert(claimedRow.password_hash, "password_hash should be set on the claimed row.");
+      console.log(
+        "ok - auth bootstrap claims an existing CLI-created unclaimed admin instead of erroring on duplicate email"
+      );
+
+      throw rollbackMarker;
+    })
+    .catch((error: unknown) => {
+      if (error !== rollbackMarker) {
+        throw error;
+      }
+    });
 }
 
 function sessionCookieFrom(response: Response): string | null {

@@ -192,20 +192,36 @@ export function createAuthFacade(db: Knex) {
     return rawSessionToken;
   }
 
+  // "Bootstrapped" means a usable admin exists — role=admin AND a password
+  // actually set. A CLI-created (`pm3m admin create`) admin row with
+  // password_hash still null does NOT count: that account can't log in yet,
+  // so the UI must keep offering setup, not a login form that can never
+  // succeed.
+  async function claimedAdminExists(queryable: Knex | Knex.Transaction = db): Promise<boolean> {
+    const admin = await queryable("users").where({ role: "admin" }).whereNotNull("password_hash").first();
+    return Boolean(admin);
+  }
+
   async function bootstrapStatus(): Promise<{ adminExists: boolean }> {
-    const admin = await db("users").where({ role: "admin" }).first();
-    return { adminExists: Boolean(admin) };
+    return { adminExists: await claimedAdminExists() };
   }
 
   /**
-   * First-run-only self-registration: if no admin exists anywhere in the
-   * database, the first visitor to submit this form becomes the admin and is
-   * logged in immediately. This is the "first visitor becomes admin" pattern
-   * D-MEMORY-008 originally rejected for an already-public instance — see
-   * D-MEMORY-013 for why it was reinstated (deliberate maintainer choice,
-   * accepted tradeoff for solo/personal self-host installs where the
-   * deploy-to-first-visit window is the operator's own browser tab). Once any
-   * admin exists, this permanently 400s.
+   * First-run-only self-registration: while no usable (password-set) admin
+   * exists anywhere in the database, the first visitor to submit this form
+   * becomes the admin and is logged in immediately. This is the "first
+   * visitor becomes admin" pattern D-MEMORY-008 originally rejected for an
+   * already-public instance — see D-MEMORY-013 for why it was reinstated
+   * (deliberate maintainer choice, accepted tradeoff for solo/personal
+   * self-host installs where the deploy-to-first-visit window is the
+   * operator's own browser tab). Once a usable admin exists, this
+   * permanently 400s.
+   *
+   * If the submitted email matches an existing admin row that was created
+   * via `pm3m admin create` but never claimed (password_hash still null),
+   * this claims that row instead of trying to insert a duplicate — the CLI
+   * bootstrap and the browser bootstrap screen are two doors into the same
+   * one-time setup, not two competing accounts.
    */
   async function bootstrapFirstAdmin(email: string, password: string, meta: RequestMeta): Promise<LoginResult> {
     if (password.length < 8) {
@@ -213,15 +229,27 @@ export function createAuthFacade(db: Knex) {
     }
     const normalized = normalizeEmail(email);
     const userId = await db.transaction(async (trx) => {
-      const admin = await trx("users").where({ role: "admin" }).first();
-      if (admin) {
+      if (await claimedAdminExists(trx)) {
         throw new AppError("VALIDATION_ERROR", "An admin already exists. Ask them for an invite.");
       }
-      const existingByEmail = await trx("users").where({ email: normalized }).first();
-      if (existingByEmail) {
-        throw new AppError("VALIDATION_ERROR", `A user with email ${normalized} already exists.`);
-      }
       const now = new Date();
+      const existingByEmail = await trx("users").where({ email: normalized }).first();
+
+      if (existingByEmail) {
+        if (existingByEmail.role !== "admin" || existingByEmail.password_hash) {
+          throw new AppError("VALIDATION_ERROR", `A user with email ${normalized} already exists.`);
+        }
+        await trx("users")
+          .where({ id: existingByEmail.id })
+          .update({
+            password_hash: await hashPassword(password),
+            email_verified_at: existingByEmail.email_verified_at ?? now,
+            status: "active",
+            updated_at: now
+          });
+        return existingByEmail.id as string;
+      }
+
       const id = randomUUID();
       await trx("users").insert({
         id,
