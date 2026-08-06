@@ -29,13 +29,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export function AppRouter() {
   const status = useAuthStore((s) => s.status);
-  const checkSession = useAuthStore((s) => s.checkSession);
+  const initialize = useAuthStore((s) => s.initialize);
 
   useEffect(() => {
     if (status === 'checking') {
-      void checkSession();
+      void initialize();
     }
-  }, [status, checkSession]);
+  }, [status, initialize]);
 
   return (
     <Routes>
