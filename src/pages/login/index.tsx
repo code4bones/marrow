@@ -1,6 +1,7 @@
 import { Alert, Button, Card, Form, Input, Spin, Typography } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PasswordFields } from '../../features/auth/PasswordFields';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
@@ -8,6 +9,7 @@ const { Title, Text } = Typography;
 interface CredentialsFormValues {
   email: string;
   password: string;
+  confirmPassword?: string;
 }
 
 function CenteredCard({ children }: { children: React.ReactNode }) {
@@ -76,16 +78,7 @@ export function LoginPage() {
           <Form.Item name="email" label="Admin email" rules={[{ required: true, message: 'Email is required' }]}>
             <Input type="email" autoComplete="username" autoFocus />
           </Form.Item>
-          <Form.Item
-            name="password"
-            label="Password"
-            rules={[
-              { required: true, message: 'Password is required' },
-              { min: 8, message: 'At least 8 characters' },
-            ]}
-          >
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
+          <PasswordFields />
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={submitting}>
               Create admin account
