@@ -147,7 +147,7 @@ export function TaskFlowchart({ tasks }: Props) {
         <Background color="#2a2a2a" gap={20} />
         <Controls style={{ background: '#1f1f1f', border: '1px solid #303030' }} />
         <MiniMap
-          nodeColor={(n) => STATUS_COLOR[(n.data as any).task?.status] ?? '#595959'}
+          nodeColor={(n) => STATUS_COLOR[(n.data as { task?: Task }).task?.status ?? ''] ?? '#595959'}
           style={{ background: '#1f1f1f', border: '1px solid #303030' }}
           maskColor="rgba(0,0,0,0.6)"
         />

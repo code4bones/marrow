@@ -49,41 +49,46 @@ interface Props {
   nodes: GNode[];
   edges: GEdge[];
   loading?: boolean;
-  onLoadFull?: () => void;
-  isFullGraph?: boolean;
 }
 
-export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph }: Props) {
+export function KnowledgeGraph({ nodes, edges, loading }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
-  const [, forceRender] = useState(0);
   const nodesRef = useRef<SimNode[]>([]);
   const linksRef = useRef<SimLink[]>([]);
+  const [simNodes, setSimNodes] = useState<SimNode[]>([]);
+  const [simLinks, setSimLinks] = useState<SimLink[]>([]);
+  const [svgSize, setSvgSize] = useState({ width: 800, height: 600 });
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
 
   const restart = useCallback(() => {
     const nodeMap = new Map<string, SimNode>();
-    const simNodes: SimNode[] = nodes.map((n) => {
+    const nextNodes: SimNode[] = nodes.map((n) => {
       const existing = nodesRef.current.find((sn) => sn.id === n.id);
       const sn: SimNode = { ...n, x: existing?.x, y: existing?.y };
       nodeMap.set(n.id, sn);
       return sn;
     });
 
-    const simLinks: SimLink[] = edges
+    const nextLinks: SimLink[] = edges
       .filter((e) => nodeMap.has(e.from) && nodeMap.has(e.to))
       .map((e) => ({ source: e.from, target: e.to, relation: e.relation }));
 
-    nodesRef.current = simNodes;
-    linksRef.current = simLinks;
+    nodesRef.current = nextNodes;
+    linksRef.current = nextLinks;
+    setSimNodes(nextNodes);
+    setSimLinks(nextLinks);
 
     simRef.current?.stop();
-    simRef.current = d3.forceSimulation<SimNode, SimLink>(simNodes)
-      .force('link', d3.forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(100))
+    simRef.current = d3.forceSimulation<SimNode, SimLink>(nextNodes)
+      .force('link', d3.forceLink<SimNode, SimLink>(nextLinks).id((d) => d.id).distance(100))
       .force('charge', d3.forceManyBody().strength(-280))
       .force('x', d3.forceX(0).strength(0.05))
       .force('y', d3.forceY(0).strength(0.05))
-      .on('tick', () => forceRender((n) => n + 1));
+      .on('tick', () => {
+        setSimNodes([...nodesRef.current]);
+        setSimLinks([...linksRef.current]);
+      });
   }, [nodes, edges]);
 
   useEffect(() => {
@@ -91,9 +96,22 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
     return () => { simRef.current?.stop(); };
   }, [restart]);
 
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setSvgSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // SVG pan/zoom via wheel + drag
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
   const dragging = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
 
   const onWheel = (e: React.WheelEvent) => {
@@ -104,12 +122,13 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
   const onMouseDown = (e: React.MouseEvent) => {
     if ((e.target as SVGElement).closest('.graph-node')) return;
     dragging.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+    setIsDragging(true);
   };
   const onMouseMove = (e: React.MouseEvent) => {
     if (!dragging.current) return;
     setPan({ x: dragging.current.px + (e.clientX - dragging.current.sx), y: dragging.current.py + (e.clientY - dragging.current.sy) });
   };
-  const onMouseUp = () => { dragging.current = null; };
+  const onMouseUp = () => { dragging.current = null; setIsDragging(false); };
 
   if (loading) {
     return (
@@ -127,14 +146,11 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
     );
   }
 
-  const simNodes = nodesRef.current;
-  const simLinks = linksRef.current;
-
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%', background: '#141414', overflow: 'hidden' }}>
       <svg
         ref={svgRef}
-        style={{ width: '100%', height: '100%', cursor: dragging.current ? 'grabbing' : 'grab' }}
+        style={{ width: '100%', height: '100%', cursor: isDragging ? 'grabbing' : 'grab' }}
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -146,7 +162,7 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
             <path d="M0,0 L0,6 L8,3 z" fill="#434343" />
           </marker>
         </defs>
-        <g transform={`translate(${(svgRef.current?.clientWidth ?? 800) / 2 + pan.x},${(svgRef.current?.clientHeight ?? 600) / 2 + pan.y}) scale(${zoom})`}>
+        <g transform={`translate(${svgSize.width / 2 + pan.x},${svgSize.height / 2 + pan.y}) scale(${zoom})`}>
           {/* Edges */}
           {simLinks.map((link, i) => {
             const s = link.source as SimNode;
@@ -173,7 +189,7 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
                 className="graph-node"
                 transform={`translate(${n.x},${n.y})`}
                 style={{ cursor: 'pointer' }}
-                onClick={() => setSelectedRecord(n.id, n.kind.toLowerCase() as any)}
+                onClick={() => setSelectedRecord(n.id, n.kind.toLowerCase())}
               >
                 <circle r={NODE_R} fill="#1f1f1f" stroke={color} strokeWidth={2} />
                 <text
@@ -213,12 +229,6 @@ export function KnowledgeGraph({ nodes, edges, loading, onLoadFull, isFullGraph 
       {/* Controls overlay */}
       <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
         <Button size="small" onClick={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}>Reset</Button>
-        {onLoadFull && !isFullGraph && (
-          <Button size="small" onClick={onLoadFull}>Load full graph</Button>
-        )}
-        {isFullGraph && (
-          <Typography.Text type="secondary" style={{ fontSize: 11, lineHeight: '24px' }}>Full graph</Typography.Text>
-        )}
       </div>
 
       {/* Kind legend */}

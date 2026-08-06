@@ -1,10 +1,14 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Drawer, Skeleton, Tag, Typography } from 'antd';
+import { Alert, Divider, Drawer, Skeleton, Tag, Typography } from 'antd';
 import { GET_ARTIFACT_TEXT, GET_RECORD } from '../../shared/api/queries';
 import type {
   Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Task,
 } from '../../shared/model/types';
 import { ENTITY_COLOR, type EntityType } from '../../shared/lib/entityId';
+import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
+import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
+import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
+import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -84,6 +88,13 @@ function TaskBody({ r }: { r: Task }) {
         <Field label="Depends On">{r.dependsOn.map((d) => <RecordLink key={d} id={d} />)}</Field>
       )}
       <Field label="Updated"><Timestamp value={r.updatedAt} /></Field>
+      <TaskClaimsPanel taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
+      <Divider style={{ margin: '8px 0 12px' }} />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <ClaimTaskButton taskId={r.id} />
+        <AddTaskNoteButton taskId={r.id} />
+        <CompleteTaskButton taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
+      </div>
     </>
   );
 }
@@ -188,7 +199,7 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
     case 'Event':       return <EventBody r={r} />;
     case 'Link':        return <LinkBody r={r} />;
     case 'Project':     return <ProjectBody r={r} />;
-    default:            return <Alert type="info" message={`Unknown type: ${(r as any).__typename}`} />;
+    default:            return <Alert type="info" message={`Unknown type: ${(r as { __typename?: string })?.__typename}`} />;
   }
 }
 
