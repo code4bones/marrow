@@ -3,6 +3,7 @@ import { Alert, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useParams } from 'react-router-dom';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
+import { DeleteArtifactButton } from '../../features/artifact/DeleteArtifactButton';
 import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { UpdateArtifactMetaModal } from '../../features/artifact/UpdateArtifactMetaModal';
 import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
@@ -55,6 +56,7 @@ export function ArtifactsPage() {
         <div style={{ display: 'flex', gap: 2 }}>
           <UpdateArtifactMetaModal artifact={row} onDone={() => refetch()} />
           <ArchiveArtifactButton id={row.id} onDone={() => refetch()} />
+          <DeleteArtifactButton id={row.id} onDone={() => refetch()} />
         </div>
       ),
     },

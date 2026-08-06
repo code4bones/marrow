@@ -3,6 +3,9 @@ import { Alert, Select, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { ArchiveDecisionButton } from '../../features/decision/ArchiveDecisionButton';
+import { DeleteDecisionButton } from '../../features/decision/DeleteDecisionButton';
+import { RecordDecisionDrawer } from '../../features/decision/RecordDecisionDrawer';
 import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import type { Decision, Paginated } from '../../shared/model/types';
@@ -19,43 +22,55 @@ const STATUS_OPTIONS = [
   { label: 'Rejected', value: 'rejected' },
 ];
 
-const columns: ColumnsType<Decision> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 160, fixed: 'left',
-    render: (v) => <RecordLink id={v} />,
-  },
-  { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
-  { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
-  {
-    title: 'Tags', dataIndex: 'tags', minWidth: 180,
-    render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
-  },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
-
 export function DecisionsPage() {
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState('');
   const { page, pageSize, offset, onChange } = usePage();
 
-  const { data, loading, error } = useQuery<{ decisionsPage: Paginated<Decision> }>(GET_DECISIONS_PAGE, {
+  const { data, loading, error, refetch } = useQuery<{ decisionsPage: Paginated<Decision> }>(GET_DECISIONS_PAGE, {
     variables: { project: slug, status: status || undefined, limit: pageSize, offset },
   });
 
   const pageInfo = data?.decisionsPage.pageInfo;
+
+  const columns: ColumnsType<Decision> = [
+    {
+      title: 'ID', dataIndex: 'id', width: 160, fixed: 'left',
+      render: (v) => <RecordLink id={v} />,
+    },
+    { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
+    { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
+    {
+      title: 'Tags', dataIndex: 'tags', minWidth: 180,
+      render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
+    },
+    { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    {
+      title: '', key: 'actions', width: 60, fixed: 'right',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 2 }}>
+          <ArchiveDecisionButton id={row.id} onDone={() => refetch()} />
+          <DeleteDecisionButton id={row.id} onDone={() => refetch()} />
+        </div>
+      ),
+    },
+  ];
 
   return (
     <PageLayout
       title="Decisions"
       subtitle={slug}
       headerExtra={
-        <Select
-          value={status}
-          onChange={(v) => { setStatus(v); onChange(1, pageSize); }}
-          options={STATUS_OPTIONS}
-          style={{ width: 150 }}
-          size="small"
-        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Select
+            value={status}
+            onChange={(v) => { setStatus(v); onChange(1, pageSize); }}
+            options={STATUS_OPTIONS}
+            style={{ width: 150 }}
+            size="small"
+          />
+          {slug && <RecordDecisionDrawer projectSlug={slug} onDone={() => refetch()} />}
+        </div>
       }
     >
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}

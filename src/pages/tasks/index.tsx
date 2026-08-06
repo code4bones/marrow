@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Select, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Badge, Select, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -61,6 +61,10 @@ export function TasksPage() {
       render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
     },
     { title: 'Pri', dataIndex: 'priority', width: 55, align: 'center', sorter: (a, b) => (a.priority ?? 0) - (b.priority ?? 0) },
+    {
+      title: 'Claims', dataIndex: 'activeClaimCount', width: 68, align: 'center',
+      render: (v: number) => v > 0 ? <Badge count={v} color="#1668dc" /> : null,
+    },
     { title: 'Milestone', dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     {
       title: 'Scope', dataIndex: 'scope', width: 80,

@@ -1,103 +1,82 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert } from 'antd';
-import { useMemo, useState } from 'react';
-import { GET_LINKS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
-import type { Link, ProjectSummary } from '../../shared/model/types';
+import { Alert, Select, Space, Typography } from 'antd';
+import { useState } from 'react';
+import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
+import type { ProjectGraph } from '../../shared/model/types';
 import type { GEdge, GNode } from './KnowledgeGraph';
 import { KnowledgeGraph } from './KnowledgeGraph';
 
-const MAX_NODES = 40;
+const DEPTH_OPTIONS = [
+  { label: 'Depth 1', value: 1 },
+  { label: 'Depth 2', value: 2 },
+  { label: 'Depth 3', value: 3 },
+];
 
 interface Props {
   slug: string;
 }
 
-function summaryToNodes(summary: ProjectSummary): GNode[] {
-  const nodes: GNode[] = [];
-  const seen = new Set<string>();
-
-  const add = (id: string, kind: string, title: string, status?: string | null) => {
-    if (!seen.has(id) && nodes.length < MAX_NODES) {
-      seen.add(id);
-      nodes.push({ id, kind, title, status });
-    }
-  };
-
-  add(summary.project.id, 'PROJECT', summary.project.title, summary.project.status);
-  summary.openTasks.forEach((t) => add(t.id, 'TASK', t.title, t.status));
-  summary.decisions.forEach((d) => add(d.id, 'DECISION', d.title, d.status));
-  summary.artifacts.forEach((a) => add(a.id, 'ARTIFACT', a.title ?? a.path, a.status));
-  summary.recentEvents.slice(0, 8).forEach((e) => add(e.id, 'EVENT', e.title));
-  summary.knownFaults.forEach((m) => add(m.id, 'MEMORY', m.title, m.status));
-
-  return nodes;
-}
-
-function summaryToEdges(summary: ProjectSummary, links: Link[]): GEdge[] {
-  const edges: GEdge[] = [];
-  const nodeIds = new Set<string>();
-
-  nodeIds.add(summary.project.id);
-  summary.openTasks.forEach((t) => { nodeIds.add(t.id); });
-  summary.decisions.forEach((d) => { nodeIds.add(d.id); });
-  summary.artifacts.forEach((a) => { nodeIds.add(a.id); });
-  summary.recentEvents.slice(0, 8).forEach((e) => { nodeIds.add(e.id); if (e.relatedId) nodeIds.add(e.relatedId); });
-  summary.knownFaults.forEach((m) => { nodeIds.add(m.id); });
-
-  // Links from linksPage
-  links.forEach((l) => {
-    if (nodeIds.has(l.fromId) && nodeIds.has(l.toId)) {
-      edges.push({ from: l.fromId, to: l.toId, relation: l.relation });
-    }
-  });
-
-  // relatedId edges from events
-  summary.recentEvents.slice(0, 8).forEach((e) => {
-    if (e.relatedId && nodeIds.has(e.relatedId) && nodeIds.has(e.id)) {
-      edges.push({ from: e.id, to: e.relatedId, relation: 'related' });
-    }
-  });
-
-  // project → tasks/decisions/artifacts
-  summary.openTasks.forEach((t) => edges.push({ from: summary.project.id, to: t.id, relation: 'has_task' }));
-  summary.decisions.forEach((d) => edges.push({ from: summary.project.id, to: d.id, relation: 'has_decision' }));
-  summary.artifacts.forEach((a) => edges.push({ from: summary.project.id, to: a.id, relation: 'has_artifact' }));
-
-  return edges;
-}
-
 export function ProjectGraphView({ slug }: Props) {
-  const [fullGraph, setFullGraph] = useState(false);
+  const [depth, setDepth] = useState(2);
 
-  const { data: summaryData, loading: sLoading, error: sError } = useQuery<{ projectSummary: ProjectSummary }>(
-    GET_PROJECT_SUMMARY,
-    { variables: { project: slug } },
+  const { data: projectData, loading: projectLoading, error: projectError } = useQuery<{ project: { id: string } }>(
+    GET_PROJECT,
+    { variables: { slug } },
   );
 
-  const { data: linksData, loading: lLoading } = useQuery<{ linksPage: { items: Link[] } }>(
-    GET_LINKS_PAGE,
-    { variables: { project: slug, limit: 100, offset: 0, includeCommon: false } },
+  const projectId = projectData?.project.id;
+
+  const { data: graphData, loading: graphLoading, error: graphError } = useQuery<{ projectGraph: ProjectGraph }>(
+    GET_PROJECT_GRAPH,
+    {
+      variables: { projectId, depth },
+      skip: !projectId,
+    },
   );
 
-  const { nodes, edges } = useMemo(() => {
-    if (!summaryData?.projectSummary) return { nodes: [], edges: [] };
-    const s = summaryData.projectSummary;
-    const links = linksData?.linksPage.items ?? [];
-    return {
-      nodes: summaryToNodes(s),
-      edges: summaryToEdges(s, links),
-    };
-  }, [summaryData, linksData]);
+  const error = projectError || graphError;
+  if (error) return <Alert type="error" message={error.message} style={{ margin: 16 }} />;
 
-  if (sError) return <Alert type="error" message={sError.message} />;
+  const graph = graphData?.projectGraph;
+  const nodes: GNode[] = graph?.nodes.map((n) => ({
+    id: n.id,
+    kind: n.kind,
+    title: n.title,
+    status: n.status,
+  })) ?? [];
+
+  const edges: GEdge[] = graph?.edges.map((e) => ({
+    from: e.from,
+    to: e.to,
+    relation: e.relation,
+  })) ?? [];
 
   return (
-    <KnowledgeGraph
-      nodes={nodes}
-      edges={edges}
-      loading={sLoading || lLoading}
-      onLoadFull={!fullGraph ? () => setFullGraph(true) : undefined}
-      isFullGraph={fullGraph}
-    />
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '6px 12px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
+        <Space size={8}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Graph depth:</Typography.Text>
+          <Select
+            value={depth}
+            onChange={setDepth}
+            options={DEPTH_OPTIONS}
+            size="small"
+            style={{ width: 100 }}
+          />
+          {graph && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {nodes.length} nodes · {edges.length} edges
+            </Typography.Text>
+          )}
+        </Space>
+      </div>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <KnowledgeGraph
+          nodes={nodes}
+          edges={edges}
+          loading={projectLoading || graphLoading}
+        />
+      </div>
+    </div>
   );
 }

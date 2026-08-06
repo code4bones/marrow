@@ -44,6 +44,50 @@ export interface Task {
   forbiddenFiles: string[];
   dependsOn: string[];
   notes: string | null;
+  activeClaimCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface TaskClaim {
+  id: string;
+  taskId: string;
+  projectId: string;
+  clientId: string;
+  clientLabel: string | null;
+  clientKind: string | null;
+  role: string;
+  scope: string | null;
+  status: string;
+  leaseExpiresAt: string;
+  heartbeatAt: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GraphNode {
+  id: string;
+  kind: string;
+  title: string;
+  status: string | null;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  relation: string;
+}
+
+export interface ProjectGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GatewayClient {
+  id: string;
+  label: string | null;
+  lastSeenAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }

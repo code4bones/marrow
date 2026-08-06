@@ -3,6 +3,8 @@ import { Alert, Checkbox, Input, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { CreateLinkModal } from '../../features/link/CreateLinkModal';
+import { DeleteLinkButton } from '../../features/link/DeleteLinkButton';
 import { GET_LINKS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import type { Link, Paginated } from '../../shared/model/types';
@@ -10,31 +12,35 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
-const columns: ColumnsType<Link> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <RecordLink id={v} />,
-  },
-  { title: 'From',     dataIndex: 'fromId',   width: 160, render: (v) => <RecordLink id={v} /> },
-  {
-    title: 'Relation', dataIndex: 'relation', width: 180,
-    render: (v) => <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontFamily: 'monospace' }}>{v}</span>,
-  },
-  { title: 'To',       dataIndex: 'toId',     width: 160, render: (v) => <RecordLink id={v} /> },
-  { title: 'At',       dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
-
 export function LinksPage() {
   const { slug } = useParams<{ slug: string }>();
   const [relation, setRelation] = useState('');
   const [includeCommon, setIncludeCommon] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();
 
-  const { data, loading, error } = useQuery<{ linksPage: Paginated<Link> }>(GET_LINKS_PAGE, {
+  const { data, loading, error, refetch } = useQuery<{ linksPage: Paginated<Link> }>(GET_LINKS_PAGE, {
     variables: { project: slug, relation: relation || undefined, includeCommon, limit: pageSize, offset },
   });
 
   const pageInfo = data?.linksPage.pageInfo;
+
+  const columns: ColumnsType<Link> = [
+    {
+      title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
+      render: (v) => <RecordLink id={v} />,
+    },
+    { title: 'From', dataIndex: 'fromId', width: 160, render: (v) => <RecordLink id={v} /> },
+    {
+      title: 'Relation', dataIndex: 'relation', width: 180,
+      render: (v) => <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontFamily: 'monospace' }}>{v}</span>,
+    },
+    { title: 'To', dataIndex: 'toId', width: 160, render: (v) => <RecordLink id={v} /> },
+    { title: 'At', dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    {
+      title: '', key: 'actions', width: 40, fixed: 'right',
+      render: (_, row) => <DeleteLinkButton id={row.id} onDone={() => refetch()} />,
+    },
+  ];
 
   return (
     <PageLayout
@@ -57,6 +63,7 @@ export function LinksPage() {
           >
             + common
           </Checkbox>
+          {slug && <CreateLinkModal projectSlug={slug} onDone={() => refetch()} />}
         </div>
       }
     >

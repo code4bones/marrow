@@ -26,7 +26,7 @@ export const GET_PROJECT_SUMMARY = gql`
 export const GET_TASKS_PAGE = gql`
   query GetTasksPage($project: String!, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
     tasksPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status priority milestone scope notes updatedAt }
+      items { id title status priority milestone scope notes activeClaimCount updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -88,7 +88,11 @@ export const CREATE_TASK = gql`
 
 export const DELETE_TASK = gql`
   mutation DeleteTask($id: ID!, $reason: String) {
-    deleteTask(id: $id, reason: $reason)
+    deleteTask(id: $id, reason: $reason) {
+      deletedTask { id title }
+      deletedLinks
+      event { id type }
+    }
   }
 `;
 
@@ -110,7 +114,11 @@ export const UPDATE_ARTIFACT_METADATA = gql`
 
 export const ARCHIVE_ARTIFACT = gql`
   mutation ArchiveArtifact($id: ID, $reason: String) {
-    archiveArtifact(id: $id, reason: $reason)
+    archiveArtifact(id: $id, reason: $reason) {
+      action
+      artifact { id status archivedAt }
+      event { id type }
+    }
   }
 `;
 
@@ -124,7 +132,11 @@ export const CREATE_PROJECT = gql`
 
 export const DELETE_PROJECT = gql`
   mutation DeleteProject($slug: String!, $cascade: Boolean, $reason: String) {
-    deleteProject(slug: $slug, cascade: $cascade, reason: $reason)
+    deleteProject(slug: $slug, cascade: $cascade, reason: $reason) {
+      deletedProject { id slug title }
+      cascade
+      counts { tasks items decisions links events artifacts }
+    }
   }
 `;
 
@@ -137,7 +149,7 @@ export const GET_RECORD = gql`
         ... on Task {
           id title status priority milestone scope
           acceptance allowedFiles forbiddenFiles dependsOn notes
-          createdAt updatedAt
+          activeClaimCount createdAt updatedAt
         }
         ... on Decision {
           id title status context decision rationale
@@ -212,6 +224,184 @@ export const GET_DECISIONS = gql`
   query GetDecisions($project: String, $status: String, $limit: Int) {
     decisions(project: $project, status: $status, limit: $limit) {
       id title status context decision rationale tags updatedAt
+    }
+  }
+`;
+
+export const GET_PROJECT = gql`
+  query GetProject($slug: String!) {
+    project(slug: $slug) { id slug title status }
+  }
+`;
+
+export const GET_PROJECT_GRAPH = gql`
+  query GetProjectGraph($projectId: ID!, $depth: Int) {
+    projectGraph(projectId: $projectId, depth: $depth) {
+      nodes { id kind title status }
+      edges { from to relation }
+    }
+  }
+`;
+
+export const GET_TASK = gql`
+  query GetTask($id: ID!) {
+    task(id: $id) {
+      id title status priority milestone scope acceptance notes activeClaimCount dependsOn createdAt updatedAt
+    }
+  }
+`;
+
+export const GET_TASK_CLAIMS = gql`
+  query GetTaskClaims($taskId: ID!) {
+    taskClaims(taskId: $taskId, includeInactive: true) {
+      id role scope status clientLabel leaseExpiresAt heartbeatAt note createdAt updatedAt
+    }
+  }
+`;
+
+export const GET_GATEWAY_CLIENTS_PAGE = gql`
+  query GetGatewayClientsPage($limit: Int!, $offset: Int!) {
+    gatewayClientsPage(pagination: { limit: $limit, offset: $offset }) {
+      items { id label lastSeenAt createdAt updatedAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
+    }
+  }
+`;
+
+// ── New mutations ─────────────────────────────────────────────────────────────
+
+export const CREATE_MEMORY = gql`
+  mutation CreateMemory($input: CreateMemoryInput!) {
+    createMemory(input: $input) {
+      id type title status tags createdAt updatedAt
+    }
+  }
+`;
+
+export const UPDATE_MEMORY = gql`
+  mutation UpdateMemory($input: UpdateMemoryInput!) {
+    updateMemory(input: $input) {
+      id type title status tags updatedAt
+    }
+  }
+`;
+
+export const ARCHIVE_MEMORY = gql`
+  mutation ArchiveMemory($id: ID!, $reason: String) {
+    archiveMemory(id: $id, reason: $reason) {
+      action
+      memory { id status }
+      event { id type }
+    }
+  }
+`;
+
+export const DELETE_MEMORY = gql`
+  mutation DeleteMemory($id: ID!, $reason: String) {
+    deleteMemory(id: $id, reason: $reason) {
+      deletedMemory { id title }
+      deletedLinks
+      event { id type }
+    }
+  }
+`;
+
+export const RECORD_DECISION = gql`
+  mutation RecordDecision($input: RecordDecisionInput!) {
+    recordDecision(input: $input) {
+      id title status tags createdAt updatedAt
+    }
+  }
+`;
+
+export const ARCHIVE_DECISION = gql`
+  mutation ArchiveDecision($id: ID!, $reason: String) {
+    archiveDecision(id: $id, reason: $reason) {
+      action
+      decision { id status }
+      event { id type }
+    }
+  }
+`;
+
+export const DELETE_DECISION = gql`
+  mutation DeleteDecision($id: ID!, $reason: String) {
+    deleteDecision(id: $id, reason: $reason) {
+      deletedDecision { id title }
+      deletedLinks
+      event { id type }
+    }
+  }
+`;
+
+export const DELETE_ARTIFACT = gql`
+  mutation DeleteArtifact($id: ID, $reason: String) {
+    deleteArtifact(id: $id, reason: $reason) {
+      deletedArtifact { id path }
+      deletedLinks
+      event { id type }
+    }
+  }
+`;
+
+export const CREATE_LINK = gql`
+  mutation CreateLink($input: CreateLinkInput!) {
+    createLink(input: $input) {
+      id fromId toId relation createdAt
+    }
+  }
+`;
+
+export const DELETE_LINK = gql`
+  mutation DeleteLink($id: ID!, $reason: String) {
+    deleteLink(id: $id, reason: $reason) {
+      deletedLink { id fromId toId relation }
+      event { id type }
+    }
+  }
+`;
+
+export const RECORD_EVENT = gql`
+  mutation RecordEvent($input: RecordEventInput!) {
+    recordEvent(input: $input) {
+      id type title createdAt
+    }
+  }
+`;
+
+export const DELETE_EVENT = gql`
+  mutation DeleteEvent($id: ID!, $reason: String) {
+    deleteEvent(id: $id, reason: $reason) {
+      deletedEvent { id type }
+    }
+  }
+`;
+
+export const CLAIM_TASK = gql`
+  mutation ClaimTask($input: TaskClaimInput!) {
+    claimTask(input: $input) {
+      claim { id status role leaseExpiresAt }
+      task { id status activeClaimCount }
+    }
+  }
+`;
+
+export const COMPLETE_TASK = gql`
+  mutation CompleteTask($id: ID!, $claimId: ID, $acceptanceEvidence: String, $force: Boolean) {
+    completeTask(id: $id, claimId: $claimId, acceptanceEvidence: $acceptanceEvidence, force: $force) {
+      task { id status activeClaimCount }
+      completedClaim { id status }
+      event { id type }
+    }
+  }
+`;
+
+export const ADD_TASK_NOTE = gql`
+  mutation AddTaskNote($input: TaskNoteInput!) {
+    addTaskNote(input: $input) {
+      item { id type title }
+      link { id fromId toId relation }
+      event { id type }
     }
   }
 `;
