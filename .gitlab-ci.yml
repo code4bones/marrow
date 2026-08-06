@@ -11,7 +11,7 @@ variables:
 build:
   stage: build
   tags:
-    - pmem_front
+    - pmem_back
   script:
     - docker build --target build -t "$DOCKER_IMAGE_TAG" .
     - docker rmi "$DOCKER_IMAGE_TAG"
@@ -26,7 +26,7 @@ build:
 smoke:
   stage: smoke
   tags:
-    - pmem_front
+    - pmem_back
   when: manual
   script:
     - npm ci
