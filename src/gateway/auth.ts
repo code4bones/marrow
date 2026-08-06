@@ -172,11 +172,16 @@ export function createAuthFacade(db: Knex) {
       return { status: "pending_totp", userId: user.id };
     }
 
+    const rawSessionToken = await issueSession(user.id, meta);
+    return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
+  }
+
+  async function issueSession(userId: string, meta: RequestMeta): Promise<string> {
     const now = new Date();
     const rawSessionToken = newOpaqueToken();
     await db("sessions").insert({
       id: randomUUID(),
-      user_id: user.id,
+      user_id: userId,
       token_hash: hashToken(rawSessionToken),
       created_at: now,
       expires_at: new Date(now.getTime() + SESSION_TTL_MS),
@@ -184,7 +189,55 @@ export function createAuthFacade(db: Knex) {
       user_agent: meta.userAgent ?? null,
       ip: meta.ip ?? null
     });
-    return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
+    return rawSessionToken;
+  }
+
+  async function bootstrapStatus(): Promise<{ adminExists: boolean }> {
+    const admin = await db("users").where({ role: "admin" }).first();
+    return { adminExists: Boolean(admin) };
+  }
+
+  /**
+   * First-run-only self-registration: if no admin exists anywhere in the
+   * database, the first visitor to submit this form becomes the admin and is
+   * logged in immediately. This is the "first visitor becomes admin" pattern
+   * D-MEMORY-008 originally rejected for an already-public instance — see
+   * D-MEMORY-013 for why it was reinstated (deliberate maintainer choice,
+   * accepted tradeoff for solo/personal self-host installs where the
+   * deploy-to-first-visit window is the operator's own browser tab). Once any
+   * admin exists, this permanently 400s.
+   */
+  async function bootstrapFirstAdmin(email: string, password: string, meta: RequestMeta): Promise<LoginResult> {
+    if (password.length < 8) {
+      throw new AppError("VALIDATION_ERROR", "Password must be at least 8 characters.");
+    }
+    const normalized = normalizeEmail(email);
+    const userId = await db.transaction(async (trx) => {
+      const admin = await trx("users").where({ role: "admin" }).first();
+      if (admin) {
+        throw new AppError("VALIDATION_ERROR", "An admin already exists. Ask them for an invite.");
+      }
+      const existingByEmail = await trx("users").where({ email: normalized }).first();
+      if (existingByEmail) {
+        throw new AppError("VALIDATION_ERROR", `A user with email ${normalized} already exists.`);
+      }
+      const now = new Date();
+      const id = randomUUID();
+      await trx("users").insert({
+        id,
+        email: normalized,
+        password_hash: await hashPassword(password),
+        email_verified_at: now,
+        totp_enabled: false,
+        role: "admin",
+        status: "active",
+        created_at: now,
+        updated_at: now
+      });
+      return id;
+    });
+    const rawSessionToken = await issueSession(userId, meta);
+    return { status: "session", token: rawSessionToken, user: { id: userId, email: normalized, role: "admin" } };
   }
 
   async function logout(rawToken: string): Promise<void> {
@@ -234,7 +287,17 @@ export function createAuthFacade(db: Knex) {
     return row;
   }
 
-  return { invite, claimContext, claim, verifyEmail, login, logout, identifyFromRequest };
+  return {
+    invite,
+    claimContext,
+    claim,
+    verifyEmail,
+    login,
+    logout,
+    identifyFromRequest,
+    bootstrapStatus,
+    bootstrapFirstAdmin
+  };
 }
 
 export function sessionCookieHeader(token: string, secure: boolean): string {

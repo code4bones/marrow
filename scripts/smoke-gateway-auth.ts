@@ -41,6 +41,22 @@ try {
     updated_at: now
   });
 
+  const bootstrapStatus = await fetch(`${started.url}/auth/bootstrap`);
+  assert(bootstrapStatus.status === 200, `GET /auth/bootstrap failed. Status: ${bootstrapStatus.status}`);
+  const bootstrapStatusBody = (await bootstrapStatus.json()) as { data: { adminExists: boolean } };
+  assert(bootstrapStatusBody.data.adminExists === true, "adminExists should be true once an admin has been seeded.");
+  console.log("ok - auth bootstrap status reports an admin already exists");
+
+  const bootstrapRejected = await fetch(`${started.url}/auth/bootstrap`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "should-not-be-created@example.test", password: "irrelevant-password" })
+  });
+  assert(bootstrapRejected.status === 400, `POST /auth/bootstrap did not reject with an existing admin. Status: ${bootstrapRejected.status}`);
+  const rejectedUser = await db("users").where({ email: "should-not-be-created@example.test" }).first();
+  assert(!rejectedUser, "Bootstrap must not create a user once an admin already exists.");
+  console.log("ok - auth bootstrap refuses to run once an admin exists");
+
   const loginWrongPassword = await fetch(`${started.url}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },

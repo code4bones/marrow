@@ -567,6 +567,32 @@ async function handleAuthRoute(
     return true;
   }
 
+  if (request.method === "GET" && requestPath === "/auth/bootstrap") {
+    const result = await auth.bootstrapStatus();
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/bootstrap") {
+    const body = (await readJson(request)) as { email?: unknown; password?: unknown };
+    if (typeof body.email !== "string" || typeof body.password !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "email and password are required.")));
+      return true;
+    }
+    const result = await auth.bootstrapFirstAdmin(body.email, body.password, {
+      userAgent: headerString(request, "user-agent"),
+      ip: clientIp(request)
+    });
+    if (result.status === "pending_totp") {
+      // Unreachable: a freshly bootstrapped admin never has totp_enabled set.
+      send(500, fail(new AppError("VALIDATION_ERROR", "Unexpected pending_totp on bootstrap.")));
+      return true;
+    }
+    response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
+    send(200, { ok: true, data: { status: "session", user: result.user } }, { requestBody: { email: body.email } });
+    return true;
+  }
+
   return false;
 }
 
