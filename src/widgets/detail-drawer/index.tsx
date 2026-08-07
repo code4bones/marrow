@@ -10,6 +10,7 @@ import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
+import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -100,7 +101,7 @@ function TaskBody({ r }: { r: Task }) {
   );
 }
 
-function DecisionBody({ r }: { r: Decision }) {
+function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null }) {
   return (
     <>
       <Field label="Status"><StatusBadge status={r.status} /></Field>
@@ -111,6 +112,7 @@ function DecisionBody({ r }: { r: Decision }) {
       {r.consequences && <Field label="Consequences"><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.consequences}</Paragraph></Field>}
       {r.supersedesId && <Field label="Supersedes"><RecordLink id={r.supersedesId} /></Field>}
       <Field label="Updated"><Timestamp value={r.updatedAt} /></Field>
+      <CreateConnectedDecisionButton currentId={r.id} projectId={projectId} />
     </>
   );
 }
@@ -194,7 +196,7 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
   if (!r) return <Alert type="warning" message="Record payload is empty" />;
   switch (r.__typename) {
     case 'Task':        return <TaskBody r={r} />;
-    case 'Decision':    return <DecisionBody r={r} />;
+    case 'Decision':    return <DecisionBody r={r} projectId={wrapper.projectId} />;
     case 'Artifact':    return <ArtifactBody r={r} />;
     case 'MemoryRecord': return <MemoryBody r={r} />;
     case 'Event':       return <EventBody r={r} />;

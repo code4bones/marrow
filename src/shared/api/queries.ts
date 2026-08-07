@@ -330,6 +330,16 @@ export const RECORD_DECISION = gql`
   }
 `;
 
+export const SUPERSEDE_DECISION = gql`
+  mutation SupersedeDecision($input: RecordDecisionInput!) {
+    supersedeDecision(input: $input) {
+      decision { id title status supersedesId }
+      superseded { id status }
+      link { fromId toId relation }
+    }
+  }
+`;
+
 export const ARCHIVE_DECISION = gql`
   mutation ArchiveDecision($id: ID!, $reason: String) {
     archiveDecision(id: $id, reason: $reason) {
