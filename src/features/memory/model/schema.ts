@@ -2,6 +2,14 @@ import * as z from "zod/v4";
 
 export const itemStatusSchema = z.enum(["active", "draft", "archived", "superseded", "rejected"]);
 
+// Reused by decision.record too. Optional, additive: creates link.create
+// edges atomically with the new record so the knowledge graph doesn't stay
+// sparse (see I-MEMORY-022 step 2 — the graph and graph-based retrieval
+// expansion are both useless without real edges).
+export const recordLinksInputSchema = z
+  .array(z.object({ toId: z.string().min(1), relation: z.string().min(1) }))
+  .optional();
+
 export const createMemorySchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -10,7 +18,8 @@ export const createMemorySchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
   status: itemStatusSchema.optional(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  links: recordLinksInputSchema
 });
 
 export const updateMemorySchema = z.object({

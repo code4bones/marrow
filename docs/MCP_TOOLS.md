@@ -1547,6 +1547,19 @@ For common item:
 }
 ```
 
+Optionally link the new item to existing records at write time:
+
+```json
+{
+  "project": "project-memory-mcp",
+  "type": "agent_rule",
+  "title": "Keep diffs small",
+  "body": "...",
+  "tags": ["workflow"],
+  "links": [{ "toId": "D-MEMORY-013", "relation": "relates_to" }]
+}
+```
+
 Output:
 
 ```json
@@ -1559,6 +1572,13 @@ Behavior:
 
 * if `project` is null or omitted with `common=true`, create common item
 * record `item.created` event
+* if `links` is provided, create a `links` edge (and `link.created` event) for
+  each entry via the same logic as `link.create`; the created links are
+  returned as `item.linksCreated`
+* otherwise, if `tags` were given, run a cheap tag-overlap lookup (Postgres
+  `tags ?| ...` against `items`/`decisions` in the same project/common scope)
+  and return up to 3 hits as a non-blocking hint in `item.relatedCandidates`
+  — this never fails the call, it's advisory only
 
 ---
 
@@ -2076,6 +2096,17 @@ For common decision:
 }
 ```
 
+Optionally link the new decision to existing records at write time, the same
+way as [`memory.create`](#memorycreate):
+
+```json
+{
+  "title": "Use PostgreSQL for shared gateway storage",
+  "decision": "...",
+  "links": [{ "toId": "D-MEMORY-001", "relation": "relates_to" }]
+}
+```
+
 Required:
 
 * title
@@ -2093,6 +2124,10 @@ Behavior:
 
 * record `decision.recorded` event
 * if `supersedesId` is provided, optionally mark old decision as `superseded`
+* if `links` is provided, create a `links` edge (and `link.created` event) for
+  each entry; the created links are returned as `decision.linksCreated`
+* otherwise, if `tags` were given, run the same tag-overlap lookup as
+  `memory.create` and return up to 3 hits as `decision.relatedCandidates`
 
 ---
 

@@ -1131,7 +1131,8 @@ export class PgToolService {
       title: `Memory item created: ${row.title}`,
       related_id: row.id
     }, context);
-    return itemOut(row);
+    const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
+    return { ...itemOut(row), ...linkage };
   }
 
   private async upsertMemory(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2543,7 +2544,8 @@ export class PgToolService {
       title: `Decision recorded: ${row.title}`,
       related_id: row.id
     }, context);
-    return decisionOut(row);
+    const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
+    return { ...decisionOut(row), ...linkage };
   }
 
   private async supersedeDecision(input: Row, context: NormalizedGatewayRequestContext) {
@@ -2839,6 +2841,87 @@ export class PgToolService {
       related_id: row.id
     }, context);
     return linkOut(row);
+  }
+
+  // Shared by memory.create and decision.record (I-MEMORY-022 step 2): if the
+  // caller passes explicit links, create them atomically with the new record
+  // so the graph doesn't stay sparse. Otherwise, when tags were given, run a
+  // cheap tag-overlap query and return candidates as a non-blocking hint —
+  // never throws, since this is best-effort assistance, not validation.
+  private async applyRecordLinkage(
+    fromId: string,
+    projectId: string | null,
+    tags: unknown,
+    links: unknown,
+    context: NormalizedGatewayRequestContext
+  ): Promise<{ linksCreated?: unknown[]; relatedCandidates?: unknown[] }> {
+    const linkEntries = Array.isArray(links) ? links : [];
+    if (linkEntries.length > 0) {
+      const linksCreated: unknown[] = [];
+      for (const entry of linkEntries) {
+        const candidate = entry as Row;
+        const toId = typeof candidate?.toId === "string" ? candidate.toId : null;
+        const relation = typeof candidate?.relation === "string" ? candidate.relation : null;
+        if (!toId || !relation) {
+          continue;
+        }
+        await this.assertRecordExists(toId);
+        const row = {
+          id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
+          project_id: projectId,
+          from_id: fromId,
+          to_id: toId,
+          relation,
+          created_by: context.clientId,
+          source_instance_id: context.clientId,
+          created_at: nowIso()
+        };
+        await this.db("links").insert(row);
+        await this.recordEventForProject(projectId, {
+          type: "link.created",
+          title: `Link created: ${fromId} ${relation} ${toId}`,
+          related_id: row.id
+        }, context);
+        linksCreated.push(linkOut(row));
+      }
+      return linksCreated.length > 0 ? { linksCreated } : {};
+    }
+
+    const tagList = stringArray(tags);
+    if (tagList.length === 0) {
+      return {};
+    }
+    const relatedCandidates = await this.findRelatedByTags(fromId, projectId, tagList);
+    return relatedCandidates.length > 0 ? { relatedCandidates } : {};
+  }
+
+  private async findRelatedByTags(
+    excludeId: string,
+    projectId: string | null,
+    tags: string[]
+  ): Promise<Array<{ id: string; type: string; title: string }>> {
+    const scope = (query: Knex.QueryBuilder) =>
+      projectId === null ? query.whereNull("project_id") : query.where("project_id", projectId);
+
+    // Postgres' jsonb "?|" (any key exists) operator collides with knex's own
+    // "?" placeholder parsing, so the overlap check is expressed via
+    // jsonb_array_elements_text + ANY(?::text[]) instead, which needs only
+    // one real bind parameter.
+    const tagOverlap = "EXISTS (SELECT 1 FROM jsonb_array_elements_text(tags) AS t(tag) WHERE t.tag = ANY(?::text[]))";
+    const items = await scope(this.db("items").select("id", "type", "title", "created_at"))
+      .whereRaw(tagOverlap, [tags])
+      .andWhere("id", "!=", excludeId);
+    const decisions = await scope(this.db("decisions").select("id", "title", "created_at"))
+      .whereRaw(tagOverlap, [tags])
+      .andWhere("id", "!=", excludeId);
+
+    return [
+      ...items.map((row: Row) => ({ id: String(row.id), type: String(row.type), title: String(row.title), createdAt: String(row.created_at) })),
+      ...decisions.map((row: Row) => ({ id: String(row.id), type: "decision", title: String(row.title), createdAt: String(row.created_at) }))
+    ]
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 3)
+      .map(({ id, type, title }) => ({ id, type, title }));
   }
 
   private async listLinks(input: Row) {

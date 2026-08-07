@@ -348,10 +348,13 @@ mutation MemoryMaintenance($project: String!, $id: ID!) {
     title: "Useful context"
     body: "Details for future agents."
     tags: ["frontend"]
+    links: [{ toId: "D-MEMORY-013", relation: "relates_to" }]
   }) {
     id
     title
     status
+    linksCreated { id fromId toId relation }
+    relatedCandidates { id type title }
   }
 
   updateMemory(input: {

@@ -426,6 +426,52 @@ try {
     }
   });
   assertOk(memoryResult.structuredContent, "memory.create failed.");
+  const smokeMemoryItemId = readNestedString(memoryResult.structuredContent, ["data", "item", "id"]);
+
+  const tagOverlapMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (tag overlap)",
+      body: "Second smoke rule sharing a tag with the first, to exercise related-candidate suggestions.",
+      tags: ["smoke", "gateway-mcp-http"]
+    }
+  });
+  assertOk(tagOverlapMemoryResult.structuredContent, "memory.create (tag overlap) failed.");
+  const relatedCandidateIds = readNestedArray(tagOverlapMemoryResult.structuredContent, [
+    "data",
+    "item",
+    "relatedCandidates"
+  ]).map((item) => (isRecord(item) ? item.id : undefined));
+  assert(
+    relatedCandidateIds.includes(smokeMemoryItemId),
+    "memory.create did not surface a tag-overlap relatedCandidates hint."
+  );
+
+  const explicitLinkMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (explicit link)",
+      body: "Third smoke rule created with an explicit link at write time.",
+      tags: ["smoke", "gateway-mcp-http", "explicit-link"],
+      links: [{ toId: smokeMemoryItemId, relation: "relates_to" }]
+    }
+  });
+  assertOk(explicitLinkMemoryResult.structuredContent, "memory.create (explicit link) failed.");
+  const memoryLinksCreated = readNestedArray(explicitLinkMemoryResult.structuredContent, [
+    "data",
+    "item",
+    "linksCreated"
+  ]);
+  assert(
+    memoryLinksCreated.some(
+      (link) => isRecord(link) && link.toId === smokeMemoryItemId && link.relation === "relates_to"
+    ),
+    "memory.create did not create the explicit link passed in input.links."
+  );
 
   const upsertCreateResult = await client.callTool({
     name: "memory.upsert",
@@ -522,6 +568,29 @@ try {
   });
   assertOk(originalDecisionResult.structuredContent, "decision.record failed.");
   const originalDecisionId = readNestedString(originalDecisionResult.structuredContent, ["data", "decision", "id"]);
+
+  const linkedDecisionResult = await client.callTool({
+    name: "decision.record",
+    arguments: {
+      project: state.projectId,
+      title: "Gateway MCP HTTP smoke decision (explicit link)",
+      decision: "Decision recorded with an explicit link at write time.",
+      tags: ["smoke", "decision"],
+      links: [{ toId: originalDecisionId, relation: "relates_to" }]
+    }
+  });
+  assertOk(linkedDecisionResult.structuredContent, "decision.record (explicit link) failed.");
+  const decisionLinksCreated = readNestedArray(linkedDecisionResult.structuredContent, [
+    "data",
+    "decision",
+    "linksCreated"
+  ]);
+  assert(
+    decisionLinksCreated.some(
+      (link) => isRecord(link) && link.toId === originalDecisionId && link.relation === "relates_to"
+    ),
+    "decision.record did not create the explicit link passed in input.links."
+  );
 
   const supersedeDecisionResult = await client.callTool({
     name: "decision.supersede",

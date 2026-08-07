@@ -278,6 +278,11 @@ const typeDefs = `#graphql
     relation: String
   }
 
+  input RecordLinkInput {
+    toId: String!
+    relation: String!
+  }
+
   input CreateMemoryInput {
     id: ID
     project: String
@@ -287,6 +292,7 @@ const typeDefs = `#graphql
     body: String!
     status: String
     tags: [String!]
+    links: [RecordLinkInput!]
   }
 
   input UpdateMemoryInput {
@@ -307,6 +313,7 @@ const typeDefs = `#graphql
     consequences: String
     tags: [String!]
     supersedesId: String
+    links: [RecordLinkInput!]
   }
 
   input RecordEventInput {
@@ -438,6 +445,12 @@ const typeDefs = `#graphql
     counts: ProjectDeleteCounts!
   }
 
+  type RelatedRecordCandidate {
+    id: ID!
+    type: String!
+    title: String!
+  }
+
   type MemoryRecord {
     id: ID!
     projectId: String
@@ -451,6 +464,8 @@ const typeDefs = `#graphql
     rank: Float
     createdAt: String
     updatedAt: String
+    linksCreated: [Link!]
+    relatedCandidates: [RelatedRecordCandidate!]
   }
 
   type PaginatedMemoryRecords {
@@ -547,6 +562,8 @@ const typeDefs = `#graphql
     supersedesId: String
     createdAt: String
     updatedAt: String
+    linksCreated: [Link!]
+    relatedCandidates: [RelatedRecordCandidate!]
   }
 
   type PaginatedDecisions {
