@@ -71,6 +71,7 @@ export interface GraphNode {
   kind: string;
   title: string;
   status: string | null;
+  createdAt: string | null;
 }
 
 export interface GraphEdge {

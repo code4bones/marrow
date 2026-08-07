@@ -235,9 +235,9 @@ export const GET_PROJECT = gql`
 `;
 
 export const GET_PROJECT_GRAPH = gql`
-  query GetProjectGraph($projectId: ID!, $depth: Int) {
-    projectGraph(projectId: $projectId, depth: $depth) {
-      nodes { id kind title status }
+  query GetProjectGraph($projectId: ID!, $depth: Int, $maxPerType: Int) {
+    projectGraph(projectId: $projectId, depth: $depth, maxPerType: $maxPerType) {
+      nodes { id kind title status createdAt }
       edges { from to relation }
     }
   }
