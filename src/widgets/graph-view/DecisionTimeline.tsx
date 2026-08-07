@@ -1,4 +1,4 @@
-import { CheckCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
 import { Popover, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -160,29 +160,44 @@ function RemarksIndicator({ remarks }: { remarks: RemarkPreview[] }) {
   );
 }
 
-// Drill toggle — replaces the old top-expand "links" popover icon. Clicking
-// it doesn't pop a flat list anymore (I-MEMORY-045): it opens a Miller
-// column rooted at this node. Filled/accent style signals "this is the
-// currently open root at its slot in the chain, click again to collapse".
-function DrillToggle({ count, isOpen, onClick }: { count: number; isOpen: boolean; onClick: () => void }) {
-  const title = isOpen
-    ? 'Collapse this column'
-    : count > 0
-      ? `${count} link${count === 1 ? '' : 's'} — open as a column`
-      : 'No links yet';
+// Drill indicator — purely visual now (the whole card is the click target
+// for opening/closing its column, Finder-style; see DecisionCard's own
+// onClick). Filled/accent style signals "this is the currently open root
+// at its slot in the chain".
+function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
+  const title = isOpen ? 'Open — click card to collapse' : count > 0 ? `${count} link${count === 1 ? '' : 's'} — click card to open as a column` : 'No links yet';
   return (
     <Tooltip title={title}>
       <span
-        role="button"
-        onClick={(e) => { e.stopPropagation(); onClick(); }}
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 20, height: 18, borderRadius: 4, cursor: 'pointer', flexShrink: 0,
+          width: 20, height: 18, borderRadius: 4, flexShrink: 0,
           background: isOpen ? '#177ddc' : 'transparent',
           color: isOpen ? '#fff' : count > 0 ? '#8c8c8c' : '#434343',
         }}
       >
         <RightOutlined style={{ fontSize: 11 }} />
+      </span>
+    </Tooltip>
+  );
+}
+
+// Opens the full record drawer — the card's own click now drives the drill
+// column instead (see DecisionCard's onClick), so viewing full details
+// moved to this small dedicated trigger rather than being the card's
+// primary action.
+function DetailsTrigger({ onClick }: { onClick: () => void }) {
+  return (
+    <Tooltip title="Open full details">
+      <span
+        role="button"
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 20, height: 18, borderRadius: 4, cursor: 'pointer', flexShrink: 0, color: '#595959',
+        }}
+      >
+        <InfoCircleOutlined style={{ fontSize: 12 }} />
       </span>
     </Tooltip>
   );
@@ -244,7 +259,7 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
       <div
-        onClick={() => setSelectedRecord(node.id, 'decision')}
+        onClick={onToggleDrill}
         style={{
           minHeight: 84,
           background: isOpen ? '#1c2a38' : '#1f1f1f',
@@ -266,7 +281,8 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
           >
             {node.title}
           </Typography.Text>
-          <DrillToggle count={linkCount} isOpen={isOpen} onClick={onToggleDrill} />
+          <DetailsTrigger onClick={() => setSelectedRecord(node.id, 'decision')} />
+          <DrillIndicator count={linkCount} isOpen={isOpen} />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
