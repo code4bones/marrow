@@ -3,15 +3,9 @@
 // for password hashing (see hashPassword in auth.ts). This module is shared
 // core used by both the profile bind/unbind 2FA routes (T-MEMORY-028) and
 // the open self-registration flow (T-MEMORY-038, D-MEMORY-016).
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual
-} from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { AppError } from "../shared/errors.js";
+import { aesGcmDecrypt, aesGcmEncrypt, loadAesGcmKey } from "./crypto.js";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const TOTP_STEP_SECONDS = 30;
@@ -148,58 +142,31 @@ export function hashRecoveryCode(code: string): string {
 }
 
 function totpEncryptionKey(): Buffer {
-  const raw = process.env.TOTP_ENC_KEY;
-  if (!raw) {
-    throw new AppError(
-      "VALIDATION_ERROR",
-      "TOTP_ENC_KEY must be set to a 32-byte base64 value to use TOTP."
-    );
-  }
-  let key: Buffer;
   try {
-    key = Buffer.from(raw, "base64");
+    return loadAesGcmKey("TOTP_ENC_KEY");
   } catch {
+    // Preserve this module's original, TOTP-specific wording (mentions "to
+    // use TOTP") rather than crypto.ts's generic per-env-var message.
     throw new AppError(
       "VALIDATION_ERROR",
       "TOTP_ENC_KEY must be set to a 32-byte base64 value to use TOTP."
     );
   }
-  if (key.length !== 32) {
-    throw new AppError(
-      "VALIDATION_ERROR",
-      "TOTP_ENC_KEY must be set to a 32-byte base64 value to use TOTP."
-    );
-  }
-  return key;
 }
 
 /**
  * AES-256-GCM, keyed by TOTP_ENC_KEY (env, 32 raw bytes base64-encoded).
  * Output is self-describing: base64(iv):base64(authTag):base64(ciphertext).
  * Fails loudly (throws) rather than ever writing a plaintext secret to the
- * database — see totpEncryptionKey() above.
+ * database — see totpEncryptionKey() above. Thin wrapper over crypto.ts's
+ * generic aesGcmEncrypt/aesGcmDecrypt (T-MEMORY-044 extracted those so
+ * git-credentials.ts could reuse the same cipher for a second secret class
+ * without duplicating this logic).
  */
 export function encryptSecret(plaintextBase32: string): string {
-  const key = totpEncryptionKey();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintextBase32, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return `${iv.toString("base64")}:${authTag.toString("base64")}:${ciphertext.toString("base64")}`;
+  return aesGcmEncrypt(totpEncryptionKey(), plaintextBase32);
 }
 
 export function decryptSecret(enc: string): string {
-  const key = totpEncryptionKey();
-  const parts = enc.split(":");
-  if (parts.length !== 3) {
-    throw new AppError("VALIDATION_ERROR", "Stored TOTP secret is malformed.");
-  }
-  const [ivB64, tagB64, ciphertextB64] = parts;
-  const iv = Buffer.from(ivB64, "base64");
-  const authTag = Buffer.from(tagB64, "base64");
-  const ciphertext = Buffer.from(ciphertextB64, "base64");
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return plaintext.toString("utf8");
+  return aesGcmDecrypt(totpEncryptionKey(), enc, "Stored TOTP secret is malformed.");
 }

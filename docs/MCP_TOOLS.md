@@ -41,6 +41,10 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.get`
 * `artifact.update_metadata`
 * `artifact.archive`
+* `git.credential_create`
+* `git.credential_list`
+* `git.credential_delete`
+* `git.pipeline_status`
 
 ## General response format
 
@@ -107,7 +111,13 @@ too low. `GatewayToolSpec.access` in `src/gateway/tool-definitions.ts` is the
 source of truth this table is generated from; `admin` is exactly the nine
 hard-delete/maintenance tools (`*.delete`, `gateway.client_forget`,
 `gateway.client_prune`) -- every other write-tier tool from before this task
-is unaffected and still only requires `write`.
+is unaffected and still only requires `write`. `git.credential_delete`
+(`T-MEMORY-044`) is a deliberate exception to the "delete is always admin"
+pattern -- see docs/AUTH.md's "Git host credentials" section for why. Note
+also that the four `git.*` tools require a real browser session
+(`context.sessionUserId`) on top of whatever scope tier they're granted --
+scope alone is not sufficient for them, unlike every other tool in this
+table.
 
 | Tool | Scope | | Tool | Scope |
 |---|---|---|---|---|
@@ -143,10 +153,10 @@ is unaffected and still only requires `write`.
 | `artifact.search` | read | | `handoff.create` | write |
 | `artifact.list` | read | | `handoff.latest` | read |
 | `artifact.get` | read | | `handoff.search` | read |
-| `artifact.peek` | read | | | |
-| `artifact.read_text` | read | | | |
-| `artifact.update_metadata` | write | | | |
-| `artifact.archive` | write | | | |
+| `artifact.peek` | read | | `git.credential_create` | write |
+| `artifact.read_text` | read | | `git.credential_list` | read |
+| `artifact.update_metadata` | write | | `git.credential_delete` | write |
+| `artifact.archive` | write | | `git.pipeline_status` | read |
 | `artifact.delete` | **admin** | | | |
 
 ## Gateway tools
@@ -2822,6 +2832,141 @@ Input:
 
 Output is the same compact handoff shape as `handoff.latest`. Use this before
 broad `memory.search` when the agent needs a continuation summary.
+
+### `git.credential_create`
+
+Store a git host access token (e.g. a GitLab personal access token),
+encrypted at rest, owned by the calling session's own user. **Requires a
+real browser session** -- see docs/AUTH.md's "Git host credentials" section.
+A static-token, OAuth, or anonymous caller gets a clear `UNAUTHORIZED`
+("Git credentials require a logged-in session...") instead of silently
+operating on nobody's account.
+
+Input:
+
+```json
+{
+  "host": "gitlab.codup.pro",
+  "label": "CI runner PAT",
+  "token": "glpat-xxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+Output:
+
+```json
+{
+  "id": "3f9c2e7a-...",
+  "host": "gitlab.codup.pro",
+  "label": "CI runner PAT",
+  "createdAt": "2026-08-07T12:00:00.000Z"
+}
+```
+
+The token is never echoed back, here or anywhere else. To rotate a token,
+create a new credential and delete the old one -- there is no
+`git.credential_update` for the token value itself.
+
+### `git.credential_list`
+
+List the caller's own stored git host credentials. Requires a session; never
+returns a token value.
+
+Input: `{}`
+
+Output:
+
+```json
+{
+  "credentials": [
+    {
+      "id": "3f9c2e7a-...",
+      "host": "gitlab.codup.pro",
+      "label": "CI runner PAT",
+      "createdAt": "2026-08-07T12:00:00.000Z",
+      "lastUsedAt": "2026-08-07T13:05:00.000Z",
+      "tokenHint": "xxxx"
+    }
+  ]
+}
+```
+
+`tokenHint` is the token's last 4 characters only, for recognizing which
+credential is which in a list -- never enough to reconstruct or brute-force
+the original token.
+
+### `git.credential_delete`
+
+Permanently delete one of the caller's own git host credentials. Requires a
+session; deleting an id that doesn't exist, or that belongs to a different
+user, both fail with `GIT_CREDENTIAL_NOT_FOUND` (indistinguishable from the
+outside, same not-found-not-forbidden convention used elsewhere in this
+codebase).
+
+Input:
+
+```json
+{
+  "id": "3f9c2e7a-..."
+}
+```
+
+Output:
+
+```json
+{
+  "deleted": true
+}
+```
+
+Note this tool requires only `write` scope, not `admin`, unlike every other
+`*.delete` tool in this document -- see docs/AUTH.md for why (short version:
+it can only ever delete the caller's own row, and is already unreachable by
+any OAuth/static/anonymous caller regardless of scope because it requires a
+session).
+
+### `git.pipeline_status`
+
+Resolve the caller's own stored credential for `host`, then call that
+GitLab instance's REST API server-side for the latest pipeline (optionally
+filtered by `ref`) and its jobs. The raw token never leaves the server.
+Requires a session.
+
+Input:
+
+```json
+{
+  "host": "gitlab.codup.pro",
+  "project": "group/project",
+  "ref": "main"
+}
+```
+
+(`ref` is optional -- omit it to get the most recent pipeline regardless of
+branch.)
+
+Output:
+
+```json
+{
+  "status": "running",
+  "ref": "main",
+  "sha": "abc123def456",
+  "webUrl": "https://gitlab.codup.pro/group/project/-/pipelines/4242",
+  "jobs": [
+    { "name": "build", "status": "success" },
+    { "name": "test", "status": "success" },
+    { "name": "deploy", "status": "running" }
+  ]
+}
+```
+
+If no credential is stored for `host`, this fails with `GIT_CREDENTIAL_REQUIRED`
+and a message naming the host ("No credential stored for host X, add one in
+your profile first") -- not a silent failure or an empty result. If GitLab
+itself rejects the stored token (expired/revoked), this fails with a
+distinct `UNAUTHORIZED` naming the host, rather than a generic network
+error.
 
 ## Seed tools or scripts
 

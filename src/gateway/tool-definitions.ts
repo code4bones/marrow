@@ -366,6 +366,29 @@ const handoffSearchSchema = z.object({
   limit: z.number().int().min(1).max(50).optional()
 });
 
+// T-MEMORY-044: git host credentials (GitLab PATs today) + a read-only
+// pipeline-status proxy. All four tools require a browser session
+// (context.sessionUserId) regardless of scope tier -- see the
+// "session-based only" note on git.credential_create's access below and
+// docs/AUTH.md's "Git host credentials" section for why (mirrors
+// T-MEMORY-042's WS-subscriptions-are-session-only precedent: there is no
+// resolved "which human does this OAuth-connected agent act on behalf of"
+// answer yet, so these tools refuse to guess rather than operate on
+// nobody's/the-wrong-person's credentials).
+const gitCredentialCreateSchema = z.object({
+  host: z.string().min(1),
+  label: z.string().min(1),
+  token: z.string().min(1)
+});
+const gitCredentialDeleteSchema = z.object({
+  id: z.string().min(1)
+});
+const gitPipelineStatusSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  ref: z.string().min(1).optional()
+});
+
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
   code: z.string(),
@@ -588,6 +611,36 @@ const preflightByQueryDataSchema = z.object({
   recentEvents: z.array(looseRecordSchema),
   summary: z.string(),
   efficiencyHints: efficiencyHintsSchema.optional()
+});
+
+// T-MEMORY-044: the token itself is NEVER part of this shape, on any
+// tool's output -- create, list, and delete all resolve through this same
+// schema (or a superset of it) so there is exactly one place a stray
+// `token` field could slip back into a response, and it isn't here.
+const gitCredentialOutSchema = z
+  .object({
+    id: z.string(),
+    host: z.string(),
+    label: z.string(),
+    createdAt: z.string(),
+    updatedAt: z.string().optional(),
+    lastUsedAt: z.string().nullable().optional(),
+    // Last 4 characters only, for UI recognition -- never enough to
+    // reconstruct the token. Optional/omitted on the create response since
+    // the caller just typed the token in and doesn't need a reminder.
+    tokenHint: z.string().optional()
+  })
+  .catchall(z.unknown());
+const gitPipelineJobSchema = z.object({
+  name: z.string(),
+  status: z.string()
+});
+const gitPipelineStatusOutSchema = z.object({
+  status: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+  webUrl: z.string(),
+  jobs: z.array(gitPipelineJobSchema)
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -1045,6 +1098,49 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "handoff.search",
     description: "Search handoff records by query and return compact continuation summaries by default.",
     schema: handoffSearchSchema
+  },
+  {
+    name: "git.credential_create",
+    description:
+      "Store a git host access token (e.g. a GitLab personal access token) encrypted at rest, bound to the caller's own logged-in session. The token is never returned by this or any other git.* tool -- requires a browser session (no static token, OAuth, or anonymous caller); see docs/AUTH.md.",
+    schema: gitCredentialCreateSchema,
+    outputSchema: output(gitCredentialOutSchema),
+    access: "write"
+  },
+  {
+    name: "git.credential_list",
+    description:
+      "List the caller's own stored git host credentials (host, label, dates, and an optional last-4-characters hint) -- never the token value. Requires a browser session.",
+    schema: emptySchema,
+    outputSchema: output(z.object({ credentials: z.array(gitCredentialOutSchema) }))
+  },
+  {
+    name: "git.credential_delete",
+    // Deliberately access:"write", not "admin" -- a deviation from this
+    // codebase's usual *.delete-is-always-admin convention. That convention
+    // exists to protect shared/team-visible records from an OAuth-connected
+    // agent hallucinating a destructive call (D-MEMORY-017's rationale).
+    // This tool can only ever delete the CALLER'S OWN credential (enforced
+    // by an owner_user_id match in deleteGitCredential(), not just by
+    // argument shape) and, on top of that, is already unreachable by any
+    // OAuth/static/anonymous caller regardless of scope because it requires
+    // a real browser session -- the exact caller class *.delete=admin
+    // exists to guard against. Requiring admin here as well would only
+    // block ordinary role=member users from managing their own profile,
+    // which the task's acceptance criteria (a delete button in every
+    // user's own profile) rules out.
+    description:
+      "Permanently delete one of the caller's own stored git host credentials. Requires a browser session; deleting another user's credential (or an unknown id) fails with GIT_CREDENTIAL_NOT_FOUND.",
+    schema: gitCredentialDeleteSchema,
+    outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "write"
+  },
+  {
+    name: "git.pipeline_status",
+    description:
+      "Resolve the caller's own stored credential for `host`, then call that GitLab instance's REST API for the latest pipeline (optionally filtered by ref) and its jobs. The raw token never leaves the server. Requires a browser session; fails clearly if no credential is stored for that host.",
+    schema: gitPipelineStatusSchema,
+    outputSchema: output(gitPipelineStatusOutSchema)
   }
 ];
 

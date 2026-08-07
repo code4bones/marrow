@@ -196,6 +196,13 @@ const typeDefs = `#graphql
       relation: String
       pagination: PaginationInput
     ): PaginatedLinks!
+
+    # T-MEMORY-044: requires a browser session (context.sessionUserId) --
+    # static token, OAuth, and anonymous callers get a clear
+    # "requires a logged-in session" error, not an empty/guessed result. See
+    # docs/AUTH.md's "Git host credentials" section.
+    gitCredentials: [GitCredential!]!
+    gitPipelineStatus(host: String!, project: String!, ref: String): JSON
   }
 
   type Mutation {
@@ -236,6 +243,16 @@ const typeDefs = `#graphql
 
     createLink(input: CreateLinkInput!): Link!
     deleteLink(id: ID!, reason: String): DeleteLinkResult!
+
+    # T-MEMORY-044: deliberately NOT in ADMIN_GRAPHQL_MUTATION_NAMES below --
+    # unlike the other delete* mutations, this one can only ever delete the
+    # calling session's OWN credential (owner_user_id-scoped in
+    # deleteGitCredential(), pg-tool-service.ts), so it stays at the normal
+    # mutation (write-scope) tier rather than admin. See the access comment
+    # on git.credential_delete in tool-definitions.ts for the full
+    # rationale.
+    createGitCredential(host: String!, label: String!, token: String!): GitCredential!
+    deleteGitCredential(id: ID!): Boolean!
   }
 
   # T-MEMORY-042: single unified live-update channel over WS -- deliberately
@@ -438,6 +455,18 @@ const typeDefs = `#graphql
   type PaginatedGatewayClients {
     items: [GatewayClient!]!
     pageInfo: PageInfo!
+  }
+
+  # T-MEMORY-044: no token field, ever -- the underlying resolver value
+  # (git.credential_create/list's tool output) may carry a tokenHint or
+  # updatedAt key too, but this type only ever selects the fields declared
+  # here, so those extra keys are simply never exposed over GraphQL.
+  type GitCredential {
+    id: ID!
+    host: String!
+    label: String!
+    createdAt: String!
+    lastUsedAt: String
   }
 
   type ProjectSummary {
@@ -902,7 +931,11 @@ const resolvers = {
     links: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "link.list", cleanInput(args))).links,
     linksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await pageQuery(context, "links", cleanInput(args))
+      await pageQuery(context, "links", cleanInput(args)),
+    gitCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "git.credential_list", {})).credentials,
+    gitPipelineStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.pipeline_status", cleanInput(args))
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -958,7 +991,13 @@ const resolvers = {
     createLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "link.create", cleanInput(args.input as Row))).link,
     deleteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await callTool<Row>(context, "link.delete", cleanInput(args))
+      await callTool<Row>(context, "link.delete", cleanInput(args)),
+    createGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.credential_create", cleanInput(args)),
+    deleteGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "git.credential_delete", cleanInput(args));
+      return result.deleted === true;
+    }
   },
   Subscription: {
     gatewayEvents: {

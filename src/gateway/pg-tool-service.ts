@@ -1,5 +1,5 @@
 import type { Knex } from "knex";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +11,13 @@ import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/i
 import { fail, ok, type ToolResponse } from "../shared/mcp/tool-response.js";
 import { defaultGatewayOutputSchema, gatewayToolCanonicalName, gatewayToolSpecs } from "./tool-definitions.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "./event-bus.js";
+import {
+  decryptGitToken,
+  encryptGitToken,
+  fetchGitlabPipelineStatus,
+  tokenHint,
+  type GitHttpFetch
+} from "./git-credentials.js";
 
 type Row = Record<string, unknown>;
 
@@ -101,7 +108,15 @@ const defaultAnonymousClientTtlSeconds = 24 * 60 * 60;
 export const staticTokenClientId = "static:mcp-token";
 
 export class PgToolService {
-  constructor(private readonly db: Knex) {}
+  // T-MEMORY-044: injectable HTTP client for git.pipeline_status's outbound
+  // GitLab REST calls -- defaults to the real global `fetch`, but a smoke
+  // test can pass a fake here instead of this constructor reaching a real
+  // GitLab instance over the network (the task's own acceptance criteria:
+  // "the smoke test should NOT make real network calls").
+  constructor(
+    private readonly db: Knex,
+    private readonly gitHttpFetch: GitHttpFetch = fetch
+  ) {}
 
   listTools() {
     return gatewayToolSpecs.map(({ name, description, outputSchema }) => ({
@@ -293,6 +308,14 @@ export class PgToolService {
           return ok("Latest handoffs loaded.", { handoffs: await this.latestHandoffs(parsed, requestContext) });
         case "handoff.search":
           return ok("Handoffs searched.", { handoffs: await this.searchHandoffs(parsed, requestContext) });
+        case "git.credential_create":
+          return ok("Git credential stored.", await this.createGitCredential(parsed, requestContext));
+        case "git.credential_list":
+          return ok("Git credentials listed.", { credentials: await this.listGitCredentials(requestContext) });
+        case "git.credential_delete":
+          return ok("Git credential deleted.", await this.deleteGitCredential(parsed, requestContext));
+        case "git.pipeline_status":
+          return ok("Pipeline status loaded.", await this.gitPipelineStatus(parsed, requestContext));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
@@ -800,6 +823,118 @@ export class PgToolService {
       throw new AppError("NOT_FOUND", `Gateway client ${id} does not exist.`, { id });
     }
     return row;
+  }
+
+  // T-MEMORY-044: git host credentials + the pipeline-status proxy. All
+  // four resolve owner identity from context.sessionUserId ONLY -- a
+  // browser session, same "session-based only" answer T-MEMORY-042 gave for
+  // WS subscriptions. Static token, OAuth, and anonymous callers never
+  // populate sessionUserId (normalizeContext() below), so every one of
+  // these throws requireSession()'s clear UNAUTHORIZED error for them
+  // rather than silently operating on nobody's (or the wrong person's)
+  // credentials. Resolving ownership for an OAuth-connected agent is the
+  // task record's own flagged-open question (which human does a given
+  // OAuth session act on behalf of) -- explicitly out of scope for this
+  // pass, documented here and in docs/AUTH.md rather than half-solved.
+  private requireSessionUserId(context: NormalizedGatewayRequestContext): string {
+    if (!context.sessionUserId) {
+      throw new AppError(
+        "UNAUTHORIZED",
+        "Git credentials require a logged-in session (no static token, OAuth connector, or anonymous caller can use them)."
+      );
+    }
+    return context.sessionUserId;
+  }
+
+  private async createGitCredential(input: Row, context: NormalizedGatewayRequestContext) {
+    const ownerUserId = this.requireSessionUserId(context);
+    const now = nowIso();
+    const row = {
+      id: randomUUID(),
+      owner_user_id: ownerUserId,
+      host: String(input.host),
+      label: String(input.label),
+      token_enc: encryptGitToken(String(input.token)),
+      created_at: now,
+      updated_at: now,
+      last_used_at: null
+    };
+    await this.db("git_credentials").insert(row);
+    await this.recordEventForProject(null, {
+      type: "git_credential.created",
+      title: `Git credential added: ${row.host} (${row.label})`,
+      related_id: row.id
+    }, context);
+    return gitCredentialOut(row);
+  }
+
+  private async listGitCredentials(context: NormalizedGatewayRequestContext) {
+    const ownerUserId = this.requireSessionUserId(context);
+    const rows = await this.db("git_credentials")
+      .where({ owner_user_id: ownerUserId })
+      .orderBy("created_at", "desc");
+    return rows.map((row) => gitCredentialOut(row, { includeHint: true }));
+  }
+
+  private async deleteGitCredential(input: Row, context: NormalizedGatewayRequestContext) {
+    const ownerUserId = this.requireSessionUserId(context);
+    const id = String(input.id);
+    // Ownership is enforced in the WHERE clause, not checked-then-deleted --
+    // a credential belonging to a different user is indistinguishable from
+    // one that doesn't exist at all, same not-found-not-forbidden
+    // convention used elsewhere in this codebase (assertProjectMember, the
+    // /auth/login single "Invalid email or password" message).
+    const deletedCount = await this.db("git_credentials")
+      .where({ id, owner_user_id: ownerUserId })
+      .del();
+    if (deletedCount === 0) {
+      throw new AppError("GIT_CREDENTIAL_NOT_FOUND", `Git credential ${id} does not exist.`, { id });
+    }
+    await this.recordEventForProject(null, {
+      type: "git_credential.deleted",
+      title: `Git credential deleted: ${id}`,
+      related_id: id
+    }, context);
+    return { deleted: true as const };
+  }
+
+  private async gitPipelineStatus(input: Row, context: NormalizedGatewayRequestContext) {
+    const ownerUserId = this.requireSessionUserId(context);
+    const host = String(input.host);
+    const project = String(input.project);
+    const ref = typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined;
+
+    // Most recently created credential wins when more than one row exists
+    // for this (owner, host) pair (e.g. mid-rotation) -- see the schema
+    // comment in migrations/pg/012_git_credentials.cjs.
+    const credentialRow = await this.db("git_credentials")
+      .where({ owner_user_id: ownerUserId, host })
+      .orderBy("created_at", "desc")
+      .first();
+    if (!credentialRow) {
+      throw new AppError(
+        "GIT_CREDENTIAL_REQUIRED",
+        `No credential stored for host ${host}, add one in your profile first.`,
+        { host }
+      );
+    }
+
+    const token = decryptGitToken(String(credentialRow.token_enc));
+    const result = await fetchGitlabPipelineStatus({
+      host,
+      project,
+      ref,
+      token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credentialRow.id }).update({ last_used_at: nowIso() });
+    return {
+      status: result.status,
+      ref: result.ref,
+      sha: result.sha,
+      webUrl: result.webUrl,
+      jobs: result.jobs
+    };
   }
 
   private async createProject(input: Row, context: NormalizedGatewayRequestContext) {
@@ -4579,6 +4714,31 @@ function compactClient(row: Row) {
     kind: stringOrNull(jsonObject(row.metadata).kind),
     lastSeenAt: stringOrNull(row.last_seen_at)
   };
+}
+
+// T-MEMORY-044: the token_enc column never appears here, under any key --
+// `token_enc` isn't even read out of `row`. `includeHint` is a caller-chosen
+// last-4-characters hint (git.credential_list only; git.credential_create
+// deliberately omits it since the caller just typed the token themselves).
+function gitCredentialOut(row: Row, options: { includeHint?: boolean } = {}) {
+  const out: Row = {
+    id: String(row.id),
+    host: String(row.host),
+    label: String(row.label),
+    createdAt: String(row.created_at),
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+    lastUsedAt: row.last_used_at ? String(row.last_used_at) : null
+  };
+  if (options.includeHint && row.token_enc) {
+    try {
+      out.tokenHint = tokenHint(decryptGitToken(String(row.token_enc)));
+    } catch {
+      // If decryption fails (e.g. key rotated out from under an old row)
+      // this is a display-only hint -- degrade to omitting it rather than
+      // failing the whole list call.
+    }
+  }
+  return out;
 }
 
 function graphNodeOut(kind: string, row: Row): GraphNode {

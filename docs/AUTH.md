@@ -13,7 +13,7 @@ scope + project-membership layer (`T-MEMORY-029`, implementing
 `D-MEMORY-007` and superseding `D-MEMORY-003`'s "trusted internal
 deployment, one shared token" model) below.
 
-## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns, and `011_admin_elevations.cjs` for `admin_elevations` -- see "Scopes: read / write / admin", "Project membership", and "Step-up admin elevation" below)
+## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns, `011_admin_elevations.cjs` for `admin_elevations`, and `012_git_credentials.cjs` for `git_credentials` -- see "Scopes: read / write / admin", "Project membership", "Step-up admin elevation", and "Git host credentials" below)
 
 ### `users`
 
@@ -329,6 +329,128 @@ script by this task — run directly via
 as every other script in `scripts/`; adding the `npm run smoke:gateway:*`
 alias is left to whoever next touches `package.json`, which is outside this
 task's allowed files.)
+
+## Git host credentials (`T-MEMORY-044`)
+
+Per-user, per-host git credentials (GitLab personal access tokens today --
+the schema is host-per-row so other git hosts could be added later without a
+migration, but that is explicitly out of scope for this pass) plus a
+read-only server-side proxy for pipeline status, so an agent can check CI/CD
+without ever holding the raw token or needing SSH access to the runner host
+(the motivating problem this task's own record describes: monitoring CI/CD
+via `ssh` + `journalctl` grep on production, and the owner's explicit
+rejection of putting a PAT in `.env`).
+
+- **Table**: `git_credentials` (migration `012_git_credentials.cjs`) --
+  `id`, `owner_user_id` (FK -> `users`, cascade-deleted with the user),
+  `host`, `label`, `token_enc`, `created_at`, `updated_at`, `last_used_at`
+  (nullable). No uniqueness constraint on `(owner_user_id, host)` --
+  deliberately, to allow a brief overlap during rotation; `git.pipeline_status`
+  picks the most recently created row when more than one exists for a given
+  `(owner, host)` pair.
+- **Encryption**: AES-256-GCM, same cipher/on-disk format as
+  `users.totp_secret` (`base64(iv):base64(authTag):base64(ciphertext)`), but
+  under its **own** key -- `GIT_CREDENTIAL_ENC_KEY`, not `TOTP_ENC_KEY`. The
+  generic cipher logic was extracted out of `totp.ts` into `crypto.ts`
+  (`aesGcmEncrypt`/`aesGcmDecrypt`/`loadAesGcmKey`) so both secret classes
+  share the exact same implementation without copy-pasting it; `totp.ts`'s
+  `encryptSecret`/`decryptSecret` are now thin wrappers over `crypto.ts`,
+  unchanged in behavior. `src/gateway/git-credentials.ts` owns the
+  git-specific wrapping (`encryptGitToken`/`decryptGitToken`) and the
+  outbound GitLab REST client. A missing/invalid/wrong-length
+  `GIT_CREDENTIAL_ENC_KEY` fails loudly (`VALIDATION_ERROR`) the same way a
+  missing `TOTP_ENC_KEY` does -- it never falls back to writing a plaintext
+  token. Rotation is delete-old + create-new (`git.credential_create` /
+  `git.credential_delete`); there is no `git.credential_update` for the
+  token itself, same "replace, don't mutate, a secret row" pattern this
+  codebase already uses for recovery codes.
+- **The token is never returned after creation**, on any tool or GraphQL
+  field, by any caller: `git.credential_create`'s response is `{id, host,
+  label, createdAt}`; `git.credential_list`'s is the same shape plus
+  `lastUsedAt` and an optional `tokenHint` (the token's last 4 characters
+  only -- for UI recognition, never enough to reconstruct or brute-force the
+  original). The GraphQL `GitCredential` type has no `token` field declared
+  at all, so even if a resolver's underlying object carried one, GraphQL's
+  own field selection would never expose it.
+- **Session-based ownership resolution only, for now.** All four
+  tools/mutations (`git.credential_create`, `git.credential_list`,
+  `git.credential_delete`, `git.pipeline_status`, and their GraphQL
+  equivalents) resolve `owner_user_id` **exclusively** from
+  `context.sessionUserId` -- i.e. a real `pmem_session` browser cookie.
+  Static `MCP_TOKEN`, OAuth-connected agents (Claude Code, ChatGPT), and any
+  other non-session caller never populate `sessionUserId`, so they all hit
+  the same `AppError("UNAUTHORIZED", "Git credentials require a logged-in
+  session...")` -- a deliberate refusal to guess whose credential to use,
+  not a bug. This mirrors `T-MEMORY-042`'s identical "WS subscriptions are
+  session-only" answer, and for the same underlying reason: this codebase
+  has no resolved answer yet for **which human an OAuth-connected agent
+  session acts on behalf of** (`gateway_clients.owner_user_id` is only ever
+  populated for the migrated static `MCP_TOKEN` credential today, per the
+  "MCP_TOKEN migration" section below -- never for OAuth connector
+  credentials). T-MEMORY-044's task record flags this explicitly as an open
+  question and out of scope for this pass; solving it (so e.g. a Claude Code
+  agent could call `git.pipeline_status` on its owning human's behalf) is
+  left for whoever picks that question up, same as `project_members`
+  management being left as known follow-up by `T-MEMORY-029`.
+- **Scope tier: `write`, not `admin`, including for `git.credential_delete`**
+  -- a deliberate deviation from this codebase's usual
+  *.delete-is-always-`admin`* convention (see "Scopes: read / write /
+  admin" above). That convention protects shared/team-visible records from
+  an OAuth-connected agent hallucinating a destructive call; a git
+  credential is neither shared nor reachable by an OAuth-connected agent at
+  all (the session requirement above already forecloses that caller class
+  entirely, regardless of scope), and `deleteGitCredential`'s `WHERE id = ?
+  AND owner_user_id = ?` means the only thing any session can ever delete is
+  its **own** credential. Requiring `admin` scope on top would only block an
+  ordinary `role=member` user from managing their own profile -- which the
+  task's own acceptance criteria (a delete button in every user's own
+  profile, not an admin panel) rules out. `git.credential_delete` is
+  therefore **not** in `ADMIN_GRAPHQL_MUTATION_NAMES`.
+- **`git.pipeline_status(host, project, ref?)`**: resolves the caller's own
+  stored credential for `host` (most-recently-created row if more than one
+  matches), then calls that GitLab instance's REST API server-side --
+  `GET /api/v4/projects/:id_or_path/pipelines?ref=...` for the latest
+  pipeline, then `GET .../pipelines/:id/jobs` for its jobs -- using the
+  decrypted token in a `PRIVATE-TOKEN` header. The raw token never leaves
+  the server; the tool returns only `{status, ref, sha, webUrl, jobs:
+  [{name, status}]}`. No credential stored for that host -> a clear
+  `GIT_CREDENTIAL_REQUIRED` error ("No credential stored for host X, add one
+  in your profile first"), not a silent failure or an empty result.
+  GitLab itself rejecting the stored token (401/403, e.g. expired/revoked)
+  surfaces as a distinct `UNAUTHORIZED` naming the host, not a generic
+  network error. `last_used_at` is stamped on the resolved credential after
+  a successful call. The outbound HTTP call is made through an injectable
+  `GitHttpFetch` (`PgToolService`'s constructor, defaulting to the real
+  global `fetch`) specifically so `scripts/smoke-gateway-git-credentials.ts`
+  can substitute a fake and never touch a real GitLab instance.
+- **Not in scope for this task** (per the task record): non-GitLab hosts,
+  any write/trigger/cancel operation against CI/CD (only read-only pipeline/
+  job status), and a UI/API for managing git repositories themselves
+  (clone, push, etc).
+
+### Smoke coverage
+
+`npm run smoke:gateway:git-credentials`
+(`scripts/smoke-gateway-git-credentials.ts`) covers, against a real gateway/
+Postgres instance with a fake (never-real-network) GitLab HTTP client
+injected into `PgToolService`: the credential create -> list -> delete round
+trip → the token never appearing in any create/list/GraphQL response →
+encryption actually happening (the stored `token_enc` differs from, and
+never contains, the raw token; decrypting it recovers the exact original) →
+`git.credential_list` scoped to the caller's own rows only → one member
+session being unable to delete another member's credential
+(`GIT_CREDENTIAL_NOT_FOUND`, not a leak) → `git.pipeline_status` failing
+clearly (`GIT_CREDENTIAL_REQUIRED`) for a host with no stored credential,
+without even attempting an outbound call → a successful (faked) pipeline
+status call, including the `last_used_at` stamp → a GitLab-side 401 (stale
+token) surfacing as a distinct `UNAUTHORIZED` → an admin-role session
+managing its own credentials at `write` tier (no elevation needed) → the
+GraphQL `createGitCredential`/`gitCredentials`/`gitPipelineStatus`/
+`deleteGitCredential` equivalents, including that the GraphQL type never
+exposes a token field → and, on both the REST/MCP and GraphQL transports, a
+static-token and an OAuth-bearer request both being denied
+(`"requires a logged-in session"`) even though both otherwise carry
+sufficient scope.
 
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 

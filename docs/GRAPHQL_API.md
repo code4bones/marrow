@@ -608,6 +608,55 @@ mutation DeleteProject($slug: String!) {
 }
 ```
 
+Git host credentials (`T-MEMORY-044`):
+
+```graphql
+query GitHosts {
+  gitCredentials {
+    id
+    host
+    label
+    createdAt
+    lastUsedAt
+  }
+}
+
+mutation AddGitHost($host: String!, $label: String!, $token: String!) {
+  createGitCredential(host: $host, label: $label, token: $token) {
+    id
+    host
+    label
+    createdAt
+  }
+}
+
+mutation RemoveGitHost($id: ID!) {
+  deleteGitCredential(id: $id)
+}
+
+query PipelineStatus($host: String!, $project: String!, $ref: String) {
+  gitPipelineStatus(host: $host, project: $project, ref: $ref)
+}
+```
+
+The `GitCredential` type has no `token` field declared at all -- there is no
+way to select it back over GraphQL, by construction, not just by convention.
+`gitPipelineStatus` returns the `JSON` scalar
+`{status, ref, sha, webUrl, jobs: [{name, status}]}`; a host with no stored
+credential returns a GraphQL error (`GIT_CREDENTIAL_REQUIRED`) rather than
+`null` or an empty object.
+
+**All four of these require a real browser session cookie**, unlike every
+other query/mutation in this document -- a request authenticated only by the
+static token or an OAuth bearer gets a GraphQL error explaining the session
+requirement, even though both of those otherwise carry sufficient scope to
+call a `write`-tier mutation. See docs/AUTH.md's "Git host credentials"
+section for the full reasoning (this mirrors the Subscriptions section's
+own "session-only" answer below). `deleteGitCredential` is intentionally
+**not** in `ADMIN_GRAPHQL_MUTATION_NAMES` -- it only ever requires the
+normal mutation (`write`) tier, since it can only ever delete the calling
+session's own credential.
+
 ## Frontend Rules
 
 - Use `projectSummary` as the default project overview query.
