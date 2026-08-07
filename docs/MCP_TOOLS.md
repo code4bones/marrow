@@ -1531,7 +1531,8 @@ Input:
   "title": "Keep diffs small",
   "body": "Agents should prefer small, reviewable diffs and avoid unrelated refactors.",
   "status": "active",
-  "tags": ["common", "agent", "workflow"]
+  "tags": ["common", "agent", "workflow"],
+  "summary": "Prefer small, reviewable diffs; avoid unrelated refactors."
 }
 ```
 
@@ -1579,6 +1580,9 @@ Behavior:
   `tags ?| ...` against `items`/`decisions` in the same project/common scope)
   and return up to 3 hits as a non-blocking hint in `item.relatedCandidates`
   — this never fails the call, it's advisory only
+* `summary` is optional (I-MEMORY-022 step 5) — a curated TL;DR that
+  `memory.search` prefers over both a KWIC snippet and a blind body
+  truncation when present; `memory.update` can set/change it later
 
 ---
 
@@ -1759,7 +1763,14 @@ Ranking:
 
 1. project-specific records
 2. common records
-3. FTS rank within each group
+3. FTS rank within each group, weighted (I-MEMORY-022 step 5):
+   * **status** — `active` 1.0, `draft` 0.9, `superseded` 0.4, `archived` 0.3,
+     `rejected` 0.2. Superseded/archived/rejected records stay findable, just
+     ranked below an otherwise-equal active match.
+   * **chain-head** — a record that is the target (`toId`) of a `supersedes`,
+     `refines`, or `derives_from` link from a newer record gets an extra 0.5x
+     penalty, so the head of a chain outranks the links it absorbed even when
+     both match.
 
 Full-text matching (I-MEMORY-022 step 4): `search_vector` combines three
 Postgres text-search configs — `simple` (exact tokens: IDs like `D-MEMORY-013`,
@@ -1768,7 +1779,15 @@ any of the three. This stems across grammatical forms within a language
 ("модель" matches a record containing "модели"; "retrieval" matches
 "retrievals") but does not translate across languages — a Russian query still
 won't find an English-only record on the same topic. Same tri-config matching
-applies to `artifact.search`.
+applies to `artifact.search` (which also gets the status/chain-head ranking
+weights, but not the excerpt behavior below — artifacts already have a
+curated `description` field).
+
+Excerpt (I-MEMORY-022 step 5): `results[].excerpt` prefers, in order, the
+record's own `summary` (if set), a KWIC snippet from `ts_headline` around the
+actual match (`**bolded**`, markdown-friendly, not HTML) when a query is
+present, and only falls back to a blind first-~220-char body truncation when
+neither is available.
 
 ---
 
@@ -1784,7 +1803,8 @@ Input:
   "title": "Updated title",
   "body": "Updated body",
   "status": "active",
-  "tags": ["architecture"]
+  "tags": ["architecture"],
+  "summary": "Updated TL;DR"
 }
 ```
 
@@ -2120,6 +2140,12 @@ Required:
 
 * title
 * decision
+
+`summary` is also optional (I-MEMORY-022 step 5) — a curated TL;DR, returned
+as `decision.summary`. There's no `decision.search` tool today, so it doesn't
+feed a ranked excerpt the way `memory.create`'s does; it's for callers reading
+`decision.get`/`decision.list` output who want the TL;DR without the full
+context/rationale/consequences fields.
 
 Output:
 

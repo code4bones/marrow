@@ -19,6 +19,10 @@ export const createMemorySchema = z.object({
   body: z.string().min(1),
   status: itemStatusSchema.optional(),
   tags: z.array(z.string()).optional(),
+  // Curated TL;DR, preferred over both the raw body truncation and the KWIC
+  // highlight in search results — see I-MEMORY-022 step 5. Optional: no
+  // backfill requirement for existing records.
+  summary: z.string().optional(),
   links: recordLinksInputSchema
 });
 
@@ -27,7 +31,8 @@ export const updateMemorySchema = z.object({
   title: z.string().min(1).optional(),
   body: z.string().min(1).optional(),
   status: itemStatusSchema.optional(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  summary: z.string().optional()
 });
 
 export const getMemorySchema = z.object({

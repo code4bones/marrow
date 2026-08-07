@@ -1120,6 +1120,7 @@ export class PgToolService {
       body: String(input.body),
       status: typeof input.status === "string" ? input.status : "active",
       tags: jsonStringArray(input.tags),
+      summary: stringOrNull(input.summary),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -1324,10 +1325,11 @@ export class PgToolService {
     // without inventing a query and running it through a mandatory FTS
     // filter that has no reason to match — see I-MEMORY-022 step 1.
     const queryText = typeof input.query === "string" && input.query.trim() ? input.query : null;
-    let query = this.db("items").select("id", "project_id", "type", "title", "body", "status", "tags");
+    let query = this.db("items").select("id", "project_id", "type", "title", "body", "status", "tags", "summary");
     if (queryText) {
       query = query
-        .select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]))
+        .select(this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]))
+        .select(this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText]))
         .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
 
@@ -1391,7 +1393,9 @@ export class PgToolService {
             "body",
             "status",
             "tags",
-            this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText])
+            "summary",
+            this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]),
+            this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText])
           )
           .orderByRaw("case when project_id is null then 1 else 0 end asc")
           .orderBy("rank", "desc"),
@@ -1411,6 +1415,7 @@ export class PgToolService {
       body: typeof input.body === "string" ? input.body : current.body,
       status: typeof input.status === "string" ? input.status : current.status,
       tags: Array.isArray(input.tags) ? jsonStringArray(input.tags) : current.tags,
+      summary: typeof input.summary === "string" ? input.summary : current.summary,
       updated_by: context.clientId,
       source_instance_id: context.clientId,
       updated_at: nowIso(),
@@ -1710,7 +1715,7 @@ export class PgToolService {
     const queryText = typeof input.query === "string" ? input.query : null;
     if (queryText) {
       query = query
-        .select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]))
+        .select(this.db.raw(`${combinedRankSql("artifacts")} as rank`, [queryText, queryText, queryText]))
         .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
 
@@ -1775,7 +1780,7 @@ export class PgToolService {
       (query) => {
         query.select("*");
         if (queryText) {
-          query.select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]));
+          query.select(this.db.raw(`${combinedRankSql("artifacts")} as rank`, [queryText, queryText, queryText]));
         }
         query.orderByRaw("case when project_id is null then 1 else 0 end asc");
         return query.orderBy(queryText ? "rank" : "created_at", "desc");
@@ -2531,6 +2536,7 @@ export class PgToolService {
       consequences: stringOrNull(input.consequences),
       tags: jsonStringArray(input.tags),
       supersedes_id: stringOrNull(input.supersedesId),
+      summary: stringOrNull(input.summary),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -2577,6 +2583,7 @@ export class PgToolService {
       consequences: stringOrNull(input.consequences),
       tags: jsonStringArray(input.tags),
       supersedes_id: String(input.supersedesId),
+      summary: stringOrNull(input.summary),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -4583,6 +4590,7 @@ function itemOut(row: Row) {
     body: String(row.body),
     status: String(row.status),
     tags: stringArray(row.tags),
+    summary: stringOrNull(row.summary),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -4594,7 +4602,11 @@ function searchOut(row: Row) {
     scope: row.project_id ? "project" : "common",
     type: String(row.type),
     title: String(row.title),
-    excerpt: excerpt(String(row.body ?? "")),
+    // Preference order (I-MEMORY-022 step 5): a curated summary beats a
+    // KWIC snippet around the actual match beats a blind first-200-chars
+    // truncation of the body, which is usually just the intro, not the
+    // reason this record matched.
+    excerpt: stringOrNull(row.summary) ?? stringOrNull(row.headline) ?? excerpt(String(row.body ?? "")),
     status: String(row.status),
     tags: stringArray(row.tags),
     rank: Number(row.rank ?? 0)
@@ -4720,6 +4732,7 @@ function decisionOut(row: Row) {
     consequences: stringOrNull(row.consequences),
     tags: stringArray(row.tags),
     supersedesId: stringOrNull(row.supersedes_id),
+    summary: stringOrNull(row.summary),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -4779,6 +4792,40 @@ function handoffBody(input: Row): string {
 
 function excerpt(body: string): string {
   return body.length <= 220 ? body : `${body.slice(0, 217)}...`;
+}
+
+// I-MEMORY-022 step 5 ranking. `table` is always one of the hardcoded
+// literals passed at each call site below ("items" | "artifacts"), never
+// user input, so string-interpolating it into the SQL identifier position
+// (where a bind parameter can't go anyway) is safe.
+const combinedTsQuerySql = "(plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))";
+
+function statusRankWeightSql(): string {
+  return "(case status when 'active' then 1.0 when 'draft' then 0.9 when 'superseded' then 0.4 when 'archived' then 0.3 when 'rejected' then 0.2 else 1.0 end)";
+}
+
+// Absorbed records (something newer supersedes/refines/derives_from them)
+// rank below their replacement even when both match — "голова цепочки
+// вверх, поглощённые звенья вниз". Reuses the existing idx_links_to_id index.
+function chainHeadRankWeightSql(table: string): string {
+  return (
+    `(case when exists (select 1 from links l where l.to_id = ${table}.id ` +
+    "and l.relation in ('supersedes', 'refines', 'derives_from')) then 0.5 else 1.0 end)"
+  );
+}
+
+function combinedRankSql(table: string): string {
+  return `(ts_rank(search_vector, ${combinedTsQuerySql}) * ${statusRankWeightSql()} * ${chainHeadRankWeightSql(table)})`;
+}
+
+// KWIC excerpt: context around the actual match instead of the first ~200
+// chars of body (which is usually just the intro). Markdown-bolded so the
+// match is visible in plain text without HTML.
+function kwicHeadlineSql(): string {
+  return (
+    `ts_headline('simple', coalesce(body, ''), ${combinedTsQuerySql}, ` +
+    "'MaxFragments=2, MinWords=15, MaxWords=40, StartSel=**, StopSel=**, FragmentDelimiter= ... ')"
+  );
 }
 
 function asNullableString(value: unknown): string | null {

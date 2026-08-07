@@ -356,11 +356,13 @@ mutation MemoryMaintenance($project: String!, $id: ID!) {
     title: "Useful context"
     body: "Details for future agents."
     tags: ["frontend"]
+    summary: "One-line TL;DR, preferred over KWIC/truncation in memorySearch excerpts"
     links: [{ toId: "D-MEMORY-013", relation: "relates_to" }]
   }) {
     id
     title
     status
+    summary
     linksCreated { id fromId toId relation }
     relatedCandidates { id type title }
   }

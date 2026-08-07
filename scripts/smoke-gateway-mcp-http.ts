@@ -537,6 +537,147 @@ try {
     "memory.search did not stem across English word forms (retrieval/rank query vs retrievals/rankings record)."
   );
 
+  // I-MEMORY-022 step 5: summary preferred over KWIC over blind truncation;
+  // status weight and chain-head weight in ranking. All three use a unique
+  // nonce token per case so plainto_tsquery('simple', ...) matches it as one
+  // exact lexeme, isolating each case from the others and from real data.
+  const summaryNonce = `smokesummary${unique}`;
+  const summaryMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (summary preference)",
+      body: `This body starts with unrelated filler text so a blind truncation would never surface ${summaryNonce} at all.`,
+      summary: `Curated summary mentioning ${summaryNonce} explicitly.`,
+      tags: ["smoke", "ranking"]
+    }
+  });
+  assertOk(summaryMemoryResult.structuredContent, "memory.create (summary fixture) failed.");
+  assert(
+    readNestedString(summaryMemoryResult.structuredContent, ["data", "item", "summary"]) ===
+      `Curated summary mentioning ${summaryNonce} explicitly.`,
+    "memory.create did not persist/return the summary field."
+  );
+  const summarySearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: { project: state.projectId, query: summaryNonce, limit: 10 }
+  });
+  assertOk(summarySearchResult.structuredContent, "memory.search (summary preference) failed.");
+  const summaryHit = readNestedArray(summarySearchResult.structuredContent, ["data", "results"]).find(
+    (item) => isRecord(item) && typeof item.excerpt === "string" && item.excerpt.includes(summaryNonce)
+  );
+  assert(
+    isRecord(summaryHit) && summaryHit.excerpt === `Curated summary mentioning ${summaryNonce} explicitly.`,
+    "memory.search excerpt did not prefer the curated summary over a body truncation/KWIC snippet."
+  );
+
+  const kwicNonce = `smokekwic${unique}`;
+  const kwicMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (KWIC fallback, no summary)",
+      body: `${"padding word ".repeat(30)}the actual match term ${kwicNonce} sits here, far past the first 220 characters of blind truncation.`,
+      tags: ["smoke", "ranking"]
+    }
+  });
+  assertOk(kwicMemoryResult.structuredContent, "memory.create (kwic fixture) failed.");
+  const kwicSearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: { project: state.projectId, query: kwicNonce, limit: 10 }
+  });
+  assertOk(kwicSearchResult.structuredContent, "memory.search (kwic fallback) failed.");
+  const kwicHit = readNestedArray(kwicSearchResult.structuredContent, ["data", "results"]).find(
+    (item) => isRecord(item) && typeof item.excerpt === "string" && item.excerpt.includes(kwicNonce)
+  );
+  assert(
+    isRecord(kwicHit),
+    "memory.search (no summary) did not fall back to a KWIC snippet containing the match term past the blind-truncation window."
+  );
+
+  const statusRankNonce = `smokestatusrank${unique}`;
+  const activeStatusResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (active, status ranking)",
+      body: `Active record mentioning ${statusRankNonce}.`,
+      status: "active",
+      tags: ["smoke", "ranking"]
+    }
+  });
+  assertOk(activeStatusResult.structuredContent, "memory.create (active status ranking fixture) failed.");
+  const activeStatusItemId = readNestedString(activeStatusResult.structuredContent, ["data", "item", "id"]);
+  const supersededStatusResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (superseded, status ranking)",
+      body: `Superseded record mentioning ${statusRankNonce}.`,
+      status: "superseded",
+      tags: ["smoke", "ranking"]
+    }
+  });
+  assertOk(supersededStatusResult.structuredContent, "memory.create (superseded status ranking fixture) failed.");
+  const supersededStatusItemId = readNestedString(supersededStatusResult.structuredContent, ["data", "item", "id"]);
+  const statusRankSearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: { project: state.projectId, query: statusRankNonce, limit: 10 }
+  });
+  assertOk(statusRankSearchResult.structuredContent, "memory.search (status ranking) failed.");
+  const statusRankOrder = readNestedArray(statusRankSearchResult.structuredContent, ["data", "results"])
+    .map((item) => (isRecord(item) ? item.id : undefined))
+    .filter((id) => id === activeStatusItemId || id === supersededStatusItemId);
+  assert(
+    statusRankOrder.length === 2 && statusRankOrder[0] === activeStatusItemId,
+    "memory.search did not rank the active record above the superseded record with an otherwise identical match."
+  );
+
+  const chainHeadNonce = `smokechainhead${unique}`;
+  const chainOldResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (chain-head: old)",
+      body: `Old record mentioning ${chainHeadNonce}.`,
+      status: "active",
+      tags: ["smoke", "ranking"]
+    }
+  });
+  assertOk(chainOldResult.structuredContent, "memory.create (chain-head old fixture) failed.");
+  const chainOldItemId = readNestedString(chainOldResult.structuredContent, ["data", "item", "id"]);
+  const chainNewResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (chain-head: new)",
+      body: `New record mentioning ${chainHeadNonce}, refines the old one.`,
+      status: "active",
+      tags: ["smoke", "ranking"],
+      links: [{ toId: chainOldItemId, relation: "refines" }]
+    }
+  });
+  assertOk(chainNewResult.structuredContent, "memory.create (chain-head new fixture) failed.");
+  const chainNewItemId = readNestedString(chainNewResult.structuredContent, ["data", "item", "id"]);
+  const chainHeadSearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: { project: state.projectId, query: chainHeadNonce, limit: 10 }
+  });
+  assertOk(chainHeadSearchResult.structuredContent, "memory.search (chain-head ranking) failed.");
+  const chainHeadOrder = readNestedArray(chainHeadSearchResult.structuredContent, ["data", "results"])
+    .map((item) => (isRecord(item) ? item.id : undefined))
+    .filter((id) => id === chainOldItemId || id === chainNewItemId);
+  assert(
+    chainHeadOrder.length === 2 && chainHeadOrder[0] === chainNewItemId,
+    "memory.search did not rank the chain head (refines target of a newer record) above the absorbed older record."
+  );
+
   const upsertCreateResult = await client.callTool({
     name: "memory.upsert",
     arguments: {

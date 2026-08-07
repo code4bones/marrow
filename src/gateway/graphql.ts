@@ -292,6 +292,7 @@ const typeDefs = `#graphql
     body: String!
     status: String
     tags: [String!]
+    summary: String
     links: [RecordLinkInput!]
   }
 
@@ -301,6 +302,7 @@ const typeDefs = `#graphql
     body: String
     status: String
     tags: [String!]
+    summary: String
   }
 
   input RecordDecisionInput {
@@ -313,6 +315,7 @@ const typeDefs = `#graphql
     consequences: String
     tags: [String!]
     supersedesId: String
+    summary: String
     links: [RecordLinkInput!]
   }
 
@@ -461,6 +464,7 @@ const typeDefs = `#graphql
     excerpt: String
     status: String!
     tags: [String!]!
+    summary: String
     rank: Float
     createdAt: String
     updatedAt: String
@@ -560,6 +564,7 @@ const typeDefs = `#graphql
     consequences: String
     tags: [String!]!
     supersedesId: String
+    summary: String
     createdAt: String
     updatedAt: String
     linksCreated: [Link!]

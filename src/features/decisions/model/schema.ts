@@ -13,6 +13,7 @@ export const recordDecisionSchema = z.object({
   consequences: z.string().optional(),
   tags: z.array(z.string()).optional(),
   supersedesId: z.string().nullable().optional(),
+  summary: z.string().optional(),
   links: recordLinksInputSchema
 });
 
