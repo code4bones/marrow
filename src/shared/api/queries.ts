@@ -228,6 +228,13 @@ export const GET_GATEWAY_STATUS = gql`
   }
 `;
 
+/** Lighter than GET_GATEWAY_STATUS — just the version, for places like the nav header that render on every page. */
+export const GET_GATEWAY_VERSION = gql`
+  query GetGatewayVersion {
+    gatewayVersion
+  }
+`;
+
 export const GET_ARTIFACTS = gql`
   query GetArtifacts($project: String, $limit: Int) {
     artifacts(project: $project, limit: $limit) {

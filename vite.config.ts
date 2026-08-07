@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { version as appVersion } from './package.json'
 
 // Vite hardcodes `crossorigin` on built <script>/<link> tags with no config
 // toggle. That forces those requests into anonymous CORS mode, which drops
@@ -22,4 +23,7 @@ function stripCrossorigin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), stripCrossorigin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
 })

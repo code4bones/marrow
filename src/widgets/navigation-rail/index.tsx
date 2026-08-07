@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client/react';
 import {
   ApartmentOutlined,
   ArrowLeftOutlined,
@@ -14,11 +15,33 @@ import {
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Divider, Menu, Typography } from 'antd';
+import { Button, Divider, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { GET_GATEWAY_VERSION } from '../../shared/api/queries';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
+
+interface GatewayVersionData {
+  gatewayVersion: { packageVersion?: string } | null;
+}
+
+/** "front vX.Y.Z · back vA.B.C" under the logo — silently omits the back half until the query resolves. */
+function VersionLine() {
+  const { data } = useQuery<GatewayVersionData>(GET_GATEWAY_VERSION, { fetchPolicy: 'cache-first' });
+  const backVersion = data?.gatewayVersion?.packageVersion;
+  return (
+    <Tooltip title={backVersion ? `Frontend v${__APP_VERSION__} · Backend v${backVersion}` : `Frontend v${__APP_VERSION__}`}>
+      <Typography.Text
+        type="secondary"
+        style={{ fontSize: 10, letterSpacing: 0.3, display: 'block', marginTop: 2, cursor: 'default' }}
+      >
+        v{__APP_VERSION__}
+        {backVersion ? ` · api v${backVersion}` : ''}
+      </Typography.Text>
+    </Tooltip>
+  );
+}
 
 const PROJECT_SECTIONS: ItemType[] = [
   { key: 'overview',   icon: <HomeOutlined />,        label: 'Overview' },
@@ -77,6 +100,7 @@ export function NavigationRail() {
         <Typography.Text strong style={{ fontSize: 13, letterSpacing: 1 }}>
           PMEM UI
         </Typography.Text>
+        <VersionLine />
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
