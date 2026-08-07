@@ -1110,7 +1110,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "git.credential_list",
     description:
-      "List the caller's own stored git host credentials (host, label, dates, and an optional last-4-characters hint) -- never the token value. Requires a browser session.",
+      "List stored git host credentials (host, label, dates, and an optional last-4-characters hint) -- never the token value. A browser session sees its own credentials; a static-token/OAuth caller (an agent) sees the instance owner's, so it can use them via git.pipeline_status.",
     schema: emptySchema,
     outputSchema: output(z.object({ credentials: z.array(gitCredentialOutSchema) }))
   },
@@ -1138,7 +1138,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "git.pipeline_status",
     description:
-      "Resolve the caller's own stored credential for `host`, then call that GitLab instance's REST API for the latest pipeline (optionally filtered by ref) and its jobs. The raw token never leaves the server. Requires a browser session; fails clearly if no credential is stored for that host.",
+      "Resolve a stored credential for `host` (the caller's own for a browser session, the instance owner's for an agent connection) and call that GitLab instance's REST API for the latest pipeline (optionally filtered by ref) and its jobs. The raw token never leaves the server. Fails clearly if no credential is stored for that host.",
     schema: gitPipelineStatusSchema,
     outputSchema: output(gitPipelineStatusOutSchema)
   }

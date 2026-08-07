@@ -372,26 +372,31 @@ rejection of putting a PAT in `.env`).
   original). The GraphQL `GitCredential` type has no `token` field declared
   at all, so even if a resolver's underlying object carried one, GraphQL's
   own field selection would never expose it.
-- **Session-based ownership resolution only, for now.** All four
-  tools/mutations (`git.credential_create`, `git.credential_list`,
-  `git.credential_delete`, `git.pipeline_status`, and their GraphQL
-  equivalents) resolve `owner_user_id` **exclusively** from
-  `context.sessionUserId` -- i.e. a real `pmem_session` browser cookie.
-  Static `MCP_TOKEN`, OAuth-connected agents (Claude Code, ChatGPT), and any
-  other non-session caller never populate `sessionUserId`, so they all hit
-  the same `AppError("UNAUTHORIZED", "Git credentials require a logged-in
-  session...")` -- a deliberate refusal to guess whose credential to use,
-  not a bug. This mirrors `T-MEMORY-042`'s identical "WS subscriptions are
-  session-only" answer, and for the same underlying reason: this codebase
-  has no resolved answer yet for **which human an OAuth-connected agent
-  session acts on behalf of** (`gateway_clients.owner_user_id` is only ever
-  populated for the migrated static `MCP_TOKEN` credential today, per the
-  "MCP_TOKEN migration" section below -- never for OAuth connector
-  credentials). T-MEMORY-044's task record flags this explicitly as an open
-  question and out of scope for this pass; solving it (so e.g. a Claude Code
-  agent could call `git.pipeline_status` on its owning human's behalf) is
-  left for whoever picks that question up, same as `project_members`
-  management being left as known follow-up by `T-MEMORY-029`.
+- **Ownership resolution: session-only for managing credentials, admin-owned
+  fallback for reading them.** `git.credential_create` and
+  `git.credential_delete` (and their GraphQL equivalents) resolve
+  `owner_user_id` **exclusively** from `context.sessionUserId` -- a real
+  `pmem_session` browser cookie. A raw token should only ever enter or leave
+  storage through the trusted browser profile UI, so static `MCP_TOKEN`,
+  OAuth-connected agents (Claude Code, ChatGPT), and any other non-session
+  caller hit `AppError("UNAUTHORIZED", "...caller can manage credentials")`
+  for those two.
+  `git.credential_list` and `git.pipeline_status` are different: this is a
+  single-owner/small-team self-host instance, and the entire point of this
+  feature was letting an agent connected through PMem check CI status
+  instead of the operator SSH-ing into the deploy host and grepping
+  `journalctl` by hand (see `I-MEMORY-031`/`I-MEMORY-034` for that
+  friction). So for these two *read-only* paths, a non-session caller falls
+  back to the instance's primary admin -- `resolveGitCredentialReader()` in
+  `pg-tool-service.ts`, the same "earliest-created `role=admin` user" lookup
+  `ensureStaticTokenCredential()` already uses to give the migrated static
+  token an owner. A browser session's own user id still takes precedence
+  whenever one is present (so a `role=member` session reads *its own*
+  credentials, not the admin's). `gateway_clients.owner_user_id` still isn't
+  populated for OAuth connector credentials specifically -- this fallback
+  sidesteps that gap for git credentials rather than solving it in general;
+  a future feature needing a real per-OAuth-connector owner link still has
+  that as open work.
 - **Scope tier: `write`, not `admin`, including for `git.credential_delete`**
   -- a deliberate deviation from this codebase's usual
   *.delete-is-always-`admin`* convention (see "Scopes: read / write /
@@ -447,10 +452,12 @@ token) surfacing as a distinct `UNAUTHORIZED` → an admin-role session
 managing its own credentials at `write` tier (no elevation needed) → the
 GraphQL `createGitCredential`/`gitCredentials`/`gitPipelineStatus`/
 `deleteGitCredential` equivalents, including that the GraphQL type never
-exposes a token field → and, on both the REST/MCP and GraphQL transports, a
-static-token and an OAuth-bearer request both being denied
-(`"requires a logged-in session"`) even though both otherwise carry
-sufficient scope.
+exposes a token field → a static-token and an OAuth-bearer request both
+being denied on `git.credential_create` (`"...can manage credentials"`)
+even though both otherwise carry sufficient scope → and, the actual
+motivating case, an OAuth-bearer request to `git.credential_list` and
+`git.pipeline_status` succeeding by falling back to the instance admin's
+own stored credential and returning real (faked) pipeline data.
 
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 

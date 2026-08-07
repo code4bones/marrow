@@ -17,14 +17,17 @@
 // contains the raw token as a substring), ownership enforcement (one
 // member cannot delete another member's credential), the "no credential
 // for this host" error path, the "GitLab rejected the token" (401) error
-// path, and session-required enforcement across all three non-session
-// caller classes the task calls out (static token, OAuth, and the
-// no-token/"none" dev mode share the same sessionUserId-less code path).
+// path, session-required enforcement for credential *management*
+// (create/delete) across non-session callers (static token, OAuth), and
+// the admin-fallback for credential *reads* (list, pipeline_status) that
+// same non-session callers get instead -- the actual point of this task,
+// letting an agent connected over OAuth or the static token check CI
+// status through PMem.
 import { createHash, randomUUID } from "node:crypto";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { createAuthFacade, hashPassword } from "../src/gateway/auth.js";
 import { createOAuthFacadeFromEnv } from "../src/gateway/oauth.js";
-import { decryptGitToken } from "../src/gateway/git-credentials.js";
+import { decryptGitToken, encryptGitToken } from "../src/gateway/git-credentials.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
 import { createPgKnex } from "../src/shared/pg/knex.js";
 import type { ToolResponse } from "../src/shared/mcp/tool-response.js";
@@ -225,8 +228,16 @@ try {
   );
   console.log("ok - git.credential_create over an OAuth bearer (read+write scope, but no session) is denied the same way -- scope is not the gate here, session is");
 
-  const noCredCount = await db("git_credentials").count<{ count: string }[]>("id as count").first();
-  assert(Number(noCredCount?.count ?? 0) === 0, "No git_credentials row should exist yet -- both denied attempts above must be true no-ops.");
+  // Scoped to GOOD_HOST + this run's `unique` timestamp, not a global
+  // count -- this smoke test runs against the real shared dev Postgres
+  // (same convention as every other smoke-gateway-*.ts script), which can
+  // already hold unrelated git_credentials rows from real usage (e.g. an
+  // operator's own credential added through the actual profile UI). A bare
+  // `count(*) === 0` assertion would be a false failure the moment any real
+  // row exists, unrelated to whether these two denied attempts were true
+  // no-ops.
+  const noCredCount = await db("git_credentials").where({ host: GOOD_HOST }).count<{ count: string }[]>("id as count").first();
+  assert(Number(noCredCount?.count ?? 0) === 0, "No git_credentials row for GOOD_HOST should exist yet -- both denied attempts above must be true no-ops.");
   console.log("ok - the two denied create attempts above wrote nothing to git_credentials");
 
   // --- Credential create (member A), token never in the response --------
@@ -361,6 +372,76 @@ try {
   assert(adminDelete.deleted === true, "An admin-role session should be able to create and delete its own git credential without needing elevation.");
   console.log("ok - an admin-role session can manage its own git credentials too (write tier is sufficient, no admin-scope gate)");
 
+  // --- Agent (OAuth) read access falls back to the instance admin --------
+  // The whole point of this task: an agent connected over OAuth (no
+  // sessionUserId) has no credential of its own to read, but read-only use
+  // of an already-stored credential should still work for it by resolving
+  // to the instance's primary admin (resolveGitCredentialReader in
+  // pg-tool-service.ts) -- otherwise the feature can't do the thing it was
+  // built for (an agent checking CI status through PMem). Managing the
+  // credential itself (create/delete) stays session-only regardless, per
+  // the earlier assertions.
+  //
+  // This smoke run's OWN admin user is deliberately NOT assumed to be the
+  // one the fallback resolves to: this script runs against the real shared
+  // dev Postgres (same convention as every other smoke-gateway-*.ts), which
+  // already has a real, earlier-created admin account. Querying for the
+  // actual earliest-created admin (the exact same query
+  // resolveGitCredentialReader() runs) and inserting the test row directly
+  // for THAT user -- rather than logging in as it, which this script has no
+  // credentials to do -- tests the real resolution behavior instead of an
+  // assumption that happens to be false in this environment.
+  const resolvedAdmin = await db("users").select("id").where({ role: "admin" }).orderBy("created_at", "asc").first();
+  assert(resolvedAdmin, "Expected at least one admin user to exist (this script itself just created one, if no other existed).");
+  const fallbackCredentialId = randomUUID();
+  const fallbackNow = new Date();
+  await db("git_credentials").insert({
+    id: fallbackCredentialId,
+    owner_user_id: resolvedAdmin!.id,
+    host: GOOD_HOST,
+    label: `oauth-fallback-smoke-${unique}`,
+    token_enc: encryptGitToken("glpat-oauth-fallback-owned-by-resolved-admin"),
+    created_at: fallbackNow,
+    updated_at: fallbackNow,
+    last_used_at: null
+  });
+  try {
+    const oauthList = expectData<{ credentials: Array<{ id: string; host: string }> }>(
+      unwrap(await callTool("git.credential_list", {}, oauthHeaders(oauthAccessToken)))
+    );
+    assert(
+      oauthList.credentials.some((credential) => credential.id === fallbackCredentialId),
+      "git.credential_list over OAuth should fall back to the actual resolved (earliest-created) admin's credentials, not fail or return nothing."
+    );
+    console.log("ok - git.credential_list over an OAuth bearer falls back to the resolved instance admin's own credentials (read-only, no session needed)");
+
+    const oauthPipeline = expectData<{ status: string; jobs: Array<{ name: string }> }>(
+      unwrap(await callTool("git.pipeline_status", { host: GOOD_HOST, project: "group/project", ref: "main" }, oauthHeaders(oauthAccessToken)))
+    );
+    assert(oauthPipeline.status === "running", "git.pipeline_status over OAuth should resolve the admin's credential for GOOD_HOST and return real pipeline data.");
+    console.log("ok - git.pipeline_status over an OAuth bearer resolves the instance admin's credential and returns real pipeline data -- this is the actual motivating use case");
+
+    const oauthCreateStillDenied = await callTool(
+      "git.credential_create",
+      { host: GOOD_HOST, label: "oauth should still not be able to create", token: "glpat-still-should-not-be-stored" },
+      oauthHeaders(oauthAccessToken)
+    );
+    const oauthCreateStillDeniedBody = oauthCreateStillDenied.json as ToolResponse<unknown>;
+    assert(
+      oauthCreateStillDeniedBody.ok === false && oauthCreateStillDeniedBody.error.code === "UNAUTHORIZED",
+      "Read fallback must not extend to credential management -- git.credential_create over OAuth must still be denied."
+    );
+    console.log("ok - the read-only fallback does not extend to git.credential_create -- OAuth still cannot mint credentials");
+  } finally {
+    // Cleanup is unconditional (finally, not just at the script's own
+    // top-level catch/cleanup block) because this row is owned by whatever
+    // real admin already existed in the shared dev DB, not one of this
+    // script's own disposable seeded users -- it must not linger in that
+    // real account's credential list regardless of whether the assertions
+    // above passed.
+    await db("git_credentials").where({ id: fallbackCredentialId }).del();
+  }
+
   // --- GraphQL: createGitCredential / gitCredentials / deleteGitCredential
   const graphqlCreated = await graphql<{ createGitCredential: { id: string; host: string; label: string; createdAt: string; lastUsedAt: string | null } }>(
     `mutation Create($host: String!, $label: String!, $token: String!) {
@@ -406,19 +487,32 @@ try {
   assert(!graphqlDeletedRow, "GraphQL deleteGitCredential must actually delete the row.");
   console.log("ok - GraphQL deleteGitCredential mutation actually deletes the row");
 
-  // --- GraphQL also enforces session-required (static token, no session) -
-  const graphqlNoSessionResponse = await fetch(graphqlUrl, {
+  // --- GraphQL: static token still can't manage credentials (mutation),
+  // but CAN read them via the same admin-fallback as OAuth (query) --------
+  const graphqlStaticCreateResponse = await fetch(graphqlUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${staticToken}` },
+    body: JSON.stringify({
+      query: `mutation { createGitCredential(host: "${GOOD_HOST}", label: "static should not create", token: "glpat-static-should-not-be-stored") { id } }`
+    })
+  });
+  const graphqlStaticCreateBody = (await graphqlStaticCreateResponse.json()) as { errors?: Array<{ message: string }> };
+  assert(graphqlStaticCreateBody.errors?.length, "GraphQL createGitCredential over the static token (no session) should return a GraphQL error, not data.");
+  assert(
+    graphqlStaticCreateBody.errors!.some((error) => /manage credentials/i.test(error.message)),
+    `GraphQL error should explain the session requirement for managing credentials, got: ${JSON.stringify(graphqlStaticCreateBody.errors)}`
+  );
+  console.log("ok - GraphQL createGitCredential over the static token (no session) fails clearly, same UNAUTHORIZED reasoning as the MCP tool");
+
+  const graphqlStaticListResponse = await fetch(graphqlUrl, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${staticToken}` },
     body: JSON.stringify({ query: `query { gitCredentials { id } }` })
   });
-  const graphqlNoSessionBody = (await graphqlNoSessionResponse.json()) as { errors?: Array<{ message: string }> };
-  assert(graphqlNoSessionBody.errors?.length, "GraphQL gitCredentials over the static token (no session) should return a GraphQL error, not data.");
-  assert(
-    graphqlNoSessionBody.errors!.some((error) => /logged-in session/i.test(error.message)),
-    `GraphQL error should explain the session requirement, got: ${JSON.stringify(graphqlNoSessionBody.errors)}`
-  );
-  console.log("ok - GraphQL gitCredentials over the static token (no session) fails clearly, same UNAUTHORIZED reasoning as the MCP tool");
+  const graphqlStaticListBody = (await graphqlStaticListResponse.json()) as { data?: { gitCredentials?: Array<{ id: string }> }; errors?: unknown };
+  assert(!graphqlStaticListBody.errors, `GraphQL gitCredentials over the static token should succeed via the admin fallback, got errors: ${JSON.stringify(graphqlStaticListBody.errors)}`);
+  assert(Array.isArray(graphqlStaticListBody.data?.gitCredentials), "GraphQL gitCredentials over the static token should return an array (the resolved admin's credentials, possibly empty at this point in the script).");
+  console.log("ok - GraphQL gitCredentials over the static token succeeds via the same admin-fallback read path as OAuth");
 
   console.log(`Gateway git-credentials smoke test passed using ${started.url}`);
 } finally {

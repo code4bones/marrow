@@ -832,18 +832,45 @@ export class PgToolService {
   // populate sessionUserId (normalizeContext() below), so every one of
   // these throws requireSession()'s clear UNAUTHORIZED error for them
   // rather than silently operating on nobody's (or the wrong person's)
-  // credentials. Resolving ownership for an OAuth-connected agent is the
-  // task record's own flagged-open question (which human does a given
-  // OAuth session act on behalf of) -- explicitly out of scope for this
-  // pass, documented here and in docs/AUTH.md rather than half-solved.
+  // credentials.
+  //
+  // Managing the credential itself (create/delete, where a raw secret is
+  // typed in or destroyed) stays session-only -- a token should only ever
+  // enter the system through the trusted browser profile UI, not be
+  // mintable/removable by an agent. Using an already-stored credential to
+  // answer a read-only question (list which hosts are configured, check a
+  // pipeline's status) is different: this is a single-owner/small-team
+  // self-host instance, not multi-tenant SaaS, and the whole point of
+  // building this was so an agent (Claude Code, an OAuth connector) could
+  // check CI status through PMem instead of the operator SSH-ing in and
+  // grepping journalctl by hand. So for the read paths, a non-session
+  // caller (static token, OAuth, no auth configured) falls back to the
+  // instance's primary admin -- same "earliest-created admin" resolution
+  // already used for the static token's own owner_user_id in
+  // ensureStaticTokenCredential (T-MEMORY-029). A browser session's own
+  // user id always takes precedence when present.
   private requireSessionUserId(context: NormalizedGatewayRequestContext): string {
     if (!context.sessionUserId) {
       throw new AppError(
         "UNAUTHORIZED",
-        "Git credentials require a logged-in session (no static token, OAuth connector, or anonymous caller can use them)."
+        "Git credentials require a logged-in session (no static token, OAuth connector, or anonymous caller can manage credentials)."
       );
     }
     return context.sessionUserId;
+  }
+
+  private async resolveGitCredentialReader(context: NormalizedGatewayRequestContext): Promise<string> {
+    if (context.sessionUserId) {
+      return context.sessionUserId;
+    }
+    const owner = await this.db("users").select("id").where({ role: "admin" }).orderBy("created_at", "asc").first();
+    if (!owner) {
+      throw new AppError(
+        "UNAUTHORIZED",
+        "No admin account exists yet to own git credentials -- bootstrap one first."
+      );
+    }
+    return owner.id as string;
   }
 
   private async createGitCredential(input: Row, context: NormalizedGatewayRequestContext) {
@@ -869,7 +896,7 @@ export class PgToolService {
   }
 
   private async listGitCredentials(context: NormalizedGatewayRequestContext) {
-    const ownerUserId = this.requireSessionUserId(context);
+    const ownerUserId = await this.resolveGitCredentialReader(context);
     const rows = await this.db("git_credentials")
       .where({ owner_user_id: ownerUserId })
       .orderBy("created_at", "desc");
@@ -899,7 +926,7 @@ export class PgToolService {
   }
 
   private async gitPipelineStatus(input: Row, context: NormalizedGatewayRequestContext) {
-    const ownerUserId = this.requireSessionUserId(context);
+    const ownerUserId = await this.resolveGitCredentialReader(context);
     const host = String(input.host);
     const project = String(input.project);
     const ref = typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined;
