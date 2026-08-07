@@ -8,19 +8,22 @@ import {
   Input,
   Modal,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
+import { CodeBlock } from '../../shared/ui/CodeBlock';
+import { API_BASE_URL } from '../../shared/config/env';
 import { type PendingRegistration, useAuthStore } from '../../shared/model/auth.store';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
 
 interface ChangePasswordValues {
   currentPassword: string;
@@ -124,6 +127,159 @@ function RecoveryCodesModal({ codes, onClose }: { codes: string[] | null; onClos
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** One-line numbered instruction with consistent spacing above its code/action block. */
+function Step({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+      <Text type="secondary" style={{ fontSize: 12, minWidth: 14 }}>
+        {n}.
+      </Text>
+      <Text style={{ fontSize: 12.5 }}>{children}</Text>
+    </div>
+  );
+}
+
+/**
+ * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
+ * up to this PMem instance. The point of this section is that a brand-new
+ * user can follow it without ever opening the repo's docs/.
+ *
+ * The MCP endpoint is derived from API_BASE_URL (same source the app already
+ * uses for every /auth/* call — see shared/config/env.ts), so it always
+ * reflects the real deployed host instead of a placeholder. The gateway
+ * bearer token and the OAuth "magic token" are per-deployment secrets that
+ * only an admin holds; there is no API that could surface them to a logged
+ * in browser session, so those two stay as fill-in-the-blank placeholders —
+ * everything else in the commands below is real and copy-pasteable as-is.
+ */
+function ConnectSection() {
+  const user = useAuthStore((s) => s.user);
+  const mcpUrl = `${API_BASE_URL}/mcp`;
+
+  const suggestedId = user?.email ?? 'me';
+  const enc = encodeURIComponent(suggestedId);
+  const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
+
+  const exportTokenCmd = 'export PMEM_MCP_TOKEN="<gateway-token-from-your-admin>"';
+
+  const claudeCodeCmd = [
+    'claude mcp add --transport http project-memory \\',
+    `  "${urlFor('claude-code')}" \\`,
+    '  --header "Authorization: Bearer $PMEM_MCP_TOKEN"',
+  ].join('\n');
+
+  const codexCmd = [
+    'codex mcp add project-memory \\',
+    `  --url "${urlFor('codex')}" \\`,
+    '  --bearer-token-env-var PMEM_MCP_TOKEN',
+  ].join('\n');
+
+  const claudeWebUrl = urlFor('claude');
+  const chatgptWebUrl = urlFor('chatgpt');
+
+  const items = [
+    {
+      key: 'claude-code',
+      label: 'Claude Code',
+      children: (
+        <>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
+            Claude Code talks to PMem over Streamable HTTP. You need a gateway bearer token
+            (<Text code>PMEM_MCP_TOKEN</Text>) from your PMem admin — it's a shared deployment secret, not your
+            account password.
+          </Text>
+          <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
+          <CodeBlock code={exportTokenCmd} />
+          <Step n={2}>Register PMem as an MCP server:</Step>
+          <CodeBlock code={claudeCodeCmd} />
+          <Step n={3}>
+            Restart Claude Code, then ask it "What is project-memory / pmem, and how do I use it?" — it should call{' '}
+            <Text code>gateway.about</Text>.
+          </Step>
+        </>
+      ),
+    },
+    {
+      key: 'codex',
+      label: 'Codex',
+      children: (
+        <>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
+            Codex uses the same Streamable HTTP endpoint and the same gateway bearer token as Claude Code.
+          </Text>
+          <Step n={1}>Set the token in the shell that will run Codex:</Step>
+          <CodeBlock code={exportTokenCmd} />
+          <Step n={2}>Register PMem as an MCP server:</Step>
+          <CodeBlock code={codexCmd} />
+          <Step n={3}>
+            Restart Codex, then ask it to check pmem — it should call <Text code>gateway.status</Text> and{' '}
+            <Text code>gateway.version</Text>.
+          </Step>
+        </>
+      ),
+    },
+    {
+      key: 'claude-web',
+      label: 'Claude.ai (web)',
+      children: (
+        <>
+          <Step n={1}>
+            In Claude.ai go to <Text strong>Settings → Connectors</Text> and choose{' '}
+            <Text strong>Add custom connector</Text>.
+          </Step>
+          <Step n={2}>Paste this as the connector URL:</Step>
+          <CodeBlock code={claudeWebUrl} />
+          <Step n={3}>Click Connect — Claude opens PMem's sign-in page in a new tab.</Step>
+          <Step n={4}>
+            Enter the PMem <Text strong>magic token</Text> your admin gave you (this is a separate one-time login
+            credential for web connectors, not your PMem account password or the gateway bearer token above), then
+            approve access.
+          </Step>
+          <Step n={5}>
+            Back in the chat, ask Claude to check pmem — it should call <Text code>gateway.status</Text>.
+          </Step>
+        </>
+      ),
+    },
+    {
+      key: 'chatgpt-web',
+      label: 'ChatGPT (web)',
+      children: (
+        <>
+          <Step n={1}>
+            In ChatGPT go to <Text strong>Settings → Connectors</Text> and choose to create/add a new connector.
+          </Step>
+          <Step n={2}>Paste this as the connector (MCP server) URL:</Step>
+          <CodeBlock code={chatgptWebUrl} />
+          <Step n={3}>Click Connect — ChatGPT opens PMem's sign-in page.</Step>
+          <Step n={4}>
+            Enter the PMem <Text strong>magic token</Text> your admin gave you and approve access.
+          </Step>
+          <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call PMem tools directly.</Step>
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <Card title="Connect" size="small" style={{ marginBottom: 16 }}>
+      <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
+        How to connect this PMem instance to a coding agent or a web chat. The endpoint below (
+        <Text code>{mcpUrl}</Text>) is this deployment's real address — nothing here is a placeholder except the
+        secrets only your admin holds (the gateway token and the web-connector magic token).
+      </Paragraph>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Web connectors: Claude.ai and ChatGPT only, for now"
+        description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
+      />
+      <Tabs size="small" items={items} />
+    </Card>
   );
 }
 
@@ -391,6 +547,7 @@ export function ProfilePage() {
 
   return (
     <PageLayout title="Profile" subtitle="Account, security and access">
+      <ConnectSection />
       <AccountSection />
       <TwoFactorSection />
       {user?.role === 'admin' && <ApprovalsSection />}
