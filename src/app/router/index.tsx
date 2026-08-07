@@ -11,7 +11,9 @@ import { FaultsPage } from '../../pages/faults';
 import { LinksPage } from '../../pages/links';
 import { LoginPage } from '../../pages/login';
 import { MemoryPage } from '../../pages/memory';
+import { ProfilePage } from '../../pages/profile';
 import { ProjectsPage } from '../../pages/projects';
+import { RegisterPage } from '../../pages/register';
 import { TasksPage } from '../../pages/tasks';
 import { AppShell } from '../AppShell';
 
@@ -40,6 +42,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route
         path="/"
         element={
@@ -66,6 +69,7 @@ export function AppRouter() {
         {/* Global */}
         <Route path="common"      element={<CommonPage />} />
         <Route path="diagnostics" element={<DiagnosticsPage />} />
+        <Route path="profile"     element={<ProfilePage />} />
       </Route>
     </Routes>
   );

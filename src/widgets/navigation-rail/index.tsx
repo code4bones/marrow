@@ -12,6 +12,7 @@ import {
   LogoutOutlined,
   PartitionOutlined,
   ThunderboltOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { Button, Divider, Menu, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
@@ -33,6 +34,7 @@ const PROJECT_SECTIONS: ItemType[] = [
 const GLOBAL_ITEMS: ItemType[] = [
   { key: 'common',      icon: <ApartmentOutlined />,  label: 'Common' },
   { key: 'diagnostics', icon: <CloudServerOutlined />, label: 'Diagnostics' },
+  { key: 'profile',     icon: <UserOutlined />,        label: 'Profile' },
 ];
 
 function getSelectedKey(pathname: string): string {
@@ -62,6 +64,7 @@ export function NavigationRail() {
   const handleMenuClick = (key: string) => {
     if (key === 'common') { navigate('/common'); return; }
     if (key === 'diagnostics') { navigate('/diagnostics'); return; }
+    if (key === 'profile') { navigate('/profile'); return; }
     if (key === 'projects') { navigate('/projects'); return; }
     if (!selectedSlug) return;
     navigate(key === 'overview' ? `/projects/${selectedSlug}` : `/projects/${selectedSlug}/${key}`);

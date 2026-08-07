@@ -1,7 +1,8 @@
-import { Alert, Button, Card, Form, Input, Spin, Typography } from 'antd';
+import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
+import { CenteredCard } from '../../shared/ui/CenteredCard';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
@@ -12,28 +13,68 @@ interface CredentialsFormValues {
   confirmPassword?: string;
 }
 
-function CenteredCard({ children }: { children: React.ReactNode }) {
+interface TotpFormValues {
+  code: string;
+}
+
+function TotpLoginStep() {
+  const loginTotp = useAuthStore((s) => s.loginTotp);
+  const navigate = useNavigate();
+  const [form] = Form.useForm<TotpFormValues>();
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+
+  const onFinish = async ({ code }: TotpFormValues) => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await loginTotp(code.trim());
+      navigate('/projects', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid code.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#141414',
-      }}
-    >
-      <Card style={{ width: 400 }}>{children}</Card>
-    </div>
+    <CenteredCard>
+      <Title level={4} style={{ marginBottom: 4 }}>
+        Two-factor authentication
+      </Title>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
+        {useRecoveryCode
+          ? 'Enter one of your recovery codes.'
+          : 'Enter the 6-digit code from your authenticator app.'}
+      </Text>
+      {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
+      <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
+        <Form.Item name="code" label={useRecoveryCode ? 'Recovery code' : 'Code'} rules={[{ required: true, message: 'Code is required' }]}>
+          <Input autoFocus autoComplete="one-time-code" maxLength={useRecoveryCode ? undefined : 6} />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 12 }}>
+          <Button type="primary" htmlType="submit" block loading={submitting}>
+            Verify
+          </Button>
+        </Form.Item>
+      </Form>
+      <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setUseRecoveryCode((v) => !v)}>
+        {useRecoveryCode ? 'Use an authenticator code instead' : 'Use a recovery code instead'}
+      </Button>
+    </CenteredCard>
   );
 }
 
 export function LoginPage() {
   const status = useAuthStore((s) => s.status);
   const bootstrapNeeded = useAuthStore((s) => s.bootstrapNeeded);
+  const pendingTotpUserId = useAuthStore((s) => s.pendingTotpUserId);
   const login = useAuthStore((s) => s.login);
   const bootstrapAdmin = useAuthStore((s) => s.bootstrapAdmin);
   const navigate = useNavigate();
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
   const [form] = Form.useForm<CredentialsFormValues>();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +87,10 @@ export function LoginPage() {
     );
   }
 
+  if (!bootstrapNeeded && pendingTotpUserId) {
+    return <TotpLoginStep />;
+  }
+
   const onFinish = async ({ email, password }: CredentialsFormValues) => {
     setError(null);
     setSubmitting(true);
@@ -55,7 +100,11 @@ export function LoginPage() {
       } else {
         await login(email.trim(), password);
       }
-      navigate('/projects', { replace: true });
+      // login() may instead have set pendingTotpUserId — in that case we stay on
+      // this route and the branch above renders the second-factor screen.
+      if (useAuthStore.getState().status === 'authenticated') {
+        navigate('/projects', { replace: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -97,6 +146,7 @@ export function LoginPage() {
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         Sign in with your account
       </Text>
+      {notice && !error && <Alert type="success" message={notice} style={{ marginBottom: 16 }} showIcon />}
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
         <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
@@ -105,12 +155,15 @@ export function LoginPage() {
         <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Password is required' }]}>
           <Input.Password autoComplete="current-password" />
         </Form.Item>
-        <Form.Item style={{ marginBottom: 0 }}>
+        <Form.Item style={{ marginBottom: 16 }}>
           <Button type="primary" htmlType="submit" block loading={submitting}>
             Sign in
           </Button>
         </Form.Item>
       </Form>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        Don't have an account? <Link to="/register">Register</Link>
+      </Text>
     </CenteredCard>
   );
 }
