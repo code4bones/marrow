@@ -57,7 +57,6 @@ const PROJECT_SECTIONS: ItemType[] = [
 const GLOBAL_ITEMS: ItemType[] = [
   { key: 'common',      icon: <ApartmentOutlined />,  label: 'Common' },
   { key: 'diagnostics', icon: <CloudServerOutlined />, label: 'Diagnostics' },
-  { key: 'profile',     icon: <UserOutlined />,        label: 'Profile' },
 ];
 
 function getSelectedKey(pathname: string): string {
@@ -87,7 +86,6 @@ export function NavigationRail() {
   const handleMenuClick = (key: string) => {
     if (key === 'common') { navigate('/common'); return; }
     if (key === 'diagnostics') { navigate('/diagnostics'); return; }
-    if (key === 'profile') { navigate('/profile'); return; }
     if (key === 'projects') { navigate('/projects'); return; }
     if (!selectedSlug) return;
     navigate(key === 'overview' ? `/projects/${selectedSlug}` : `/projects/${selectedSlug}/${key}`);
@@ -192,8 +190,23 @@ export function NavigationRail() {
         )}
       </div>
 
-      {/* Logout */}
-      <div style={{ padding: 12, borderTop: '1px solid #303030', flexShrink: 0 }}>
+      {/* Account */}
+      <div style={{ padding: 8, borderTop: '1px solid #303030', flexShrink: 0 }}>
+        <Button
+          type="text"
+          icon={<UserOutlined />}
+          size="small"
+          onClick={() => navigate('/profile')}
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            marginBottom: 2,
+            color: selectedKey === 'profile' ? '#fff' : 'rgba(255,255,255,0.65)',
+            background: selectedKey === 'profile' ? 'rgba(255,255,255,0.08)' : 'transparent',
+          }}
+        >
+          Profile
+        </Button>
         <Button
           type="text"
           icon={<LogoutOutlined />}
