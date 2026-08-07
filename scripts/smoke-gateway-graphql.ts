@@ -405,6 +405,55 @@ try {
   assert(updated.archiveArtifact.artifact.status === "archived", "GraphQL archiveArtifact did not archive artifact.");
   console.log("ok - graphql update/archive mutations");
 
+  const supersedeOriginal = await graphql<{ recordDecision: { id: string } }>(
+    `mutation SupersedeOriginal($project: String!) {
+      recordDecision(input: {
+        project: $project,
+        title: "GraphQL smoke supersede: original",
+        decision: "Original smoke decision for the supersedeDecision mutation."
+      }) { id }
+    }`,
+    { project: projectId }
+  );
+  const supersedeOriginalId = supersedeOriginal.recordDecision.id;
+  const supersedeResult = await graphql<{
+    supersedeDecision: {
+      decision: { id: string; status: string; supersedesId: string | null };
+      superseded: { id: string; status: string };
+      link: { fromId: string; toId: string; relation: string };
+      event: { type: string };
+    };
+  }>(
+    `mutation SupersedeReplacement($project: String!, $supersedesId: String!) {
+      supersedeDecision(input: {
+        project: $project,
+        supersedesId: $supersedesId,
+        title: "GraphQL smoke supersede: replacement",
+        decision: "Replacement smoke decision.",
+        rationale: "GraphQL should expose decision.supersede, not just decision.record."
+      }) {
+        decision { id status supersedesId }
+        superseded { id status }
+        link { fromId toId relation }
+        event { type }
+      }
+    }`,
+    { project: projectId, supersedesId: supersedeOriginalId }
+  );
+  assert(
+    supersedeResult.supersedeDecision.decision.supersedesId === supersedeOriginalId,
+    "GraphQL supersedeDecision did not link the replacement to the original."
+  );
+  assert(
+    supersedeResult.supersedeDecision.superseded.status === "superseded",
+    "GraphQL supersedeDecision did not mark the original as superseded."
+  );
+  assert(
+    supersedeResult.supersedeDecision.link.relation === "supersedes",
+    "GraphQL supersedeDecision did not return a supersedes link."
+  );
+  console.log("ok - graphql supersedeDecision mutation");
+
   const maintenanceCreated = await graphql<{
     recordDecision: { id: string; status: string };
     recordEvent: { id: string; type: string };

@@ -487,6 +487,33 @@ mutation DecisionMaintenance($project: String!, $id: ID!) {
 }
 ```
 
+`supersedeDecision` creates a replacement decision and supersedes the old one
+in one call — the same workflow as the `decision.supersede` MCP tool, just
+exposed to GraphQL clients (added for PMemUI's timeline "create a connected
+decision" action):
+
+```graphql
+mutation SupersedeDecision($project: String!, $supersedesId: String!) {
+  supersedeDecision(input: {
+    project: $project
+    supersedesId: $supersedesId
+    title: "Use PostgreSQL for shared gateway storage"
+    decision: "..."
+    rationale: "Required — the replacement decision explains why the old one no longer holds."
+  }) {
+    decision { id status supersedesId }
+    superseded { id status }
+    link { fromId toId relation }
+    event { type }
+  }
+}
+```
+
+Its input reuses `RecordDecisionInput`'s GraphQL shape; `supersedesId` and
+`rationale` are enforced as required by the underlying MCP tool's schema
+(decision.supersede), not by GraphQL nullability — matches how `rationale`
+is optional on plain `recordDecision` but required here.
+
 Text artifact upload:
 
 ```graphql
