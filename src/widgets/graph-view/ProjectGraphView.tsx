@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Select, Space, Typography } from 'antd';
+import { Alert, Select, Space, Switch, Typography } from 'antd';
 import { useState } from 'react';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import type { ProjectGraph } from '../../shared/model/types';
@@ -21,6 +21,10 @@ interface Props {
 // no fallback — KnowledgeGraph.tsx is retired.
 export function ProjectGraphView({ slug }: Props) {
   const [depth, setDepth] = useState(2);
+  // T-MEMORY-045: off by default — decisions-only stays the quiet default
+  // view (D-MEMORY-014), tasks are opt-in noise the owner can turn on when
+  // they specifically want the fuller activity picture.
+  const [showTasks, setShowTasks] = useState(false);
 
   const { data: projectData, loading: projectLoading, error: projectError } = useQuery<{ project: { id: string } }>(
     GET_PROJECT,
@@ -49,7 +53,11 @@ export function ProjectGraphView({ slug }: Props) {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #303030', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>Timeline</Typography.Text>
-        <Space size={8}>
+        <Space size={12}>
+          <Space size={6}>
+            <Switch size="small" checked={showTasks} onChange={setShowTasks} />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Show tasks</Typography.Text>
+          </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>Link depth:</Typography.Text>
           <Select
             value={depth}
@@ -66,7 +74,7 @@ export function ProjectGraphView({ slug }: Props) {
         </Space>
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <DecisionTimeline nodes={nodes} edges={edges} loading={loading} />
+        <DecisionTimeline nodes={nodes} edges={edges} loading={loading} projectSlug={slug} showTasks={showTasks} />
       </div>
     </div>
   );

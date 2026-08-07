@@ -12,10 +12,15 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Tooltip, Typography } from 'antd';
+import { CheckCircleOutlined, LinkOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import { Popover, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { TONE_META } from '../../features/remark/tone';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
-import type { GraphEdge, GraphNode } from '../../shared/model/types';
+import type { GraphEdge, GraphNode, Link } from '../../shared/model/types';
+import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
+import { RecordLink } from '../../shared/ui/RecordLink';
+import { Timestamp } from '../../shared/ui/Timestamp';
 
 // I-PMEM-010 status encoding, I-PMEM-011 horizontal orientation (owner:
 // "как в фантастических фильмах про путешествия во времени" — a main line
@@ -52,6 +57,20 @@ const MAX_SATELLITES_SHOWN = 8;
 const MAX_NODES = 20;
 const NODE_W = 240;
 const NODE_H = 100;
+
+// T-MEMORY-045 "Show tasks" toggle. Task markers use the app's canonical
+// task color (ENTITY_COLOR.task in entityId.ts) so they read as "task" at a
+// glance, distinct from any decision-status color — created vs. done is a
+// shape/icon difference (hollow vs. filled), not a second color, since the
+// requirement is "don't blend visually with decisions", not "invent a
+// second palette".
+const TASK_MARKER_COLOR = '#177ddc';
+const TASK_MARKER_SIZE = 22;
+// Small pitch: unlike decisions (which need MIN_SPACING for a whole card),
+// task markers are dots and a burst of same-minute task events shouldn't
+// blow the canvas out — see the per-pair floor in computeTimeLayout below.
+const TASK_MARKER_PITCH = 30;
+const TASK_LANE_HEIGHT = 34;
 
 // Real timebar (owner: "по принципу timebar... экстраполировать эту шкалу
 // на граф, графически"). X is real elapsed time, not topological rank —
@@ -97,15 +116,37 @@ interface TimeLayout {
   spanX: number;
 }
 
-function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
+// A single point on the shared time axis — either a decision (full card,
+// may drop to a below lane if it's a dead branch) or a task marker (small
+// dot, "Show tasks" toggle only, always lives on a lane above the main
+// line). Merging both kinds into one sorted-by-time pass keeps them on the
+// exact same real-time/gap-compressed scale instead of two axes that would
+// drift apart.
+interface TimelineEntry {
+  id: string;
+  createdAt: string | null;
+  kind: 'decision' | 'task';
+  status?: string | null;
+}
+
+function computeTimeLayout(entries: TimelineEntry[]): TimeLayout {
   const xById = new Map<string, number>();
   const gapMarkers: Array<{ x: number; label: string }> = [];
   const tickMarkers: Array<{ id: string; x: number; label: string }> = [];
   let x = MIN_SPACING / 2;
   let prevTime: number | null = null;
+  let prevKind: TimelineEntry['kind'] | null = null;
 
-  for (const d of decisions) {
-    const t = d.createdAt ? new Date(d.createdAt).getTime() : NaN;
+  for (const entry of entries) {
+    const t = entry.createdAt ? new Date(entry.createdAt).getTime() : NaN;
+    // Decisions always get the full card-width floor from whatever came
+    // before; two task markers in a row only need dot-sized clearance from
+    // each other. This means a burst of task activity between two decisions
+    // fans out tightly instead of ballooning canvas width, while a decision
+    // is always at least MIN_SPACING from its nearest neighbor of either
+    // kind — so enabling "Show tasks" never pushes two decision cards
+    // closer together than they'd be with the toggle off.
+    const floor = entry.kind === 'decision' || prevKind === 'decision' ? MIN_SPACING : TASK_MARKER_PITCH;
     if (prevTime !== null) {
       if (!Number.isNaN(t)) {
         const deltaMs = t - prevTime;
@@ -113,15 +154,16 @@ function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
           gapMarkers.push({ x: x + COMPRESSED_GAP_PX / 2, label: `⋯ ${formatDuration(deltaMs)} ⋯` });
           x += COMPRESSED_GAP_PX;
         } else {
-          x += Math.max(MIN_SPACING, (deltaMs / MS_PER_HOUR) * PX_PER_HOUR);
+          x += Math.max(floor, (deltaMs / MS_PER_HOUR) * PX_PER_HOUR);
         }
       } else {
-        x += MIN_SPACING;
+        x += floor;
       }
     }
-    xById.set(d.id, x);
-    if (d.createdAt) tickMarkers.push({ id: d.id, x, label: formatTick(d.createdAt) });
+    xById.set(entry.id, x);
+    if (entry.kind === 'decision' && entry.createdAt) tickMarkers.push({ id: entry.id, x, label: formatTick(entry.createdAt) });
     if (!Number.isNaN(t)) prevTime = t;
+    prevKind = entry.kind;
   }
 
   // Dead branches (superseded/rejected/archived) drop below the main lane;
@@ -129,9 +171,10 @@ function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
   // instead of all piling onto lane 1.
   const laneEndX: number[] = [];
   const yById = new Map<string, number>();
-  for (const d of decisions) {
-    const status = d.status ?? 'active';
-    const nodeX = xById.get(d.id) ?? 0;
+  for (const entry of entries) {
+    if (entry.kind !== 'decision') continue;
+    const status = entry.status ?? 'active';
+    const nodeX = xById.get(entry.id) ?? 0;
     if (status === 'superseded' || status === 'rejected' || status === 'archived') {
       let lane = laneEndX.findIndex((endX) => endX + MIN_SPACING <= nodeX);
       if (lane === -1) {
@@ -140,10 +183,27 @@ function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
       } else {
         laneEndX[lane] = nodeX;
       }
-      yById.set(d.id, (lane + 1) * LANE_HEIGHT);
+      yById.set(entry.id, (lane + 1) * LANE_HEIGHT);
     } else {
-      yById.set(d.id, 0);
+      yById.set(entry.id, 0);
     }
+  }
+
+  // Task markers get lane(s) above the main line (negative y) — never
+  // compete for space with decision dead-branches below, never overlap the
+  // decision cards themselves.
+  const taskLaneEndX: number[] = [];
+  for (const entry of entries) {
+    if (entry.kind !== 'task') continue;
+    const nodeX = xById.get(entry.id) ?? 0;
+    let lane = taskLaneEndX.findIndex((endX) => endX + TASK_MARKER_PITCH <= nodeX);
+    if (lane === -1) {
+      lane = taskLaneEndX.length;
+      taskLaneEndX.push(nodeX);
+    } else {
+      taskLaneEndX[lane] = nodeX;
+    }
+    yById.set(entry.id, -((lane + 1) * TASK_LANE_HEIGHT));
   }
 
   const axisY = (laneEndX.length + 1) * LANE_HEIGHT + AXIS_GAP;
@@ -151,10 +211,136 @@ function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
   return { xById, yById, gapMarkers, tickMarkers, axisY, spanX };
 }
 
+// Top-expand: same links a node has (excluding "annotates" — those are
+// remarks, shown separately) rendered inline via the exact same
+// arrow/relation/RecordLink shape as the drawer's LinksSection, so the data
+// reads identically whether you expand it here or open the full drawer.
+function LinksPanelContent({ id, links }: { id: string; links: Link[] }) {
+  if (links.length === 0) {
+    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>No links yet</Typography.Text>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 260 }}>
+      {links.map((l) => {
+        const outgoing = l.fromId === id;
+        const otherId = outgoing ? l.toId : l.fromId;
+        return (
+          <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, width: 14, flexShrink: 0 }}>
+              {outgoing ? '→' : '←'}
+            </Typography.Text>
+            <Tag style={{ fontSize: 10 }}>{l.relation}</Tag>
+            <RecordLink id={otherId} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LinksExpandButton({ id, links }: { id: string; links: Link[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover
+      trigger="click"
+      placement="top"
+      open={open}
+      onOpenChange={setOpen}
+      content={<LinksPanelContent id={id} links={links} />}
+    >
+      <span
+        role="button"
+        title={links.length > 0 ? `${links.length} link${links.length === 1 ? '' : 's'}` : 'No links yet'}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 18,
+          height: 16,
+          borderRadius: 4,
+          cursor: 'pointer',
+          flexShrink: 0,
+          color: links.length > 0 ? '#8c8c8c' : '#434343',
+        }}
+      >
+        <LinkOutlined style={{ fontSize: 11 }} />
+      </span>
+    </Popover>
+  );
+}
+
+// Bottom remarks indicator (D-MEMORY-015 feature, reused): read-only preview
+// of the same tone-colored cards RemarkPanel renders in the drawer, minus
+// the edit affordance — editing stays a drawer-only action per T-MEMORY-045
+// scope ("только индикатор + разворот на чтение").
+function RemarksPanelContent({ remarks }: { remarks: RemarkPreview[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 280, maxHeight: 320, overflowY: 'auto' }}>
+      {remarks.map((r) => {
+        const meta = TONE_META[r.tone];
+        return (
+          <div
+            key={r.id}
+            style={{
+              border: `1px solid ${meta.color}55`, borderLeft: `3px solid ${meta.color}`,
+              borderRadius: 4, padding: '6px 8px', background: 'rgba(255,255,255,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <span style={{ color: meta.color }}>{meta.icon}</span>
+              <Typography.Text style={{ fontSize: 10, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                {meta.label}
+              </Typography.Text>
+            </div>
+            {r.body && (
+              <Typography.Paragraph style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                {r.body}
+              </Typography.Paragraph>
+            )}
+            <Typography.Text type="secondary" style={{ fontSize: 10 }}>
+              <Timestamp value={r.updatedAt ?? r.createdAt} />
+            </Typography.Text>
+          </div>
+        );
+      })}
+      <Typography.Text type="secondary" style={{ fontSize: 10 }}>
+        Edit remarks from the record&apos;s detail drawer.
+      </Typography.Text>
+    </div>
+  );
+}
+
+function RemarksIndicator({ remarks }: { remarks: RemarkPreview[] }) {
+  const [open, setOpen] = useState(false);
+  // Only rendered for decisions that actually have remarks — no indicator
+  // at all otherwise, per acceptance criteria (not a zero-state badge).
+  if (remarks.length === 0) return null;
+  const meta = TONE_META[remarks[0].tone];
+  return (
+    <Popover trigger="click" placement="bottom" open={open} onOpenChange={setOpen} content={<RemarksPanelContent remarks={remarks} />}>
+      <span
+        role="button"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer',
+          border: `1px solid ${meta.color}66`, borderRadius: 10, padding: '1px 6px',
+          color: meta.color, fontSize: 10, flexShrink: 0,
+        }}
+      >
+        {meta.icon}
+        {remarks.length}
+      </span>
+    </Popover>
+  );
+}
+
 function DecisionNode({ data }: NodeProps) {
-  const nd = data as { node: GraphNode; satellites: GraphNode[] };
+  const nd = data as { node: GraphNode; satellites: GraphNode[]; links: Link[]; remarks: RemarkPreview[] };
   const n = nd.node;
   const satellites = nd.satellites;
+  const links = nd.links;
+  const remarks = nd.remarks;
   const status = n.status ?? 'active';
   const color = STATUS_COLOR[status] ?? '#595959';
   const borderColor = status === 'rejected' ? REJECTED_BORDER : color;
@@ -181,12 +367,18 @@ function DecisionNode({ data }: NodeProps) {
       }}
     >
       <Handle type="target" position={Position.Left} style={{ background: color }} />
-      <Typography.Text
-        style={{ fontSize: 13, color: '#e8e8e8', display: 'block', lineHeight: 1.3, marginBottom: 4 }}
-        ellipsis={{ tooltip: n.title }}
-      >
-        {n.title}
-      </Typography.Text>
+
+      {/* Top-expand: links/related objects of this decision, read in place. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 4 }}>
+        <Typography.Text
+          style={{ fontSize: 13, color: '#e8e8e8', flex: 1, minWidth: 0, lineHeight: 1.3 }}
+          ellipsis={{ tooltip: n.title }}
+        >
+          {n.title}
+        </Typography.Text>
+        <LinksExpandButton id={n.id} links={links} />
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
           {n.id}
@@ -196,31 +388,71 @@ function DecisionNode({ data }: NodeProps) {
         </Typography.Text>
       </div>
 
-      {/* Satellites: linked tasks/memory/artifacts hanging off this decision */}
-      {satellites.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 'auto', paddingTop: 6, flexWrap: 'wrap' }}>
-          {shown.map((s) => (
-            <Tooltip key={s.id} title={`${s.kind}: ${s.title}`}>
-              <div
-                onClick={(e) => { e.stopPropagation(); setSelectedRecord(s.id, s.kind.toLowerCase()); }}
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: '50%',
-                  background: SATELLITE_KIND_COLOR[s.kind] ?? '#595959',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              />
-            </Tooltip>
-          ))}
-          {overflow > 0 && (
-            <Typography.Text style={{ fontSize: 9, color: '#8c8c8c' }}>+{overflow}</Typography.Text>
-          )}
+      {/* Satellites (left) + bottom remarks indicator (right, only if any remarks exist) */}
+      {(satellites.length > 0 || remarks.length > 0) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 'auto', paddingTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            {shown.map((s) => (
+              <Tooltip key={s.id} title={`${s.kind}: ${s.title}`}>
+                <div
+                  onClick={(e) => { e.stopPropagation(); setSelectedRecord(s.id, s.kind.toLowerCase()); }}
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: '50%',
+                    background: SATELLITE_KIND_COLOR[s.kind] ?? '#595959',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                />
+              </Tooltip>
+            ))}
+            {overflow > 0 && (
+              <Typography.Text style={{ fontSize: 9, color: '#8c8c8c' }}>+{overflow}</Typography.Text>
+            )}
+          </div>
+          <RemarksIndicator remarks={remarks} />
         </div>
       )}
       <Handle type="source" position={Position.Right} style={{ background: color }} />
     </div>
+  );
+}
+
+// T-MEMORY-045 "Show tasks" toggle: task create/done events plotted on the
+// same time axis as decisions, rendered as small pins (not full cards) on a
+// lane above the main line so they never visually blend with decision
+// nodes. Created = hollow, done = filled — same color, different fill, so
+// "task" reads at a glance without inventing a second palette.
+function TaskMarkerNode({ data }: NodeProps) {
+  const td = data as { marker: TaskMarker };
+  const m = td.marker;
+  const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
+  const Icon = m.kind === 'done' ? CheckCircleOutlined : PlusCircleOutlined;
+  const label = m.kind === 'done' ? 'Completed' : 'Created';
+
+  return (
+    <Tooltip title={`${label}: ${m.title} (${m.taskId})`}>
+      <div
+        onClick={(e) => { e.stopPropagation(); setSelectedRecord(m.taskId, 'task'); }}
+        style={{
+          width: TASK_MARKER_SIZE,
+          height: TASK_MARKER_SIZE,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: m.kind === 'done' ? TASK_MARKER_COLOR : '#1f1f1f',
+          border: `2px solid ${TASK_MARKER_COLOR}`,
+          color: m.kind === 'done' ? '#141414' : TASK_MARKER_COLOR,
+          cursor: 'pointer',
+          fontSize: 11,
+          boxSizing: 'border-box',
+        }}
+      >
+        <Icon />
+      </div>
+    </Tooltip>
   );
 }
 
@@ -246,18 +478,27 @@ function GapBreakNode({ data }: NodeProps) {
   );
 }
 
-const NODE_TYPES = { decision: DecisionNode, tick: TickNode, gapBreak: GapBreakNode };
+const NODE_TYPES = { decision: DecisionNode, tick: TickNode, gapBreak: GapBreakNode, taskMarker: TaskMarkerNode };
 
 interface Props {
   nodes: GraphNode[];
   edges: GraphEdge[];
   loading?: boolean;
+  /** Project slug — needed to batch-fetch links/remarks/task-events for the whole timeline in one shot each (T-MEMORY-045). */
+  projectSlug: string | null;
+  /** "Show tasks" toggle state, owned by the parent (default off) — see ProjectGraphView. */
+  showTasks: boolean;
 }
 
-export function DecisionTimeline({ nodes, edges, loading }: Props) {
+export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks }: Props) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [centerLabel, setCenterLabel] = useState<string | null>(null);
+
+  // Fetched once per (projectSlug, showTasks) — not per rendered node. See
+  // useTimelineOverlay.ts for why this satisfies the "no N+1" requirement.
+  const overlay = useTimelineOverlay(projectSlug, showTasks);
+
   const { flowNodes, flowEdges, decisionCount, timePoints } = useMemo(() => {
     const decisions = nodes
       .filter((n) => n.kind === 'DECISION')
@@ -273,6 +514,9 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
     // Satellites: any other record (task/item/artifact) linked to a decision
     // by any relation — rendered as small dots on the decision node itself
     // rather than as separate nodes, so the main spine stays readable.
+    // "annotates" edges are excluded — those are remarks, and now have their
+    // own dedicated bottom indicator (T-MEMORY-045), so showing them again
+    // as a generic dot here would just be the same fact twice.
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const satellitesByDecision = new Map<string, GraphNode[]>();
     const addSatellite = (decisionId: string, satellite: GraphNode) => {
@@ -283,6 +527,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       satellitesByDecision.set(decisionId, list);
     };
     for (const e of edges) {
+      if (e.relation === 'annotates') continue;
       const fromNode = nodeById.get(e.from);
       const toNode = nodeById.get(e.to);
       if (!fromNode || !toNode) continue;
@@ -293,7 +538,25 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       }
     }
 
-    const layout = computeTimeLayout(decisions);
+    // Merge decisions with task create/done markers (when the toggle is on)
+    // into one time-sorted sequence so both share the exact same real-time /
+    // gap-compressed axis — see computeTimeLayout's per-pair spacing floor.
+    const taskEntries: TimelineEntry[] = overlay.taskMarkers.map((m) => ({
+      id: `task-${m.id}`,
+      createdAt: m.createdAt,
+      kind: 'task' as const,
+    }));
+    const decisionEntries: TimelineEntry[] = decisions.map((d) => ({
+      id: d.id,
+      createdAt: d.createdAt,
+      kind: 'decision' as const,
+      status: d.status,
+    }));
+    const timelineEntries = [...decisionEntries, ...taskEntries].sort(
+      (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+    );
+
+    const layout = computeTimeLayout(timelineEntries);
 
     // Explicit width/height on the node objects themselves (not just CSS on
     // the custom component) — MiniMap draws from these immediately, without
@@ -307,8 +570,26 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       position: { x: (layout.xById.get(n.id) ?? 0) - NODE_W / 2, y: layout.yById.get(n.id) ?? 0 },
       width: NODE_W,
       height: NODE_H,
-      data: { node: n, satellites: satellitesByDecision.get(n.id) ?? [] },
+      data: {
+        node: n,
+        satellites: satellitesByDecision.get(n.id) ?? [],
+        links: overlay.linksByRecord.get(n.id) ?? [],
+        remarks: overlay.remarksByTarget.get(n.id) ?? [],
+      },
     }));
+
+    const taskMarkerNodes: Node[] = overlay.taskMarkers.map((m) => {
+      const id = `task-${m.id}`;
+      return {
+        id,
+        type: 'taskMarker',
+        position: { x: (layout.xById.get(id) ?? 0) - TASK_MARKER_SIZE / 2, y: layout.yById.get(id) ?? 0 },
+        width: TASK_MARKER_SIZE,
+        height: TASK_MARKER_SIZE,
+        selectable: false,
+        data: { marker: m },
+      };
+    });
 
     const tickNodes: Node[] = layout.tickMarkers.map((t) => ({
       id: `tick-${t.id}`,
@@ -382,12 +663,12 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       .sort((a, b) => a.x - b.x);
 
     return {
-      flowNodes: [...decisionNodes, ...tickNodes, ...gapNodes],
+      flowNodes: [...decisionNodes, ...taskMarkerNodes, ...tickNodes, ...gapNodes],
       flowEdges: rawEdges,
       decisionCount: decisions.length,
       timePoints,
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, overlay]);
 
   // Owner: "когда мы его двигаем, должен появляться хотя бы тултип, куда мы
   // по дате приехали" — panning or seeking via the MiniMap fires the same
@@ -466,6 +747,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
         <Controls style={{ background: '#1f1f1f', border: '1px solid #303030' }} />
         <MiniMap
           nodeColor={(n) => {
+            if (n.type === 'taskMarker') return TASK_MARKER_COLOR;
             if (n.type !== 'decision') return '#3a3a3a';
             const status = (n.data as { node?: GraphNode })?.node?.status ?? 'active';
             return STATUS_COLOR[status] ?? '#595959';
@@ -529,6 +811,25 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
             <Typography.Text style={{ fontSize: 11 }}>{kind.toLowerCase()}</Typography.Text>
           </div>
         ))}
+        <Typography.Text type="secondary" style={{ fontSize: 10, display: 'block' }}>
+          <LinkOutlined style={{ marginRight: 4 }} />
+          on a card opens its links in place · colored badge = has remarks
+        </Typography.Text>
+        {showTasks && (
+          <>
+            <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
+              Tasks (above axis)
+            </Typography.Text>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <PlusCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
+              <Typography.Text style={{ fontSize: 11 }}>created</Typography.Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CheckCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
+              <Typography.Text style={{ fontSize: 11 }}>done</Typography.Text>
+            </div>
+          </>
+        )}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
           {decisionCount} decision{decisionCount === 1 ? '' : 's'} · axis below shows real dates, ⋯Nd⋯ = compressed gap
         </Typography.Text>

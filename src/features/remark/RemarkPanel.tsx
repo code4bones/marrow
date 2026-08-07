@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { EditOutlined, FrownOutlined, MessageOutlined, SmileOutlined } from '@ant-design/icons';
+import { EditOutlined, MessageOutlined } from '@ant-design/icons';
 import { Button, Input, Space, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { CREATE_MEMORY, GET_MEMORY, GET_RECORD_LINKS, UPDATE_MEMORY } from '../../shared/api/queries';
 import { Timestamp } from '../../shared/ui/Timestamp';
+import { TONE_META, toneOf, type Tone } from './tone';
 
 const { Text, Paragraph } = Typography;
 
@@ -13,38 +14,9 @@ const { Text, Paragraph } = Typography;
 // no backend change needed, this reuses memory.create/memory.update/links
 // (T-MEMORY-032) end to end. Both strong tones get tagged read-first;
 // surfacing read-first ahead of everything else in search/preflight is a
-// separate backend follow-up, not done here.
-type Tone = 'mistake' | 'praise' | 'note';
-
-const TONE_META: Record<Tone, { label: string; icon: React.ReactNode; color: string; placeholder: string; title: string }> = {
-  mistake: {
-    label: 'I was wrong',
-    icon: <FrownOutlined />,
-    color: '#a61d24',
-    placeholder: 'What did I get wrong, and why?',
-    title: 'Remark: I was wrong',
-  },
-  praise: {
-    label: 'Genius — keep in mind',
-    icon: <SmileOutlined />,
-    color: '#389e0d',
-    placeholder: 'What was right, and why keep it in mind?',
-    title: 'Remark: keep in mind',
-  },
-  note: {
-    label: 'Note',
-    icon: <MessageOutlined />,
-    color: '#8c8c8c',
-    placeholder: 'Add a remark…',
-    title: 'Remark',
-  },
-};
-
-function toneOf(tags: string[]): Tone {
-  if (tags.includes('tone:mistake')) return 'mistake';
-  if (tags.includes('tone:praise')) return 'praise';
-  return 'note';
-}
+// separate backend follow-up, not done here. Tone/TONE_META/toneOf live in
+// ./tone.tsx (not here) so this file keeps exporting only its component —
+// T-MEMORY-045's timeline bottom remark indicator imports from there too.
 
 function ToneButtons({ value, onChange, compact }: { value: Tone; onChange: (t: Tone) => void; compact?: boolean }) {
   return (

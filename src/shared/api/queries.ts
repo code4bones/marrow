@@ -210,6 +210,22 @@ export const GET_LINKS_PAGE = gql`
   }
 `;
 
+// T-MEMORY-045: batched, project-scoped (not per-decision) fetch of remark
+// bodies for the timeline's bottom remark indicators. Reuses memoryItemsPage
+// (type: "remark") rather than a new backend field — the only addition over
+// GET_MEMORY_ITEMS_PAGE is selecting `body`, kept as a separate query so the
+// Memory list page's payload (which uses GET_MEMORY_ITEMS_PAGE across all
+// item types, often 100 rows) doesn't grow by picking up bodies it never
+// asked for.
+export const GET_PROJECT_REMARKS_PAGE = gql`
+  query GetProjectRemarksPage($project: String, $limit: Int!, $offset: Int!) {
+    memoryItemsPage(project: $project, type: "remark", pagination: { limit: $limit, offset: $offset }) {
+      items { id title body tags createdAt updatedAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
+    }
+  }
+`;
+
 export const GET_ARTIFACT_TEXT = gql`
   query GetArtifactText($id: ID!) {
     artifactText(id: $id, maxLines: 300) {
@@ -436,6 +452,36 @@ export const ADD_TASK_NOTE = gql`
       link { id fromId toId relation }
       event { id type }
     }
+  }
+`;
+
+// ── Git credentials (T-MEMORY-044) ──────────────────────────────────────────────
+
+export const GET_GIT_CREDENTIALS = gql`
+  query GetGitCredentials {
+    gitCredentials {
+      id host label createdAt lastUsedAt
+    }
+  }
+`;
+
+export const CREATE_GIT_CREDENTIAL = gql`
+  mutation CreateGitCredential($host: String!, $label: String!, $token: String!) {
+    createGitCredential(host: $host, label: $label, token: $token) {
+      id host label createdAt lastUsedAt
+    }
+  }
+`;
+
+export const DELETE_GIT_CREDENTIAL = gql`
+  mutation DeleteGitCredential($id: ID!) {
+    deleteGitCredential(id: $id)
+  }
+`;
+
+export const GET_GIT_PIPELINE_STATUS = gql`
+  query GetGitPipelineStatus($host: String!, $project: String!, $ref: String) {
+    gitPipelineStatus(host: $host, project: $project, ref: $ref)
   }
 `;
 

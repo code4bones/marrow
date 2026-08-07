@@ -1,3 +1,5 @@
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
+import { DeleteOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -7,6 +9,8 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
+  Select,
   Table,
   Tabs,
   Tag,
@@ -22,6 +26,13 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
 import { type PendingRegistration, useAuthStore } from '../../shared/model/auth.store';
+import {
+  CREATE_GIT_CREDENTIAL,
+  DELETE_GIT_CREDENTIAL,
+  GET_GIT_CREDENTIALS,
+  GET_GIT_PIPELINE_STATUS,
+} from '../../shared/api/queries';
+import type { GitCredential } from '../../shared/model/types';
 
 const { Text, Paragraph } = Typography;
 
@@ -441,6 +452,175 @@ function TwoFactorSection() {
   );
 }
 
+interface CreateGitCredentialValues {
+  host: string;
+  label: string;
+  token: string;
+}
+
+/** Delete button for a single saved git credential, gated behind a Popconfirm — same lightweight destructive-action pattern as DeleteTaskButton. */
+function DeleteGitCredentialButton({ id, host, onDone }: { id: string; host: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [mutate, { loading }] = useMutation(DELETE_GIT_CREDENTIAL, {
+    onCompleted: () => {
+      message.success(`Removed credential for ${host}`);
+      setOpen(false);
+      onDone();
+    },
+    onError: (err) => message.error(err.message),
+  });
+
+  return (
+    <Popconfirm
+      open={open}
+      onOpenChange={setOpen}
+      title={`Remove credential for ${host}?`}
+      description="The saved token is deleted immediately and can't be recovered. You can add a new one anytime."
+      okText="Delete"
+      okButtonProps={{ danger: true, loading }}
+      onConfirm={() => mutate({ variables: { id } })}
+    >
+      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+    </Popconfirm>
+  );
+}
+
+const gitCredentialColumns = (
+  onDeleted: () => void,
+): ColumnsType<GitCredential> => [
+  { title: 'Host', dataIndex: 'host', render: (v) => <Text code>{v}</Text> },
+  { title: 'Label', dataIndex: 'label' },
+  { title: 'Added', dataIndex: 'createdAt', width: 140, render: (v) => <Timestamp value={v} /> },
+  { title: 'Last used', dataIndex: 'lastUsedAt', width: 140, render: (v) => <Timestamp value={v} /> },
+  {
+    title: '',
+    key: 'actions',
+    width: 48,
+    render: (_, row) => <DeleteGitCredentialButton id={row.id} host={row.host} onDone={onDeleted} />,
+  },
+];
+
+/**
+ * Read-only pipeline-status lookup against a saved git host — a thin, optional
+ * companion to the credential list, not a CI dashboard. It only exists to
+ * exercise `gitPipelineStatus`; it never triggers or cancels anything.
+ */
+function PipelineStatusChecker({ hosts }: { hosts: GitCredential[] }) {
+  const [host, setHost] = useState<string | undefined>(undefined);
+  const [project, setProject] = useState('');
+  const [ref, setRef] = useState('');
+  const [run, { data, loading, error }] = useLazyQuery<{ gitPipelineStatus: unknown }>(GET_GIT_PIPELINE_STATUS, {
+    fetchPolicy: 'network-only',
+  });
+
+  const canRun = !!host && project.trim().length > 0;
+
+  return (
+    <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #303030' }}>
+      <Text strong style={{ display: 'block', marginBottom: 4 }}>
+        Check pipeline status
+      </Text>
+      <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
+        Looks up the latest pipeline status for a project using the credential saved for that host. The token stays
+        on the server; only the structured result comes back here.
+      </Text>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <Select
+          placeholder="Host"
+          style={{ width: 220 }}
+          value={host}
+          onChange={setHost}
+          options={hosts.map((h) => ({ value: h.host, label: `${h.host} (${h.label})` }))}
+          notFoundContent="Add a git host below first"
+        />
+        <Input placeholder="Project (e.g. group/project)" value={project} onChange={(e) => setProject(e.target.value)} style={{ width: 220 }} />
+        <Input placeholder="Ref (optional, defaults to default branch)" value={ref} onChange={(e) => setRef(e.target.value)} style={{ width: 240 }} />
+        <Button
+          type="primary"
+          loading={loading}
+          disabled={!canRun}
+          onClick={() => void run({ variables: { host, project: project.trim(), ref: ref.trim() || undefined } })}
+        >
+          Check status
+        </Button>
+      </div>
+      {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} showIcon />}
+      {data && <CodeBlock code={JSON.stringify(data.gitPipelineStatus, null, 2)} />}
+    </div>
+  );
+}
+
+function GitHostsSection() {
+  const { data, loading, error, refetch } = useQuery<{ gitCredentials: GitCredential[] }>(GET_GIT_CREDENTIALS);
+  const [form] = Form.useForm<CreateGitCredentialValues>();
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const [createCredential, { loading: creating }] = useMutation(CREATE_GIT_CREDENTIAL, {
+    onCompleted: () => {
+      message.success('Git host added.');
+      form.resetFields();
+      setCreateError(null);
+      void refetch();
+    },
+    onError: (err) => setCreateError(err.message),
+  });
+
+  const onFinish = (values: CreateGitCredentialValues) => {
+    setCreateError(null);
+    void createCredential({
+      variables: { host: values.host.trim(), label: values.label.trim(), token: values.token },
+    });
+  };
+
+  const credentials = data?.gitCredentials ?? [];
+
+  return (
+    <Card title="Git hosts" size="small" style={{ marginBottom: 16 }}>
+      <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
+        Personal access tokens for GitLab (or similar) instances, used server-side to check pipeline/job status on
+        your behalf. Tokens are encrypted at rest and never shown again after you add them — the same one-time
+        principle as recovery codes and the 2FA secret.
+      </Paragraph>
+
+      {error && <Alert type="error" message={error.message} style={{ marginBottom: 16 }} showIcon />}
+
+      <Table<GitCredential>
+        rowKey="id"
+        size="small"
+        loading={loading}
+        dataSource={credentials}
+        columns={gitCredentialColumns(() => void refetch())}
+        pagination={false}
+        style={{ marginBottom: 20 }}
+        locale={{ emptyText: <Empty description="No git hosts added yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+      />
+
+      <Text strong style={{ display: 'block', marginBottom: 12 }}>
+        Add a git host
+      </Text>
+      {createError && <Alert type="error" message={createError} style={{ marginBottom: 16 }} showIcon />}
+      <Form form={form} layout="vertical" onFinish={onFinish} disabled={creating} style={{ maxWidth: 360 }}>
+        <Form.Item name="host" label="Host" rules={[{ required: true, message: 'Host is required' }]}>
+          <Input placeholder="gitlab.example.com" autoComplete="off" />
+        </Form.Item>
+        <Form.Item name="label" label="Label" rules={[{ required: true, message: 'Label is required' }]}>
+          <Input placeholder="e.g. self-hosted runners box" autoComplete="off" />
+        </Form.Item>
+        <Form.Item name="token" label="Personal access token" rules={[{ required: true, message: 'Token is required' }]}>
+          <Input.Password placeholder="glpat-…" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button type="primary" htmlType="submit" loading={creating}>
+            Add git host
+          </Button>
+        </Form.Item>
+      </Form>
+
+      {credentials.length > 0 && <PipelineStatusChecker hosts={credentials} />}
+    </Card>
+  );
+}
+
 const approvalsColumns: ColumnsType<PendingRegistration> = [
   { title: 'Email', dataIndex: 'email' },
   { title: 'Registered', dataIndex: 'createdAt', width: 180, render: (v) => <Timestamp value={v} /> },
@@ -550,6 +730,7 @@ export function ProfilePage() {
       <ConnectSection />
       <AccountSection />
       <TwoFactorSection />
+      <GitHostsSection />
       {user?.role === 'admin' && <ApprovalsSection />}
     </PageLayout>
   );

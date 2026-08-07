@@ -93,6 +93,20 @@ export interface GatewayClient {
   updatedAt: string | null;
 }
 
+/**
+ * A saved git host credential (e.g. a GitLab personal access token). The
+ * token value itself is never part of this type — the API never returns it
+ * after creation, same write-once principle as recovery codes / the TOTP
+ * secret (see TotpEnrollWizard).
+ */
+export interface GitCredential {
+  id: string;
+  host: string;
+  label: string;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
 export interface Decision {
   id: string;
   projectId: string | null;
