@@ -16,17 +16,17 @@ stages:
 #   front-vX.Y.Z     -> builds + deploys front/ only
 # A plain vX.Y.Z tag (old habit) triggers nothing here.
 #
-# Deploy targets and runner tags (pmem_back/pmem_front) are UNCHANGED from
-# before the monorepo merge — renaming those is a separate, deliberate step
-# (not part of this reorg), see D-MEMORY-023 / T-MEMORY-050. `tags:` can't
-# be sourced from a CI/CD variable (GitLab resolves runner tags before
-# variable expansion), so those two stay literal until that renaming step.
+# The old pmem_back/pmem_front runner tags were project runners locked to
+# the previous separate repos — prj/marrow can't see them. RUNNER_BACK/
+# RUNNER_FRONT (group CI/CD variables) point at whatever runner tag(s) are
+# actually available to this project now.
 #
 # Everything host/path/domain-specific now comes from group-level CI/CD
 # variables (Settings > CI/CD > Variables on the marrow group) instead of
 # being hardcoded here, ahead of this repo also going out to a public
 # GitHub mirror: DEPLOY_ENV_FILE, DEPLOY_ARTIFACT_DIR, DEPLOY_LOG_DIR,
-# FRONT_DEPLOY_PATH, PROD_DOMAIN, BACKEND_CONTAINER_NAME.
+# FRONT_DEPLOY_PATH, PROD_DOMAIN, BACKEND_CONTAINER_NAME, RUNNER_BACK,
+# RUNNER_FRONT.
 
 variables:
   BACKEND_IMAGE_TAG: "$BACKEND_CONTAINER_NAME-build:$CI_PIPELINE_ID"
@@ -37,7 +37,7 @@ variables:
 backend:build:
   stage: build
   tags:
-    - pmem_back
+    - $RUNNER_BACK
   rules:
     - if: '$CI_COMMIT_TAG =~ /^backend-v/'
     - if: '$CI_MERGE_REQUEST_ID'
@@ -51,7 +51,7 @@ backend:build:
 backend:smoke:
   stage: smoke
   tags:
-    - pmem_back
+    - $RUNNER_BACK
   when: manual
   script:
     - cd backend
@@ -64,7 +64,7 @@ backend:smoke:
 backend:deploy:
   stage: deploy
   tags:
-    - pmem_back
+    - $RUNNER_BACK
   rules:
     - if: '$CI_COMMIT_TAG =~ /^backend-v/'
   environment:
@@ -88,7 +88,7 @@ backend:deploy:
 front:build:
   stage: build
   tags:
-    - pmem_front
+    - $RUNNER_FRONT
   rules:
     - if: '$CI_COMMIT_TAG =~ /^front-v/'
     - if: '$CI_MERGE_REQUEST_ID'
@@ -110,7 +110,7 @@ front:build:
 front:deploy:
   stage: deploy
   tags:
-    - pmem_front
+    - $RUNNER_FRONT
   needs:
     - front:build
   rules:
