@@ -624,8 +624,98 @@ mutation DeleteProject($slug: String!) {
   record and return `deletedLinks` where applicable.
 - For `deleteProject`, try `cascade=false` first and display
   `PROJECT_NOT_EMPTY` details before allowing cascade delete.
-- Subscriptions are intentionally not part of the current GraphQL slice. Add
-  them only after choosing the concrete transport and reconnect semantics.
+
+## Subscriptions (T-MEMORY-042): live updates over WS
+
+One field, `gatewayEvents`, is the entire live-update surface -- deliberately
+not per-entity-type subscriptions (owner decision). Every mutation across
+every domain (project/memory/task/decision/artifact/link/event) already
+passes through `PgToolService.recordEventForProject()`
+(`src/gateway/pg-tool-service.ts`), so hooking a single publish there covers
+the whole gateway with no other call site needing to change. The in-process
+fan-out is `src/gateway/event-bus.ts`'s `gatewayEvents` (a
+`graphql-subscriptions` `PubSub` singleton); the WS transport is
+`graphql-ws`'s `useServer` (`graphql-ws/use/ws`) wired into the same
+`node:http` server `startGatewayServer` already runs, via one `"upgrade"`
+handler (`src/gateway/http-server.ts`) -- there is no separate WS port.
+
+```graphql
+type GatewayEventEnvelope {
+  event: String!
+  payload: JSON!
+}
+
+type Subscription {
+  gatewayEvents: GatewayEventEnvelope!
+}
+```
+
+`event` mirrors the underlying `events.type` column (e.g. `"item.created"`,
+`"task.updated"`, `"decision.archived"`). `payload` is exactly `eventOut()`'s
+shape -- the same fields `event.list`/`event.get`/`Event` already expose over
+HTTP (`id`, `projectId`, `type`, `title`, `body`, `relatedId`, `credentialId`,
+`createdAt`). For a mutation like `memory.create`, `payload.relatedId` is the
+mutated record's own id (`I-...`); `payload.id` is the event row's own id.
+For an `event.record`-created event (including a common-scope one), there is
+no separate mutated record, so `payload.id` is the thing itself.
+
+### Connecting
+
+```text
+GET/Upgrade ${GW_ENDPOINT}/graphql   (scheme ws:// or wss://)
+Sec-WebSocket-Protocol: graphql-transport-ws
+```
+
+Same path as the HTTP GraphQL endpoint -- `isGraphqlRequestPath()` decides
+which upgrade requests the gateway's WS server takes over; anything else has
+its socket destroyed immediately. **Session-cookie auth only.** The `pmem_session`
+cookie travels on the WS upgrade request exactly like any other same-origin
+HTTP request (browsers attach cookies to the WS handshake automatically), and
+`identifyFromRequest()` (`src/gateway/auth.ts`) resolves it the same way it
+does for `/auth/*` and `/graphql` HTTP requests. The static `MCP_TOKEN`
+bearer and OAuth bearers are **never** accepted for subscriptions -- this is
+a PMemUI-only feature, not an agent channel; an MCP agent doesn't need a live
+feed of writes it just made itself. A connection with no session, or an
+invalid/expired one, is refused inside `graphql-ws`'s `onConnect` callback
+(`useServer({ onConnect })` in `http-server.ts`): the socket closes with code
+`4403` before the GraphQL-WS handshake ever reaches `connection_ack`.
+
+### Filtering
+
+Every open connection only ever sees the envelopes its own session is
+allowed to see, mirroring `assertProjectMember`'s exact bypass rules
+(`docs/AUTH.md`'s "Project membership" section, `T-MEMORY-029` /
+`D-MEMORY-007`):
+
+- `role=admin` -- sees every envelope, unfiltered.
+- A common-scope event (`payload.projectId === null`) -- visible to anyone
+  with a subscription, regardless of role.
+- `role=member` -- visible only if `(payload.projectId, sessionUserId)` has a
+  `project_members` row, exactly the same check `project.get`/
+  `memory.search{project}`/etc. already use for REST/MCP/GraphQL queries and
+  mutations (`PgToolService.isProjectVisibleToSession()`, extracted from the
+  same query `assertProjectMember()` uses).
+
+Filtering happens server-side, per connection, before an envelope is ever
+sent down that connection's socket -- a member never receives, queues, or can
+observe (even transiently) an envelope for a project it isn't a member of.
+
+### Example
+
+```graphql
+subscription LiveFeed {
+  gatewayEvents {
+    event
+    payload
+  }
+}
+```
+
+A client (PMemUI's `GraphQLWsLink` in `apollo.ts`, or any `graphql-ws`
+client) opens one subscription to this field and, on each envelope, refetches
+whatever query populated the screen currently showing -- the payload is
+enough to route ("something in this project changed, of this type") but is
+not intended for optimistic cache patching; do a real refetch.
 
 ## Authorization and scope errors
 
@@ -688,4 +778,13 @@ Build and run the GraphQL smoke test:
 ```bash
 npm run build
 npm run smoke:gateway:graphql
+```
+
+The WS subscription transport has its own smoke test against a real
+gateway/Postgres instance (admin sees everything, a `role=member` session is
+filtered by `project_members`, an unauthenticated upgrade is refused before
+`connection_ack`):
+
+```bash
+npm run smoke:gateway:subscriptions
 ```

@@ -1,10 +1,12 @@
 import { ApolloServer, HeaderMap, type HTTPGraphQLResponse } from "@apollo/server";
+import { makeExecutableSchema } from "@graphql-tools/schema";
 import { GraphQLError, GraphQLScalarType, Kind, type ValueNode } from "graphql";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { AppError } from "../shared/errors.js";
 import type { ToolResponse } from "../shared/mcp/tool-response.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import type { GatewayRequestContext } from "./pg-tool-service.js";
+import { GATEWAY_EVENT_TOPIC, gatewayEvents, type GatewayEventEnvelope } from "./event-bus.js";
 
 type Row = Record<string, unknown>;
 
@@ -38,6 +40,18 @@ export interface GatewayGraphqlToolService {
 export interface GatewayGraphqlContext {
   service: GatewayGraphqlToolService;
   requestContext: GatewayRequestContext;
+}
+
+// T-MEMORY-042: the resolver context graphql-ws builds per WS connection
+// (see http-server.ts's useServer({ context }) wiring) -- distinct from
+// GatewayGraphqlContext above, which is per-HTTP-request for queries and
+// mutations. Subscriptions are session-only (no static token, no OAuth --
+// see AUTH.md), so sessionIdentity is always present by the time this
+// context is built: http-server.ts's onConnect already rejected the WS
+// upgrade for any connection that didn't resolve a valid session.
+export interface GatewaySubscriptionContext {
+  sessionIdentity: { userId: string; role: string; email: string };
+  isProjectVisible(projectId: string | null): Promise<boolean>;
 }
 
 export interface GatewayGraphqlServer {
@@ -222,6 +236,21 @@ const typeDefs = `#graphql
 
     createLink(input: CreateLinkInput!): Link!
     deleteLink(id: ID!, reason: String): DeleteLinkResult!
+  }
+
+  # T-MEMORY-042: single unified live-update channel over WS -- deliberately
+  # not per-entity-type subscriptions (owner decision). event mirrors the
+  # underlying events.type column (e.g. "item.created", "task.updated");
+  # payload reuses eventOut()'s shape, unchanged from what event.list /
+  # Event already expose over HTTP. See docs/GRAPHQL_API.md and
+  # src/gateway/event-bus.ts.
+  type GatewayEventEnvelope {
+    event: String!
+    payload: JSON!
+  }
+
+  type Subscription {
+    gatewayEvents: GatewayEventEnvelope!
   }
 
   input ProjectSummaryLimitsInput {
@@ -930,13 +959,56 @@ const resolvers = {
       (await callTool<Row>(context, "link.create", cleanInput(args.input as Row))).link,
     deleteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "link.delete", cleanInput(args))
+  },
+  Subscription: {
+    gatewayEvents: {
+      subscribe: (_parent: unknown, _args: Row, context: GatewaySubscriptionContext) => filteredGatewayEvents(context),
+      // Default field resolution would look for a `gatewayEvents` key on the
+      // yielded root value; the envelopes flowing out of the PubSub (and
+      // through filteredGatewayEvents below) already ARE the
+      // GatewayEventEnvelope value, so resolve them as-is.
+      resolve: (envelope: GatewayEventEnvelope) => envelope
+    }
   }
 };
 
+// T-MEMORY-042: per the task's WS auth section -- one async generator per
+// open subscription, re-yielding only the envelopes this connection's
+// session is allowed to see. Mirrors assertProjectMember's exact bypass
+// rules (pg-tool-service.ts): role=admin or a common-scope event
+// (payload.projectId == null) always passes; role=member is checked against
+// project_members via isProjectVisible (PgToolService.isProjectVisibleToSession).
+async function* filteredGatewayEvents(context: GatewaySubscriptionContext): AsyncGenerator<GatewayEventEnvelope> {
+  // Narrowed to AsyncIterable (not graphql-subscriptions' own
+  // PubSubAsyncIterableIterator type): its throw() resolves Promise<never>
+  // rather than Promise<IteratorResult<T>>, which trips up TS's inferred
+  // return type for this generator's own throw() under `for await` --
+  // for-await only actually needs [Symbol.asyncIterator]/next(), so
+  // AsyncIterable is both sufficient and sidesteps the mismatch.
+  const events: AsyncIterable<GatewayEventEnvelope> = gatewayEvents.asyncIterableIterator<GatewayEventEnvelope>(
+    GATEWAY_EVENT_TOPIC
+  );
+  for await (const envelope of events) {
+    const projectId = envelope.payload.projectId;
+    const normalizedProjectId = typeof projectId === "string" ? projectId : null;
+    if (await context.isProjectVisible(normalizedProjectId)) {
+      yield envelope;
+    }
+  }
+}
+
+// Built once via @graphql-tools/schema (a transitive dependency of
+// @apollo/server itself, which uses it internally for its own typeDefs +
+// resolvers constructor overload) so the exact same executable GraphQLSchema
+// object backs both the HTTP ApolloServer below and the WS transport's
+// useServer({ schema }) in http-server.ts -- one schema, one source of
+// truth, instead of building it twice from the same typeDefs/resolvers and
+// hoping they stay in sync.
+export const gatewaySchema = makeExecutableSchema({ typeDefs, resolvers });
+
 export async function createGatewayGraphqlServer(): Promise<GatewayGraphqlServer> {
   const server = new ApolloServer<GatewayGraphqlContext>({
-    typeDefs,
-    resolvers,
+    schema: gatewaySchema,
     introspection: true,
     csrfPrevention: false
   });

@@ -4,6 +4,8 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { WebSocketServer } from "ws";
+import { useServer as useGraphqlWsServer } from "graphql-ws/use/ws";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
 import { staticTokenClientId, type GatewayRequestContext, type PgToolService } from "./pg-tool-service.js";
@@ -22,8 +24,10 @@ import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import {
   ADMIN_GRAPHQL_MUTATION_NAMES,
   createGatewayGraphqlServer,
+  gatewaySchema,
   handleGatewayGraphqlRequest,
-  type GatewayGraphqlServer
+  type GatewayGraphqlServer,
+  type GatewaySubscriptionContext
 } from "./graphql.js";
 
 // In-memory login rate limiter, keyed independently by email and by IP —
@@ -123,6 +127,15 @@ type AuthorizationState =
       grantedTier?: ScopeTier;
     };
 
+// T-MEMORY-042: extra WS connection state stashed by onConnect and read back
+// by context -- graphql-ws's own Extra (socket/request) plus the session
+// identity resolved from the upgrade request's cookie. Present on every
+// connection that reaches context(), since onConnect rejects the handshake
+// before that point for anything without a valid session.
+type GatewayWsExtra = Record<PropertyKey, unknown> & {
+  sessionIdentity?: SessionIdentity;
+};
+
 export async function startGatewayServer(
   service: PgToolService,
   options: GatewayServerOptions
@@ -130,6 +143,69 @@ export async function startGatewayServer(
   const graphql = await createGatewayGraphqlServer();
   const server = createServer((request, response) => {
     void handleRequest(service, options, graphql, request, response);
+  });
+
+  // T-MEMORY-042: live-update WS transport for PMemUI's single
+  // `gatewayEvents` subscription (graphql.ts). noServer:true because this
+  // gateway hand-rolls its own createServer((req,res)=>...) callback above
+  // instead of using a framework -- the WS server never listens on its own
+  // port, it only takes over sockets this process's own "upgrade" handler
+  // hands it below. Session-cookie auth only (never the static MCP_TOKEN or
+  // OAuth) -- see docs/AUTH.md.
+  const wsServer = new WebSocketServer({ noServer: true });
+  const graphqlWs = useGraphqlWsServer<Record<string, unknown>, GatewayWsExtra>(
+    {
+      schema: gatewaySchema,
+      onConnect: async (ctx) => {
+        if (!options.auth) {
+          // No AuthFacade configured at all (e.g. a smoke/test harness that
+          // never passes `auth`) -- subscriptions have nothing to
+          // authenticate against, so refuse every connection rather than
+          // silently granting an unscoped feed.
+          return false;
+        }
+        const request = ctx.extra.request;
+        const sessionIdentity = await options.auth.identifyFromRequest(request);
+        if (!sessionIdentity) {
+          // Reject at the upgrade/handshake level: the client's
+          // GraphQL-WS connection promise rejects and the socket closes
+          // (4403) without ever reaching ConnectionAck.
+          return false;
+        }
+        ctx.extra.sessionIdentity = sessionIdentity;
+        return true;
+      },
+      context: async (ctx): Promise<GatewaySubscriptionContext> => {
+        const sessionIdentity = ctx.extra.sessionIdentity;
+        if (!sessionIdentity) {
+          // Unreachable in practice -- onConnect above always rejects the
+          // handshake before a subscribe can ever reach this point without
+          // a resolved session. Guarded anyway rather than asserted with a
+          // cast, so a future onConnect change fails loudly instead of
+          // leaking an all-visible feed.
+          throw new AppError("UNAUTHORIZED", "Gateway subscription connection is missing a session identity.");
+        }
+        return {
+          sessionIdentity,
+          isProjectVisible: (projectId) =>
+            service.isProjectVisibleToSession(projectId, {
+              role: sessionIdentity.role,
+              userId: sessionIdentity.userId
+            })
+        };
+      }
+    },
+    wsServer
+  );
+
+  server.on("upgrade", (request, socket, head) => {
+    if (!isGraphqlRequestPath(parseRequestUrl(request).pathname)) {
+      socket.destroy();
+      return;
+    }
+    wsServer.handleUpgrade(request, socket, head, (ws) => {
+      wsServer.emit("connection", ws, request);
+    });
   });
 
   try {
@@ -141,6 +217,7 @@ export async function startGatewayServer(
       });
     });
   } catch (error) {
+    await graphqlWs.dispose();
     await graphql.stop();
     throw error;
   }
@@ -151,6 +228,7 @@ export async function startGatewayServer(
     server,
     url: `http://${options.host}:${port}`,
     async stop() {
+      await graphqlWs.dispose();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await graphql.stop();
     }

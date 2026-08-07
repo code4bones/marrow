@@ -10,6 +10,7 @@ import { AppError } from "../shared/errors.js";
 import { commonItemPrefix, createProjectId, projectKeyFromId } from "../shared/ids/id.service.js";
 import { fail, ok, type ToolResponse } from "../shared/mcp/tool-response.js";
 import { defaultGatewayOutputSchema, gatewayToolCanonicalName, gatewayToolSpecs } from "./tool-definitions.js";
+import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "./event-bus.js";
 
 type Row = Record<string, unknown>;
 
@@ -867,12 +868,18 @@ export class PgToolService {
     if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
       return;
     }
-    const membership = await this.db("project_members")
-      .where({ project_id: projectId, user_id: context.sessionUserId })
-      .first();
-    if (!membership) {
+    if (!(await this.isMemberOfProject(projectId, context.sessionUserId))) {
       throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.");
     }
+  }
+
+  // Shared single-row membership query, used by both assertProjectMember
+  // above (REST/MCP/GraphQL request path) and isProjectVisibleToSession below
+  // (WS subscription event filtering, T-MEMORY-042) -- one query, two
+  // call sites, instead of duplicating the project_members lookup.
+  private async isMemberOfProject(projectId: string, userId: string): Promise<boolean> {
+    const membership = await this.db("project_members").where({ project_id: projectId, user_id: userId }).first();
+    return Boolean(membership);
   }
 
   // Query-builder counterpart of assertProjectMember for list/search
@@ -886,6 +893,26 @@ export class PgToolService {
       query.whereIn("id", this.db("project_members").select("project_id").where({ user_id: context.sessionUserId }));
     }
     return query;
+  }
+
+  // T-MEMORY-042: mirrors assertProjectMember's exact bypass rules, but as a
+  // boolean predicate rather than a throw -- used by the WS subscription
+  // resolver (graphql.ts's filteredGatewayEvents) to decide whether a given
+  // published event envelope is visible to one open connection's session
+  // identity. role=admin always passes; a common-scope event
+  // (projectId === null) always passes for anyone; role=member is checked
+  // against project_members exactly like assertProjectMember. Subscriptions
+  // are session-only (see http-server.ts's WS upgrade handling), so the
+  // caller is always a real session identity, never a static-token/OAuth/
+  // anonymous context.
+  async isProjectVisibleToSession(
+    projectId: string | null,
+    session: { role: string; userId: string }
+  ): Promise<boolean> {
+    if (session.role !== "member" || projectId === null) {
+      return true;
+    }
+    return this.isMemberOfProject(projectId, session.userId);
   }
 
   private async deleteProject(input: Row) {
@@ -3661,7 +3688,20 @@ export class PgToolService {
       created_at: nowIso()
     };
     await this.db("events").insert(row);
-    return eventOut(row);
+    const out = eventOut(row);
+    // T-MEMORY-042: this is the single choke point every mutation across
+    // every domain already passes through -- publishing here, once, covers
+    // PMemUI's live-update feed for the whole gateway with no other call
+    // site needing to change. EventEmitter.emit() (which publish() wraps)
+    // runs subscriber callbacks synchronously and rethrows synchronously if
+    // one throws -- guarded here because a live-update side effect must
+    // never fail the mutation it's attached to.
+    try {
+      void gatewayEvents.publish(GATEWAY_EVENT_TOPIC, { event: String(row.type), payload: out });
+    } catch {
+      // Best-effort notification; the event row itself is already committed.
+    }
+    return out;
   }
 
   // T-MEMORY-029 / D-MEMORY-007: migrate the shared static MCP_TOKEN into a

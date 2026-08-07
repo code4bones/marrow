@@ -147,6 +147,14 @@ not just for OAuth. When a session is present, the request's
 `clientId`/`clientLabel` (used for `gateway_clients` tracking and event
 logging) become `user:<id>` / `<email>` instead of `anonymous:<requestId>`.
 
+The GraphQL WS subscription transport (`T-MEMORY-042`, see
+`docs/GRAPHQL_API.md`'s "Subscriptions" section) is stricter than the HTTP
+endpoint above: it accepts **only** the `pmem_session` cookie, never the
+static `MCP_TOKEN` or an OAuth bearer. A WS upgrade with no session, or an
+invalid/expired one, is refused inside `graphql-ws`'s `onConnect` before the
+handshake ever reaches `connection_ack` -- see `startGatewayServer` in
+`src/gateway/http-server.ts`.
+
 ## Scopes: read / write / admin (`T-MEMORY-029` / `D-MEMORY-007`)
 
 Every gateway request resolves to exactly one scope tier before dispatch,
