@@ -6,13 +6,22 @@ variables:
   DOCKER_IMAGE_TAG: "pmemui-build:$CI_PIPELINE_ID"
   DEPLOY_PATH: "/var/www/pmemui"
 
-# Runs on every branch push and merge request pipeline. Lint, typecheck, and
-# vite build all happen inside the Docker build stage (see Dockerfile) so a
-# failure in any of them fails this job. The runner needs `docker` on PATH.
+# Tag pushes and merge request pipelines only — NOT every plain push to
+# main, to avoid a second redundant pipeline racing the tag-triggered
+# release pipeline (main is always pushed right before its release tag, so
+# an unrestricted build job here fired twice per release for no benefit,
+# see I-MEMORY-031). Ordinary commits to main get no CI feedback until
+# their release tag; open an MR first if you want pre-tag verification.
+# Lint, typecheck, and vite build all happen inside the Docker build stage
+# (see Dockerfile) so a failure in any of them fails this job. The runner
+# needs `docker` on PATH.
 build:
   stage: build
   tags:
     - pmem_front
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_MERGE_REQUEST_ID'
   script:
     - docker build --target build -t "$DOCKER_IMAGE_TAG" .
     - CID=$(docker create "$DOCKER_IMAGE_TAG")
