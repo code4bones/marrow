@@ -338,6 +338,24 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       // softer, undirected association — thinner, no arrowhead, dimmer.
       const isEvolution = e.relation === 'supersedes' || e.relation === 'revives';
       const color = e.relation === 'revives' ? '#b37feb' : isEvolution ? '#8c8c8c' : '#4a90d9';
+
+      // Owner: repeating the relation name on every edge label is
+      // redundant (arrows + color already say who-relates-to-whom, and the
+      // legend explains what the color means) and gets genuinely crowded
+      // where one decision has several relates_to edges close together.
+      // Only evolution edges get a label, and it's real information — how
+      // much time actually passed between the two decisions — not the
+      // relation name repeated a second time.
+      let label: string | undefined;
+      if (isEvolution) {
+        const fromNode = nodeById.get(e.from);
+        const toNode = nodeById.get(e.to);
+        if (fromNode?.createdAt && toNode?.createdAt) {
+          const deltaMs = Math.abs(new Date(fromNode.createdAt).getTime() - new Date(toNode.createdAt).getTime());
+          label = formatDuration(deltaMs);
+        }
+      }
+
       return {
         id: `${e.from}->${e.to}-${e.relation}`,
         source: e.from,
@@ -351,8 +369,8 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
           opacity: isEvolution ? 1 : 0.7,
         },
         markerEnd: isEvolution ? { type: MarkerType.ArrowClosed, color, width: 16, height: 16 } : undefined,
-        label: e.relation,
-        labelStyle: { fill: color, fontSize: isEvolution ? 11 : 10, fontWeight: isEvolution ? 600 : 400 },
+        label,
+        labelStyle: { fill: color, fontSize: 11, fontWeight: 600 },
         labelBgStyle: { fill: '#141414', fillOpacity: 0.9 },
         labelBgPadding: [4, 2] as [number, number],
       };
@@ -500,7 +518,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
           </div>
         ))}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 6 }}>
-          Gray = supersedes · purple = revives · blue dotted = relates_to
+          Gray = supersedes · purple = revives · blue dotted = relates_to. Label on gray/purple = time between them.
         </Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
           Dots on a card
