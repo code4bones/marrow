@@ -868,6 +868,10 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     setChain([]);
   }
 
+  // Collapsed by default — the expanded panel was covering the columns
+  // underneath it.
+  const [legendOpen, setLegendOpen] = useState(false);
+
   // Fetched once per (projectSlug, showTasks) — not per rendered node. See
   // useTimelineOverlay.ts for why this satisfies the "no N+1" requirement.
   const overlay = useTimelineOverlay(projectSlug, showTasks);
@@ -1093,65 +1097,82 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
         ))}
       </div>
 
-      {/* Legend */}
-      <div style={{
-        position: 'absolute', top: 10, right: 10,
-        background: 'rgba(20,20,20,0.92)',
-        border: '1px solid #303030',
-        borderRadius: 6,
-        padding: '8px 12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        zIndex: 10,
-        maxWidth: 240,
-        pointerEvents: 'none',
-      }}>
-        <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2, display: 'block' }}>
-          Status
-        </Typography.Text>
-        {Object.entries(STATUS_LABEL).map(([key, label]) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{
-              width: 10, height: 10, borderRadius: 2,
-              border: `2px solid ${key === 'rejected' ? REJECTED_BORDER : STATUS_COLOR[key]}`,
-              background: '#1f1f1f',
+      {/* Legend — collapsed by default (owner: it was covering the columns
+          underneath it), just a toggle icon until opened. */}
+      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+        <Tooltip title={legendOpen ? 'Hide legend' : 'Show legend'}>
+          <span
+            role="button"
+            onClick={() => setLegendOpen((o) => !o)}
+            style={{
+              pointerEvents: 'auto', cursor: 'pointer', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 24, height: 24, borderRadius: 4,
+              background: 'rgba(20,20,20,0.92)', border: '1px solid #303030', color: '#8c8c8c',
             }}
-            />
-            <Typography.Text style={{ fontSize: 11 }}>{label}</Typography.Text>
-          </div>
-        ))}
-        <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
-          Dots on a card
-        </Typography.Text>
-        {Object.entries(SATELLITE_KIND_COLOR).map(([kind, dotColor]) => (
-          <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 9, height: 9, borderRadius: '50%', background: dotColor }} />
-            <Typography.Text style={{ fontSize: 11 }}>{kind.toLowerCase()}</Typography.Text>
-          </div>
-        ))}
-        <Typography.Text type="secondary" style={{ fontSize: 10, display: 'block' }}>
-          <RightOutlined style={{ marginRight: 4 }} />
-          opens a card&apos;s links as a column to the right · left edge = last remark tone · badge = remark count
-        </Typography.Text>
-        {showTasks && (
-          <>
-            <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
-              Tasks
+          >
+            <InfoCircleOutlined style={{ fontSize: 13 }} />
+          </span>
+        </Tooltip>
+        {legendOpen && (
+          <div style={{
+            background: 'rgba(20,20,20,0.92)',
+            border: '1px solid #303030',
+            borderRadius: 6,
+            padding: '8px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            maxWidth: 240,
+            pointerEvents: 'none',
+          }}>
+            <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2, display: 'block' }}>
+              Status
             </Typography.Text>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <PlusCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
-              <Typography.Text style={{ fontSize: 11 }}>created</Typography.Text>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CheckCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
-              <Typography.Text style={{ fontSize: 11 }}>done</Typography.Text>
-            </div>
-          </>
+            {Object.entries(STATUS_LABEL).map(([key, label]) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: 2,
+                  border: `2px solid ${key === 'rejected' ? REJECTED_BORDER : STATUS_COLOR[key]}`,
+                  background: '#1f1f1f',
+                }}
+                />
+                <Typography.Text style={{ fontSize: 11 }}>{label}</Typography.Text>
+              </div>
+            ))}
+            <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
+              Dots on a card
+            </Typography.Text>
+            {Object.entries(SATELLITE_KIND_COLOR).map(([kind, dotColor]) => (
+              <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: dotColor }} />
+                <Typography.Text style={{ fontSize: 11 }}>{kind.toLowerCase()}</Typography.Text>
+              </div>
+            ))}
+            <Typography.Text type="secondary" style={{ fontSize: 10, display: 'block' }}>
+              <RightOutlined style={{ marginRight: 4 }} />
+              opens a card&apos;s links as a column to the right · left edge = last remark tone · badge = remark count
+            </Typography.Text>
+            {showTasks && (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
+                  Tasks
+                </Typography.Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <PlusCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
+                  <Typography.Text style={{ fontSize: 11 }}>created</Typography.Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
+                  <Typography.Text style={{ fontSize: 11 }}>done</Typography.Text>
+                </div>
+              </>
+            )}
+            <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
+              {baselineNodes.length} {ROOT_KIND_LABEL[rootKind].toLowerCase()} · ⋯Nd⋯ = compressed gap · one open column chain at a time
+            </Typography.Text>
+          </div>
         )}
-        <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-          {baselineNodes.length} {ROOT_KIND_LABEL[rootKind].toLowerCase()} · ⋯Nd⋯ = compressed gap · one open column chain at a time
-        </Typography.Text>
       </div>
     </div>
   );
