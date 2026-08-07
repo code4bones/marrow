@@ -13,6 +13,7 @@ import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTi
 import { apolloClient } from '../../shared/api/apollo';
 import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
+import { ROOT_KIND_EMPTY_HINT, ROOT_KIND_LABEL, type RootKind } from './rootKind';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -80,8 +81,11 @@ function kindDotColor(kind: string): string {
 }
 
 // Matches KnowledgeGraph.tsx's (retired) kind palette so a task/item/artifact
-// reads the same color whether it's a dot here or elsewhere.
+// reads the same color whether it's a dot here or elsewhere. DECISION added
+// under D-MEMORY-024 — satellites are no longer decision-only-root, so a
+// Task/Memory/Artifact-rooted card can now have a decision satellite too.
 const SATELLITE_KIND_COLOR: Record<string, string> = {
+  DECISION: '#9254de',
   TASK: '#13a8a8',
   MEMORY: '#d89614',
   ARTIFACT: '#f759ab',
@@ -537,7 +541,7 @@ function StickyDayLabel({ iso }: { iso: string }) {
 
 interface ColumnCommonProps {
   nodeById: Map<string, GraphNode>;
-  satellitesByDecision: Map<string, GraphNode[]>;
+  satellitesByRecord: Map<string, GraphNode[]>;
   linksByRecord: Map<string, Link[]>;
   remarksByTarget: Map<string, RemarkPreview[]>;
   chain: string[];
@@ -603,18 +607,19 @@ function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: st
   );
 }
 
-function BaselineColumn({ rows, allNodes, onSelectRoot, ...common }: {
+function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
   rows: BaselineRow[];
   allNodes: GraphNode[];
   onSelectRoot: (id: string) => void;
+  rootKind: RootKind;
 } & ColumnCommonProps) {
-  const { satellitesByDecision, linksByRecord, remarksByTarget, chain, onToggle } = common;
+  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle } = common;
 
   return (
     <div style={COLUMN_OUTER_STYLE}>
       <div style={COLUMN_TITLE_STYLE}>
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-          Timeline
+          {ROOT_KIND_LABEL[rootKind]}
         </Typography.Text>
         <RootSearch nodes={allNodes} onSelect={onSelectRoot} />
       </div>
@@ -627,7 +632,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, ...common }: {
             : (
               <RecordCard
                 node={row.node}
-                satellites={satellitesByDecision.get(row.node.id) ?? []}
+                satellites={satellitesByRecord.get(row.node.id) ?? []}
                 remarks={remarksByTarget.get(row.node.id) ?? []}
                 linkCount={(linksByRecord.get(row.node.id) ?? []).length}
                 isOpen={chain[0] === row.node.id}
@@ -647,7 +652,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, ...common }: {
 }
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
-  const { nodeById, satellitesByDecision, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
+  const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
 
@@ -714,7 +719,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         <div style={{ width: COLUMN_CARD_W }}>
           <RecordCard
             node={rootNode}
-            satellites={satellitesByDecision.get(rootId) ?? []}
+            satellites={satellitesByRecord.get(rootId) ?? []}
             remarks={remarksByTarget.get(rootId) ?? []}
             linkCount={(linksByRecord.get(rootId) ?? []).length}
             isOpen
@@ -746,7 +751,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
               ? (
                 <RecordCard
                   node={row.node}
-                  satellites={satellitesByDecision.get(row.node.id) ?? []}
+                  satellites={satellitesByRecord.get(row.node.id) ?? []}
                   remarks={remarksByTarget.get(row.node.id) ?? []}
                   linkCount={(linksByRecord.get(row.node.id) ?? []).length}
                   isOpen={activeChildId === row.node.id}
@@ -836,17 +841,32 @@ interface Props {
   loading?: boolean;
   /** Project slug — needed to batch-fetch links/remarks/task-events for the whole timeline in one shot each (T-MEMORY-045). */
   projectSlug: string | null;
-  /** "Show tasks" toggle state, owned by the parent (default off) — see ProjectGraphView. */
+  /** "Show tasks" toggle state, owned by the parent (default off, DECISION-root only) — see ProjectGraphView. */
   showTasks: boolean;
+  /** D-MEMORY-024: which kind the baseline ribbon lists — owned by the parent so the "Root:" dropdown can live in its header alongside "Show tasks"/"Link depth". */
+  rootKind: RootKind;
 }
 
-export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks }: Props) {
+export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind }: Props) {
   const rowRef = useRef<HTMLDivElement>(null);
   // The one open Miller-column chain (D-MEMORY-021: linear, breadcrumb-
   // style, exactly one path open at a time). chain[i] is the decision id
   // whose links are shown as column i (0-based, displayed right of the
   // baseline ribbon or of column i-1).
   const [chain, setChain] = useState<string[]>([]);
+
+  // D-MEMORY-024: switching what the baseline lists invalidates any open
+  // drill chain (it was rooted in the previous kind's data) — collapse
+  // rather than leave a stale/confusing column open. Adjusted during render
+  // (React's documented pattern for "reset state when a prop changes")
+  // instead of an effect, which the react-hooks/set-state-in-effect rule
+  // flags as cascading-render-prone — this still only re-renders once, the
+  // `rootKindAtLastChain !== rootKind` guard makes it self-limiting.
+  const [rootKindAtLastChain, setRootKindAtLastChain] = useState(rootKind);
+  if (rootKindAtLastChain !== rootKind) {
+    setRootKindAtLastChain(rootKind);
+    setChain([]);
+  }
 
   // Fetched once per (projectSlug, showTasks) — not per rendered node. See
   // useTimelineOverlay.ts for why this satisfies the "no N+1" requirement.
@@ -866,37 +886,45 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     return base;
   }, [nodes, lazyResolved]);
 
-  const { decisions, satellitesByDecision } = useMemo(() => {
-    const decisions = nodes
-      .filter((n) => n.kind === 'DECISION')
+  const { baselineNodes, satellitesByRecord } = useMemo(() => {
+    const baselineNodes = nodes
+      .filter((n) => n.kind === rootKind)
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
 
-    // Satellites: any other record (task/item/artifact) linked to a decision
-    // by any relation — rendered as small dots on the decision card. Reused
-    // for every RecordCard instance, wherever it's rendered (baseline,
-    // column header, column entry), since the map covers every decision id
-    // discovered anywhere in the loaded graph.
-    const satellitesByDecision = new Map<string, GraphNode[]>();
-    const addSatellite = (decisionId: string, satellite: GraphNode) => {
-      const list = satellitesByDecision.get(decisionId) ?? [];
+    // Satellites: any other record linked to a baseline-kind record by any
+    // relation — rendered as small dots on its card. Reused for every
+    // RecordCard instance, wherever it's rendered (baseline, column header,
+    // column entry) — D-MEMORY-024 generalized this from decisions-only to
+    // whichever kind is currently the root.
+    const satellitesByRecord = new Map<string, GraphNode[]>();
+    const addSatellite = (rootRecordId: string, satellite: GraphNode) => {
+      const list = satellitesByRecord.get(rootRecordId) ?? [];
       if (!list.some((s) => s.id === satellite.id)) list.push(satellite);
-      satellitesByDecision.set(decisionId, list);
+      satellitesByRecord.set(rootRecordId, list);
     };
     for (const e of edges) {
       if (e.relation === 'annotates') continue;
       const fromNode = nodeById.get(e.from);
       const toNode = nodeById.get(e.to);
       if (!fromNode || !toNode) continue;
-      if (fromNode.kind === 'DECISION' && toNode.kind !== 'DECISION' && toNode.kind !== 'PROJECT') {
+      if (fromNode.kind === rootKind && toNode.kind !== rootKind && toNode.kind !== 'PROJECT') {
         addSatellite(fromNode.id, toNode);
-      } else if (toNode.kind === 'DECISION' && fromNode.kind !== 'DECISION' && fromNode.kind !== 'PROJECT') {
+      } else if (toNode.kind === rootKind && fromNode.kind !== rootKind && fromNode.kind !== 'PROJECT') {
         addSatellite(toNode.id, fromNode);
       }
     }
-    return { decisions, satellitesByDecision };
-  }, [nodes, edges, nodeById]);
+    return { baselineNodes, satellitesByRecord };
+  }, [nodes, edges, nodeById, rootKind]);
 
-  const baselineRows = useMemo(() => buildBaselineRows(decisions, overlay.taskMarkers), [decisions, overlay.taskMarkers]);
+  // Task-created/completed markers are a DECISION-timeline overlay concept
+  // (T-MEMORY-045) — showing "when did this task happen relative to
+  // decisions". They don't apply to a Tasks-rooted baseline (every task
+  // already gets its own row there), so only merge them in when decisions
+  // are actually the root.
+  const baselineRows = useMemo(
+    () => buildBaselineRows(baselineNodes, rootKind === 'DECISION' ? overlay.taskMarkers : []),
+    [baselineNodes, rootKind, overlay.taskMarkers],
+  );
 
   // Defensive: if a graph refetch drops an id mid-chain (rare — depth
   // change, project switch), truncate rather than render a column with no
@@ -1027,12 +1055,12 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     );
   }
 
-  if (decisions.length === 0) {
+  if (baselineNodes.length === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Typography.Text type="secondary">No decisions recorded yet</Typography.Text>
+        <Typography.Text type="secondary">No {ROOT_KIND_LABEL[rootKind].toLowerCase()} recorded yet</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          The timeline fills in as decision.record / decision.supersede are used
+          {ROOT_KIND_EMPTY_HINT[rootKind]}
         </Typography.Text>
       </div>
     );
@@ -1040,7 +1068,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
 
   const common: ColumnCommonProps = {
     nodeById,
-    satellitesByDecision,
+    satellitesByRecord,
     linksByRecord: overlay.linksByRecord,
     remarksByTarget: overlay.remarksByTarget,
     chain: validChain,
@@ -1059,7 +1087,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
-        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} {...common} />
+        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} rootKind={rootKind} {...common} />
         {validChain.map((rootId, idx) => (
           <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
         ))}
@@ -1122,7 +1150,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           </>
         )}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-          {decisions.length} decision{decisions.length === 1 ? '' : 's'} · ⋯Nd⋯ = compressed gap · one open column chain at a time
+          {baselineNodes.length} {ROOT_KIND_LABEL[rootKind].toLowerCase()} · ⋯Nd⋯ = compressed gap · one open column chain at a time
         </Typography.Text>
       </div>
     </div>
