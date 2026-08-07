@@ -295,10 +295,18 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
 
     const layout = computeTimeLayout(decisions);
 
+    // Explicit width/height on the node objects themselves (not just CSS on
+    // the custom component) — MiniMap draws from these immediately, without
+    // waiting for a measure-after-mount render pass. Without this the
+    // minimap rendered every node at zero size: a plain gray/black square,
+    // no colored rects, even though panning/seeking on it still worked
+    // (that part only needs the canvas bounds, not per-node size).
     const decisionNodes: Node[] = decisions.map((n) => ({
       id: n.id,
       type: 'decision',
       position: { x: (layout.xById.get(n.id) ?? 0) - NODE_W / 2, y: layout.yById.get(n.id) ?? 0 },
+      width: NODE_W,
+      height: NODE_H,
       data: { node: n, satellites: satellitesByDecision.get(n.id) ?? [] },
     }));
 
@@ -306,6 +314,8 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       id: `tick-${t.id}`,
       type: 'tick',
       position: { x: t.x, y: layout.axisY },
+      width: 60,
+      height: 22,
       draggable: false,
       selectable: false,
       data: { label: t.label },
@@ -315,6 +325,8 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       id: `gap-${i}`,
       type: 'gapBreak',
       position: { x: g.x, y: layout.axisY },
+      width: 80,
+      height: 22,
       draggable: false,
       selectable: false,
       data: { label: g.label },
