@@ -1,6 +1,6 @@
 {
   "name": "@deadragdoll/pm3m",
-  "version": "1.33.1",
+  "version": "1.34.0",
   "description": "Local-first MCP server for project-oriented agent memory.",
   "type": "module",
   "main": "dist/src/index.js",
@@ -42,6 +42,7 @@
     "smoke:gateway:subscriptions": "node dist/scripts/smoke-gateway-subscriptions.js",
     "smoke:gateway:elevation": "node dist/scripts/smoke-gateway-elevation.js",
     "smoke:gateway:git-credentials": "node dist/scripts/smoke-gateway-git-credentials.js",
+    "smoke:gateway:personal-tokens": "node dist/scripts/smoke-gateway-personal-tokens.js",
     "smoke:gateway:graphql": "node dist/scripts/smoke-gateway-graphql.js",
     "smoke:gateway:mcp-http": "node dist/scripts/smoke-gateway-mcp-http.js",
     "smoke:oauth": "node dist/scripts/smoke-oauth.js",

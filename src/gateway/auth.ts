@@ -673,6 +673,121 @@ export function createAuthFacade(db: Knex) {
     };
   }
 
+  // --- Personal API tokens (T-MEMORY-047) ---
+  // A third bearer-auth source, alongside the shared static MCP_TOKEN and
+  // OAuth connector tokens (see docs/AUTH.md "Personal API tokens"), scoped
+  // to exactly one user. Hash-only storage (token_hash), same "never store
+  // the raw secret" convention as sessions/tokens/admin_elevations -- this
+  // token is only ever verified, never redisplayed, so there's nothing to
+  // decrypt and therefore no separate encryption key to manage for it.
+  // Management (status check, regenerate) is session-only, same "a raw
+  // secret only ever enters/leaves the system through the trusted browser
+  // profile UI" convention as password/2FA/git-credential management --
+  // there is deliberately no MCP tool or GraphQL mutation for this, only
+  // the /auth/profile/personal-token* REST routes below.
+
+  async function personalTokenStatus(userId: string): Promise<{
+    exists: boolean;
+    tokenHint: string | null;
+    createdAt: string | null;
+    lastUsedAt: string | null;
+  }> {
+    const row = await db("personal_tokens").where({ owner_user_id: userId }).first();
+    if (!row) {
+      return { exists: false, tokenHint: null, createdAt: null, lastUsedAt: null };
+    }
+    return {
+      exists: true,
+      tokenHint: row.token_hint as string,
+      createdAt: new Date(row.created_at as string).toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(row.last_used_at as string).toISOString() : null
+    };
+  }
+
+  /**
+   * Always issues a fresh token, replacing any existing one for this user in
+   * the same transaction ("replace, don't mutate, a secret row" -- same
+   * convention as recovery codes and git credentials). Serves both first-time
+   * generation (no existing row) and explicit regenerate (existing row
+   * invalidated atomically) through one call, so the frontend's "Generate"
+   * and "Regenerate" buttons can hit the same endpoint. The raw token is
+   * returned exactly once, at the moment of this call -- shown-once, same
+   * principle as recovery codes / the TOTP secret, per this task's resolved
+   * design question (consistency with that existing pattern, chosen over a
+   * persistently-visible token).
+   */
+  async function regeneratePersonalToken(
+    userId: string
+  ): Promise<{ token: string; tokenHint: string; createdAt: Date }> {
+    const now = new Date();
+    const rawToken = newOpaqueToken();
+    const tokenHint = rawToken.slice(-4);
+    await db.transaction(async (trx) => {
+      await trx("personal_tokens").where({ owner_user_id: userId }).del();
+      await trx("personal_tokens").insert({
+        id: randomUUID(),
+        owner_user_id: userId,
+        token_hash: hashToken(rawToken),
+        token_hint: tokenHint,
+        created_at: now,
+        last_used_at: null
+      });
+    });
+    return { token: rawToken, tokenHint, createdAt: now };
+  }
+
+  /**
+   * Resolves a personal-token bearer (`Authorization: Bearer <token>`) to the
+   * owning user's identity -- same SessionIdentity shape identifyFromRequest
+   * returns for a session cookie, so http-server.ts's scope-tier resolution
+   * (admin role -> admin scope, member role -> write scope) treats the two
+   * sources identically, per this task's acceptance criteria. Only an
+   * `active` user's token resolves -- a disabled/pending user's old token
+   * (if any) stops working the moment their account does, no separate
+   * revocation step needed. `last_used_at` is stamped best-effort, same
+   * fire-and-forget pattern as sessions.last_seen_at below.
+   */
+  async function identifyPersonalToken(request: IncomingMessage): Promise<SessionIdentity | null> {
+    const rawToken = bearerToken(request);
+    if (!rawToken) {
+      return null;
+    }
+    const row = await db("personal_tokens")
+      .join("users", "users.id", "personal_tokens.owner_user_id")
+      .where("personal_tokens.token_hash", hashToken(rawToken))
+      .andWhere("users.status", "active")
+      .select(
+        "personal_tokens.id as tokenRowId",
+        "users.id as userId",
+        "users.email as email",
+        "users.role as role",
+        "users.status as status",
+        "users.totp_enabled as totpEnabled"
+      )
+      .first();
+    if (!row) {
+      return null;
+    }
+    db("personal_tokens")
+      .where({ id: row.tokenRowId })
+      .update({ last_used_at: new Date() })
+      .catch(() => {
+        // Best-effort activity timestamp; a failed update must not fail the request.
+      });
+    return {
+      // Reuses SessionIdentity's `sessionId` slot to carry the personal_tokens
+      // row id -- not consumed outside this module (see identifyFromRequest's
+      // own use of it above), so no interface change needed for this second
+      // credential-row-id source.
+      sessionId: row.tokenRowId,
+      userId: row.userId,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      totpEnabled: row.totpEnabled
+    };
+  }
+
   async function activeToken(rawToken: string, allowedPurposes: string[]): Promise<Record<string, unknown>> {
     const now = new Date();
     const row = await db("tokens").where({ token_hash: hashToken(rawToken) }).first();
@@ -707,7 +822,10 @@ export function createAuthFacade(db: Knex) {
     approveUser,
     rejectUser,
     requestElevation,
-    consumeElevation
+    consumeElevation,
+    personalTokenStatus,
+    regeneratePersonalToken,
+    identifyPersonalToken
   };
 }
 
@@ -735,6 +853,16 @@ export function clearSessionCookieHeader(secure: boolean): string {
 
 export function getSessionToken(request: IncomingMessage): string | undefined {
   return parseCookies(request)[SESSION_COOKIE_NAME];
+}
+
+/** Extracts the raw token from an `Authorization: Bearer <token>` header, or undefined if absent/malformed. */
+function bearerToken(request: IncomingMessage): string | undefined {
+  const header = request.headers.authorization;
+  if (!header) {
+    return undefined;
+  }
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match ? match[1] : undefined;
 }
 
 export function isForwardedHttps(request: IncomingMessage): boolean {

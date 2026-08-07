@@ -13,7 +13,7 @@ scope + project-membership layer (`T-MEMORY-029`, implementing
 `D-MEMORY-007` and superseding `D-MEMORY-003`'s "trusted internal
 deployment, one shared token" model) below.
 
-## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns, `011_admin_elevations.cjs` for `admin_elevations`, and `012_git_credentials.cjs` for `git_credentials` -- see "Scopes: read / write / admin", "Project membership", "Step-up admin elevation", and "Git host credentials" below)
+## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns, `011_admin_elevations.cjs` for `admin_elevations`, `012_git_credentials.cjs` for `git_credentials`, and `013_personal_tokens.cjs` for `personal_tokens` -- see "Scopes: read / write / admin", "Project membership", "Step-up admin elevation", "Git host credentials", and "Personal API tokens" below)
 
 ### `users`
 
@@ -132,6 +132,8 @@ other gateway route.
 | `POST /auth/2fa/disable` | session cookie | Body `{ currentPassword }`. Verifies the password, then clears `totp_secret`/`totp_enabled`/`totp_recovery_code_hashes`. |
 | `POST /auth/2fa/recovery-codes/regenerate` | session cookie | Body `{ currentPassword }`. Verifies the password, requires `totp_enabled=true`, replaces the stored recovery-code hashes with 10 fresh ones, and returns `{ recoveryCodes }` (plaintext, once). |
 | `POST /auth/profile/password` | session cookie | Body `{ currentPassword, newPassword }`. Verifies the current password, then sets a new one (same ≥8-character rule as claim/register). |
+| `GET /auth/profile/personal-token` | session cookie | `T-MEMORY-047`, see "Personal API tokens" below. `{ exists, tokenHint, createdAt, lastUsedAt }` -- side-effect-free, never the raw token. |
+| `POST /auth/profile/personal-token/regenerate` | session cookie | `T-MEMORY-047`. Always issues a fresh token, invalidating any existing one for this user. Returns `{ token, tokenHint, createdAt }` -- the raw token, shown exactly once. |
 | `POST /auth/elevate` | none (public, like `/auth/login`) | Body `{ email, password, code }`. Step-up admin elevation (`T-MEMORY-041`, `D-MEMORY-019`) — see "Step-up admin elevation" below. Re-checks the account's password *and* current TOTP code together (full re-authentication, not a session lookup); on success returns `{ token, expiresAt }`, a short-lived (60s), single-use grant. Rejects with the same generic `"Invalid email or password."` for a wrong password, `"Invalid verification code."` for a wrong TOTP code, `"Elevation is only available to admin accounts."` for a correctly-authenticated `role=member` account, and a `VALIDATION_ERROR` telling the caller to enable 2FA first if the (admin) account has no TOTP enrolled. Rate-limited the same way as `/auth/login` (email + IP keys, same in-memory limiter), with its own key prefix so it doesn't share counters with plain login attempts against the same account. |
 | `POST /auth/register` | none | Body `{ email, password }`. Public, no invite required (D-MEMORY-016). Rejects if the email is already a `users` row or has a still-valid `pending_registrations` row (same "already exists" message as `/auth/invite`); a *password* under 8 characters is rejected the same as `/auth/claim`. Generates + encrypts a TOTP secret, stores a `pending_registrations` row (30-minute TTL) with an opaque token, and returns `{ token, otpauthUrl, secretBase32 }` for the QR/enroll screen. No `users` row exists yet. |
 | `POST /auth/register/confirm` | none | Body `{ token, code }`. Looks up the `pending_registrations` row by `token_hash`; 400 "invalid or expired" if missing/expired, same message family as the invite/claim tokens. Verifies `code` against the stored secret; on success creates the real `users` row (`role=member`, `status=pending_approval`, `totp_enabled=true`, `email_verified_at=null`), deletes the `pending_registrations` row, and returns `{ email, recoveryCodes }` (plaintext codes, once). The account cannot log in yet — see `status=pending_approval` below. |
@@ -160,12 +162,15 @@ never yields a live, directly usable credential.
 ### GraphQL accepts a session cookie
 
 The GraphQL endpoint (and every other gateway route gated by `isAuthorized`)
-accepts three credential sources side by side: the static `MCP_TOKEN`
-bearer, an OAuth bearer token, and a `pmem_session` cookie. Each source's
-scope (see "Scopes: read / write / admin" below) is checked on every request,
-not just for OAuth. When a session is present, the request's
-`clientId`/`clientLabel` (used for `gateway_clients` tracking and event
-logging) become `user:<id>` / `<email>` instead of `anonymous:<requestId>`.
+accepts four credential sources side by side: the static `MCP_TOKEN`
+bearer, an OAuth bearer token, a `pmem_session` cookie, and (`T-MEMORY-047`)
+a personal API token bearer -- see "Personal API tokens" below. Each
+source's scope (see "Scopes: read / write / admin" below) is checked on
+every request, not just for OAuth. When a session or a personal token is
+present, the request's `clientId`/`clientLabel` (used for `gateway_clients`
+tracking and event logging) become `user:<id>` / `<email>` instead of
+`anonymous:<requestId>` -- identically for both sources, since a personal
+token IS that specific user connecting programmatically.
 
 The GraphQL WS subscription transport (`T-MEMORY-042`, see
 `docs/GRAPHQL_API.md`'s "Subscriptions" section) is stricter than the HTTP
@@ -178,7 +183,7 @@ handshake ever reaches `connection_ack` -- see `startGatewayServer` in
 ## Scopes: read / write / admin (`T-MEMORY-029` / `D-MEMORY-007`)
 
 Every gateway request resolves to exactly one scope tier before dispatch,
-independent of which of the three credential sources it used. Each tier is a
+independent of which of the four credential sources it used. Each tier is a
 strict superset of the one before it (`admin` implies `write` and `read`).
 
 | Auth source | Scope | Why |
@@ -187,6 +192,8 @@ strict superset of the one before it (`admin` implies `write` and `read`).
 | no token configured at all (`source:"none"`) | `admin` | Unchanged — this is already a fully-open dev/trusted mode; scopes add no extra protection on top of "anyone can already call anything." |
 | session cookie, `role=admin` | `admin` | — |
 | session cookie, `role=member` | `write` | Decision 1: session scope is derived straight from the user's role, no separate "elevate to admin" UX — PMemUI has no destructive UI to elevate into anyway (`D-MEMORY-015`). |
+| personal API token, owner `role=admin` (`T-MEMORY-047`) | `admin` | Same role-derived resolution as a session cookie — see "Personal API tokens" below. |
+| personal API token, owner `role=member` (`T-MEMORY-047`) | `write` | Same role-derived resolution as a session cookie. A personal token IS that specific user connecting programmatically, not a separate, wider-scoped credential class. |
 | OAuth bearer (Claude Code / ChatGPT connectors) | `read` + `write` only, **forever** | Decision 2: an OAuth-issued token never gets `admin`, regardless of the underlying human's role or what a token claims. This is deliberate protection against an agent hallucinating a delete call, not a defense against a malicious user — in a hard-delete system with no undo, that is the scenario worth capping. Enforced twice: `oauth.ts`'s `requestedScopes()` never issues the `memory:admin` claim (even if `PROJECT_MEMORY_OAUTH_SCOPES` is misconfigured to include it), and `http-server.ts`'s scope check denies any OAuth-sourced request needing `memory:admin` without even inspecting the token. |
 
 `admin` covers every hard-delete operation: `memory.delete`, `decision.delete`,
@@ -329,6 +336,151 @@ script by this task — run directly via
 as every other script in `scripts/`; adding the `npm run smoke:gateway:*`
 alias is left to whoever next touches `package.json`, which is outside this
 task's allowed files.)
+
+## Personal API tokens (`T-MEMORY-047`)
+
+A third bearer-auth source, alongside the shared static `MCP_TOKEN` and OAuth
+connector tokens, scoped to exactly one user -- so a newly admin-approved
+user can connect Claude Code / Codex over the gateway's Streamable HTTP
+transport without separately asking an admin for the shared `MCP_TOKEN`
+(`D-MEMORY-007`'s "individual credentials localize revocation": revoking one
+user's personal token no longer means rotating a secret every other client
+also depends on). Motivated by a gap this codebase's own Connect manual
+(`T-MEMORY-040`) exposed: its Claude Code / Codex instructions showed
+`export PMEM_MCP_TOKEN="<gateway-token-from-your-admin>"`, implying every
+newly self-registered-and-approved user had to separately ask an admin for
+the one shared credential -- the exact thing individual credentials are
+supposed to avoid.
+
+- **Table**: `personal_tokens` (migration `013_personal_tokens.cjs`) --
+  `id`, `owner_user_id` (FK -> `users`, `UNIQUE`, cascade-deleted with the
+  user -- one live token per user, not a list like `git_credentials`),
+  `token_hash`, `token_hint`, `created_at`, `last_used_at` (nullable).
+- **Hash-only, not encrypted.** Unlike `users.totp_secret` and
+  `git_credentials.token_enc` (which must be recoverable in plaintext
+  server-side to do their job -- rendering a QR code, calling an outbound
+  GitLab API), a personal token is only ever *verified* on each request,
+  never redisplayed -- so it follows the `sessions.token_hash` /
+  `tokens.token_hash` / `admin_elevations.token_hash` convention instead:
+  only `sha256(rawToken)` is stored, via the same `hashToken`/`newOpaqueToken`
+  helpers `auth.ts` already uses for sessions and one-shot tokens. There is
+  therefore no new `*_ENC_KEY` environment variable for this feature -- it
+  has nothing to decrypt.
+- **`token_hint`** is a deliberate, narrow exception: the token's last 4
+  characters, stored in the clear at generation time, purely for UI
+  recognition (e.g. "...a1b2" so a user can tell which of their own tokens an
+  integration is using) -- the same low-risk hint `git_credentials` already
+  exposes (`tokenHint` in `git-credentials.ts`), computed there from the
+  decryptable ciphertext at read time; computed here at write time instead,
+  since `personal_tokens` has no decryptable form to recompute it from later.
+- **Shown once, then regenerate-only -- no persistently-visible token.**
+  This task's own record flagged the display model as an open question
+  ("shown once with regenerate" vs. "persistently visible, risking
+  shoulder-surfing"), to be resolved during implementation. Resolved as
+  shown-once + regenerate, for consistency with this codebase's two existing
+  precedents for exactly this kind of secret: the TOTP secret
+  (`/auth/2fa/enroll`) and 2FA recovery codes (`/auth/2fa/confirm`,
+  `/auth/2fa/recovery-codes/regenerate`) are both shown exactly once at
+  generation time and never again, with a regenerate path for after. A
+  database read (backup, replica, log) never yields a usable personal token,
+  same as those.
+- **One endpoint serves both "Generate" and "Regenerate".**
+  `POST /auth/profile/personal-token/regenerate` (session cookie required)
+  always issues a fresh token, replacing any existing row for that user in
+  one transaction ("replace, don't mutate, a secret row" -- the same
+  convention this codebase already uses for recovery codes and git
+  credentials) and returning the raw token, its hint, and `createdAt`
+  exactly once. There is no separate "create" vs. "regenerate" route: the
+  frontend's Connect section (`front/src/pages/profile/index.tsx`) just
+  labels the button "Generate" when no token currently exists and
+  "Regenerate" once one does, calling the same endpoint either way.
+  `GET /auth/profile/personal-token` (session cookie required) is
+  side-effect-free status only -- `{ exists, tokenHint, createdAt,
+  lastUsedAt }`, never the raw token -- so polling it can never accidentally
+  mint or leak a secret.
+- **Generation is lazy, on first visit to the profile's Connect section --
+  not automatic at admin-approval time.** The task record explicitly left
+  this as an implementation choice ("generate at approve time, or lazily on
+  first visit, if no token exists yet"). Approve-time generation was
+  rejected here: with shown-once semantics and no SMTP configured for this
+  gateway (see "No SMTP sending yet" below), a token minted server-side at
+  the moment an admin clicks "Approve" has no channel to ever reach the
+  approved user's browser -- the admin's own response never carries it (an
+  admin is not that token's owner), and there is no email to relay it
+  through either. Such a token would just be an immediately-orphaned row the
+  user would have to regenerate the instant they first visited Connect
+  anyway. Instead, the Connect section calls `GET
+  /auth/profile/personal-token` on mount and, if `exists: false`,
+  automatically calls the regenerate endpoint once to produce and display a
+  token the user actually sees -- still an explicit `POST`, not a side
+  effect of the `GET`. This still satisfies the acceptance criterion ("sees
+  their own token immediately after approval, without asking an admin"): the
+  token appears the moment they first open their own profile after logging
+  in, no separate request to anyone required.
+- **Scope tier: role-derived, identical to a session's** (`admin` role ->
+  `admin` scope, `member` role -> `write` scope) -- see the scope table
+  above and `resolveScopeTier()` in `http-server.ts`. `identifyPersonalToken()`
+  in `auth.ts` resolves a `Authorization: Bearer <token>` header to the same
+  `SessionIdentity` shape `identifyFromRequest()` (the session-cookie path)
+  returns, so every downstream consumer of that shape treats the two
+  sources alike without a separate code path. Only an `active` user's token
+  resolves -- disabling or deleting a user immediately stops their personal
+  token from authenticating too, no separate revocation step.
+- **Project-membership filtering (`T-MEMORY-029`) applies to a personal
+  token exactly like a session -- deliberately NOT bypassed the way OAuth,
+  the static token, and anonymous callers are.** A personal token is that
+  specific user, connecting programmatically; `http-server.ts`'s
+  `requestContext()` populates `GatewayRequestContext.sessionUserId`/
+  `sessionRole` from a resolved personal token exactly the way it does from
+  a session cookie (`identity = sessionAuth ?? personalTokenAuth`), so
+  `assertProjectMember()`/`applyProjectMembershipFilter()` in
+  `pg-tool-service.ts` -- which key off those two fields alone -- apply
+  unchanged, with zero new code in that file.
+- **Git-credential *management* is the one deliberate exception: it stays
+  browser-session-only, not extended to a personal-token bearer for the same
+  user.** `git.credential_create`/`git.credential_delete`'s existing
+  `requireSessionUserId()` (see "Git host credentials" below) was written
+  before this task to mean "a real browser session cookie", enforcing that a
+  raw git PAT only ever enters or leaves storage through the trusted browser
+  profile UI, never through an agent. Populating `sessionUserId` identically
+  for personal-token requests (needed for scope/membership parity above)
+  would have silently widened that boundary -- an agent connected with a
+  user's own personal token could then mint/delete that user's git
+  credentials too. To avoid that, `GatewayRequestContext` gained one more
+  field, `sessionSource: "cookie" | "personal_token" | undefined`, and
+  `requireSessionUserId()` now additionally requires `sessionSource ===
+  "cookie"`. Every other `sessionUserId` consumer (scope-tier resolution,
+  project-membership filtering, and git-credential *reads*'
+  `resolveGitCredentialReader()`, which intentionally still resolves a
+  personal-token bearer to that user's own credentials rather than falling
+  back to the instance admin the way OAuth/static-token callers do) does not
+  check `sessionSource` and treats both sources alike.
+- **No MCP tool or GraphQL mutation manages this** -- only the two REST
+  routes above, both session-cookie-gated, mirroring password/2FA/
+  git-credential management rather than the tool-call surface.
+
+### Smoke coverage
+
+`scripts/smoke-gateway-personal-tokens.ts` covers, against a real gateway/
+Postgres instance: `GET`/`POST regenerate` both requiring a session (401
+without one) → a freshly-active user having no token yet (`exists: false`,
+confirming the lazy-on-first-visit design over approve-time generation) →
+regenerate returning a raw token exactly once, with only its sha256 hash and
+a last-4 hint ever persisted → the status endpoint never re-exposing the
+full token after that → the token authenticating over `Authorization:
+Bearer` on `/call` with a role-derived scope tier identical to a session's
+(a member's token getting `INSUFFICIENT_SCOPE` on `memory.delete`, an
+admin's token succeeding) → project-membership filtering applying to a
+member's personal token exactly like their session would (not bypassed) →
+regenerate invalidating the previous token immediately (old token 401s,
+exactly one row per user afterward) → git-credential *management* staying
+denied ("logged-in session" required) even over a valid personal-token
+bearer for the same user → and git-credential *reads* resolving directly to
+that bearer's own owner rather than the OAuth/static-token admin-fallback.
+Not wired into `package.json` as an `npm run smoke:gateway:*` alias by this
+task (`package.json` is outside this task's allowed files) -- same
+precedent `scripts/smoke-gateway-elevation.ts` set; run directly via `node
+dist/scripts/smoke-gateway-personal-tokens.js` after `npm run build`.
 
 ## Git host credentials (`T-MEMORY-044`)
 

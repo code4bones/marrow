@@ -120,7 +120,7 @@ function requiredTierFor(requiredScopes: string[]): ScopeTier {
 }
 
 type AuthorizationState =
-  | { ok: true; source: "static" | "oauth" | "session" | "none" }
+  | { ok: true; source: "static" | "oauth" | "session" | "personal_token" | "none" }
   | {
       ok: false;
       // "unauthenticated": no valid credential at all (missing/invalid
@@ -257,7 +257,14 @@ async function handleRequest(
   const requestUrl = parseRequestUrl(request);
   const requestPath = requestUrl.pathname;
   const sessionAuth = options.auth ? await options.auth.identifyFromRequest(request) : null;
-  const context = requestContext(request, requestId, sessionAuth, options);
+  // T-MEMORY-047: personal API tokens are a third bearer-auth source,
+  // resolved the same way a session cookie is -- via a DB lookup against
+  // this request, before isAuthorized() runs. A request carrying neither
+  // (or an Authorization header that matches the static token / an OAuth
+  // JWT instead) simply resolves this to null, same as sessionAuth above
+  // for a request with no session cookie.
+  const personalTokenAuth = options.auth ? await options.auth.identifyPersonalToken(request) : null;
+  const context = requestContext(request, requestId, sessionAuth, personalTokenAuth, options);
 
   const send = (status: number, body: unknown, extra?: LogFields) => {
     sendJson(response, status, body, requestId);
@@ -378,7 +385,7 @@ async function handleRequest(
       }
     }
 
-    const auth = isAuthorized(options, request, sessionAuth);
+    const auth = isAuthorized(options, request, sessionAuth, personalTokenAuth);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
@@ -388,12 +395,35 @@ async function handleRequest(
     }
 
     if (isGraphqlRequestPath(requestPath)) {
-      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt, auth, sessionAuth);
+      await handleGraphqlRequest(
+        service,
+        options,
+        graphql,
+        request,
+        response,
+        requestId,
+        context,
+        startedAt,
+        auth,
+        sessionAuth,
+        personalTokenAuth
+      );
       return;
     }
 
     if (requestPath === "/mcp") {
-      await handleMcpRequest(service, options, request, response, requestId, context, startedAt, auth, sessionAuth);
+      await handleMcpRequest(
+        service,
+        options,
+        request,
+        response,
+        requestId,
+        context,
+        startedAt,
+        auth,
+        sessionAuth,
+        personalTokenAuth
+      );
       return;
     }
 
@@ -427,7 +457,14 @@ async function handleRequest(
         });
         return;
       }
-      const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, gatewayToolRequiredScopes(body.tool));
+      const scopeAuth = await isAuthorizedForScopes(
+        options,
+        request,
+        auth,
+        sessionAuth,
+        personalTokenAuth,
+        gatewayToolRequiredScopes(body.tool)
+      );
       if (!scopeAuth.ok) {
         sendUnauthorized(response, requestId, scopeAuth);
         logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -485,12 +522,13 @@ async function handleGraphqlRequest(
   context: GatewayRequestContext,
   startedAt: number,
   auth: AuthorizationState,
-  sessionAuth: SessionIdentity | null
+  sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null
 ): Promise<void> {
   try {
     const body = request.method === "POST" ? await readJson(request) : undefined;
     const requiredScopes = graphqlRequiredScopes(request, body);
-    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, personalTokenAuth, requiredScopes);
     if (!scopeAuth.ok) {
       sendUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -571,7 +609,8 @@ async function handleMcpRequest(
   context: GatewayRequestContext,
   startedAt: number,
   auth: AuthorizationState,
-  sessionAuth: SessionIdentity | null
+  sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null
 ): Promise<void> {
   if (request.method !== "POST") {
     sendJson(
@@ -602,7 +641,7 @@ async function handleMcpRequest(
     const body = await readJson(request);
     logFields = mcpLogFields(body);
     const requiredScopes = mcpRequiredScopes(body);
-    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, personalTokenAuth, requiredScopes);
     if (!scopeAuth.ok) {
       sendMcpUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -868,6 +907,37 @@ async function handleAuthRoute(
     return true;
   }
 
+  // --- Personal API tokens (T-MEMORY-047) ---
+  // Session-only, same "raw secret only enters/leaves through the trusted
+  // browser profile UI" convention as password/2FA/git-credential management
+  // above -- no MCP tool or GraphQL mutation manages this. GET never creates
+  // a token (side-effect-free); the frontend's Connect section calls
+  // regenerate explicitly (auto-triggered on first visit when none exists
+  // yet, or on an explicit "Regenerate" click) -- see front/src/pages/profile.
+
+  if (request.method === "GET" && requestPath === "/auth/profile/personal-token") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.personalTokenStatus(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/profile/personal-token/regenerate") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.regeneratePersonalToken(sessionAuth.userId);
+    send(200, {
+      ok: true,
+      data: { token: result.token, tokenHint: result.tokenHint, createdAt: result.createdAt.toISOString() }
+    });
+    return true;
+  }
+
   // --- Second login step for totp_enabled accounts (T-MEMORY-028) ---
   // Rate-limited the same way as /auth/login, but keyed by userId (there's
   // no email in this body) alongside client IP.
@@ -1104,6 +1174,7 @@ function requestContext(
   request: IncomingMessage,
   requestId: string,
   sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null,
   options: GatewayServerOptions
 ): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
@@ -1115,23 +1186,37 @@ function requestContext(
   // below: isAuthorized() runs later in the request lifecycle and this
   // context is built before it, including for routes that never reach it.
   const isStaticTokenAuth = Boolean(options.token) && request.headers.authorization === `Bearer ${options.token}`;
+  // T-MEMORY-047: a personal-token bearer identifies exactly one user, same
+  // as a session cookie -- treated identically here (clientId, scope tier,
+  // project-membership filtering all key off this). Session cookie wins if
+  // a request somehow carries both (cookie is the primary browser auth
+  // mechanism; a bearer header alongside it is incidental).
+  const identity = sessionAuth ?? personalTokenAuth;
   const clientId =
     explicitClientId ??
-    (sessionAuth ? `user:${sessionAuth.userId}` : isStaticTokenAuth ? staticTokenClientId : `anonymous:${requestId}`);
+    (identity ? `user:${identity.userId}` : isStaticTokenAuth ? staticTokenClientId : `anonymous:${requestId}`);
   const clientLabel =
     headerString(request, "x-project-memory-client-label") ??
     queryString(requestUrl, "client_label") ??
-    (sessionAuth ? sessionAuth.email : explicitClientId ? clientId : isStaticTokenAuth ? "static-token" : "anonymous");
+    (identity ? identity.email : explicitClientId ? clientId : isStaticTokenAuth ? "static-token" : "anonymous");
   return {
     clientId,
     clientLabel,
     metadata: {
-      anonymous: explicitClientId ? false : !sessionAuth && !isStaticTokenAuth,
+      anonymous: explicitClientId ? false : !identity && !isStaticTokenAuth,
       kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
     },
-    sessionUserId: sessionAuth?.userId,
-    sessionRole: sessionAuth?.role
+    sessionUserId: identity?.userId,
+    sessionRole: identity?.role,
+    // Distinguishes a real browser session from a personal-token bearer for
+    // the one consumer that must NOT treat them alike: git-credential
+    // management (create/delete) in pg-tool-service.ts, which stays
+    // deliberately browser-session-only -- see requireSessionUserId() there.
+    // Every other consumer of sessionUserId/sessionRole (scope-tier
+    // resolution, project-membership filtering, git-credential *reads*)
+    // does not care about this field and treats both sources the same.
+    sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : undefined
   };
 }
 
@@ -1154,7 +1239,8 @@ function headerString(request: IncomingMessage, name: string): string | undefine
 function isAuthorized(
   options: GatewayServerOptions,
   request: IncomingMessage,
-  sessionAuth: SessionIdentity | null
+  sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null
 ): AuthorizationState {
   if (options.token && request.headers.authorization === `Bearer ${options.token}`) {
     return { ok: true, source: "static" };
@@ -1162,6 +1248,10 @@ function isAuthorized(
 
   if (sessionAuth) {
     return { ok: true, source: "session" };
+  }
+
+  if (personalTokenAuth) {
+    return { ok: true, source: "personal_token" };
   }
 
   if (options.oauth) {
@@ -1191,7 +1281,8 @@ function isAuthorized(
 // D-MEMORY-015). See the scope-resolution table in docs/AUTH.md.
 function resolveScopeTier(
   auth: Extract<AuthorizationState, { ok: true }>,
-  sessionAuth: SessionIdentity | null
+  sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null
 ): ScopeTier {
   switch (auth.source) {
     case "static":
@@ -1199,6 +1290,10 @@ function resolveScopeTier(
       return "admin";
     case "session":
       return sessionAuth?.role === "admin" ? "admin" : "write";
+    case "personal_token":
+      // T-MEMORY-047: same role-derived resolution as a session -- a
+      // personal token IS that specific user, connecting programmatically.
+      return personalTokenAuth?.role === "admin" ? "admin" : "write";
     case "oauth":
       // Decision 2: OAuth connectors (Claude Code, ChatGPT) never get admin
       // scope, forever, regardless of the underlying user or JWT claims --
@@ -1216,6 +1311,7 @@ async function isAuthorizedForScopes(
   request: IncomingMessage,
   auth: AuthorizationState,
   sessionAuth: SessionIdentity | null,
+  personalTokenAuth: SessionIdentity | null,
   requiredScopes: string[]
 ): Promise<AuthorizationState> {
   if (!auth.ok) {
@@ -1265,7 +1361,7 @@ async function isAuthorizedForScopes(
     };
   }
 
-  const grantedTier = resolveScopeTier(auth, sessionAuth);
+  const grantedTier = resolveScopeTier(auth, sessionAuth, personalTokenAuth);
   const grantedScopes = scopesForTier(grantedTier);
   const missing = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
   if (missing.length === 0) {

@@ -114,10 +114,13 @@ hard-delete/maintenance tools (`*.delete`, `gateway.client_forget`,
 is unaffected and still only requires `write`. `git.credential_delete`
 (`T-MEMORY-044`) is a deliberate exception to the "delete is always admin"
 pattern -- see docs/AUTH.md's "Git host credentials" section for why. Note
-also that the four `git.*` tools require a real browser session
-(`context.sessionUserId`) on top of whatever scope tier they're granted --
-scope alone is not sufficient for them, unlike every other tool in this
-table.
+also that `git.credential_create`/`git.credential_delete` require a real
+browser session (`context.sessionUserId`) on top of whatever scope tier
+they're granted -- scope alone is not sufficient for them, unlike every
+other tool in this table. `git.credential_list`/`git.pipeline_status` are
+different: a non-session caller (static token, OAuth) still works for
+those two, falling back to the instance admin's own credentials -- see
+docs/AUTH.md.
 
 | Tool | Scope | | Tool | Scope |
 |---|---|---|---|---|

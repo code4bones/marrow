@@ -49,6 +49,15 @@ export interface GatewayRequestContext {
   // source.
   sessionUserId?: string;
   sessionRole?: string;
+  // T-MEMORY-047: distinguishes a real browser session (cookie) from a
+  // personal-API-token bearer -- both populate sessionUserId/sessionRole
+  // identically (scope-tier resolution and project-membership filtering
+  // treat them the same), but git-credential *management*
+  // (create/delete, see requireSessionUserId below) stays deliberately
+  // browser-session-only, so it checks this field too. Absent for every
+  // non-session, non-personal-token auth source (static token, OAuth,
+  // anonymous), same as sessionUserId/sessionRole above.
+  sessionSource?: "cookie" | "personal_token";
 }
 
 export interface ArtifactDownload {
@@ -62,6 +71,7 @@ interface NormalizedGatewayRequestContext {
   metadata: Row;
   sessionUserId: string | null;
   sessionRole: string | null;
+  sessionSource: "cookie" | "personal_token" | null;
 }
 
 const manualSpecs = [
@@ -825,35 +835,46 @@ export class PgToolService {
     return row;
   }
 
-  // T-MEMORY-044: git host credentials + the pipeline-status proxy. All
-  // four resolve owner identity from context.sessionUserId ONLY -- a
-  // browser session, same "session-based only" answer T-MEMORY-042 gave for
-  // WS subscriptions. Static token, OAuth, and anonymous callers never
-  // populate sessionUserId (normalizeContext() below), so every one of
-  // these throws requireSession()'s clear UNAUTHORIZED error for them
-  // rather than silently operating on nobody's (or the wrong person's)
-  // credentials.
+  // T-MEMORY-044: git host credentials + the pipeline-status proxy. Static
+  // token, OAuth, and anonymous callers never populate sessionUserId
+  // (normalizeContext() below) at all. A personal-API-token bearer
+  // (T-MEMORY-047) DOES populate sessionUserId/sessionRole, same as a real
+  // browser session -- but management (create/delete, immediately below)
+  // additionally requires sessionSource === "cookie", so a personal token
+  // still can't manage credentials even though it resolves an owner id; see
+  // requireSessionUserId's own comment for why that extra check exists.
   //
   // Managing the credential itself (create/delete, where a raw secret is
   // typed in or destroyed) stays session-only -- a token should only ever
   // enter the system through the trusted browser profile UI, not be
-  // mintable/removable by an agent. Using an already-stored credential to
+  // mintable/removable by an agent (including one connected with the same
+  // user's own personal token). Using an already-stored credential to
   // answer a read-only question (list which hosts are configured, check a
   // pipeline's status) is different: this is a single-owner/small-team
   // self-host instance, not multi-tenant SaaS, and the whole point of
   // building this was so an agent (Claude Code, an OAuth connector) could
   // check CI status through PMem instead of the operator SSH-ing in and
-  // grepping journalctl by hand. So for the read paths, a non-session
-  // caller (static token, OAuth, no auth configured) falls back to the
-  // instance's primary admin -- same "earliest-created admin" resolution
-  // already used for the static token's own owner_user_id in
-  // ensureStaticTokenCredential (T-MEMORY-029). A browser session's own
-  // user id always takes precedence when present.
+  // grepping journalctl by hand. So for the read paths, a caller with no
+  // resolved sessionUserId at all (static token, OAuth, no auth configured)
+  // falls back to the instance's primary admin -- same "earliest-created
+  // admin" resolution already used for the static token's own
+  // owner_user_id in ensureStaticTokenCredential (T-MEMORY-029). A browser
+  // session's or personal token's own user id always takes precedence when
+  // present.
   private requireSessionUserId(context: NormalizedGatewayRequestContext): string {
-    if (!context.sessionUserId) {
+    // T-MEMORY-047: deliberately checks sessionSource, not just
+    // sessionUserId -- a personal-API-token bearer also populates
+    // sessionUserId/sessionRole (so scope-tier resolution and
+    // project-membership filtering treat it like a session), but a raw git
+    // credential must still only ever be typed in or destroyed through the
+    // trusted browser profile UI, never by an agent connected with even
+    // that user's own personal token. This is the one place that
+    // distinction matters; every other sessionUserId consumer in this file
+    // does not check sessionSource.
+    if (!context.sessionUserId || context.sessionSource !== "cookie") {
       throw new AppError(
         "UNAUTHORIZED",
-        "Git credentials require a logged-in session (no static token, OAuth connector, or anonymous caller can manage credentials)."
+        "Git credentials require a logged-in session (no static token, OAuth connector, personal API token, or anonymous caller can manage credentials)."
       );
     }
     return context.sessionUserId;
@@ -5504,7 +5525,8 @@ function normalizeContext(context: GatewayRequestContext): NormalizedGatewayRequ
     clientLabel: context.clientLabel && context.clientLabel.length > 0 ? context.clientLabel : clientId,
     metadata: context.metadata ?? {},
     sessionUserId: context.sessionUserId ?? null,
-    sessionRole: context.sessionRole ?? null
+    sessionRole: context.sessionRole ?? null,
+    sessionSource: context.sessionSource ?? null
   };
 }
 
