@@ -5,7 +5,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
 import { DeleteProjectButton } from '../../features/project/DeleteProjectButton';
 import { GET_PROJECTS } from '../../shared/api/queries';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { Project } from '../../shared/model/types';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -21,6 +23,7 @@ export function ProjectsPage() {
   }, [slug, setSelectedProject]);
 
   const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS);
+  useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
 
   const handleProjectDeleted = () => {
     setSelectedProject(null);

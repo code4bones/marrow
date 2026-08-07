@@ -8,6 +8,8 @@ import { DeleteDecisionButton } from '../../features/decision/DeleteDecisionButt
 import { RecordDecisionDrawer } from '../../features/decision/RecordDecisionDrawer';
 import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Decision, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -30,6 +32,7 @@ export function DecisionsPage() {
   const { data, loading, error, refetch } = useQuery<{ decisionsPage: Paginated<Decision> }>(GET_DECISIONS_PAGE, {
     variables: { project: slug, status: status || undefined, limit: pageSize, offset },
   });
+  useRefetchOnVersion(useRealtimeStore((s) => s.decisionsVersion), refetch);
 
   const pageInfo = data?.decisionsPage.pageInfo;
 

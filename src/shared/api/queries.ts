@@ -438,3 +438,14 @@ export const ADD_TASK_NOTE = gql`
     }
   }
 `;
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+
+export const ON_GATEWAY_EVENT = gql`
+  subscription OnGatewayEvent {
+    gatewayEvents {
+      event
+      payload
+    }
+  }
+`;

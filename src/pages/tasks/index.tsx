@@ -8,6 +8,8 @@ import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { GET_TASKS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Paginated, Task } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -38,6 +40,7 @@ export function TasksPage() {
     variables: { project: slug, status: status || undefined, limit: pageSize, offset },
     skip: !slug,
   });
+  useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
 
   if (!slug) {
     return (

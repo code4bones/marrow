@@ -8,6 +8,8 @@ import { CreateMemoryDrawer } from '../../features/memory/CreateMemoryDrawer';
 import { DeleteMemoryButton } from '../../features/memory/DeleteMemoryButton';
 import { GET_MEMORY_ITEMS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { MemoryRecord, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -33,6 +35,7 @@ export function MemoryPage() {
   const { data, loading, error, refetch } = useQuery<{ memoryItemsPage: Paginated<MemoryRecord> }>(GET_MEMORY_ITEMS_PAGE, {
     variables: { project: slug, type: type || undefined, includeCommon, limit: pageSize, offset },
   });
+  useRefetchOnVersion(useRealtimeStore((s) => s.memoryVersion), refetch);
 
   const pageInfo = data?.memoryItemsPage.pageInfo;
 

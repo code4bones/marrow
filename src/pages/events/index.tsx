@@ -6,6 +6,8 @@ import { DeleteEventButton } from '../../features/event/DeleteEventButton';
 import { RecordEventModal } from '../../features/event/RecordEventModal';
 import { GET_EVENTS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Event, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -18,6 +20,7 @@ export function EventsPage() {
   const { data, loading, error, refetch } = useQuery<{ eventsPage: Paginated<Event> }>(GET_EVENTS_PAGE, {
     variables: { project: slug, limit: pageSize, offset },
   });
+  useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetch);
 
   const pageInfo = data?.eventsPage.pageInfo;
 

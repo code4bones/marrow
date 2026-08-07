@@ -8,6 +8,8 @@ import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDr
 import { UpdateArtifactMetaModal } from '../../features/artifact/UpdateArtifactMetaModal';
 import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Artifact, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -28,6 +30,7 @@ export function ArtifactsPage() {
   const { data, loading, error, refetch } = useQuery<{ artifactsPage: Paginated<Artifact> }>(GET_ARTIFACTS_PAGE, {
     variables: { project: slug, limit: pageSize, offset },
   });
+  useRefetchOnVersion(useRealtimeStore((s) => s.artifactsVersion), refetch);
 
   const pageInfo = data?.artifactsPage.pageInfo;
 

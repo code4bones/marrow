@@ -2,6 +2,7 @@ import { Spin } from 'antd';
 import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '../../shared/model/auth.store';
+import { RealtimeProvider } from '../providers/RealtimeProvider';
 import { ArtifactsPage } from '../../pages/artifacts';
 import { ClaimPage } from '../../pages/claim';
 import { CommonPage } from '../../pages/common';
@@ -27,7 +28,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  return status === 'authenticated' ? <>{children}</> : <Navigate to="/login" replace />;
+  return status === 'authenticated' ? (
+    <>
+      <RealtimeProvider />
+      {children}
+    </>
+  ) : (
+    <Navigate to="/login" replace />
+  );
 }
 
 export function AppRouter() {
