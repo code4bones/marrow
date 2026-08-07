@@ -71,6 +71,20 @@ function statusColorFor(kind: string, status: string): string {
   return ANTD_TAG_HEX[GENERIC_STATUS_COLORS[status] ?? 'default'] ?? '#595959';
 }
 
+// A lot of titles in this project follow a "Scope: actual title" convention
+// (e.g. "PMemUI Timeline: вертикальная лента..."). Repeated verbatim on
+// every card, that scope prefix used to eat the single-line ellipsis
+// budget before the actually-distinguishing text ever showed (owner:
+// "мы на каждой ноде пишем [project-name]:xxxx, зачем?"). Split it out into
+// a small muted label instead of dropping it — it's still real information
+// (which area a decision/task belongs to), just not the headline.
+const TITLE_PREFIX_RE = /^([^:]{2,40}):\s+(.+)$/s;
+
+function splitTitlePrefix(title: string): { prefix: string | null; rest: string } {
+  const m = TITLE_PREFIX_RE.exec(title);
+  return m ? { prefix: m[1], rest: m[2] } : { prefix: null, rest: title };
+}
+
 // Small kind-identity dot used in the root-search dropdown (id/title match
 // across all kinds) — reuses the app's one canonical kind→color mapping
 // (shared/lib/entityId.ts, the same one RecordLink chips use) rather than
@@ -317,6 +331,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
   const toneColor = remarks.length > 0 ? TONE_META[remarks[0].tone].color : null;
   const shown = satellites.slice(0, MAX_SATELLITES_SHOWN);
   const overflow = satellites.length - shown.length;
+  const { prefix: titlePrefix, rest: titleRest } = splitTitlePrefix(node.title);
 
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -336,18 +351,28 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
           boxShadow: toneColor ? `inset 4px 0 0 0 ${toneColor}` : undefined,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 4 }}>
-          <Typography.Text
-            style={{ fontSize: 13, color: '#e8e8e8', flex: 1, minWidth: 0, lineHeight: 1.3 }}
-            ellipsis={{ tooltip: node.title }}
-          >
-            {node.title}
-          </Typography.Text>
-          {/* Was hardcoded to 'decision' before D-MEMORY-022 generalized this
-              card to any kind — a task/memory/artifact root card would have
-              opened the wrong drawer type otherwise. */}
-          <DetailsTrigger onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())} />
-          {interactive && <DrillIndicator count={linkCount} isOpen={isOpen} />}
+        <div>
+          {titlePrefix && (
+            <Typography.Text
+              style={{ fontSize: 9.5, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 0.3, display: 'block', marginBottom: 1 }}
+              ellipsis={{ tooltip: titlePrefix }}
+            >
+              {titlePrefix}
+            </Typography.Text>
+          )}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 4 }}>
+            <Typography.Text
+              style={{ fontSize: 13, color: '#e8e8e8', flex: 1, minWidth: 0, lineHeight: 1.3 }}
+              ellipsis={{ tooltip: node.title }}
+            >
+              {titleRest}
+            </Typography.Text>
+            {/* Was hardcoded to 'decision' before D-MEMORY-022 generalized
+                this card to any kind — a task/memory/artifact root card
+                would have opened the wrong drawer type otherwise. */}
+            <DetailsTrigger onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())} />
+            {interactive && <DrillIndicator count={linkCount} isOpen={isOpen} />}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
