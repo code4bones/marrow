@@ -147,6 +147,7 @@ interface Props {
 }
 
 export function DecisionTimeline({ nodes, edges, loading }: Props) {
+  const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { flowNodes, flowEdges, decisionCount } = useMemo(() => {
     const decisions = nodes
       .filter((n) => n.kind === 'DECISION')
@@ -276,6 +277,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
+        onNodeClick={(_, node) => setSelectedRecord(node.id, 'decision')}
         style={{ background: '#141414' }}
       >
         <Background color="#2a2a2a" gap={20} />

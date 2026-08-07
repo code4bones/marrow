@@ -176,6 +176,14 @@ export const GET_RECORD = gql`
   }
 `;
 
+export const GET_RECORD_LINKS = gql`
+  query GetRecordLinks($id: ID!) {
+    links(id: $id, direction: "both", limit: 50) {
+      id fromId toId relation createdAt
+    }
+  }
+`;
+
 export const GET_MEMORY_ITEMS_PAGE = gql`
   query GetMemoryItemsPage($project: String, $type: String, $status: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     memoryItemsPage(project: $project, type: $type, status: $status, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {

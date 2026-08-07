@@ -88,6 +88,7 @@ interface Props {
 }
 
 export function TaskFlowchart({ tasks }: Props) {
+  const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { nodes, edges } = useMemo(() => {
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
 
@@ -142,6 +143,7 @@ export function TaskFlowchart({ tasks }: Props) {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
+        onNodeClick={(_, node) => setSelectedRecord(node.id, 'task')}
         style={{ background: '#141414' }}
       >
         <Background color="#2a2a2a" gap={20} />

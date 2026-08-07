@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Divider, Drawer, Skeleton, Tag, Typography } from 'antd';
-import { GET_ARTIFACT_TEXT, GET_RECORD } from '../../shared/api/queries';
+import { GET_ARTIFACT_TEXT, GET_RECORD, GET_RECORD_LINKS } from '../../shared/api/queries';
 import type {
   Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Task,
 } from '../../shared/model/types';
@@ -203,6 +203,40 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
   }
 }
 
+// Reused for every record kind (task/decision/artifact/memory/event) so
+// "drilling in" isn't specific to the decision timeline — click a linked
+// record here and the same drawer re-fetches to show it, letting you walk
+// the graph one hop at a time from any starting point.
+function LinksSection({ id }: { id: string }) {
+  const { data, loading } = useQuery<{ links: Link[] }>(GET_RECORD_LINKS, { variables: { id } });
+  if (loading) return null;
+  const links = data?.links ?? [];
+  if (links.length === 0) return null;
+
+  return (
+    <>
+      <Divider style={{ margin: '8px 0 12px' }} />
+      <Field label={`Links (${links.length})`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {links.map((l) => {
+            const outgoing = l.fromId === id;
+            const otherId = outgoing ? l.toId : l.fromId;
+            return (
+              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Text type="secondary" style={{ fontSize: 12, width: 14, flexShrink: 0 }}>
+                  {outgoing ? '→' : '←'}
+                </Text>
+                <Tag style={{ fontSize: 10 }}>{l.relation}</Tag>
+                <RecordLink id={otherId} />
+              </div>
+            );
+          })}
+        </div>
+      </Field>
+    </>
+  );
+}
+
 function DrawerContent({ id }: { id: string }) {
   const { data, loading, error } = useQuery<{ record: RecordWrapper }>(GET_RECORD, {
     variables: { id },
@@ -212,7 +246,12 @@ function DrawerContent({ id }: { id: string }) {
   if (error) return <Alert type="error" message={error.message} />;
   if (!data?.record) return <Alert type="warning" message="Record not found" />;
 
-  return <RecordBody wrapper={data.record} />;
+  return (
+    <>
+      <RecordBody wrapper={data.record} />
+      <LinksSection id={id} />
+    </>
+  );
 }
 
 export function DetailDrawer() {
