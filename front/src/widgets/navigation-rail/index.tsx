@@ -109,7 +109,7 @@ export function NavigationRail() {
       {/* Logo */}
       <div style={{ padding: '16px 16px 8px', flexShrink: 0 }}>
         <Typography.Text strong style={{ fontSize: 13, letterSpacing: 1 }}>
-          PMEM UI
+          MARROW
         </Typography.Text>
         <VersionLine />
       </div>

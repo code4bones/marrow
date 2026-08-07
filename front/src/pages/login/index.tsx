@@ -116,7 +116,7 @@ export function LoginPage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Set up Project Memory
+          Set up Marrow
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
           No admin account exists yet. Create the first one — this only happens once, and only while the
@@ -141,7 +141,7 @@ export function LoginPage() {
   return (
     <CenteredCard>
       <Title level={4} style={{ marginBottom: 4 }}>
-        Project Memory
+        Marrow
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         Sign in with your account
