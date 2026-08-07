@@ -612,6 +612,33 @@ try {
     "artifact.put_text accepted a non-text contentType."
   );
 
+  // Regression check for I-MEMORY-022 step 1: project.summary with no
+  // explicit query used to synthesize one from the project's own
+  // title/slug/description and run it through a mandatory FTS filter, so
+  // memory/artifacts came back empty even though counts showed real
+  // content (that record was created above, this project has an active
+  // agent_rule item and this common artifact is visible via includeCommon).
+  const projectSummaryNoQueryResult = await client.callTool({
+    name: "project.summary",
+    arguments: {
+      project: state.projectId,
+      limits: { memory: 5, artifacts: 5 }
+    }
+  });
+  assertOk(projectSummaryNoQueryResult.structuredContent, "project.summary (no query) failed.");
+  assert(
+    readNestedNumber(projectSummaryNoQueryResult.structuredContent, ["data", "counts", "items"]) > 0,
+    "project.summary (no query) counts.items should be > 0 after memory.create above."
+  );
+  assert(
+    readNestedArray(projectSummaryNoQueryResult.structuredContent, ["data", "memory"]).length > 0,
+    "project.summary (no query) returned an empty memory section despite non-zero counts.items."
+  );
+  assert(
+    readNestedArray(projectSummaryNoQueryResult.structuredContent, ["data", "artifacts"]).length > 0,
+    "project.summary (no query) returned an empty artifacts section despite a common artifact existing."
+  );
+
   const artifactSearchResult = await client.callTool({
     name: "artifact.search",
     arguments: {

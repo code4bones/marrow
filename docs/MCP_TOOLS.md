@@ -1389,8 +1389,15 @@ Input:
 }
 ```
 
-Omit `project` to use the requesting client's current project. Omit `query` to
-derive a broad project query from the project title, slug, and description.
+Omit `project` to use the requesting client's current project. Omit `query`
+and the `memory`/`artifacts`/`knownFaults` sections show recent active
+records for the project instead of running a full-text search — a query
+synthesized from the project's own title/slug/description was tried
+earlier and rarely lexically matched real records, so those sections came
+back empty even when `counts` showed real content (see `I-MEMORY-022`,
+fixed in `T-MEMORY-031`). That synthesized string still appears in the
+response's `query` field and seeds the `context.pack` suggestion in
+`nextCalls`, but no longer gates what these sections return.
 
 Output:
 

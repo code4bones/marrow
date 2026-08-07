@@ -899,10 +899,16 @@ export class PgToolService {
     const project = await this.resolveProject(input.project, context);
     const includeCommon = input.includeCommon !== false;
     const limits = projectSummaryLimits((input.limits ?? {}) as Row);
-    const query =
-      typeof input.query === "string"
-        ? input.query
-        : [project.title, project.slug, project.description].filter(Boolean).join(" ");
+    // Only apply an FTS filter to the memory/artifacts/knownFaults sections
+    // when the caller explicitly asked for one. Synthesizing a query from
+    // the project's own title/slug/description and running it through a
+    // mandatory tsquery match (searchMemory had no query-less mode; project
+    // title/description rarely lexically overlaps with stored records) made
+    // these sections come back empty even when counts showed real content —
+    // see I-MEMORY-022 step 1. The synthesized string is still useful as a
+    // topic hint for the query field and nextCalls' context.pack suggestion.
+    const explicitQuery = typeof input.query === "string" && input.query.trim() ? input.query : undefined;
+    const query = explicitQuery ?? [project.title, project.slug, project.description].filter(Boolean).join(" ");
 
     const [openTasks, decisions, knownFaults, handoffs, artifacts, memory, recentEvents, counts] = await Promise.all([
       this.listOpenProjectTasks(project.id, limits.tasks),
@@ -913,7 +919,7 @@ export class PgToolService {
         limit: limits.decisions
       }),
       this.searchMemory({
-        query,
+        query: explicitQuery,
         project: project.id,
         includeCommon,
         type: "failed_attempt",
@@ -922,13 +928,13 @@ export class PgToolService {
       }),
       this.listRecentItemsByType("handoff", project.id, includeCommon, limits.handoffs),
       this.searchArtifacts({
-        query,
+        query: explicitQuery,
         project: project.id,
         includeCommon,
         limit: limits.artifacts
       }),
       this.searchMemory({
-        query,
+        query: explicitQuery,
         project: project.id,
         includeCommon,
         status: "active",
@@ -1311,19 +1317,18 @@ export class PgToolService {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Search requires a project or includeCommon=true.");
     }
 
-    const queryText = String(input.query);
-    let query = this.db("items")
-      .select(
-        "id",
-        "project_id",
-        "type",
-        "title",
-        "body",
-        "status",
-        "tags",
-        this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText])
-      )
-      .whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    // query is optional here (unlike the public memory.search MCP tool,
+    // which still requires it at the schema level) so internal callers like
+    // project.summary can browse "recent active records for this project"
+    // without inventing a query and running it through a mandatory FTS
+    // filter that has no reason to match — see I-MEMORY-022 step 1.
+    const queryText = typeof input.query === "string" && input.query.trim() ? input.query : null;
+    let query = this.db("items").select("id", "project_id", "type", "title", "body", "status", "tags");
+    if (queryText) {
+      query = query
+        .select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]))
+        .whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    }
 
     query = query.andWhere((builder) => {
       if (project) {
@@ -1343,7 +1348,7 @@ export class PgToolService {
 
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
-      .orderBy("rank", "desc")
+      .orderBy(queryText ? "rank" : "created_at", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(searchOut);
   }
