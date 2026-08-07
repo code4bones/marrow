@@ -5,7 +5,11 @@ import { useState } from 'react';
 import { PUT_TEXT_ARTIFACT } from '../../shared/api/queries';
 
 interface Props {
-  projectSlug: string;
+  /** Omit for the Common page — uploads a project-independent (common:
+   * true) artifact instead of a project-scoped one. Same mutation, same
+   * backend rule (storeArtifact: `common = input.common === true ||
+   * input.project === null`). */
+  projectSlug?: string;
   onDone?: () => void;
 }
 
@@ -31,6 +35,7 @@ export function PutTextArtifactDrawer({ projectSlug, onDone }: Props) {
         variables: {
           input: {
             project: projectSlug,
+            common: projectSlug ? undefined : true,
             path: values.path,
             title: values.title || undefined,
             description: values.description || undefined,

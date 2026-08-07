@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { GET_ARTIFACTS, GET_DECISIONS } from '../../shared/api/queries';
 import type { Artifact, Decision } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -36,15 +37,18 @@ const decisionColumns: ColumnsType<Decision> = [
   { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
 ];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <Typography.Text
-        type="secondary"
-        style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}
-      >
-        {title}
-      </Typography.Text>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Typography.Text
+          type="secondary"
+          style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}
+        >
+          {title}
+        </Typography.Text>
+        {extra}
+      </div>
       {children}
     </div>
   );
@@ -64,7 +68,10 @@ export function CommonPage() {
     <PageLayout title="Common" subtitle="Shared knowledge across all projects">
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
 
-      <Section title="Common Artifacts">
+      <Section
+        title="Common Artifacts"
+        extra={<PutTextArtifactDrawer onDone={() => void artifacts.refetch()} />}
+      >
         <Table<Artifact>
           dataSource={artifacts.data?.artifacts}
           columns={artifactColumns}
