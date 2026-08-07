@@ -1,4 +1,4 @@
-import { CheckCircleOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
 import { Popover, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -239,13 +239,25 @@ interface DecisionCardProps {
   linkCount: number;
   isOpen: boolean;
   onToggleDrill: () => void;
+  /**
+   * False for the header card at the top of an already-open drill column —
+   * that card IS the column (its own links are already showing right below
+   * it), so there is no further "drill into it" action for a click to do.
+   * Making it clickable anyway meant a click there could only ever collapse
+   * the column, which reads as "the node I clicked just disappeared"
+   * (reported after v0.9.1 shipped click-to-drill) — the fix is to make
+   * that card inert and give the column an explicit close control instead
+   * (see DrillColumn's title bar). Defaults true for every other usage
+   * (baseline ribbon, entries inside a column's link list).
+   */
+  interactive?: boolean;
 }
 
 // The one card shape reused everywhere: baseline ribbon, a column's own
 // root header, and any decision entry inside a column's link list — same
 // component, same interaction, per D-MEMORY-021's "тот же визуальный
 // стиль, что и baseline-лента" requirement.
-function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill }: DecisionCardProps) {
+function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill, interactive = true }: DecisionCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const status = node.status ?? 'active';
   const color = STATUS_COLOR[status] ?? '#595959';
@@ -259,14 +271,14 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
       <div
-        onClick={onToggleDrill}
+        onClick={interactive ? onToggleDrill : undefined}
         style={{
           minHeight: 84,
           background: isOpen ? '#1c2a38' : '#1f1f1f',
           border: `2px solid ${borderColor}`,
           borderRadius: 6,
           padding: '8px 12px',
-          cursor: 'pointer',
+          cursor: interactive ? 'pointer' : 'default',
           boxSizing: 'border-box',
           opacity: status === 'superseded' || status === 'archived' ? 0.72 : 1,
           display: 'flex',
@@ -282,7 +294,7 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
             {node.title}
           </Typography.Text>
           <DetailsTrigger onClick={() => setSelectedRecord(node.id, 'decision')} />
-          <DrillIndicator count={linkCount} isOpen={isOpen} />
+          {interactive && <DrillIndicator count={linkCount} isOpen={isOpen} />}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -549,10 +561,22 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
 
   return (
     <div style={COLUMN_OUTER_STYLE}>
-      <div style={COLUMN_TITLE_STYLE}>
-        <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }} ellipsis={{ tooltip: `Links of ${rootId}` }}>
+      <div style={{ ...COLUMN_TITLE_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, flex: 1, minWidth: 0 }} ellipsis={{ tooltip: `Links of ${rootId}` }}>
           Links of {rootId}
         </Typography.Text>
+        {/* Closing this column is the only action left for the root card
+            below — it's inert (see DecisionCard's `interactive` prop), so a
+            re-click there can no longer make it appear to "vanish". */}
+        <Tooltip title="Close this column">
+          <span
+            role="button"
+            onClick={() => onToggle(rootId, level)}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 18, borderRadius: 4, cursor: 'pointer', color: '#8c8c8c', flexShrink: 0 }}
+          >
+            <CloseOutlined style={{ fontSize: 11 }} />
+          </span>
+        </Tooltip>
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
         <div style={{ width: COLUMN_CARD_W }}>
@@ -562,7 +586,8 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             remarks={remarksByTarget.get(rootId) ?? []}
             linkCount={(linksByRecord.get(rootId) ?? []).length}
             isOpen
-            onToggleDrill={() => onToggle(rootId, level)}
+            interactive={false}
+            onToggleDrill={() => {}}
           />
         </div>
         <div style={{ width: COLUMN_CARD_W, height: 1, background: '#303030', margin: '2px 0 10px' }} />
