@@ -204,9 +204,9 @@ API_ENDPOINT=/api
 MCP_TOKEN=...
 ARTIFACT_DIR=./artifacts
 GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
-PROJECT_MEMORY_PUBLIC_URL=https://pmem.undoo.ru/api
-PROJECT_MEMORY_OAUTH_ISSUER=https://pmem.undoo.ru/api
-PROJECT_MEMORY_OAUTH_AUDIENCE=https://pmem.undoo.ru/api
+PROJECT_MEMORY_PUBLIC_URL=https://marrow.example.com/api
+PROJECT_MEMORY_OAUTH_ISSUER=https://marrow.example.com/api
+PROJECT_MEMORY_OAUTH_AUDIENCE=https://marrow.example.com/api
 PROJECT_MEMORY_MAGIC_TOKEN=...
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
 PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
@@ -296,7 +296,7 @@ gateway maps them back to the canonical pmem tools internally.
 Client-specific variables point agents at the public gateway base URL:
 
 ```text
-GW_ENDPOINT=https://pmem.undoo.ru/api
+GW_ENDPOINT=https://marrow.example.com/api
 MCP_CLIENT_AUTH=...
 ```
 
@@ -324,7 +324,7 @@ Codex CLI streamable HTTP MCP config does not currently expose custom headers, s
 export PMEM_MCP_TOKEN="<token>"
 
 codex mcp add project-memory \
-  --url "https://pmem.undoo.ru/api/mcp?client_id=${USER}@$(hostname -s)&client_label=${USER}@$(hostname -s)&client_kind=codex" \
+  --url "https://marrow.example.com/api/mcp?client_id=${USER}@$(hostname -s)&client_label=${USER}@$(hostname -s)&client_kind=codex" \
   --bearer-token-env-var PMEM_MCP_TOKEN
 ```
 
@@ -335,7 +335,7 @@ command does not expose a `--headers` option. Add the URL first:
 export PMEM_MCP_TOKEN="<token>"
 
 codewhale-tui mcp add project-memory \
-  --url "https://pmem.undoo.ru/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
+  --url "https://marrow.example.com/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"
 ```
 
 Then edit the CodeWhale MCP config and add the bearer header manually. Current
@@ -349,7 +349,7 @@ The resulting entry should look like:
       "command": null,
       "args": [],
       "env": {},
-      "url": "https://pmem.undoo.ru/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
+      "url": "https://marrow.example.com/api/mcp?client_id=codewhale:developer@host&client_label=CodeWhale%20developer@host&client_kind=codewhale",
       "disabled": false,
       "enabled": true,
       "headers": {

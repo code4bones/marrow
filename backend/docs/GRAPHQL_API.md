@@ -18,7 +18,7 @@ ${GW_ENDPOINT}/graphql
 For production this is:
 
 ```text
-https://pmem.undoo.ru/api/graphql
+https://marrow.example.com/api/graphql
 ```
 
 The direct gateway also accepts `${API_ENDPOINT}/graphql` when `API_ENDPOINT`

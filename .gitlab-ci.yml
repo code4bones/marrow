@@ -96,7 +96,7 @@ front:build:
         - front/**/*
   script:
     - cd front
-    - docker build --target build -t "$FRONT_IMAGE_TAG" .
+    - docker build --target build --build-arg "VITE_GRAPHQL_URL=https://$PROD_DOMAIN/api/graphql" -t "$FRONT_IMAGE_TAG" .
     - CID=$(docker create "$FRONT_IMAGE_TAG")
     - rm -rf dist
     - docker cp "$CID:/app/dist" ./dist

@@ -29,7 +29,7 @@ the paths the app uses for its own auth.
 ## Worked incident (2026-08-06/07, PMemUI first public deploy)
 
 An NPM ("Nginx Proxy Manager") Access List (Basic Auth) was added in front of
-`pmem.undoo.ru` as a same-day stopgap after the first public CI/CD deploy.
+`marrow.example.com` as a same-day stopgap after the first public CI/CD deploy.
 Symptom: the Basic-Auth password prompt reappeared immediately after a
 correct login, on every attempt.
 
@@ -57,7 +57,7 @@ Two independent causes stacked:
    after the app rendered its own login screen.
 
    Fix: moved Basic Auth off NPM entirely and onto the internal nginx
-   (`project-memory-mcp/deploy/nginx/pmem.undoo.conf`), scoped only to
+   (`project-memory-mcp/deploy/nginx/marrow.example.conf`), scoped only to
    `location /` (the SPA shell). `/api/*` keeps its existing locations
    untouched, still protected only by the gateway's own `Authorization:
    Bearer` check. NPM's Access List was then set to "None" on that proxy

@@ -7,11 +7,11 @@ This template provides a minimal setup to get React working in Vite with HMR and
 `.gitlab-ci.yml` runs on the project's GitLab runner (shell executor, `docker` on PATH):
 
 - **build** (every branch push / MR): `docker build --target build` runs `npm run lint` and `npm run build` (`tsc -b && vite build`) inside the image; the resulting `dist/` is extracted via `docker cp` and kept as a job artifact. A failure at any step (lint, typecheck, or build) fails the job.
-- **deploy** (tag pushes only): copies `dist/` to `/var/www/pmemui` on the runner host. The runner already lives on the deploy target (`192.168.1.68`), so this is a local `rsync`, not an SSH step.
+- **deploy** (tag pushes only): copies `dist/` to `$FRONT_DEPLOY_PATH` on the runner host. The runner already lives on the deploy target, so this is a local `rsync`, not an SSH step.
 
-Nginx serves the static build at `https://pmem.undoo.ru/` (SPA `try_files` fallback to `index.html`); `/api/*` on the same host/port continues to proxy to the pmem gateway. See `deploy/nginx/pmemui.locations.conf` for the include, already merged into `project-memory-mcp/deploy/nginx/pmem.undoo.conf`.
+Nginx serves the static build at `https://$PROD_DOMAIN/` (SPA `try_files` fallback to `index.html`); `/api/*` on the same host/port continues to proxy to the gateway. See `deploy/nginx/marrow-ui.locations.conf` for the include, already merged into `backend/deploy/nginx/marrow.example.conf`.
 
-`VITE_GRAPHQL_URL` is baked in at build time (Vite env var). It defaults to `https://pmem.undoo.ru/api/graphql` in the Dockerfile; override with `--build-arg VITE_GRAPHQL_URL=...` for a different target.
+`VITE_GRAPHQL_URL` is baked in at build time (Vite env var). It defaults to `https://marrow.example.com/api/graphql` in the Dockerfile; override with `--build-arg VITE_GRAPHQL_URL=...` for a different target.
 
 To deploy: push a tag on `main`. To change the deploy path, override the `DEPLOY_PATH` CI/CD variable in GitLab project settings.
 

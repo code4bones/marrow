@@ -122,7 +122,7 @@ events, links, and controlled mutations for full PMemUI maintenance. The
 endpoint uses the same gateway authorization as `/mcp` and `/call`; GraphQL
 queries require OAuth `memory:read`, while mutations require `memory:read` and
 `memory:write`. On production this resolves to
-`https://pmem.undoo.ru/api/graphql`. `OPTIONS /graphql` and
+`https://marrow.example.com/api/graphql`. `OPTIONS /graphql` and
 `OPTIONS ${API_ENDPOINT}/graphql` support browser CORS preflight. See
 `docs/GRAPHQL_API.md`.
 

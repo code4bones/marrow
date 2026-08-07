@@ -678,7 +678,7 @@ X-Project-Memory-Client-Kind: mcp-http
 Clients that cannot send custom headers, such as Codex CLI streamable HTTP MCP config, can use query parameters on the MCP URL:
 
 ```text
-https://pmem.undoo.ru/api/mcp?client_id=developer@host&client_label=Developer%20Host&client_kind=codex
+https://marrow.example.com/api/mcp?client_id=developer@host&client_label=Developer%20Host&client_kind=codex
 ```
 
 ---
@@ -854,7 +854,7 @@ Output:
 To download an artifact, append `downloadPath` to `GW_ENDPOINT`, for example:
 
 ```text
-https://pmem.undoo.ru/api/artifacts/A-COMMON-001/download
+https://marrow.example.com/api/artifacts/A-COMMON-001/download
 ```
 
 Bearer auth is still required.
@@ -2849,7 +2849,7 @@ Input:
 
 ```json
 {
-  "host": "gitlab.codup.pro",
+  "host": "gitlab.example.com",
   "label": "CI runner PAT",
   "token": "glpat-xxxxxxxxxxxxxxxxxxxx"
 }
@@ -2860,7 +2860,7 @@ Output:
 ```json
 {
   "id": "3f9c2e7a-...",
-  "host": "gitlab.codup.pro",
+  "host": "gitlab.example.com",
   "label": "CI runner PAT",
   "createdAt": "2026-08-07T12:00:00.000Z"
 }
@@ -2884,7 +2884,7 @@ Output:
   "credentials": [
     {
       "id": "3f9c2e7a-...",
-      "host": "gitlab.codup.pro",
+      "host": "gitlab.example.com",
       "label": "CI runner PAT",
       "createdAt": "2026-08-07T12:00:00.000Z",
       "lastUsedAt": "2026-08-07T13:05:00.000Z",
@@ -2939,7 +2939,7 @@ Input:
 
 ```json
 {
-  "host": "gitlab.codup.pro",
+  "host": "gitlab.example.com",
   "project": "group/project",
   "ref": "main"
 }
@@ -2955,7 +2955,7 @@ Output:
   "status": "running",
   "ref": "main",
   "sha": "abc123def456",
-  "webUrl": "https://gitlab.codup.pro/group/project/-/pipelines/4242",
+  "webUrl": "https://gitlab.example.com/group/project/-/pipelines/4242",
   "jobs": [
     { "name": "build", "status": "success" },
     { "name": "test", "status": "success" },

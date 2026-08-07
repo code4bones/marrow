@@ -6,5 +6,5 @@ export const GRAPHQL_WS_URL = GRAPHQL_HTTP_URL.replace(/^https/, 'wss').replace(
   'ws',
 );
 
-// e.g. https://pmem.undoo.ru/api/graphql -> https://pmem.undoo.ru/api
+// e.g. https://marrow.example.com/api/graphql -> https://marrow.example.com/api
 export const API_BASE_URL = GRAPHQL_HTTP_URL.replace(/\/graphql$/, '');
