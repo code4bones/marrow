@@ -241,7 +241,7 @@ Output:
       {
         "client": "codex",
         "transport": "streamable-http",
-        "url": "https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=<client-kind>"
+        "url": "https://<gateway-host>/api/mcp?client_id=${MARROW_CLIENT_ID}&client_label=${MARROW_CLIENT_LABEL}&client_kind=<client-kind>"
       },
       {
         "client": "codewhale",

@@ -321,18 +321,18 @@ cleanup.
 Codex CLI streamable HTTP MCP config does not currently expose custom headers, so pass client identity through URL query parameters:
 
 ```bash
-export PMEM_MCP_TOKEN="<token>"
+export MARROW_MCP_TOKEN="<token>"
 
 codex mcp add project-memory \
   --url "https://marrow.example.com/api/mcp?client_id=${USER}@$(hostname -s)&client_label=${USER}@$(hostname -s)&client_kind=codex" \
-  --bearer-token-env-var PMEM_MCP_TOKEN
+  --bearer-token-env-var MARROW_MCP_TOKEN
 ```
 
 CodeWhale v0.8.x can add the Streamable HTTP URL from CLI, but its `mcp add`
 command does not expose a `--headers` option. Add the URL first:
 
 ```bash
-export PMEM_MCP_TOKEN="<token>"
+export MARROW_MCP_TOKEN="<token>"
 
 codewhale-tui mcp add project-memory \
   --url "https://marrow.example.com/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"

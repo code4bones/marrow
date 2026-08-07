@@ -308,19 +308,19 @@ function ConnectSection() {
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
 
   const exportTokenCmd = personalToken
-    ? `export PMEM_MCP_TOKEN="${personalToken}"`
-    : 'export PMEM_MCP_TOKEN="<see \'Your personal token\' above — click Generate/Regenerate to reveal it>"';
+    ? `export MARROW_MCP_TOKEN="${personalToken}"`
+    : 'export MARROW_MCP_TOKEN="<see \'Your personal token\' above — click Generate/Regenerate to reveal it>"';
 
   const claudeCodeCmd = [
     'claude mcp add --transport http project-memory \\',
     `  "${urlFor('claude-code')}" \\`,
-    '  --header "Authorization: Bearer $PMEM_MCP_TOKEN"',
+    '  --header "Authorization: Bearer $MARROW_MCP_TOKEN"',
   ].join('\n');
 
   const codexCmd = [
     'codex mcp add project-memory \\',
     `  --url "${urlFor('codex')}" \\`,
-    '  --bearer-token-env-var PMEM_MCP_TOKEN',
+    '  --bearer-token-env-var MARROW_MCP_TOKEN',
   ].join('\n');
 
   const claudeWebUrl = urlFor('claude');
@@ -334,7 +334,7 @@ function ConnectSection() {
         <>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             Claude Code talks to PMem over Streamable HTTP, using your own personal API token (
-            <Text code>PMEM_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
+            <Text code>MARROW_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
             a shared deployment secret.
           </Text>
           <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
@@ -422,7 +422,7 @@ function ConnectSection() {
         Your personal token
       </Text>
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-        Used by Claude Code / Codex below (<Text code>PMEM_MCP_TOKEN</Text>) — tied to your account and role, not a
+        Used by Claude Code / Codex below (<Text code>MARROW_MCP_TOKEN</Text>) — tied to your account and role, not a
         shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
       </Paragraph>
       <PersonalTokenPanel onTokenChange={setPersonalToken} />

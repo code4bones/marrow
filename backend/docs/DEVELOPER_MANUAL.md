@@ -100,7 +100,7 @@ product stage.
 Set the bearer token in the shell that starts the agent:
 
 ```bash
-export PMEM_MCP_TOKEN="<gateway-token>"
+export MARROW_MCP_TOKEN="<gateway-token>"
 ```
 
 Add the MCP server to Codex:
@@ -108,7 +108,7 @@ Add the MCP server to Codex:
 ```bash
 codex mcp add project-memory \
   --url "https://marrow.example.com/api/mcp?client_id=${USER}@$(hostname -s)&client_label=${USER}@$(hostname -s)&client_kind=codex" \
-  --bearer-token-env-var PMEM_MCP_TOKEN
+  --bearer-token-env-var MARROW_MCP_TOKEN
 ```
 
 Restart the agent after changing MCP configuration.
@@ -128,7 +128,7 @@ CodeWhale v0.8.x can add the Streamable HTTP URL from CLI, but its `mcp add`
 command does not expose a `--headers` option. Add the URL first:
 
 ```bash
-export PMEM_MCP_TOKEN="<gateway-token>"
+export MARROW_MCP_TOKEN="<gateway-token>"
 
 codewhale-tui mcp add project-memory \
   --url "https://marrow.example.com/api/mcp?client_id=codewhale:${USER}@$(hostname -s)&client_label=CodeWhale%20${USER}@$(hostname -s)&client_kind=codewhale"

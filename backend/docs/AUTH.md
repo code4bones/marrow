@@ -347,7 +347,7 @@ transport without separately asking an admin for the shared `MCP_TOKEN`
 user's personal token no longer means rotating a secret every other client
 also depends on). Motivated by a gap this codebase's own Connect manual
 (`T-MEMORY-040`) exposed: its Claude Code / Codex instructions showed
-`export PMEM_MCP_TOKEN="<gateway-token-from-your-admin>"`, implying every
+`export MARROW_MCP_TOKEN="<gateway-token-from-your-admin>"`, implying every
 newly self-registered-and-approved user had to separately ask an admin for
 the one shared credential -- the exact thing individual credentials are
 supposed to avoid.
