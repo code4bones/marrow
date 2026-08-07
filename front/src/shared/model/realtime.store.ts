@@ -1,0 +1,44 @@
+import { create } from 'zustand';
+
+type VersionKey =
+  | 'tasksVersion'
+  | 'decisionsVersion'
+  | 'projectsVersion'
+  | 'artifactsVersion'
+  | 'memoryVersion'
+  | 'linksVersion';
+
+interface RealtimeState extends Record<VersionKey, number> {
+  /** Always bumped, regardless of prefix — drives the Events/timeline page. */
+  eventsVersion: number;
+  handleGatewayEvent: (event: string, payload: unknown) => void;
+}
+
+/** Ordered [prefix, storeKey] pairs — checked with startsWith(), first match wins. */
+const PREFIX_MAP: Array<[string, VersionKey]> = [
+  ['task.', 'tasksVersion'],
+  ['decision.', 'decisionsVersion'],
+  ['project.', 'projectsVersion'],
+  ['artifact.', 'artifactsVersion'],
+  ['memory.', 'memoryVersion'],
+  ['item.', 'memoryVersion'],
+  ['link.', 'linksVersion'],
+];
+
+export const useRealtimeStore = create<RealtimeState>((set) => ({
+  tasksVersion: 0,
+  decisionsVersion: 0,
+  projectsVersion: 0,
+  artifactsVersion: 0,
+  memoryVersion: 0,
+  linksVersion: 0,
+  eventsVersion: 0,
+
+  handleGatewayEvent: (event) => {
+    const match = PREFIX_MAP.find(([prefix]) => event.startsWith(prefix));
+    set((state) => ({
+      ...(match ? { [match[1]]: state[match[1]] + 1 } : {}),
+      eventsVersion: state.eventsVersion + 1,
+    }));
+  },
+}));
