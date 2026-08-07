@@ -9,6 +9,7 @@ import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
+import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -210,7 +211,9 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
 function LinksSection({ id }: { id: string }) {
   const { data, loading } = useQuery<{ links: Link[] }>(GET_RECORD_LINKS, { variables: { id } });
   if (loading) return null;
-  const links = data?.links ?? [];
+  // "annotates" links are remarks — RemarkPanel renders those with full
+  // body/tone, so they're excluded here to avoid showing the same thing twice.
+  const links = (data?.links ?? []).filter((l) => l.relation !== 'annotates');
   if (links.length === 0) return null;
 
   return (
@@ -250,6 +253,10 @@ function DrawerContent({ id }: { id: string }) {
     <>
       <RecordBody wrapper={data.record} />
       <LinksSection id={id} />
+      <Divider style={{ margin: '8px 0 12px' }} />
+      <Field label="Remarks">
+        <RemarkPanel id={id} projectId={data.record.projectId} />
+      </Field>
     </>
   );
 }

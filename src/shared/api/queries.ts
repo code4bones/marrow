@@ -184,6 +184,14 @@ export const GET_RECORD_LINKS = gql`
   }
 `;
 
+export const GET_MEMORY = gql`
+  query GetMemory($id: ID!) {
+    memory(id: $id) {
+      id type title body tags status createdAt updatedAt
+    }
+  }
+`;
+
 export const GET_MEMORY_ITEMS_PAGE = gql`
   query GetMemoryItemsPage($project: String, $type: String, $status: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     memoryItemsPage(project: $project, type: $type, status: $status, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
