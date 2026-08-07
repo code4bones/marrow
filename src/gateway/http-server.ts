@@ -6,7 +6,7 @@ import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AppError } from "../shared/errors.js";
 import { fail } from "../shared/mcp/tool-response.js";
-import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
+import { staticTokenClientId, type GatewayRequestContext, type PgToolService } from "./pg-tool-service.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
 import type { OAuthFacade } from "./oauth.js";
@@ -20,6 +20,7 @@ import {
 } from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import {
+  ADMIN_GRAPHQL_MUTATION_NAMES,
   createGatewayGraphqlServer,
   handleGatewayGraphqlRequest,
   type GatewayGraphqlServer
@@ -73,9 +74,54 @@ interface ToolCallBody {
 }
 
 type LogFields = Record<string, unknown>;
+
+// Scope model (D-MEMORY-007 / T-MEMORY-029). Three tiers, each a superset of
+// the previous: read < write < admin. admin covers hard-delete and other
+// destructive operations (*.delete, gateway.client_forget/prune) -- see the
+// scope-resolution table in docs/AUTH.md for exactly which auth source maps
+// to which tier.
+const READ_SCOPE = "memory:read";
+const WRITE_SCOPE = "memory:write";
+const ADMIN_SCOPE = "memory:admin";
+type ScopeTier = "read" | "write" | "admin";
+
+function scopesForTier(tier: ScopeTier): string[] {
+  if (tier === "admin") {
+    return [READ_SCOPE, WRITE_SCOPE, ADMIN_SCOPE];
+  }
+  if (tier === "write") {
+    return [READ_SCOPE, WRITE_SCOPE];
+  }
+  return [READ_SCOPE];
+}
+
+function requiredTierFor(requiredScopes: string[]): ScopeTier {
+  if (requiredScopes.includes(ADMIN_SCOPE)) {
+    return "admin";
+  }
+  if (requiredScopes.includes(WRITE_SCOPE)) {
+    return "write";
+  }
+  return "read";
+}
+
 type AuthorizationState =
   | { ok: true; source: "static" | "oauth" | "session" | "none" }
-  | { ok: false; challenge?: string; reason?: string };
+  | {
+      ok: false;
+      // "unauthenticated": no valid credential at all (missing/invalid
+      // token, no session, expired OAuth token, etc) -- 401.
+      // "insufficient_scope": the credential is valid but its scope tier is
+      // below what the operation requires -- 403 with a message naming both
+      // tiers, never the generic "missing/invalid gateway token" text (see
+      // acceptance criteria: "понятную ошибку про недостаточный скоуп, не
+      // тихий отказ").
+      kind: "unauthenticated" | "insufficient_scope";
+      challenge?: string;
+      reason?: string;
+      requiredTier?: ScopeTier;
+      grantedTier?: ScopeTier;
+    };
 
 export async function startGatewayServer(
   service: PgToolService,
@@ -123,7 +169,7 @@ async function handleRequest(
   const requestUrl = parseRequestUrl(request);
   const requestPath = requestUrl.pathname;
   const sessionAuth = options.auth ? await options.auth.identifyFromRequest(request) : null;
-  const context = requestContext(request, requestId, sessionAuth);
+  const context = requestContext(request, requestId, sessionAuth, options);
 
   const send = (status: number, body: unknown, extra?: LogFields) => {
     sendJson(response, status, body, requestId);
@@ -232,9 +278,11 @@ async function handleRequest(
               ? 400
               : error.code === "UNAUTHORIZED"
                 ? 401
-                : error.code === "NOT_FOUND"
-                  ? 404
-                  : 500;
+                : error.code === "INSUFFICIENT_SCOPE"
+                  ? 403
+                  : error.code === "NOT_FOUND"
+                    ? 404
+                    : 500;
           send(status, fail(error));
           return;
         }
@@ -244,7 +292,7 @@ async function handleRequest(
 
     const auth = isAuthorized(options, request, sessionAuth);
     if (!auth.ok) {
-      sendUnauthorized(response, requestId, auth.challenge);
+      sendUnauthorized(response, requestId, auth);
       logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
         authReason: auth.reason
       });
@@ -252,12 +300,12 @@ async function handleRequest(
     }
 
     if (isGraphqlRequestPath(requestPath)) {
-      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt, auth);
+      await handleGraphqlRequest(service, options, graphql, request, response, requestId, context, startedAt, auth, sessionAuth);
       return;
     }
 
     if (requestPath === "/mcp") {
-      await handleMcpRequest(service, options, request, response, requestId, context, startedAt, auth);
+      await handleMcpRequest(service, options, request, response, requestId, context, startedAt, auth, sessionAuth);
       return;
     }
 
@@ -291,14 +339,17 @@ async function handleRequest(
         });
         return;
       }
-      const scopeAuth = isAuthorizedForScopes(options, request, auth, gatewayToolRequiredScopes(body.tool));
+      const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, gatewayToolRequiredScopes(body.tool));
       if (!scopeAuth.ok) {
-        sendUnauthorized(response, requestId, scopeAuth.challenge);
-        logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+        sendUnauthorized(response, requestId, scopeAuth);
+        logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
           tool: body.tool,
           requestBody: sanitizeLogBody(body),
           requiredScopes: gatewayToolRequiredScopes(body.tool),
-          authReason: scopeAuth.reason
+          authReason: scopeAuth.reason,
+          scopeKind: scopeAuth.kind,
+          requiredTier: scopeAuth.requiredTier,
+          grantedTier: scopeAuth.grantedTier
         });
         return;
       }
@@ -345,18 +396,22 @@ async function handleGraphqlRequest(
   requestId: string,
   context: GatewayRequestContext,
   startedAt: number,
-  auth: AuthorizationState
+  auth: AuthorizationState,
+  sessionAuth: SessionIdentity | null
 ): Promise<void> {
   try {
     const body = request.method === "POST" ? await readJson(request) : undefined;
     const requiredScopes = graphqlRequiredScopes(request, body);
-    const scopeAuth = isAuthorizedForScopes(options, request, auth, requiredScopes);
+    const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
     if (!scopeAuth.ok) {
-      sendUnauthorized(response, requestId, scopeAuth.challenge);
-      logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+      sendUnauthorized(response, requestId, scopeAuth);
+      logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
         requiredScopes,
-        graphqlOperationType: requiredScopes.includes("memory:write") ? "mutation" : "query",
-        authReason: scopeAuth.reason
+        graphqlOperationType: requiredScopes.includes(WRITE_SCOPE) ? "mutation" : "query",
+        authReason: scopeAuth.reason,
+        scopeKind: scopeAuth.kind,
+        requiredTier: scopeAuth.requiredTier,
+        grantedTier: scopeAuth.grantedTier
       });
       return;
     }
@@ -427,7 +482,8 @@ async function handleMcpRequest(
   requestId: string,
   context: GatewayRequestContext,
   startedAt: number,
-  auth: AuthorizationState
+  auth: AuthorizationState,
+  sessionAuth: SessionIdentity | null
 ): Promise<void> {
   if (request.method !== "POST") {
     sendJson(
@@ -458,13 +514,16 @@ async function handleMcpRequest(
     const body = await readJson(request);
     logFields = mcpLogFields(body);
     const requiredScopes = mcpRequiredScopes(body);
-    const scopeAuth = isAuthorizedForScopes(options, request, auth, requiredScopes);
+    const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
     if (!scopeAuth.ok) {
-      sendMcpUnauthorized(response, requestId, scopeAuth.challenge);
-      logRequest(options, request, 401, Date.now() - startedAt, requestId, context, {
+      sendMcpUnauthorized(response, requestId, scopeAuth);
+      logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
         ...logFields,
         requiredScopes,
-        authReason: scopeAuth.reason
+        authReason: scopeAuth.reason,
+        scopeKind: scopeAuth.kind,
+        requiredTier: scopeAuth.requiredTier,
+        grantedTier: scopeAuth.grantedTier
       });
       return;
     }
@@ -868,17 +927,29 @@ function mcpToolName(value: unknown): string | undefined {
   return typeof value.params.name === "string" ? value.params.name : undefined;
 }
 
+// The regex-based `/\bmutation\b/i` check can't distinguish a delete
+// mutation from a create/update one by text alone, so admin-tier mutations
+// (the *.delete equivalents, see ADMIN_GRAPHQL_MUTATION_NAMES in graphql.ts)
+// need a second, name-specific check to require memory:admin like their
+// REST/MCP tool counterparts do.
+const ADMIN_GRAPHQL_MUTATION_PATTERN = new RegExp(`\\b(${ADMIN_GRAPHQL_MUTATION_NAMES.join("|")})\\s*\\(`);
+
 function graphqlRequiredScopes(request: IncomingMessage, body: unknown): string[] {
-  return graphqlLooksLikeMutation(request, body) ? ["memory:read", "memory:write"] : ["memory:read"];
+  const queries = graphqlQueryTexts(request, body);
+  if (queries.some((query) => ADMIN_GRAPHQL_MUTATION_PATTERN.test(query))) {
+    return [READ_SCOPE, WRITE_SCOPE, ADMIN_SCOPE];
+  }
+  if (queries.some((query) => /\bmutation\b/i.test(query))) {
+    return [READ_SCOPE, WRITE_SCOPE];
+  }
+  return [READ_SCOPE];
 }
 
-function graphqlLooksLikeMutation(request: IncomingMessage, body: unknown): boolean {
+function graphqlQueryTexts(request: IncomingMessage, body: unknown): string[] {
   const requestUrl = parseRequestUrl(request);
-  const queries = [
-    requestUrl.searchParams.get("query"),
-    ...graphqlBodyQueries(body)
-  ].filter((query): query is string => Boolean(query));
-  return queries.some((query) => /\bmutation\b/i.test(query));
+  return [requestUrl.searchParams.get("query"), ...graphqlBodyQueries(body)].filter((query): query is string =>
+    Boolean(query)
+  );
 }
 
 function graphqlBodyQueries(body: unknown): string[] {
@@ -894,23 +965,35 @@ function graphqlBodyQueries(body: unknown): string[] {
 function requestContext(
   request: IncomingMessage,
   requestId: string,
-  sessionAuth: SessionIdentity | null
+  sessionAuth: SessionIdentity | null,
+  options: GatewayServerOptions
 ): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
   const explicitClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
-  const clientId = explicitClientId ?? (sessionAuth ? `user:${sessionAuth.userId}` : `anonymous:${requestId}`);
+  // Static MCP_TOKEN requests otherwise fell through to a fresh
+  // `anonymous:${requestId}` on every single request -- no stable identity
+  // at all, unlike a session (`user:<id>`) or an explicit client-id header.
+  // Duplicated (not shared) with isAuthorized()'s own static-token check
+  // below: isAuthorized() runs later in the request lifecycle and this
+  // context is built before it, including for routes that never reach it.
+  const isStaticTokenAuth = Boolean(options.token) && request.headers.authorization === `Bearer ${options.token}`;
+  const clientId =
+    explicitClientId ??
+    (sessionAuth ? `user:${sessionAuth.userId}` : isStaticTokenAuth ? staticTokenClientId : `anonymous:${requestId}`);
   const clientLabel =
     headerString(request, "x-project-memory-client-label") ??
     queryString(requestUrl, "client_label") ??
-    (sessionAuth ? sessionAuth.email : explicitClientId ? clientId : "anonymous");
+    (sessionAuth ? sessionAuth.email : explicitClientId ? clientId : isStaticTokenAuth ? "static-token" : "anonymous");
   return {
     clientId,
     clientLabel,
     metadata: {
-      anonymous: explicitClientId ? false : !sessionAuth,
+      anonymous: explicitClientId ? false : !sessionAuth && !isStaticTokenAuth,
       kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
-    }
+    },
+    sessionUserId: sessionAuth?.userId,
+    sessionRole: sessionAuth?.role
   };
 }
 
@@ -950,6 +1033,7 @@ function isAuthorized(
     }
     return {
       ok: false,
+      kind: "unauthenticated",
       reason: auth.reason,
       challenge: options.oauth.challengeHeader(defaultOAuthScopes(), options.oauth.resourceForPath(parseRequestUrl(request).pathname))
     };
@@ -959,27 +1043,79 @@ function isAuthorized(
     return { ok: true, source: "none" };
   }
 
-  return { ok: false, reason: "missing_static_token" };
+  return { ok: false, kind: "unauthenticated", reason: "missing_static_token" };
+}
+
+// Scope tier granted by a request that already passed isAuthorized(). Static
+// token, no-token ("none"), and any OAuth-sourced request are fixed ceilings;
+// a session's tier is role-derived (decision 1 in D-MEMORY-007: no separate
+// "elevate to admin" UX, PMemUI has no destructive UI anyway per
+// D-MEMORY-015). See the scope-resolution table in docs/AUTH.md.
+function resolveScopeTier(
+  auth: Extract<AuthorizationState, { ok: true }>,
+  sessionAuth: SessionIdentity | null
+): ScopeTier {
+  switch (auth.source) {
+    case "static":
+    case "none":
+      return "admin";
+    case "session":
+      return sessionAuth?.role === "admin" ? "admin" : "write";
+    case "oauth":
+      // Decision 2: OAuth connectors (Claude Code, ChatGPT) never get admin
+      // scope, forever, regardless of the underlying user or JWT claims --
+      // deliberate protection against an agent hallucinating a delete call.
+      return "write";
+  }
+}
+
+function insufficientScope(requiredTier: ScopeTier, grantedTier: ScopeTier): AuthorizationState {
+  return { ok: false, kind: "insufficient_scope", requiredTier, grantedTier };
 }
 
 function isAuthorizedForScopes(
   options: GatewayServerOptions,
   request: IncomingMessage,
   auth: AuthorizationState,
+  sessionAuth: SessionIdentity | null,
   requiredScopes: string[]
 ): AuthorizationState {
-  if (!auth.ok || auth.source !== "oauth" || !options.oauth) {
+  if (!auth.ok) {
     return auth;
   }
-  const scopedAuth = options.oauth.authenticate(request, requiredScopes);
-  if (scopedAuth.ok) {
+
+  if (auth.source === "oauth") {
+    if (!options.oauth) {
+      return auth;
+    }
+    if (requiredScopes.includes(ADMIN_SCOPE)) {
+      // Defense in depth on top of oauth.ts never issuing memory:admin: even
+      // if a token somehow carried it, an OAuth-sourced request is denied
+      // without inspecting the claim.
+      return insufficientScope("admin", "write");
+    }
+    const scopedAuth = options.oauth.authenticate(request, requiredScopes);
+    if (scopedAuth.ok) {
+      return auth;
+    }
+    if (scopedAuth.reason === "scope") {
+      return insufficientScope(requiredTierFor(requiredScopes), "read");
+    }
+    return {
+      ok: false,
+      kind: "unauthenticated",
+      reason: scopedAuth.reason,
+      challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname))
+    };
+  }
+
+  const grantedTier = resolveScopeTier(auth, sessionAuth);
+  const grantedScopes = scopesForTier(grantedTier);
+  const missing = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
+  if (missing.length === 0) {
     return auth;
   }
-  return {
-    ok: false,
-    reason: scopedAuth.reason,
-    challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname))
-  };
+  return insufficientScope(requiredTierFor(requiredScopes), grantedTier);
 }
 
 function defaultOAuthScopes(): string[] {
@@ -1065,27 +1201,54 @@ function sendHtml(response: ServerResponse, status: number, body: string, reques
   response.end(body);
 }
 
-function sendUnauthorized(response: ServerResponse, requestId: string, challenge?: string): void {
-  const body = fail(new AppError("UNAUTHORIZED", "Missing or invalid gateway token."));
+type AuthFailure = Extract<AuthorizationState, { ok: false }>;
+
+// Two genuinely different failures, kept visibly distinct end to end (REST,
+// GraphQL, MCP): "unauthenticated" (401, generic -- deliberately vague about
+// why, same as before this task) vs "insufficient_scope" (403, names both
+// the required and granted tier). Acceptance criteria: a write-only
+// credential hitting an admin-tier operation must get a clear scope error,
+// not the same generic 401 an actually-missing/invalid credential gets.
+function authFailureStatus(auth: AuthFailure): number {
+  return auth.kind === "insufficient_scope" ? 403 : 401;
+}
+
+function authFailureError(auth: AuthFailure): AppError {
+  if (auth.kind === "insufficient_scope" && auth.requiredTier && auth.grantedTier) {
+    return new AppError(
+      "INSUFFICIENT_SCOPE",
+      `This operation requires ${auth.requiredTier} scope; your credential has ${auth.grantedTier}.`,
+      { requiredScope: auth.requiredTier, grantedScope: auth.grantedTier }
+    );
+  }
+  return new AppError("UNAUTHORIZED", "Missing or invalid gateway token.");
+}
+
+function sendUnauthorized(response: ServerResponse, requestId: string, auth: AuthFailure): void {
+  const body = fail(authFailureError(auth));
   const payload = JSON.stringify(body);
   const headers: Record<string, string | number> = {
     "content-type": "application/json; charset=utf-8",
     "x-request-id": requestId,
     "content-length": Buffer.byteLength(payload)
   };
-  if (challenge) {
-    headers["www-authenticate"] = challenge;
+  if (auth.challenge) {
+    headers["www-authenticate"] = auth.challenge;
   }
-  response.writeHead(401, headers);
+  response.writeHead(authFailureStatus(auth), headers);
   response.end(payload);
 }
 
-function sendMcpUnauthorized(response: ServerResponse, requestId: string, challenge?: string): void {
+function sendMcpUnauthorized(response: ServerResponse, requestId: string, auth: AuthFailure): void {
+  const error = authFailureError(auth);
   const payload = JSON.stringify({
     jsonrpc: "2.0",
     error: {
-      code: -32001,
-      message: "Missing required OAuth scope."
+      // -32001 (existing code): no valid credential / missing OAuth scope
+      // entirely. -32002 (new): credential is valid but its tier is too low
+      // -- a distinct code so MCP clients can tell the two apart too.
+      code: auth.kind === "insufficient_scope" ? -32002 : -32001,
+      message: error.message
     },
     id: null
   });
@@ -1094,10 +1257,10 @@ function sendMcpUnauthorized(response: ServerResponse, requestId: string, challe
     "x-request-id": requestId,
     "content-length": Buffer.byteLength(payload)
   };
-  if (challenge) {
-    headers["www-authenticate"] = challenge;
+  if (auth.challenge) {
+    headers["www-authenticate"] = auth.challenge;
   }
-  response.writeHead(401, headers);
+  response.writeHead(authFailureStatus(auth), headers);
   response.end(payload);
 }
 

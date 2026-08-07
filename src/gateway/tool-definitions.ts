@@ -23,7 +23,7 @@ export interface GatewayToolSpec {
   description: string;
   schema: z.ZodObject;
   outputSchema?: z.ZodType;
-  access?: "read" | "write";
+  access?: "read" | "write" | "admin";
 }
 
 const emptySchema = z.object({});
@@ -657,14 +657,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Forget one gateway client and remove its current-project key. Use this for stale or renamed internal clients.",
     schema: gatewayClientForgetSchema,
-    access: "write"
+    access: "admin"
   },
   {
     name: "gateway.client_prune",
     description:
       "Prune stale gateway clients and matching current-project keys. Defaults to dry-run and anonymous-only cleanup.",
     schema: gatewayClientPruneSchema,
-    access: "write"
+    access: "admin"
   },
   {
     name: "project.create",
@@ -689,7 +689,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
       "Hard-delete a shared project by id or slug. Refuses non-empty projects unless cascade=true. Use only after an explicit user request.",
     schema: projectDeleteSchema,
     outputSchema: output(z.object({ deletedProject: looseRecordSchema, cascade: z.boolean(), counts: deleteCountsSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "project.resolve",
@@ -763,7 +763,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared memory item and cleanup links that point to it. Use only after an explicit user request.",
     schema: memoryDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedMemory: looseRecordSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "memory.hygiene_report",
@@ -841,7 +841,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete an artifact metadata row and remove its stored bytes. Use only after an explicit user request.",
     schema: artifactDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedArtifact: artifactSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "task.create",
@@ -864,7 +864,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared task by id. Use only after an explicit user request or smoke-test cleanup.",
     schema: taskDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedTask: looseRecordSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "task.claim",
@@ -954,7 +954,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared decision and cleanup links that point to it. Use only after an explicit user request.",
     schema: decisionDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedDecision: looseRecordSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "decision.list",
@@ -982,7 +982,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete one event from the timeline. Use only for explicit cleanup or test data removal.",
     schema: eventDeleteSchema,
     outputSchema: output(z.object({ deletedEvent: looseRecordSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "link.create",
@@ -1000,7 +1000,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete one shared relationship link. Use only after an explicit user request.",
     schema: linkDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedLink: looseRecordSchema })),
-    access: "write"
+    access: "admin"
   },
   {
     name: "preflight",
@@ -1051,7 +1051,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
 export function gatewayToolRequiredScopes(toolName: string): string[] {
   const canonicalName = gatewayToolCanonicalName(toolName);
   const spec = gatewayToolSpecs.find((tool) => tool.name === canonicalName);
-  return spec?.access === "write" ? ["memory:read", "memory:write"] : ["memory:read"];
+  switch (spec?.access) {
+    case "admin":
+      return ["memory:read", "memory:write", "memory:admin"];
+    case "write":
+      return ["memory:read", "memory:write"];
+    default:
+      return ["memory:read"];
+  }
 }
 
 export function gatewayToolClaudeName(toolName: string): string {

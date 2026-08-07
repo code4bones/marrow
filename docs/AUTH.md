@@ -5,13 +5,14 @@
 This is the per-user access model for PMemUI (see `docs/AUTH_LAYERING.md` for
 the edge/proxy layering rule it complements, and PMem decisions
 `D-MEMORY-007`, `D-MEMORY-008`, `D-MEMORY-011`, `D-MEMORY-016`). It covers the
-schema, the CLI bootstrap command, and the HTTP `/auth/*` routes: the
-original invite→claim→verify-email path, session login/logout, TOTP 2FA
-(bind/unbind, shared by every role), and open self-registration with inline
-TOTP + admin approval. The read/write/admin scope + project-membership layer
-is a separate, later task.
+schema, the CLI bootstrap command, the HTTP `/auth/*` routes (the original
+invite→claim→verify-email path, session login/logout, TOTP 2FA (bind/unbind,
+shared by every role), and open self-registration with inline TOTP + admin
+approval), and the read/write/admin scope + project-membership layer
+(`T-MEMORY-029`, implementing `D-MEMORY-007` and superseding `D-MEMORY-003`'s
+"trusted internal deployment, one shared token" model) below.
 
-## Tables (migration `006_auth_users_sessions_tokens.cjs`)
+## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns -- see "Scopes: read / write / admin" and "Project membership" below)
 
 ### `users`
 
@@ -85,9 +86,9 @@ Root of trust is shell access to the machine running `pm3m`, not the network
   full URL; otherwise only the path is printed with a note to prepend the
   PMemUI base URL manually.
 
-The existing shared `MCP_TOKEN` is untouched by this bootstrap. Migrating it
-into a credential owned by the bootstrap admin is explicitly deferred to the
-scopes/attribution task (see PMem `T-MEMORY-029`), not done here.
+The existing shared `MCP_TOKEN` is untouched by this bootstrap itself. It is
+migrated into an owned, scoped credential separately at gateway startup --
+see "MCP_TOKEN migration" below.
 
 ## HTTP routes (`src/gateway/auth.ts`, wired into `src/gateway/http-server.ts`)
 
@@ -136,16 +137,125 @@ are opaque `base64url(randomBytes(32))` strings; only their sha256 hash is
 ever stored (`sessions.token_hash`, `tokens.token_hash`), so a database read
 never yields a live, directly usable credential.
 
-### GraphQL now accepts a session cookie
+### GraphQL accepts a session cookie
 
 The GraphQL endpoint (and every other gateway route gated by `isAuthorized`)
-now accepts three credential sources side by side: the static `MCP_TOKEN`
-bearer, an OAuth bearer token, and a `pmem_session` cookie. A valid session
-currently grants the same blanket access as a static token — the
-read/write/admin scope split and project-membership visibility limits are
-`T-MEMORY-029`, not implemented here. When a session is present, the
-request's `clientId`/`clientLabel` (used for `gateway_clients` tracking and
-event logging) become `user:<id>` / `<email>` instead of `anonymous:<requestId>`.
+accepts three credential sources side by side: the static `MCP_TOKEN`
+bearer, an OAuth bearer token, and a `pmem_session` cookie. Each source's
+scope (see "Scopes: read / write / admin" below) is checked on every request,
+not just for OAuth. When a session is present, the request's
+`clientId`/`clientLabel` (used for `gateway_clients` tracking and event
+logging) become `user:<id>` / `<email>` instead of `anonymous:<requestId>`.
+
+## Scopes: read / write / admin (`T-MEMORY-029` / `D-MEMORY-007`)
+
+Every gateway request resolves to exactly one scope tier before dispatch,
+independent of which of the three credential sources it used. Each tier is a
+strict superset of the one before it (`admin` implies `write` and `read`).
+
+| Auth source | Scope | Why |
+|---|---|---|
+| static `MCP_TOKEN` | `admin` | Unchanged from before this task — existing Claude Code / ChatGPT configs must keep working after the upgrade with zero edits. See "MCP_TOKEN migration" below for how this got a stable, owned credential row. |
+| no token configured at all (`source:"none"`) | `admin` | Unchanged — this is already a fully-open dev/trusted mode; scopes add no extra protection on top of "anyone can already call anything." |
+| session cookie, `role=admin` | `admin` | — |
+| session cookie, `role=member` | `write` | Decision 1: session scope is derived straight from the user's role, no separate "elevate to admin" UX — PMemUI has no destructive UI to elevate into anyway (`D-MEMORY-015`). |
+| OAuth bearer (Claude Code / ChatGPT connectors) | `read` + `write` only, **forever** | Decision 2: an OAuth-issued token never gets `admin`, regardless of the underlying human's role or what a token claims. This is deliberate protection against an agent hallucinating a delete call, not a defense against a malicious user — in a hard-delete system with no undo, that is the scenario worth capping. Enforced twice: `oauth.ts`'s `requestedScopes()` never issues the `memory:admin` claim (even if `PROJECT_MEMORY_OAUTH_SCOPES` is misconfigured to include it), and `http-server.ts`'s scope check denies any OAuth-sourced request needing `memory:admin` without even inspecting the token. |
+
+`admin` covers every hard-delete operation: `memory.delete`, `decision.delete`,
+`project.delete`, `event.delete`, `link.delete`, `artifact.delete`,
+`task.delete`, `gateway.client_forget`, `gateway.client_prune`, and their
+GraphQL mutation equivalents (`deleteMemory`, `deleteDecision`,
+`deleteProject`, `deleteEvent`, `deleteLink`, `deleteArtifact`, `deleteTask` —
+`gateway.client_forget`/`client_prune` have no GraphQL mutation, so nothing to
+list there). Every other tool that used to require `memory:write` still only
+requires `write` — creating, updating, and archiving records is unaffected.
+`GatewayToolSpec.access` in `src/gateway/tool-definitions.ts` is the source of
+truth for each tool's tier; `gatewayToolRequiredScopes()` there maps it to the
+concrete scope strings. `src/gateway/graphql.ts`'s `graphqlRequiredScopes()`
+mirrors this for GraphQL: the generic `/\bmutation\b/i` text check alone
+cannot tell a delete apart from a create/update, so a second, name-specific
+check (`ADMIN_GRAPHQL_MUTATION_NAMES`) requires `memory:admin` for exactly
+those seven mutation names.
+
+A request with a valid credential but an insufficient scope gets a clear,
+distinguishable error, not the same generic "missing or invalid token"
+response an actually-missing/invalid credential gets: HTTP 403 (401 for a
+genuinely missing/invalid credential), `AppError` code `INSUFFICIENT_SCOPE`,
+message `"This operation requires <tier> scope; your credential has <tier>."`
+On the MCP JSON-RPC transport this is error code `-32002` (vs `-32001` for no
+credential at all). See `docs/GRAPHQL_API.md` and `docs/MCP_TOOLS.md` for the
+exact shapes.
+
+## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
+
+`project_members` (migration `010_scopes_membership_attribution.cjs`) is a
+plain `(project_id, user_id)` set — composite primary key, no per-row
+metadata, no in-project permission matrix. Membership answers exactly one
+question: can this `role=member` session see this project at all.
+
+- **Only `role=member` sessions are ever filtered.** `role=admin` sessions
+  and every non-session auth source (static `MCP_TOKEN`, OAuth, the
+  no-token/`none` dev mode) bypass this check entirely and see every
+  project, unchanged from pre-`T-MEMORY-029` behavior (decision 3).
+- **Common (`project_id = null`) is never filtered**, for anyone. Membership
+  only applies to a concrete project.
+- A member without a `project_members` row for a project gets the same
+  `PROJECT_NOT_FOUND` a genuinely nonexistent project id would produce, from
+  `project.get`, `project.list`, `project.resolve`, and every read/write tool
+  that resolves a project (`memory.search`, `task.list`, `decision.list`,
+  `artifact.list`/`search`, `event.list`, `preflight`/`preflight.by_query`,
+  `context.pack`, `handoff.latest`/`search`, and the write paths that accept
+  a `project` argument). Existence is never leaked — same don't-distinguish-
+  why convention as `/auth/login`'s single "Invalid email or password"
+  message for both "no such user" and "wrong password".
+- Implemented as one centralized gate in `PgToolService`: `getProject()`
+  (used by every project resolution path, directly or via `resolveProject()`
+  / `currentProject()` / `tryCurrentProject()`) calls `assertProjectMember()`
+  after fetching the row. List/search-shaped queries (`project.list`,
+  `project.resolve`) use the query-builder counterpart,
+  `applyProjectMembershipFilter()`, instead of a per-row check.
+- There is currently no API to manage `project_members` rows (add/remove a
+  member from a project) — this task ships the schema and the enforcement,
+  not a membership-management UI/route. Rows are inserted directly for now;
+  a management surface is expected follow-up work, not part of this task's
+  scope.
+
+## Event attribution: `credentialId` (`T-MEMORY-029` / `D-MEMORY-007`)
+
+Every event row already stored `created_by` (the acting `clientId`) --
+`recordEventForProject()` has always written it. It was simply never surfaced
+in the API response. `eventOut()` in `pg-tool-service.ts` now exposes it as
+`credentialId`, consistently across `event.record`'s response, `event.list`,
+`event.get`, and GraphQL's `Event.credentialId` field. Value shape matches
+`clientId`: `user:<userId>` for a session-attributed event, `static:mcp-token`
+for the shared static credential, or an OAuth/anonymous client id for those
+sources.
+
+## MCP_TOKEN migration (`T-MEMORY-029` / `D-MEMORY-007`)
+
+The shared `MCP_TOKEN` bearer is migrated into a real, scoped
+`gateway_clients` credential row on every gateway startup (`src/gateway.ts`,
+right after `MCP_TOKEN` is read from the environment), not by
+`pm3m admin create` (see "Bootstrap" above). `PgToolService.ensureStaticTokenCredential()`
+idempotently upserts `gateway_clients`:
+
+- `id`: the fixed literal `static:mcp-token` — not derived from the token's
+  own value, so it stays the same across a token rotation. This is also the
+  fix for the credential having no stable identity at all before this task:
+  a static-token request with no explicit `x-project-memory-client-id`
+  header used to fall through to a fresh `anonymous:<requestId>` on *every
+  single request*; it now resolves to this one stable id every time.
+- `scope`: always `admin`.
+- `owner_user_id`: the earliest-created `role=admin` user (`ORDER BY
+  created_at LIMIT 1`), or `null` if no admin exists yet (e.g. before the
+  first `/auth/bootstrap` or `pm3m admin create`).
+
+The upsert (`.onConflict("id").merge(...)`) only ever touches `scope` and
+`owner_user_id` — it deliberately never touches `last_seen_at`, which stays
+driven only by real request traffic through the existing `touchClient()`
+upsert (same table, disjoint set of merged columns, so the two upserts never
+fight over the same field). Safe to run on every restart; a no-op in effect
+once an admin already owns the row.
 
 ### No SMTP sending yet
 
@@ -258,3 +368,21 @@ profile section (enroll → confirm → recovery-codes regenerate → disable) a
 a password change, both exercised against an already-logged-in,
 bootstrap-style password-only account → and finally, that `/auth/register`
 fails loudly (400, nothing written) when `TOTP_ENC_KEY` isn't configured.
+
+`npm run smoke:gateway:scopes` (`scripts/smoke-gateway-scopes.ts`) covers the
+scope/membership/attribution layer end to end against the same kind of real
+gateway/Postgres instance: the static token's migration to a stable
+`static:mcp-token` credential (same id across repeated calls, `scope=admin`
+row, still-working backward-compat admin access) → a `role=member` session
+creating successfully (write scope) then getting a clear
+`INSUFFICIENT_SCOPE` (403) on `memory.delete`, with the record left in place
+→ a `role=admin` session's `memory.delete` actually succeeding → a member
+session's `project.list` and `memory.search{project}` both treating a project
+it has no `project_members` row for as not-found → an admin session seeing
+that same project regardless (membership bypass) → and `event.list` exposing
+`credentialId` for an event created by the member's session. `npm run
+smoke:oauth` (`scripts/smoke-oauth.ts`) additionally covers the OAuth-side of
+decision 2: a token requesting only `memory:read` still gets `memory:write`
+(pre-existing `I-MEMORY-019` behavior, unchanged) but is denied
+`gateway.client_prune` and the GraphQL `deleteTask` mutation with the same
+`INSUFFICIENT_SCOPE` error, over both the REST/MCP and GraphQL transports.

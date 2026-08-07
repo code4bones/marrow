@@ -8,6 +8,26 @@ import type { GatewayRequestContext } from "./pg-tool-service.js";
 
 type Row = Record<string, unknown>;
 
+// T-MEMORY-029 / D-MEMORY-007: GraphQL mutation field names whose REST/MCP
+// tool equivalent was reclassified from access:"write" to access:"admin" in
+// tool-definitions.ts (the *.delete tools). http-server.ts's
+// graphqlRequiredScopes() matches these against the raw query text -- the
+// generic `/\bmutation\b/i` check there can't tell a delete apart from a
+// create/update by text alone, so this list is the second, more specific
+// check. Keep it in sync with tool-definitions.ts's admin-tier tool list.
+// gateway.client_forget / gateway.client_prune are also admin-tier tools but
+// have no GraphQL mutation counterpart -- the Mutation type below has no
+// forgetClient/pruneClients field, so there is nothing to list for them.
+export const ADMIN_GRAPHQL_MUTATION_NAMES = [
+  "deleteProject",
+  "deleteMemory",
+  "deleteTask",
+  "deleteDecision",
+  "deleteArtifact",
+  "deleteEvent",
+  "deleteLink"
+] as const;
+
 export interface GatewayGraphqlToolService {
   call(toolName: string, input: unknown, context?: GatewayRequestContext): Promise<ToolResponse<unknown>>;
   graphqlPage(pageName: string, input: unknown, context?: GatewayRequestContext): Promise<Row>;
@@ -715,6 +735,9 @@ const typeDefs = `#graphql
     title: String
     body: String
     relatedId: String
+    # Which client credential performed the operation this event records
+    # (T-MEMORY-029 / D-MEMORY-007 attribution).
+    credentialId: String
     createdAt: String
   }
 

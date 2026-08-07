@@ -8,6 +8,7 @@ export type ErrorCode =
   | "DB_ERROR"
   | "DECISION_NOT_FOUND"
   | "GATEWAY_ERROR"
+  | "INSUFFICIENT_SCOPE"
   | "ITEM_NOT_FOUND"
   | "LINK_NOT_FOUND"
   | "NOT_FOUND"

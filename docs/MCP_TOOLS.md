@@ -96,6 +96,59 @@ Failure:
 
 Avoid raw stack traces in tool responses.
 
+## Scope requirements (`T-MEMORY-029` / `D-MEMORY-007`)
+
+Every tool requires one of three scope tiers -- `read` < `write` < `admin`,
+each a superset of the one before it. See `docs/AUTH.md`'s "Scopes: read /
+write / admin" section for which credential source (static `MCP_TOKEN`,
+session cookie, OAuth bearer) grants which tier, and for the exact shape of
+the `INSUFFICIENT_SCOPE` error a request gets when its credential's tier is
+too low. `GatewayToolSpec.access` in `src/gateway/tool-definitions.ts` is the
+source of truth this table is generated from; `admin` is exactly the nine
+hard-delete/maintenance tools (`*.delete`, `gateway.client_forget`,
+`gateway.client_prune`) -- every other write-tier tool from before this task
+is unaffected and still only requires `write`.
+
+| Tool | Scope | | Tool | Scope |
+|---|---|---|---|---|
+| `gateway.about` | read | | `task.create` | write |
+| `gateway.version` | read | | `task.list` | read |
+| `gateway.diagnostics` | read | | `task.get` | read |
+| `gateway.backup_manifest` | read | | `task.delete` | **admin** |
+| `gateway.manuals` | read | | `task.claim` | write |
+| `gateway.status` | read | | `task.claim_heartbeat` | write |
+| `gateway.clients` | read | | `task.claim_complete` | write |
+| `gateway.client_get` | read | | `task.release` | write |
+| `gateway.client_forget` | **admin** | | `task.claims` | read |
+| `gateway.client_prune` | **admin** | | `task.complete` | write |
+| `project.create` | write | | `task.add_note` | write |
+| `project.list` | read | | `task.next` | read |
+| `project.get` | read | | `task.update_status` | write |
+| `project.delete` | **admin** | | `decision.record` | write |
+| `project.resolve` | read | | `decision.supersede` | write |
+| `project.summary` | read | | `decision.archive` | write |
+| `project.set_current` | write | | `decision.delete` | **admin** |
+| `project.current` | read | | `decision.list` | read |
+| `memory.create` | write | | `decision.get` | read |
+| `memory.upsert` | write | | `event.record` | write |
+| `failed_attempt.record` | write | | `event.list` | read |
+| `memory.get` | read | | `event.delete` | **admin** |
+| `memory.search` | read | | `link.create` | write |
+| `memory.update` | write | | `link.list` | read |
+| `memory.archive` | write | | `link.delete` | **admin** |
+| `memory.delete` | **admin** | | `preflight` | read |
+| `memory.hygiene_report` | read | | `preflight.by_query` | read |
+| `artifact.put` | write | | `context.pack` | read |
+| `artifact.put_text` | write | | `context.changed_since` | read |
+| `artifact.search` | read | | `handoff.create` | write |
+| `artifact.list` | read | | `handoff.latest` | read |
+| `artifact.get` | read | | `handoff.search` | read |
+| `artifact.peek` | read | | | |
+| `artifact.read_text` | read | | | |
+| `artifact.update_metadata` | write | | | |
+| `artifact.archive` | write | | | |
+| `artifact.delete` | **admin** | | | |
+
 ## Gateway tools
 
 Gateway tools are available only through PostgreSQL gateway mode.

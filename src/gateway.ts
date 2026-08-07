@@ -25,6 +25,15 @@ async function main(): Promise<void> {
   const token = process.env.MCP_TOKEN;
   const oauth = createOAuthFacadeFromEnv();
   const auth = createAuthFacade(db);
+
+  // T-MEMORY-029 / D-MEMORY-007: migrate the shared static MCP_TOKEN into an
+  // admin-scoped gateway_clients credential on every startup, so existing
+  // Claude Code / ChatGPT configs keep working unchanged after this upgrade
+  // (the token itself doesn't change, only its DB-side identity/scope
+  // record). No-op when MCP_TOKEN isn't configured.
+  if (token) {
+    await service.ensureStaticTokenCredential();
+  }
   const started = await startGatewayServer(service, { host, port, token, oauth, auth, logger });
 
   logger.info(

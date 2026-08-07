@@ -346,8 +346,10 @@ selectors. Use `*Page` fields for UI tables.
 ## Available Mutations
 
 Project, memory, task, decision, link, event, and artifact lifecycle mutations
-are available for PMemUI maintenance screens. Mutations require write scope and
-should be guarded by explicit UI confirmation when they archive or delete data.
+are available for PMemUI maintenance screens. Most mutations require `write`
+scope; the seven hard-delete mutations require `admin` scope instead (see
+"Authorization and scope errors" below) and should be guarded by explicit UI
+confirmation regardless of scope.
 
 Memory lifecycle:
 
@@ -624,6 +626,49 @@ mutation DeleteProject($slug: String!) {
   `PROJECT_NOT_EMPTY` details before allowing cascade delete.
 - Subscriptions are intentionally not part of the current GraphQL slice. Add
   them only after choosing the concrete transport and reconnect semantics.
+
+## Authorization and scope errors
+
+See `docs/AUTH.md`'s "Scopes: read / write / admin" section for the full
+credential-source-to-scope table (`T-MEMORY-029` / `D-MEMORY-007`). What
+matters for GraphQL specifically:
+
+- Every query requires at least `read` scope. Most mutations require
+  `write`. Exactly seven mutations require `admin`:
+  `deleteProject`, `deleteMemory`, `deleteTask`, `deleteDecision`,
+  `deleteArtifact`, `deleteEvent`, `deleteLink` (`ADMIN_GRAPHQL_MUTATION_NAMES`
+  in `src/gateway/graphql.ts`). These are the GraphQL counterparts of the
+  `*.delete` MCP/REST tools reclassified from `access:"write"` to
+  `access:"admin"` in `src/gateway/tool-definitions.ts`.
+- The scope check runs on the raw query text before the GraphQL server
+  resolves anything: a generic `/\bmutation\b/i` match requires `write`, and
+  a second, name-specific match against the list above requires `admin`
+  instead. A request mixing an admin-tier mutation with anything else in the
+  same document is treated as requiring `admin`.
+- An OAuth bearer token (Claude Code / ChatGPT connectors) never satisfies an
+  `admin` requirement, regardless of the underlying user's role or what the
+  token claims (decision 2) -- it is capped at `read`+`write` forever.
+- A request that fails the scope check gets an HTTP-level error, not a
+  GraphQL `errors[]` entry -- the check runs before the query reaches the
+  GraphQL server at all:
+
+  ```json
+  {
+    "ok": false,
+    "error": {
+      "code": "INSUFFICIENT_SCOPE",
+      "message": "This operation requires admin scope; your credential has write.",
+      "details": { "requiredScope": "admin", "grantedScope": "write" }
+    }
+  }
+  ```
+
+  HTTP status `403` (vs `401` + `AppError` code `UNAUTHORIZED` for a
+  missing/invalid credential -- the two are deliberately distinguishable, not
+  the same generic error). A request that reaches the resolver but hits a
+  domain-level failure (e.g. deleting a record that does not exist) still
+  returns its normal GraphQL `errors[]` shape with that operation's own error
+  code (e.g. `TASK_NOT_FOUND`), unrelated to scope.
 
 ## CORS
 

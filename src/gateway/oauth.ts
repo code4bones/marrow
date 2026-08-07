@@ -62,6 +62,14 @@ type OAuthConfig = {
 };
 
 const defaultScopes = ["memory:read", "memory:write"];
+// Recognized scope vocabulary (T-MEMORY-029 / D-MEMORY-007), for
+// forward-compatibility and clear error messages if a client ever asks for
+// it -- but per decision 2, OAuth connectors (Claude Code, ChatGPT) never
+// get this scope, permanently, regardless of the underlying user or what a
+// token claims. Never part of defaultScopes and always filtered out of the
+// granted set in requestedScopes() below, even if an operator misconfigures
+// PROJECT_MEMORY_OAUTH_SCOPES to include it.
+const ADMIN_SCOPE = "memory:admin";
 const authorizeRequiredParams = [
   "response_type",
   "client_id",
@@ -422,14 +430,17 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
 function requestedScopes(scope: string | null, supportedScopes: string[]): string[] {
   // PMem is an internal gateway: successful OAuth means access to the full configured scope set.
   // Some hosts initially request only memory:read and do not retry escalation before write tools.
+  // memory:admin is filtered out unconditionally here (decision 2) -- OAuth issuance stays capped
+  // at read+write even if PROJECT_MEMORY_OAUTH_SCOPES was misconfigured to include it.
+  const grantableScopes = supportedScopes.filter((item) => item !== ADMIN_SCOPE);
   if (scope) {
     const requested = scope.split(/\s+/).filter(Boolean);
-    const unsupported = requested.filter((item) => !supportedScopes.includes(item));
+    const unsupported = requested.filter((item) => !grantableScopes.includes(item));
     if (unsupported.length === requested.length) {
-      return supportedScopes;
+      return grantableScopes;
     }
   }
-  return supportedScopes;
+  return grantableScopes;
 }
 
 function verifyPkceS256(verifier: string, expectedChallenge: string): boolean {

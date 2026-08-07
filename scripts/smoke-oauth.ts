@@ -241,10 +241,10 @@ try {
   const readOnlyWriteCall = await postJson(
     `${started.url}/call?client_id=${pmemClientId}`,
     {
-      tool: "gateway.client_prune",
+      tool: "event.record",
       input: {
-        dryRun: true,
-        limit: 1
+        project: null,
+        type: "oauth-smoke.read-request-write-probe"
       }
     },
     readOnlyAccessToken
@@ -252,6 +252,26 @@ try {
   assert(readOnlyWriteCall.status === 200, "OAuth token requested with read scope did not receive write access.");
   assert(readNestedBoolean(readOnlyWriteCall.body, ["ok"]) === true, "OAuth read-request token did not execute write tool.");
   console.log("ok - oauth read-request token receives internal write scope");
+
+  // T-MEMORY-029 / D-MEMORY-007 decision 2: OAuth connectors never get
+  // admin scope, forever, regardless of what was requested or what the
+  // underlying user's role is -- gateway.client_prune is admin-tier
+  // (gateway.client_forget/prune, *.delete). A clear 403/INSUFFICIENT_SCOPE,
+  // not the write access this same token gets above.
+  const readOnlyAdminCall = await postJson(
+    `${started.url}/call?client_id=${pmemClientId}`,
+    {
+      tool: "gateway.client_prune",
+      input: { dryRun: true, limit: 1 }
+    },
+    readOnlyAccessToken
+  );
+  assert(readOnlyAdminCall.status === 403, `OAuth token must never reach admin-tier tools. Status: ${readOnlyAdminCall.status}`);
+  assert(
+    readNestedString(readOnlyAdminCall.body, ["error", "code"]) === "INSUFFICIENT_SCOPE",
+    `OAuth admin-tier denial should be INSUFFICIENT_SCOPE. Body: ${JSON.stringify(readOnlyAdminCall.body)}`
+  );
+  console.log("ok - oauth bearer is capped at read+write, admin-tier tools are denied with a clear scope error");
 
   const readOnlyGraphqlQuery = await postJson(
     `${started.url}/graphql?client_id=${pmemClientId}`,
@@ -265,31 +285,56 @@ try {
     readNestedString(readOnlyGraphqlQuery.body, ["data", "gatewayStatus", "storage"]) === "postgresql",
     "Read-only OAuth GraphQL query did not execute."
   );
+  // archiveMemory (-> memory.archive, access:"write") is used here as the
+  // generic write-tier GraphQL mutation probe -- deleteTask (-> task.delete)
+  // used to serve this role but is admin-tier as of T-MEMORY-029, and is
+  // covered separately below instead.
   const readOnlyGraphqlMutation = await postJson(
     `${started.url}/graphql?client_id=${pmemClientId}`,
     {
-      query: 'mutation { deleteTask(id: "T-OAUTH-SMOKE-MISSING") { deletedTask { id } } }'
+      query: 'mutation { archiveMemory(id: "I-OAUTH-SMOKE-MISSING") { memory { id } } }'
     },
     readOnlyAccessToken
   );
   assert(readOnlyGraphqlMutation.status === 200, "OAuth read-request token did not reach GraphQL mutation resolver.");
   assert(
-    JSON.stringify(readOnlyGraphqlMutation.body).includes("TASK_NOT_FOUND"),
-    "OAuth read-request GraphQL mutation did not reach the task resolver."
+    JSON.stringify(readOnlyGraphqlMutation.body).includes("ITEM_NOT_FOUND"),
+    "OAuth read-request GraphQL mutation did not reach the memory resolver."
   );
   const writeGraphqlMutation = await postJson(
+    `${started.url}/graphql?client_id=${pmemClientId}`,
+    {
+      query: 'mutation { archiveMemory(id: "I-OAUTH-SMOKE-MISSING") { memory { id } } }'
+    },
+    accessToken
+  );
+  assert(writeGraphqlMutation.status === 200, "OAuth memory:write token did not reach GraphQL mutation resolver.");
+  assert(
+    JSON.stringify(writeGraphqlMutation.body).includes("ITEM_NOT_FOUND"),
+    "OAuth memory:write GraphQL mutation did not reach the memory resolver."
+  );
+  console.log("ok - oauth GraphQL scopes are enforced");
+
+  // T-MEMORY-029: deleteTask is one of the admin-tier GraphQL mutations
+  // (ADMIN_GRAPHQL_MUTATION_NAMES in graphql.ts) -- an OAuth token, capped
+  // at read+write forever, must be denied here too, not just for the
+  // REST/MCP gateway.client_prune check above.
+  const writeGraphqlAdminMutation = await postJson(
     `${started.url}/graphql?client_id=${pmemClientId}`,
     {
       query: 'mutation { deleteTask(id: "T-OAUTH-SMOKE-MISSING") { deletedTask { id } } }'
     },
     accessToken
   );
-  assert(writeGraphqlMutation.status === 200, "OAuth memory:write token did not reach GraphQL mutation resolver.");
   assert(
-    JSON.stringify(writeGraphqlMutation.body).includes("TASK_NOT_FOUND"),
-    "OAuth memory:write GraphQL mutation did not reach the task resolver."
+    writeGraphqlAdminMutation.status === 403,
+    `OAuth memory:write token must not reach admin-tier GraphQL mutations. Status: ${writeGraphqlAdminMutation.status}`
   );
-  console.log("ok - oauth GraphQL scopes are enforced");
+  assert(
+    readNestedString(writeGraphqlAdminMutation.body, ["error", "code"]) === "INSUFFICIENT_SCOPE",
+    `OAuth admin-tier GraphQL denial should be INSUFFICIENT_SCOPE. Body: ${JSON.stringify(writeGraphqlAdminMutation.body)}`
+  );
+  console.log("ok - oauth GraphQL admin-tier mutations (deleteTask) are denied for a read+write-capped OAuth token");
 
   const reusedCode = await postFormJson(`${started.url}/oauth/token`, {
     grant_type: "authorization_code",
@@ -335,10 +380,10 @@ try {
   const oauthWriteCall = await postJson(
     `${started.url}/call?client_id=${pmemClientId}`,
     {
-      tool: "gateway.client_prune",
+      tool: "event.record",
       input: {
-        dryRun: true,
-        limit: 1
+        project: null,
+        type: "oauth-smoke.write-probe"
       }
     },
     accessToken
@@ -364,6 +409,7 @@ try {
 
   console.log(`OAuth smoke test passed using ${started.url}`);
 } finally {
+  await db("events").where("type", "like", "oauth-smoke.%").del();
   await db("gateway_clients").where({ id: pmemClientId }).del();
   await started.stop();
   await service.close();
@@ -464,10 +510,10 @@ async function assertMcpWriteCall(
     await client.connect(transport);
     try {
       const result = await client.callTool({
-        name: "gateway.client_prune",
+        name: "event.record",
         arguments: {
-          dryRun: true,
-          limit: 1
+          project: null,
+          type: "oauth-smoke.mcp-write-probe"
         }
       });
       assert(shouldSucceed, "MCP read-only OAuth token was allowed to call a write tool.");

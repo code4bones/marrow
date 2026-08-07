@@ -34,6 +34,13 @@ export interface GatewayRequestContext {
   clientId?: string;
   clientLabel?: string;
   metadata?: Row;
+  // Threaded from the session cookie (if any) so project-membership
+  // filtering (D-MEMORY-007 / T-MEMORY-029) can tell a role=member session
+  // apart from an admin session, a static-token/OAuth/anonymous caller, none
+  // of which are ever membership-filtered. Absent for every non-session auth
+  // source.
+  sessionUserId?: string;
+  sessionRole?: string;
 }
 
 export interface ArtifactDownload {
@@ -45,6 +52,8 @@ interface NormalizedGatewayRequestContext {
   clientId: string;
   clientLabel: string;
   metadata: Row;
+  sessionUserId: string | null;
+  sessionRole: string | null;
 }
 
 const manualSpecs = [
@@ -85,6 +94,10 @@ const manualSpecs = [
 
 const anonymousClientPrefix = "anonymous:";
 const defaultAnonymousClientTtlSeconds = 24 * 60 * 60;
+// Stable gateway_clients id for the shared static MCP_TOKEN (T-MEMORY-029).
+// Exported so http-server.ts's requestContext() can assign the same id to
+// every static-token request instead of a fresh anonymous id per request.
+export const staticTokenClientId = "static:mcp-token";
 
 export class PgToolService {
   constructor(private readonly db: Knex) {}
@@ -141,13 +154,13 @@ export class PgToolService {
         case "project.create":
           return ok("Project created.", { project: await this.createProject(parsed, requestContext) });
         case "project.list":
-          return ok("Projects listed.", { projects: await this.listProjects(parsed) });
+          return ok("Projects listed.", { projects: await this.listProjects(parsed, requestContext) });
         case "project.get":
-          return ok("Project loaded.", { project: await this.getProject(parsed) });
+          return ok("Project loaded.", { project: await this.getProject(parsed, requestContext) });
         case "project.delete":
           return ok("Project deleted.", await this.deleteProject(parsed));
         case "project.resolve":
-          return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed));
+          return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed, requestContext));
         case "project.summary":
           return ok("Project summary loaded.", await this.projectSummary(parsed, requestContext));
         case "project.set_current":
@@ -266,7 +279,7 @@ export class PgToolService {
         case "link.delete":
           return ok("Link deleted.", await this.deleteLink(parsed, requestContext));
         case "preflight":
-          return ok("Preflight context loaded.", await this.preflight(parsed));
+          return ok("Preflight context loaded.", await this.preflight(parsed, requestContext));
         case "preflight.by_query":
           return ok("Preflight query context loaded.", await this.preflightByQuery(parsed, requestContext));
         case "context.pack":
@@ -293,7 +306,7 @@ export class PgToolService {
     const parsed = (input ?? {}) as Row;
     switch (pageName) {
       case "projects":
-        return this.projectsPage(parsed);
+        return this.projectsPage(parsed, requestContext);
       case "gatewayClients":
         return this.gatewayClientsPage(parsed);
       case "memoryItems":
@@ -813,30 +826,66 @@ export class PgToolService {
     return projectOut(row);
   }
 
-  private async listProjects(input: Row) {
+  private async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
     let query = this.db("projects").select("*").orderBy("slug");
     if (input.status) {
       query = query.where("status", String(input.status));
     }
+    query = this.applyProjectMembershipFilter(query, context);
     return (await query).map(input.compact === true ? compactProject : projectOut);
   }
 
-  private async projectsPage(input: Row) {
+  private async projectsPage(input: Row, context?: NormalizedGatewayRequestContext) {
     const base = this.db("projects");
     if (input.status) {
       base.where("status", String(input.status));
     }
+    this.applyProjectMembershipFilter(base, context);
     return this.pageRows(base, input, (query) => query.select("*").orderBy("slug"), projectOut);
   }
 
-  private async getProject(input: Row) {
+  private async getProject(input: Row, context?: NormalizedGatewayRequestContext) {
     const row = input.id
       ? await this.db("projects").where({ id: String(input.id) }).first()
       : await this.db("projects").where({ slug: String(input.slug) }).first();
     if (!row) {
       throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.", { ...input });
     }
+    await this.assertProjectMember(String(row.id), context);
     return projectOut(row);
+  }
+
+  // Centralized project-membership gate (D-MEMORY-007 decision 3): only a
+  // role=member session is ever filtered. Admin sessions and every
+  // non-session auth source (static token, OAuth, anonymous/none) bypass
+  // this entirely and see every project, unchanged from pre-T-MEMORY-029
+  // behavior. A member without a project_members row gets the same
+  // PROJECT_NOT_FOUND a nonexistent project would produce -- existence is
+  // never leaked, matching this codebase's other don't-distinguish-why
+  // conventions (see auth.ts login()).
+  private async assertProjectMember(projectId: string, context?: NormalizedGatewayRequestContext): Promise<void> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return;
+    }
+    const membership = await this.db("project_members")
+      .where({ project_id: projectId, user_id: context.sessionUserId })
+      .first();
+    if (!membership) {
+      throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.");
+    }
+  }
+
+  // Query-builder counterpart of assertProjectMember for list/search
+  // endpoints that scan many projects (project.list, project.resolve)
+  // instead of resolving one specific id/slug.
+  private applyProjectMembershipFilter<T extends Knex.QueryBuilder>(
+    query: T,
+    context?: NormalizedGatewayRequestContext
+  ): T {
+    if (context?.sessionRole === "member" && context.sessionUserId) {
+      query.whereIn("id", this.db("project_members").select("project_id").where({ user_id: context.sessionUserId }));
+    }
+    return query;
   }
 
   private async deleteProject(input: Row) {
@@ -878,8 +927,11 @@ export class PgToolService {
     };
   }
 
-  private async resolveProjectCandidates(input: Row) {
-    const rows = await this.db("projects").select("*").where({ status: "active" });
+  private async resolveProjectCandidates(input: Row, context?: NormalizedGatewayRequestContext) {
+    const rows = await this.applyProjectMembershipFilter(
+      this.db("projects").select("*").where({ status: "active" }),
+      context
+    );
     const candidates = rows
       .map((row) => scoreProjectCandidate(row, input))
       .filter((candidate) => candidate.score > 0)
@@ -1086,7 +1138,7 @@ export class PgToolService {
   }
 
   private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
-    const project = await this.getProject(input);
+    const project = await this.getProject(input, context);
     await this.setKv(currentProjectKey(context.clientId), project.id);
     return project;
   }
@@ -1098,12 +1150,14 @@ export class PgToolService {
     if (!currentProjectId) {
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Current project is not configured.");
     }
-    return this.getProject({ id: currentProjectId });
+    return this.getProject({ id: currentProjectId }, context);
   }
 
   private async resolveProject(project?: unknown, context?: NormalizedGatewayRequestContext) {
     if (typeof project === "string" && project.length > 0) {
-      return project.startsWith("P-") ? this.getProject({ id: project }) : this.getProject({ slug: project });
+      return project.startsWith("P-")
+        ? this.getProject({ id: project }, context)
+        : this.getProject({ slug: project }, context);
     }
     return this.currentProject(context);
   }
@@ -3170,9 +3224,9 @@ export class PgToolService {
     ];
   }
 
-  private async preflight(input: Row) {
+  private async preflight(input: Row, context?: NormalizedGatewayRequestContext) {
     const task = await this.getTask(String(input.taskId));
-    const project = await this.getProject({ id: task.projectId });
+    const project = await this.getProject({ id: task.projectId }, context);
     const query = [task.title, task.scope, task.acceptance].filter(Boolean).join(" ") || "task";
     const faultQuery = String(task.title || query);
     const limits = (input.limits ?? {}) as Row;
@@ -3608,6 +3662,37 @@ export class PgToolService {
     };
     await this.db("events").insert(row);
     return eventOut(row);
+  }
+
+  // T-MEMORY-029 / D-MEMORY-007: migrate the shared static MCP_TOKEN into a
+  // real admin-scoped credential row, owned by whichever admin was created
+  // first (the bootstrap/instance owner), if any admin exists yet. Called
+  // once at gateway startup (see src/gateway.ts) whenever MCP_TOKEN is
+  // configured -- idempotent and safe on every restart, same
+  // insert-then-merge-on-conflict shape as touchClient() above, except it
+  // deliberately does NOT touch last_seen_at: that field stays driven only
+  // by real request traffic (touchClient's own merge never includes
+  // scope/owner_user_id, so the two upserts never fight over the same
+  // columns).
+  async ensureStaticTokenCredential(): Promise<void> {
+    const now = nowIso();
+    const owner = await this.db("users").select("id").where({ role: "admin" }).orderBy("created_at", "asc").first();
+    await this.db("gateway_clients")
+      .insert({
+        id: staticTokenClientId,
+        label: "static-token",
+        scope: "admin",
+        owner_user_id: owner?.id ?? null,
+        metadata: JSON.stringify({ kind: "static-token", migrated: true }),
+        created_at: now,
+        updated_at: now
+      })
+      .onConflict("id")
+      .merge({
+        scope: "admin",
+        owner_user_id: owner?.id ?? null,
+        updated_at: now
+      });
   }
 
   private async touchClient(
@@ -4752,6 +4837,11 @@ function eventOut(row: Row) {
     title: stringOrNull(row.title),
     body: stringOrNull(row.body),
     relatedId: stringOrNull(row.related_id),
+    // credentialId attributes the event to the client that performed the
+    // operation (T-MEMORY-029 / D-MEMORY-007). recordEventForProject already
+    // wrote this into created_by (and mirrored it into source_instance_id)
+    // on every event row -- this DTO just stops hiding it from callers.
+    credentialId: stringOrNull(row.created_by),
     createdAt: String(row.created_at)
   };
 }
@@ -5185,7 +5275,9 @@ function normalizeContext(context: GatewayRequestContext): NormalizedGatewayRequ
   return {
     clientId,
     clientLabel: context.clientLabel && context.clientLabel.length > 0 ? context.clientLabel : clientId,
-    metadata: context.metadata ?? {}
+    metadata: context.metadata ?? {},
+    sessionUserId: context.sessionUserId ?? null,
+    sessionRole: context.sessionRole ?? null
   };
 }
 

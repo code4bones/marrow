@@ -1,5 +1,5 @@
 import { startGatewayServer } from "../src/gateway/http-server.js";
-import { PgToolService } from "../src/gateway/pg-tool-service.js";
+import { PgToolService, staticTokenClientId } from "../src/gateway/pg-tool-service.js";
 import { createPgKnex } from "../src/shared/pg/knex.js";
 import type { ToolResponse } from "../src/shared/mcp/tool-response.js";
 
@@ -15,15 +15,13 @@ const started = await startGatewayServer(service, {
 const state: {
   projectId?: string;
   anonymousProjectId?: string;
-  anonymousClientIds: string[];
+  staticTokenCurrentProjectKey?: string;
   staleAnonymousClientId?: string;
   pruneAnonymousClientId?: string;
   forgetClientId?: string;
   taskId?: string;
   memoryId?: string;
-} = {
-  anonymousClientIds: []
-};
+} = {};
 const clientId = `gateway-http-smoke-${Date.now()}`;
 
 try {
@@ -165,24 +163,26 @@ try {
   });
   state.anonymousProjectId = expectData<{ project: { id: string } }>(anonymousProject).project.id;
 
+  // T-MEMORY-029: a static-token request with no explicit client id header
+  // used to fall through to a fresh `anonymous:${requestId}` scope on every
+  // single call (no stable identity at all). It now resolves to the same
+  // stable `static:mcp-token` credential every time, so two such calls
+  // share one current-project key -- the second call's value simply
+  // overwrites the first, it does not create a second independent scope.
+  state.staticTokenCurrentProjectKey = `current_project_id:${staticTokenClientId}`;
   await callGatewayWithoutClient("project.set_current", { id: state.projectId });
+  const afterFirstSetCurrent = await db("kv").where({ key: state.staticTokenCurrentProjectKey }).first();
+  assert(
+    afterFirstSetCurrent?.value === state.projectId,
+    "Static-token request without an explicit client id did not use the stable static:mcp-token scope."
+  );
   await callGatewayWithoutClient("project.set_current", { id: state.anonymousProjectId });
-  const anonymousCurrentKeys = await db("kv")
-    .select("key", "value")
-    .whereLike("key", "current_project_id:anonymous:%")
-    .whereIn("value", [state.projectId, state.anonymousProjectId]);
-  state.anonymousClientIds = anonymousCurrentKeys.map((row) =>
-    String(row.key).replace(/^current_project_id:/, "")
-  );
+  const afterSecondSetCurrent = await db("kv").where({ key: state.staticTokenCurrentProjectKey }).first();
   assert(
-    new Set(anonymousCurrentKeys.map((row) => String(row.key))).size === 2,
-    "Anonymous gateway requests shared one current project key."
+    afterSecondSetCurrent?.value === state.anonymousProjectId,
+    "A second static-token request without an explicit client id should overwrite the same stable scope's current project, not create a second one."
   );
-  assert(
-    new Set(anonymousCurrentKeys.map((row) => String(row.value))).size === 2,
-    "Anonymous gateway requests did not keep separate project values."
-  );
-  console.log("ok - anonymous project.current scope");
+  console.log("ok - static-token requests without an explicit client id share one stable current-project scope");
 
   const memory = await callGateway("memory.create", {
     project: state.projectId,
@@ -281,14 +281,12 @@ try {
   if (state.anonymousProjectId) {
     await db("projects").where({ id: state.anonymousProjectId }).del();
   }
-  if (state.anonymousClientIds.length > 0) {
-    await db("kv")
-      .whereIn(
-        "key",
-        state.anonymousClientIds.map((anonymousClientId) => `current_project_id:${anonymousClientId}`)
-      )
-      .del();
-    await db("gateway_clients").whereIn("id", state.anonymousClientIds).del();
+  if (state.staticTokenCurrentProjectKey) {
+    // Only the KV current-project pointer is this script's own scratch
+    // state -- the static:mcp-token gateway_clients row itself is a stable,
+    // shared credential identity (T-MEMORY-029), not scoped to one smoke
+    // run, so it is intentionally left alone here.
+    await db("kv").where({ key: state.staticTokenCurrentProjectKey }).del();
   }
   if (state.staleAnonymousClientId) {
     await db("kv").where({ key: `current_project_id:${state.staleAnonymousClientId}` }).del();
