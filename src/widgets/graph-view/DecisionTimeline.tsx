@@ -9,10 +9,11 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Tooltip, Typography } from 'antd';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode } from '../../shared/model/types';
 
@@ -79,6 +80,12 @@ function formatDuration(ms: number): string {
   if (days >= 7) return `${Math.round(days / 7)}w`;
   if (days >= 1) return `${Math.round(days)}d`;
   return `${Math.round(hours)}h`;
+}
+
+function formatFullDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '?';
+  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 interface TimeLayout {
@@ -249,7 +256,9 @@ interface Props {
 
 export function DecisionTimeline({ nodes, edges, loading }: Props) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
-  const { flowNodes, flowEdges, decisionCount } = useMemo(() => {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [centerLabel, setCenterLabel] = useState<string | null>(null);
+  const { flowNodes, flowEdges, decisionCount, timePoints } = useMemo(() => {
     const decisions = nodes
       .filter((n) => n.kind === 'DECISION')
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
@@ -337,12 +346,43 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       };
     });
 
+    const timePoints = decisions
+      .filter((d): d is GraphNode & { createdAt: string } => Boolean(d.createdAt))
+      .map((d) => ({ x: layout.xById.get(d.id) ?? 0, iso: d.createdAt }))
+      .sort((a, b) => a.x - b.x);
+
     return {
       flowNodes: [...decisionNodes, ...tickNodes, ...gapNodes],
       flowEdges: rawEdges,
       decisionCount: decisions.length,
+      timePoints,
     };
   }, [nodes, edges]);
+
+  // Owner: "когда мы его двигаем, должен появляться хотя бы тултип, куда мы
+  // по дате приехали" — panning or seeking via the MiniMap fires the same
+  // onMove callback, so one handler covers both. Finds whichever decision's
+  // x-position is nearest the horizontal center of the viewport and shows
+  // its date; nothing fancier (no interpolation) since "roughly here" is
+  // the point, not a precise readout.
+  const updateCenterLabel = useCallback((viewport: Viewport) => {
+    if (timePoints.length === 0 || !wrapperRef.current) {
+      setCenterLabel(null);
+      return;
+    }
+    const containerWidth = wrapperRef.current.clientWidth;
+    const flowCenterX = (containerWidth / 2 - viewport.x) / viewport.zoom;
+    let nearest = timePoints[0];
+    let nearestDist = Math.abs(nearest.x - flowCenterX);
+    for (const p of timePoints) {
+      const dist = Math.abs(p.x - flowCenterX);
+      if (dist < nearestDist) {
+        nearest = p;
+        nearestDist = dist;
+      }
+    }
+    setCenterLabel(formatFullDate(nearest.iso));
+  }, [timePoints]);
 
   if (loading) {
     return (
@@ -375,7 +415,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
   }
 
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+    <div ref={wrapperRef} style={{ height: '100%', width: '100%', position: 'relative' }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -388,19 +428,37 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
         onNodeClick={(_, node) => {
           if (node.type === 'decision') setSelectedRecord(node.id, 'decision');
         }}
+        onMove={(_, viewport) => updateCenterLabel(viewport)}
+        onInit={(instance) => updateCenterLabel(instance.getViewport())}
         style={{ background: '#141414' }}
       >
         <Background color="#2a2a2a" gap={20} />
         <Controls style={{ background: '#1f1f1f', border: '1px solid #303030' }} />
         <MiniMap
-          nodeColor={(n) => (n.type === 'decision' ? STATUS_COLOR[(n.data as { node: GraphNode }).node.status ?? 'active'] ?? '#595959' : 'transparent')}
+          nodeColor={(n) => {
+            if (n.type !== 'decision') return '#3a3a3a';
+            const status = (n.data as { node?: GraphNode })?.node?.status ?? 'active';
+            return STATUS_COLOR[status] ?? '#595959';
+          }}
           nodeStrokeWidth={0}
-          maskColor="rgba(0,0,0,0.65)"
-          style={{ background: '#1f1f1f', border: '1px solid #303030' }}
+          maskColor="rgba(0,0,0,0.35)"
+          style={{ background: '#1f1f1f', border: '1px solid #303030', width: 220, height: 140 }}
           pannable
           zoomable
         />
       </ReactFlow>
+
+      {/* Current center date — updates on pan/zoom/minimap-seek */}
+      {centerLabel && (
+        <div style={{
+          position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(20,20,20,0.92)', border: '1px solid #303030', borderRadius: 6,
+          padding: '4px 12px', zIndex: 10, pointerEvents: 'none',
+        }}
+        >
+          <Typography.Text style={{ fontSize: 12, color: '#d9d9d9' }}>{centerLabel}</Typography.Text>
+        </div>
+      )}
 
       {/* Legend */}
       <div style={{
