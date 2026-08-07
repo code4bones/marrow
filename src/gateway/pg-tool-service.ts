@@ -1327,8 +1327,8 @@ export class PgToolService {
     let query = this.db("items").select("id", "project_id", "type", "title", "body", "status", "tags");
     if (queryText) {
       query = query
-        .select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]))
-        .whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+        .select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]))
+        .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
 
     query = query.andWhere((builder) => {
@@ -1362,7 +1362,7 @@ export class PgToolService {
     }
 
     const queryText = String(input.query);
-    const base = this.db("items").whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+    const base = this.db("items").whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     base.andWhere((builder) => {
       if (project) {
         builder.orWhere("project_id", project.id);
@@ -1391,7 +1391,7 @@ export class PgToolService {
             "body",
             "status",
             "tags",
-            this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText])
+            this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText])
           )
           .orderByRaw("case when project_id is null then 1 else 0 end asc")
           .orderBy("rank", "desc"),
@@ -1710,8 +1710,8 @@ export class PgToolService {
     const queryText = typeof input.query === "string" ? input.query : null;
     if (queryText) {
       query = query
-        .select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]))
-        .whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+        .select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]))
+        .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
 
     query = query.andWhere((builder) => {
@@ -1750,7 +1750,7 @@ export class PgToolService {
     const queryText = typeof input.query === "string" ? input.query : null;
     const base = this.db("artifacts");
     if (queryText) {
-      base.whereRaw("search_vector @@ plainto_tsquery('simple', ?)", [queryText]);
+      base.whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
     base.andWhere((builder) => {
       if (project) {
@@ -1775,7 +1775,7 @@ export class PgToolService {
       (query) => {
         query.select("*");
         if (queryText) {
-          query.select(this.db.raw("ts_rank(search_vector, plainto_tsquery('simple', ?)) as rank", [queryText]));
+          query.select(this.db.raw("ts_rank(search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank", [queryText, queryText, queryText]));
         }
         query.orderByRaw("case when project_id is null then 1 else 0 end asc");
         return query.orderBy(queryText ? "rank" : "created_at", "desc");

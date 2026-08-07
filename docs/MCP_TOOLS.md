@@ -1761,6 +1761,15 @@ Ranking:
 2. common records
 3. FTS rank within each group
 
+Full-text matching (I-MEMORY-022 step 4): `search_vector` combines three
+Postgres text-search configs — `simple` (exact tokens: IDs like `D-MEMORY-013`,
+tags, commit hashes), `english`, and `russian` — so a query matches if it hits
+any of the three. This stems across grammatical forms within a language
+("модель" matches a record containing "модели"; "retrieval" matches
+"retrievals") but does not translate across languages — a Russian query still
+won't find an English-only record on the same topic. Same tri-config matching
+applies to `artifact.search`.
+
 ---
 
 ### `memory.update`

@@ -473,6 +473,70 @@ try {
     "memory.create did not create the explicit link passed in input.links."
   );
 
+  // I-MEMORY-022 step 4: search_vector now stems 'english' and 'russian' on
+  // top of the original 'simple' config, so a query in one grammatical form
+  // should find a record using a different form of the same word — something
+  // plain 'simple' tokenization (no morphology) could never do.
+  const russianStemMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Заметка про модели доступа для self-host инстансов",
+      body: "Здесь описаны модели доступа, которые поддерживает self-host инстанс.",
+      tags: ["smoke", "bilingual-fts"]
+    }
+  });
+  assertOk(russianStemMemoryResult.structuredContent, "memory.create (russian stem fixture) failed.");
+  const russianStemItemId = readNestedString(russianStemMemoryResult.structuredContent, ["data", "item", "id"]);
+
+  const russianStemSearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: {
+      project: state.projectId,
+      query: "модель доступа",
+      limit: 10
+    }
+  });
+  assertOk(russianStemSearchResult.structuredContent, "memory.search (russian stem query) failed.");
+  const russianStemHitIds = readNestedArray(russianStemSearchResult.structuredContent, ["data", "results"]).map(
+    (item) => (isRecord(item) ? item.id : undefined)
+  );
+  assert(
+    russianStemHitIds.includes(russianStemItemId),
+    "memory.search did not stem across Russian grammatical forms (nominative query vs genitive record)."
+  );
+
+  const englishStemMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "agent_rule",
+      title: "Gateway MCP HTTP smoke rule (english stem fixture)",
+      body: "The gateway supports multiple retrievals and rankings for agent queries.",
+      tags: ["smoke", "bilingual-fts"]
+    }
+  });
+  assertOk(englishStemMemoryResult.structuredContent, "memory.create (english stem fixture) failed.");
+  const englishStemItemId = readNestedString(englishStemMemoryResult.structuredContent, ["data", "item", "id"]);
+
+  const englishStemSearchResult = await client.callTool({
+    name: "memory.search",
+    arguments: {
+      project: state.projectId,
+      query: "retrieval rank",
+      limit: 10
+    }
+  });
+  assertOk(englishStemSearchResult.structuredContent, "memory.search (english stem query) failed.");
+  const englishStemHitIds = readNestedArray(englishStemSearchResult.structuredContent, ["data", "results"]).map(
+    (item) => (isRecord(item) ? item.id : undefined)
+  );
+  assert(
+    englishStemHitIds.includes(englishStemItemId),
+    "memory.search did not stem across English word forms (retrieval/rank query vs retrievals/rankings record)."
+  );
+
   const upsertCreateResult = await client.callTool({
     name: "memory.upsert",
     arguments: {
