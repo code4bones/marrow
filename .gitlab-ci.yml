@@ -1,0 +1,121 @@
+stages:
+  - build
+  - smoke
+  - deploy
+
+# Merged from backend/.gitlab-ci.yml + front/.gitlab-ci.yml when the two
+# repos (project-memory-mcp, pmemui) were combined into this monorepo via
+# `git subtree`, preserving each side's full history under backend/ and
+# front/ respectively.
+#
+# TAGGING CONVENTION CHANGED by the merge: a monorepo has one shared tag
+# namespace, so the old plain `vX.Y.Z` convention (used identically by both
+# repos before) is now ambiguous — it can't tell GitLab which side to build
+# and deploy. Tags are now prefixed per side:
+#   backend-vX.Y.Z   -> builds + deploys backend/ only
+#   front-vX.Y.Z     -> builds + deploys front/ only
+# A plain vX.Y.Z tag (old habit) triggers nothing here.
+#
+# Deploy targets, runner tags (pmem_back/pmem_front), container/image names,
+# and the production domain are all UNCHANGED from before the monorepo
+# merge — renaming those is a separate, deliberate step (not part of this
+# reorg), see D-MEMORY-023 / T-MEMORY-050.
+
+variables:
+  BACKEND_IMAGE_TAG: "pmem-gateway-build:$CI_PIPELINE_ID"
+  FRONT_IMAGE_TAG: "pmemui-build:$CI_PIPELINE_ID"
+  DEPLOY_ENV_FILE: "/home/code4bones/devel/project-mem/.env"
+  DEPLOY_ARTIFACT_DIR: "/home/code4bones/devel/project-mem/.artifacts"
+  DEPLOY_LOG_DIR: "/home/code4bones/devel/project-mem/logs"
+  FRONT_DEPLOY_PATH: "/var/www/pmemui"
+
+# --- backend/ (project-memory-mcp / pm3m gateway) ---
+
+backend:build:
+  stage: build
+  tags:
+    - pmem_back
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^backend-v/'
+    - if: '$CI_MERGE_REQUEST_ID'
+      changes:
+        - backend/**/*
+  script:
+    - cd backend
+    - docker build --target build -t "$BACKEND_IMAGE_TAG" .
+    - docker rmi "$BACKEND_IMAGE_TAG"
+
+backend:smoke:
+  stage: smoke
+  tags:
+    - pmem_back
+  when: manual
+  script:
+    - cd backend
+    - npm ci
+    - npm run build
+    - npm run smoke:gateway:mcp-http
+    - npm run smoke:gateway:graphql
+    - npm run smoke:gateway:registration
+
+backend:deploy:
+  stage: deploy
+  tags:
+    - pmem_back
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^backend-v/'
+  environment:
+    name: production
+    url: https://pmem.undoo.ru/api
+  script:
+    - cd backend
+    - docker build -t "pmem-gateway:$CI_COMMIT_TAG" .
+    - docker run --rm --network host -v "$DEPLOY_ENV_FILE:/app/.env" "pmem-gateway:$CI_COMMIT_TAG" npm run db:pg:migrate
+    - docker stop pmem-gateway || true
+    - docker rm pmem-gateway || true
+    - >
+      docker run -d --name pmem-gateway --restart unless-stopped --network host
+      -v "$DEPLOY_ENV_FILE:/app/.env"
+      -v "$DEPLOY_ARTIFACT_DIR:/app/.artifacts"
+      -v "$DEPLOY_LOG_DIR:/app/logs"
+      "pmem-gateway:$CI_COMMIT_TAG"
+
+# --- front/ (PMemUI) ---
+
+front:build:
+  stage: build
+  tags:
+    - pmem_front
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^front-v/'
+    - if: '$CI_MERGE_REQUEST_ID'
+      changes:
+        - front/**/*
+  script:
+    - cd front
+    - docker build --target build -t "$FRONT_IMAGE_TAG" .
+    - CID=$(docker create "$FRONT_IMAGE_TAG")
+    - rm -rf dist
+    - docker cp "$CID:/app/dist" ./dist
+    - docker rm "$CID"
+    - docker rmi "$FRONT_IMAGE_TAG"
+  artifacts:
+    paths:
+      - front/dist/
+    expire_in: 1 week
+
+front:deploy:
+  stage: deploy
+  tags:
+    - pmem_front
+  needs:
+    - front:build
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^front-v/'
+  script:
+    - test -d front/dist && [ "$(ls -A front/dist)" ]
+    - mkdir -p "$FRONT_DEPLOY_PATH"
+    - rsync -a --omit-dir-times --delete front/dist/ "$FRONT_DEPLOY_PATH/"
+  environment:
+    name: production
+    url: https://pmem.undoo.ru
