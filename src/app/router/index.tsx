@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { ArtifactsPage } from '../../pages/artifacts';
+import { ClaimPage } from '../../pages/claim';
 import { CommonPage } from '../../pages/common';
 import { DecisionsPage } from '../../pages/decisions';
 import { DiagnosticsPage } from '../../pages/diagnostics';
@@ -43,6 +44,7 @@ export function AppRouter() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/claim" element={<ClaimPage />} />
       <Route
         path="/"
         element={

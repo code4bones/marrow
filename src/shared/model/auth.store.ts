@@ -36,6 +36,17 @@ interface RecoveryCodesResult {
   recoveryCodes: string[];
 }
 
+interface ClaimContextResult {
+  email: string | null;
+  purpose: string;
+}
+
+interface ClaimResult {
+  email: string;
+  emailVerified: boolean;
+  verifyEmailPath?: string;
+}
+
 interface AuthState {
   status: AuthStatus;
   user: AuthUser | null;
@@ -53,6 +64,11 @@ interface AuthState {
 
   registerStart: (email: string, password: string) => Promise<RegisterStartResult>;
   registerConfirm: (token: string, code: string) => Promise<RegisterConfirmResult>;
+
+  /** Invite-claim flow (admin-issued invite, or a password-reset link — same token/password shape). */
+  claimContext: (token: string) => Promise<ClaimContextResult>;
+  claim: (token: string, password: string) => Promise<ClaimResult>;
+  verifyEmail: (verifyToken: string) => Promise<void>;
 
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   enroll2fa: () => Promise<Enroll2faResult>;
@@ -207,6 +223,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   registerConfirm: (token, code) =>
     postJson<RegisterConfirmResult>('/auth/register/confirm', { token, code }, 'Invalid or expired code.'),
+
+  claimContext: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/auth/claim?token=${encodeURIComponent(token)}`, {
+      credentials: 'include',
+    });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'This link is invalid or has expired.');
+    }
+    return body.data as ClaimContextResult;
+  },
+
+  claim: (token, password) => postJson<ClaimResult>('/auth/claim', { token, password }, 'Could not set your password.'),
+
+  verifyEmail: async (verifyToken) => {
+    // Same-browser relay: no SMTP is configured, so claim() hands back the
+    // verify-email path directly to the browser that just claimed instead of
+    // emailing it — see docs/AUTH.md's "No SMTP sending yet" note.
+    await postJson(`/auth/verify-email?token=${encodeURIComponent(verifyToken)}`, {}, 'Could not verify email.');
+  },
 
   changePassword: async (currentPassword, newPassword) => {
     await postJson('/auth/profile/password', { currentPassword, newPassword }, 'Could not change password.');
