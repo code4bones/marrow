@@ -62,7 +62,7 @@ export class TaskService {
     return task;
   }
 
-  next(input: { project?: string }): Task | null {
+  next(input: { project?: string | null }): Task | null {
     const project = this.projects.resolveProject(input.project);
     return this.repo.next(project.id);
   }

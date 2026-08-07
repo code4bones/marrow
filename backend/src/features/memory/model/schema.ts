@@ -41,7 +41,7 @@ export const getMemorySchema = z.object({
 
 export const searchMemorySchema = z.object({
   query: z.string().min(1),
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   type: z.string().optional(),
   status: itemStatusSchema.optional(),

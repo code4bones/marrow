@@ -113,7 +113,7 @@ const projectDeleteSchema = projectLookupSchema.extend({
   reason: z.string().optional()
 });
 const projectSummarySchema = z.object({
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   query: z.string().min(1).optional(),
   includeCommon: z.boolean().optional(),
   limits: z
@@ -205,7 +205,7 @@ const artifactPutTextSchema = z.object({
 });
 const artifactSearchSchema = z.object({
   query: z.string().min(1).optional(),
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   includeArchived: z.boolean().optional(),
   status: z.enum(["active", "archived"]).optional(),
@@ -227,7 +227,7 @@ const artifactListSchema = z.object({
 const artifactGetSchema = z
   .object({
     id: z.string().min(1).optional(),
-    project: z.string().optional(),
+    project: z.string().nullable().optional(),
     path: z.string().min(1).optional(),
     includeContent: z.boolean().optional(),
     maxBytes: z.number().int().min(1).max(5 * 1024 * 1024).optional()
@@ -238,7 +238,7 @@ const artifactGetSchema = z
 const artifactPeekSchema = z
   .object({
     id: z.string().min(1).optional(),
-    project: z.string().optional(),
+    project: z.string().nullable().optional(),
     path: z.string().min(1).optional(),
     maxBytes: z.number().int().min(1).max(512 * 1024).optional(),
     excerptChars: z.number().int().min(1).max(20000).optional(),
@@ -250,7 +250,7 @@ const artifactPeekSchema = z
 const artifactReadTextSchema = z
   .object({
     id: z.string().min(1).optional(),
-    project: z.string().optional(),
+    project: z.string().nullable().optional(),
     path: z.string().min(1).optional(),
     maxBytes: z.number().int().min(1).max(512 * 1024).optional(),
     maxChars: z.number().int().min(1).max(100_000).optional(),
@@ -292,7 +292,7 @@ const artifactArchiveSchema = z
 const artifactDeleteSchema = artifactArchiveSchema;
 const preflightByQuerySchema = z.object({
   query: z.string().min(1),
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   limits: z
     .object({
@@ -308,7 +308,7 @@ const contextPackSchema = z
   .object({
     taskId: z.string().min(1).optional(),
     query: z.string().min(1).optional(),
-    project: z.string().optional(),
+    project: z.string().nullable().optional(),
     includeCommon: z.boolean().optional(),
     mode: z.enum(["brief", "normal", "deep"]).optional(),
     profile: z.enum(["general", "implement", "review", "deploy", "chatgpt", "onboarding"]).optional(),
@@ -360,7 +360,7 @@ const handoffLatestSchema = z.object({
 });
 const handoffSearchSchema = z.object({
   query: z.string().min(1),
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   includeContent: z.boolean().optional(),
   limit: z.number().int().min(1).max(50).optional()

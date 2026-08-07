@@ -268,7 +268,7 @@ try {
   });
   assertOk(versionResult.structuredContent, "gateway.version failed.");
   assert(
-    readNestedString(versionResult.structuredContent, ["data", "version", "packageName"]) === "@deadragdoll/pm3m",
+    readNestedString(versionResult.structuredContent, ["data", "version", "packageName"]) === "@deadragdoll/marrow-back",
     "gateway.version returned the wrong package name."
   );
 
@@ -279,7 +279,7 @@ try {
   assertOk(diagnosticsResult.structuredContent, "gateway.diagnostics failed.");
   assert(
     readNestedString(diagnosticsResult.structuredContent, ["data", "diagnostics", "version", "packageName"]) ===
-      "@deadragdoll/pm3m",
+      "@deadragdoll/marrow-back",
     "gateway.diagnostics did not include version metadata."
   );
 

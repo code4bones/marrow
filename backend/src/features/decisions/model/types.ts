@@ -28,7 +28,7 @@ export interface RecordDecisionInput {
 }
 
 export interface ListDecisionsInput {
-  project?: string;
+  project?: string | null;
   includeCommon?: boolean;
   status?: DecisionStatus;
   limit?: number;

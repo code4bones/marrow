@@ -16,7 +16,7 @@ export const createTaskSchema = z.object({
 });
 
 export const listTasksSchema = z.object({
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   status: taskStatusSchema.optional(),
   milestone: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional(),
@@ -28,7 +28,7 @@ export const getTaskSchema = z.object({
 });
 
 export const nextTaskSchema = z.object({
-  project: z.string().optional()
+  project: z.string().nullable().optional()
 });
 
 export const updateTaskStatusSchema = z.object({

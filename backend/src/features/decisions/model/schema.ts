@@ -18,7 +18,7 @@ export const recordDecisionSchema = z.object({
 });
 
 export const listDecisionsSchema = z.object({
-  project: z.string().optional(),
+  project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   status: decisionStatusSchema.optional(),
   limit: z.number().int().min(1).max(100).optional()

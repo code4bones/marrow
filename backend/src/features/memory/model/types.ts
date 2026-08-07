@@ -33,7 +33,7 @@ export interface UpdateMemoryInput {
 
 export interface SearchMemoryInput {
   query: string;
-  project?: string;
+  project?: string | null;
   includeCommon?: boolean;
   type?: string;
   status?: ItemStatus;

@@ -31,7 +31,7 @@ export interface CreateTaskInput {
 }
 
 export interface ListTasksInput {
-  project?: string;
+  project?: string | null;
   status?: TaskStatus;
   milestone?: string;
   limit?: number;
