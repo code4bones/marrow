@@ -155,7 +155,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 /**
- * T-MEMORY-047: this user's own personal PMem API token, for CLI/agent
+ * T-MEMORY-047: this user's own personal Marrow API token, for CLI/agent
  * connections (Claude Code, Codex) — replaces the old admin-issued shared
  * MCP_TOKEN placeholder in ConnectSection below. Shown-once + regenerate,
  * same principle as TOTP recovery codes / the TOTP secret (see
@@ -169,7 +169,13 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * section for why this is lazy-on-first-visit rather than
  * generated at admin-approval time.
  */
-function PersonalTokenPanel({ onTokenChange }: { onTokenChange: (token: string | null) => void }) {
+function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
+  onTokenChange: (token: string | null) => void;
+  /** Fires on every status load/refresh — lets ConnectSection build a useful
+   * placeholder ("click Regenerate, yours ending in …XXXX isn't shown
+   * again") even when it never received the plaintext this page load. */
+  onStatusChange: (status: PersonalTokenStatus | null) => void;
+}) {
   const fetchPersonalToken = useAuthStore((s) => s.fetchPersonalToken);
   const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
 
@@ -185,7 +191,9 @@ function PersonalTokenPanel({ onTokenChange }: { onTokenChange: (token: string |
     setBusy(true);
     try {
       const result = await regeneratePersonalToken();
-      setStatus({ exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null });
+      const nextStatus = { exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null };
+      setStatus(nextStatus);
+      onStatusChange(nextStatus);
       setRevealedToken(result.token);
       onTokenChange(result.token);
     } catch (err) {
@@ -202,6 +210,7 @@ function PersonalTokenPanel({ onTokenChange }: { onTokenChange: (token: string |
         const result = await fetchPersonalToken();
         if (cancelled) return;
         setStatus(result);
+        onStatusChange(result);
         setLoading(false);
         if (!result.exists) {
           await generate();
@@ -283,13 +292,13 @@ function PersonalTokenPanel({ onTokenChange }: { onTokenChange: (token: string |
 
 /**
  * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
- * up to this PMem instance. The point of this section is that a brand-new
+ * up to this Marrow instance. The point of this section is that a brand-new
  * user can follow it without ever opening the repo's docs/.
  *
  * The MCP endpoint is derived from API_BASE_URL (same source the app already
  * uses for every /auth/* call — see shared/config/env.ts), so it always
  * reflects the real deployed host instead of a placeholder. The Claude
- * Code / Codex bearer token is now this user's own personal PMem API token
+ * Code / Codex bearer token is now this user's own personal Marrow API token
  * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
  * shared secret — everything in the commands below is real and
  * copy-pasteable as-is once a token has been generated. The OAuth "magic
@@ -302,14 +311,24 @@ function ConnectSection() {
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
   const [personalToken, setPersonalToken] = useState<string | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<PersonalTokenStatus | null>(null);
 
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
 
+  // personalToken is only ever non-null in the instant right after Generate/
+  // Regenerate (shown-once, never re-fetchable) — on every OTHER visit
+  // (including any visit after the very first) it's null even though a
+  // real, working token exists server-side. Falling back to a static
+  // "click Generate/Regenerate" placeholder in that case was misleading for
+  // anyone who already has a token (the vast majority of visits) — this now
+  // reads the live status (tokenHint included) to say the accurate thing.
   const exportTokenCmd = personalToken
     ? `export MARROW_MCP_TOKEN="${personalToken}"`
-    : 'export MARROW_MCP_TOKEN="<see \'Your personal token\' above — click Generate/Regenerate to reveal it>"';
+    : tokenStatus?.exists
+      ? `export MARROW_MCP_TOKEN="<your token isn't shown again — click Regenerate above to get a fresh one (currently ends in …${tokenStatus.tokenHint})>"`
+      : 'export MARROW_MCP_TOKEN="<generating your token above, one moment…>"';
 
   const claudeCodeCmd = [
     'claude mcp add --transport http project-memory \\',
@@ -333,13 +352,13 @@ function ConnectSection() {
       children: (
         <>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Claude Code talks to PMem over Streamable HTTP, using your own personal API token (
+            Claude Code talks to Marrow over Streamable HTTP, using your own personal API token (
             <Text code>MARROW_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
             a shared deployment secret.
           </Text>
           <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
           <CodeBlock code={exportTokenCmd} />
-          <Step n={2}>Register PMem as an MCP server:</Step>
+          <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={claudeCodeCmd} />
           <Step n={3}>
             Restart Claude Code, then ask it "What is project-memory / pmem, and how do I use it?" — it should call{' '}
@@ -358,7 +377,7 @@ function ConnectSection() {
           </Text>
           <Step n={1}>Set the token in the shell that will run Codex:</Step>
           <CodeBlock code={exportTokenCmd} />
-          <Step n={2}>Register PMem as an MCP server:</Step>
+          <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={codexCmd} />
           <Step n={3}>
             Restart Codex, then ask it to check pmem — it should call <Text code>gateway.status</Text> and{' '}
@@ -378,10 +397,10 @@ function ConnectSection() {
           </Step>
           <Step n={2}>Paste this as the connector URL:</Step>
           <CodeBlock code={claudeWebUrl} />
-          <Step n={3}>Click Connect — Claude opens PMem's sign-in page in a new tab.</Step>
+          <Step n={3}>Click Connect — Claude opens Marrow's sign-in page in a new tab.</Step>
           <Step n={4}>
-            Enter the PMem <Text strong>magic token</Text> your admin gave you (this is a separate one-time login
-            credential for web connectors, not your PMem account password or the personal API token above), then
+            Enter the Marrow <Text strong>magic token</Text> your admin gave you (this is a separate one-time login
+            credential for web connectors, not your Marrow account password or the personal API token above), then
             approve access.
           </Step>
           <Step n={5}>
@@ -400,11 +419,11 @@ function ConnectSection() {
           </Step>
           <Step n={2}>Paste this as the connector (MCP server) URL:</Step>
           <CodeBlock code={chatgptWebUrl} />
-          <Step n={3}>Click Connect — ChatGPT opens PMem's sign-in page.</Step>
+          <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
           <Step n={4}>
-            Enter the PMem <Text strong>magic token</Text> your admin gave you and approve access.
+            Enter the Marrow <Text strong>magic token</Text> your admin gave you and approve access.
           </Step>
-          <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call PMem tools directly.</Step>
+          <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call Marrow tools directly.</Step>
         </>
       ),
     },
@@ -413,7 +432,7 @@ function ConnectSection() {
   return (
     <Card title="Connect" size="small" style={{ marginBottom: 16 }}>
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-        How to connect this PMem instance to a coding agent or a web chat. The endpoint below (
+        How to connect this Marrow instance to a coding agent or a web chat. The endpoint below (
         <Text code>{mcpUrl}</Text>) is this deployment's real address — nothing here is a placeholder except the
         web-connector magic token, a per-deployment secret only your admin holds.
       </Paragraph>
@@ -425,7 +444,7 @@ function ConnectSection() {
         Used by Claude Code / Codex below (<Text code>MARROW_MCP_TOKEN</Text>) — tied to your account and role, not a
         shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
       </Paragraph>
-      <PersonalTokenPanel onTokenChange={setPersonalToken} />
+      <PersonalTokenPanel onTokenChange={setPersonalToken} onStatusChange={setTokenStatus} />
 
       <Alert
         type="info"

@@ -7,7 +7,6 @@ import { ArtifactsPage } from '../../pages/artifacts';
 import { ClaimPage } from '../../pages/claim';
 import { CommonPage } from '../../pages/common';
 import { DecisionsPage } from '../../pages/decisions';
-import { DiagnosticsPage } from '../../pages/diagnostics';
 import { EventsPage } from '../../pages/events';
 import { FaultsPage } from '../../pages/faults';
 import { LinksPage } from '../../pages/links';
@@ -77,9 +76,8 @@ export function AppRouter() {
         <Route path="projects/:slug/links"      element={<LinksPage />} />
 
         {/* Global */}
-        <Route path="common"      element={<CommonPage />} />
-        <Route path="diagnostics" element={<DiagnosticsPage />} />
-        <Route path="profile"     element={<ProfilePage />} />
+        <Route path="common"  element={<CommonPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
     </Routes>
   );

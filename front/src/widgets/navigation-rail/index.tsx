@@ -4,7 +4,6 @@ import {
   ArrowLeftOutlined,
   AuditOutlined,
   BugOutlined,
-  CloudServerOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
   HomeOutlined,
@@ -56,8 +55,7 @@ const PROJECT_SECTIONS: ItemType[] = [
 ];
 
 const GLOBAL_ITEMS: ItemType[] = [
-  { key: 'common',      icon: <ApartmentOutlined />,  label: 'Common' },
-  { key: 'diagnostics', icon: <CloudServerOutlined />, label: 'Diagnostics' },
+  { key: 'common', icon: <ApartmentOutlined />, label: 'Common' },
 ];
 
 function getSelectedKey(pathname: string): string {
@@ -98,7 +96,6 @@ export function NavigationRail() {
 
   const handleMenuClick = (key: string) => {
     if (key === 'common') { navigate('/common'); return; }
-    if (key === 'diagnostics') { navigate('/diagnostics'); return; }
     if (key === 'projects') { navigate('/projects'); return; }
     if (!selectedSlug) return;
     navigate(key === 'overview' ? `/projects/${selectedSlug}` : `/projects/${selectedSlug}/${key}`);

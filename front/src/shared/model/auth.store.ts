@@ -89,7 +89,7 @@ interface AuthState {
   disable2fa: (currentPassword: string) => Promise<void>;
   regenerateRecoveryCodes: (currentPassword: string) => Promise<RecoveryCodesResult>;
 
-  /** T-MEMORY-047: personal PMem API token for CLI/agent connections — see the Connect section of the profile page. */
+  /** T-MEMORY-047: personal Marrow API token for CLI/agent connections — see the Connect section of the profile page. */
   fetchPersonalToken: () => Promise<PersonalTokenStatus>;
   /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
   regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
