@@ -3016,6 +3016,11 @@ export class PgToolService {
 
     const project = await this.resolveProject(projectId, context);
     const depth = boundedInteger(input.depth, 2, 1, 5);
+    // Events are operational bookkeeping (created/updated/status-changed), not
+    // curated knowledge edges — I-MEMORY-022 measured them at ~80% of graph
+    // nodes on real data, drowning out the handful of real semantic links
+    // (supersedes, blocks, etc.). They belong on a timeline, not this graph.
+    const maxPerType = boundedInteger(input.maxPerType, 60, 5, 500);
     const nodes = new Map<string, GraphNode>();
     const edges = new Map<string, GraphEdge>();
 
@@ -3031,12 +3036,27 @@ export class PgToolService {
 
     addNode(graphNodeOut("PROJECT", project));
 
-    const [items, tasks, decisions, artifacts, events] = await Promise.all([
-      this.db("items").select("id", "title", "status", "type", "project_id").where({ project_id: project.id }),
-      this.db("tasks").select("id", "title", "status", "project_id", "depends_on").where({ project_id: project.id }),
-      this.db("decisions").select("id", "title", "status", "project_id", "supersedes_id").where({ project_id: project.id }),
-      this.db("artifacts").select("id", "title", "status", "project_id", "path").where({ project_id: project.id }),
-      this.db("events").select("id", "type", "title", "project_id", "related_id").where({ project_id: project.id })
+    const [items, tasks, decisions, artifacts] = await Promise.all([
+      this.db("items")
+        .select("id", "title", "status", "type", "project_id")
+        .where({ project_id: project.id })
+        .orderBy("updated_at", "desc")
+        .limit(maxPerType),
+      this.db("tasks")
+        .select("id", "title", "status", "project_id", "depends_on")
+        .where({ project_id: project.id })
+        .orderBy("updated_at", "desc")
+        .limit(maxPerType),
+      this.db("decisions")
+        .select("id", "title", "status", "project_id", "supersedes_id")
+        .where({ project_id: project.id })
+        .orderBy("updated_at", "desc")
+        .limit(maxPerType),
+      this.db("artifacts")
+        .select("id", "title", "status", "project_id", "path")
+        .where({ project_id: project.id })
+        .orderBy("updated_at", "desc")
+        .limit(maxPerType)
     ]);
 
     for (const row of items) {
@@ -3057,13 +3077,6 @@ export class PgToolService {
     }
     for (const row of artifacts) {
       addNode(graphNodeOut("ARTIFACT", row));
-    }
-    for (const row of events) {
-      addNode(graphNodeOut("EVENT", row));
-      const relatedId = stringOrNull(row.related_id);
-      if (relatedId) {
-        addEdge({ from: String(row.id), to: relatedId, relation: "related" });
-      }
     }
 
     for (let level = 1; level <= depth; level += 1) {
@@ -3129,13 +3142,15 @@ export class PgToolService {
       return [];
     }
 
-    const [projects, items, tasks, decisions, artifacts, events] = await Promise.all([
+    // Events are deliberately excluded here too — see the comment in
+    // projectGraph. Without this, a link that happened to reference an event
+    // id could reintroduce event nodes through BFS expansion.
+    const [projects, items, tasks, decisions, artifacts] = await Promise.all([
       this.db("projects").select("id", "slug", "title", "status").whereIn("id", uniqueIds),
       this.db("items").select("id", "title", "status", "type", "project_id").whereIn("id", uniqueIds),
       this.db("tasks").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
       this.db("decisions").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
-      this.db("artifacts").select("id", "title", "status", "project_id", "path").whereIn("id", uniqueIds),
-      this.db("events").select("id", "type", "title", "project_id").whereIn("id", uniqueIds)
+      this.db("artifacts").select("id", "title", "status", "project_id", "path").whereIn("id", uniqueIds)
     ]);
 
     return [
@@ -3143,8 +3158,7 @@ export class PgToolService {
       ...items.map((row) => graphNodeOut("MEMORY", row)),
       ...tasks.map((row) => graphNodeOut("TASK", row)),
       ...decisions.map((row) => graphNodeOut("DECISION", row)),
-      ...artifacts.map((row) => graphNodeOut("ARTIFACT", row)),
-      ...events.map((row) => graphNodeOut("EVENT", row))
+      ...artifacts.map((row) => graphNodeOut("ARTIFACT", row))
     ];
   }
 

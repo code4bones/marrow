@@ -259,7 +259,7 @@ Project graph:
 
 ```graphql
 query ProjectGraph($projectId: ID!) {
-  projectGraph(projectId: $projectId, depth: 2) {
+  projectGraph(projectId: $projectId, depth: 2, maxPerType: 60) {
     nodes {
       id
       kind
@@ -277,8 +277,16 @@ query ProjectGraph($projectId: ID!) {
 
 `projectGraph` returns project-scoped nodes plus real related endpoints up to
 the requested depth. Edges come from stored links, task dependencies
-(`blocks`), decision supersession (`supersedes`), and event related IDs
-(`related`). Click any node with `record(id)` to open the shared detail drawer.
+(`blocks`), and decision supersession (`supersedes`). Click any node with
+`record(id)` to open the shared detail drawer.
+
+Events are deliberately excluded from this graph (I-MEMORY-022 step 3):
+they're operational bookkeeping (`item.created`, `link.created`, ...), not
+curated knowledge edges, and measured at ~80% of graph nodes on real project
+data — drowning out the handful of real semantic links. Use `events`/
+`eventsPage` for the operational timeline instead. `maxPerType` (default 60)
+caps how many items/tasks/decisions/artifacts are pulled in per type, most
+recently updated first, so one prolific type can't flood the response either.
 
 Search result tables also have paginated variants:
 

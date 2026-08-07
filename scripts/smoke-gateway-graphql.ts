@@ -264,6 +264,10 @@ try {
     graph.projectGraph.edges.some((edge) => edge.from === taskId && edge.to === dependentTaskId && edge.relation === "blocks"),
     "GraphQL projectGraph missed task dependency edge."
   );
+  assert(
+    graph.projectGraph.nodes.every((node) => node.kind !== "EVENT"),
+    "GraphQL projectGraph should exclude EVENT nodes (I-MEMORY-022 step 3: events are bookkeeping, not graph edges)."
+  );
   console.log("ok - graphql project graph query");
 
   const recordNavigation = await graphql<{

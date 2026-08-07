@@ -52,7 +52,7 @@ const typeDefs = `#graphql
     projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
-    projectGraph(projectId: ID!, depth: Int = 2): ProjectGraph!
+    projectGraph(projectId: ID!, depth: Int = 2, maxPerType: Int = 60): ProjectGraph!
     record(id: ID!): RecordLookup!
 
     memory(id: ID!): MemoryRecord!
