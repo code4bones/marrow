@@ -36,6 +36,19 @@ interface RecoveryCodesResult {
   recoveryCodes: string[];
 }
 
+export interface PersonalTokenStatus {
+  exists: boolean;
+  tokenHint: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface PersonalTokenRegenerateResult {
+  token: string;
+  tokenHint: string;
+  createdAt: string;
+}
+
 interface ClaimContextResult {
   email: string | null;
   purpose: string;
@@ -75,6 +88,11 @@ interface AuthState {
   confirm2fa: (code: string) => Promise<RecoveryCodesResult>;
   disable2fa: (currentPassword: string) => Promise<void>;
   regenerateRecoveryCodes: (currentPassword: string) => Promise<RecoveryCodesResult>;
+
+  /** T-MEMORY-047: personal PMem API token for CLI/agent connections — see the Connect section of the profile page. */
+  fetchPersonalToken: () => Promise<PersonalTokenStatus>;
+  /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
+  regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
 
   fetchPendingUsers: () => Promise<PendingRegistration[]>;
   approvePendingUser: (id: string) => Promise<void>;
@@ -272,6 +290,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       '/auth/2fa/recovery-codes/regenerate',
       { currentPassword },
       'Could not regenerate recovery codes.',
+    ),
+
+  fetchPersonalToken: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/personal-token`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load your personal token status.');
+    }
+    return body.data as PersonalTokenStatus;
+  },
+
+  regeneratePersonalToken: () =>
+    postJson<PersonalTokenRegenerateResult>(
+      '/auth/profile/personal-token/regenerate',
+      {},
+      'Could not generate a personal token.',
     ),
 
   fetchPendingUsers: async () => {

@@ -11,6 +11,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Spin,
   Table,
   Tabs,
   Tag,
@@ -25,7 +26,7 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
-import { type PendingRegistration, useAuthStore } from '../../shared/model/auth.store';
+import { type PendingRegistration, type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -154,27 +155,161 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 /**
+ * T-MEMORY-047: this user's own personal PMem API token, for CLI/agent
+ * connections (Claude Code, Codex) — replaces the old admin-issued shared
+ * MCP_TOKEN placeholder in ConnectSection below. Shown-once + regenerate,
+ * same principle as TOTP recovery codes / the TOTP secret (see
+ * TotpEnrollWizard): the plaintext token is only ever visible in the
+ * response right after generate/regenerate, never recoverable from the
+ * status endpoint afterward. Generation is lazy — if the status check on
+ * mount reports no token yet, this component generates one automatically
+ * (still an explicit POST, not a side effect of the status GET) so a
+ * freshly-approved user sees a working token the first time they open this
+ * page, without asking an admin — see docs/AUTH.md's "Personal API tokens"
+ * section for why this is lazy-on-first-visit rather than
+ * generated at admin-approval time.
+ */
+function PersonalTokenPanel({ onTokenChange }: { onTokenChange: (token: string | null) => void }) {
+  const fetchPersonalToken = useAuthStore((s) => s.fetchPersonalToken);
+  const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
+
+  const [status, setStatus] = useState<PersonalTokenStatus | null>(null);
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const generate = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await regeneratePersonalToken();
+      setStatus({ exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null });
+      setRevealedToken(result.token);
+      onTokenChange(result.token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate a personal token.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await fetchPersonalToken();
+        if (cancelled) return;
+        setStatus(result);
+        setLoading(false);
+        if (!result.exists) {
+          await generate();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Could not load your personal token status.');
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Loading your personal token…</Text>
+      </div>
+    );
+  }
+
+  const hasEverBeenShown = revealedToken !== null;
+  const stillGenerating = busy && !hasEverBeenShown && !status?.exists;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {error && <Alert type="error" message={error} style={{ marginBottom: 12 }} showIcon />}
+
+      {stillGenerating && (
+        <div style={{ marginBottom: 12 }}>
+          <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Generating your personal token…</Text>
+        </div>
+      )}
+
+      {revealedToken && (
+        <>
+          <Alert
+            type="warning"
+            showIcon
+            message="Copy your token now"
+            description="This is the only time it will be shown. If you lose it, use Regenerate below to get a new one — the old one stops working immediately."
+            style={{ marginBottom: 12 }}
+          />
+          <CodeBlock code={revealedToken} />
+        </>
+      )}
+
+      {!revealedToken && status?.exists && (
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
+          Token ending in <Text code>…{status.tokenHint}</Text> · created <Timestamp value={status.createdAt} /> ·
+          last used <Timestamp value={status.lastUsedAt} /> · not shown again — use Regenerate for a new one.
+        </Text>
+      )}
+
+      {(status?.exists || hasEverBeenShown) && (
+        <Popconfirm
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="Regenerate personal token?"
+          description="Your current token stops working immediately. Anything using it (Claude Code, Codex, …) will need the new one."
+          okText="Regenerate"
+          okButtonProps={{ danger: true, loading: busy }}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            void generate();
+          }}
+        >
+          <Button size="small" loading={busy && !stillGenerating}>
+            Regenerate
+          </Button>
+        </Popconfirm>
+      )}
+    </div>
+  );
+}
+
+/**
  * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
  * up to this PMem instance. The point of this section is that a brand-new
  * user can follow it without ever opening the repo's docs/.
  *
  * The MCP endpoint is derived from API_BASE_URL (same source the app already
  * uses for every /auth/* call — see shared/config/env.ts), so it always
- * reflects the real deployed host instead of a placeholder. The gateway
- * bearer token and the OAuth "magic token" are per-deployment secrets that
- * only an admin holds; there is no API that could surface them to a logged
- * in browser session, so those two stay as fill-in-the-blank placeholders —
- * everything else in the commands below is real and copy-pasteable as-is.
+ * reflects the real deployed host instead of a placeholder. The Claude
+ * Code / Codex bearer token is now this user's own personal PMem API token
+ * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
+ * shared secret — everything in the commands below is real and
+ * copy-pasteable as-is once a token has been generated. The OAuth "magic
+ * token" for the web-connector paths is still a per-deployment secret only
+ * an admin holds (out of scope for this task), so that one stays a
+ * fill-in-the-blank placeholder.
  */
 function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
+  const [personalToken, setPersonalToken] = useState<string | null>(null);
+
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
 
-  const exportTokenCmd = 'export PMEM_MCP_TOKEN="<gateway-token-from-your-admin>"';
+  const exportTokenCmd = personalToken
+    ? `export PMEM_MCP_TOKEN="${personalToken}"`
+    : 'export PMEM_MCP_TOKEN="<see \'Your personal token\' above — click Generate/Regenerate to reveal it>"';
 
   const claudeCodeCmd = [
     'claude mcp add --transport http project-memory \\',
@@ -198,9 +333,9 @@ function ConnectSection() {
       children: (
         <>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Claude Code talks to PMem over Streamable HTTP. You need a gateway bearer token
-            (<Text code>PMEM_MCP_TOKEN</Text>) from your PMem admin — it's a shared deployment secret, not your
-            account password.
+            Claude Code talks to PMem over Streamable HTTP, using your own personal API token (
+            <Text code>PMEM_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
+            a shared deployment secret.
           </Text>
           <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
           <CodeBlock code={exportTokenCmd} />
@@ -219,7 +354,7 @@ function ConnectSection() {
       children: (
         <>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Codex uses the same Streamable HTTP endpoint and the same gateway bearer token as Claude Code.
+            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code.
           </Text>
           <Step n={1}>Set the token in the shell that will run Codex:</Step>
           <CodeBlock code={exportTokenCmd} />
@@ -246,7 +381,7 @@ function ConnectSection() {
           <Step n={3}>Click Connect — Claude opens PMem's sign-in page in a new tab.</Step>
           <Step n={4}>
             Enter the PMem <Text strong>magic token</Text> your admin gave you (this is a separate one-time login
-            credential for web connectors, not your PMem account password or the gateway bearer token above), then
+            credential for web connectors, not your PMem account password or the personal API token above), then
             approve access.
           </Step>
           <Step n={5}>
@@ -280,8 +415,18 @@ function ConnectSection() {
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
         How to connect this PMem instance to a coding agent or a web chat. The endpoint below (
         <Text code>{mcpUrl}</Text>) is this deployment's real address — nothing here is a placeholder except the
-        secrets only your admin holds (the gateway token and the web-connector magic token).
+        web-connector magic token, a per-deployment secret only your admin holds.
       </Paragraph>
+
+      <Text strong style={{ display: 'block', marginBottom: 8 }}>
+        Your personal token
+      </Text>
+      <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
+        Used by Claude Code / Codex below (<Text code>PMEM_MCP_TOKEN</Text>) — tied to your account and role, not a
+        shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
+      </Paragraph>
+      <PersonalTokenPanel onTokenChange={setPersonalToken} />
+
       <Alert
         type="info"
         showIcon
