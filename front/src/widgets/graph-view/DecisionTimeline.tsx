@@ -1,7 +1,7 @@
 import {
   CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
 } from '@ant-design/icons';
-import { AutoComplete, Input, Popover, Tag, Tooltip, Typography } from 'antd';
+import { AutoComplete, Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TONE_META } from '../../features/remark/tone';
@@ -664,7 +664,31 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
     for (const id of unresolvedIds) resolveNode(id);
   }, [unresolvedIds, resolveNode]);
 
-  if (!rootNode) return null;
+  // The ROOT itself can also be missing from nodeById — e.g. a search
+  // result (D-MEMORY-022 pt.2) or a deep-linked id that was never part of
+  // the depth-limited project graph in the first place. The block above
+  // only resolves this column's own LINK entries once rootNode already
+  // exists; without this, a missing root silently rendered nothing at all
+  // (found live: "поиск вижу, смену фокуса не вижу" — search worked, but
+  // selecting an out-of-graph result produced no visible column).
+  useEffect(() => {
+    if (!rootNode) resolveNode(rootId);
+  }, [rootNode, rootId, resolveNode]);
+
+  if (!rootNode) {
+    return (
+      <div style={COLUMN_OUTER_STYLE}>
+        <div style={COLUMN_TITLE_STYLE}>
+          <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
+            Loading…
+          </Typography.Text>
+        </div>
+        <div style={{ ...COLUMN_SCROLL_STYLE, justifyContent: 'center' }}>
+          <Spin size="small" />
+        </div>
+      </div>
+    );
+  }
   const activeChildId = chain[level + 1];
 
   return (
