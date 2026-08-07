@@ -89,6 +89,16 @@ const WRITE_SCOPE = "memory:write";
 const ADMIN_SCOPE = "memory:admin";
 type ScopeTier = "read" | "write" | "admin";
 
+// T-MEMORY-041 / D-MEMORY-019: step-up admin elevation. An OAuth-sourced
+// request that needs memory:admin is normally denied outright (decision 2
+// above never changes) -- this header lets it carry a short-lived,
+// single-use elevation grant (minted by POST /auth/elevate) that, if it
+// validates, authorizes exactly this one admin-tier call. The base OAuth
+// bearer's own scope is still checked independently; the grant never
+// substitutes for a missing/expired/invalid bearer, only for the missing
+// memory:admin claim that OAuth tokens are never issued (D-MEMORY-017).
+const ELEVATION_HEADER = "x-project-memory-elevation";
+
 function scopesForTier(tier: ScopeTier): string[] {
   if (tier === "admin") {
     return [READ_SCOPE, WRITE_SCOPE, ADMIN_SCOPE];
@@ -417,7 +427,7 @@ async function handleRequest(
         });
         return;
       }
-      const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, gatewayToolRequiredScopes(body.tool));
+      const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, gatewayToolRequiredScopes(body.tool));
       if (!scopeAuth.ok) {
         sendUnauthorized(response, requestId, scopeAuth);
         logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -480,7 +490,7 @@ async function handleGraphqlRequest(
   try {
     const body = request.method === "POST" ? await readJson(request) : undefined;
     const requiredScopes = graphqlRequiredScopes(request, body);
-    const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
     if (!scopeAuth.ok) {
       sendUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -592,7 +602,7 @@ async function handleMcpRequest(
     const body = await readJson(request);
     logFields = mcpLogFields(body);
     const requiredScopes = mcpRequiredScopes(body);
-    const scopeAuth = isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, requiredScopes);
     if (!scopeAuth.ok) {
       sendMcpUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -895,6 +905,56 @@ async function handleAuthRoute(
     return true;
   }
 
+  // --- Step-up admin elevation (T-MEMORY-041, D-MEMORY-019) ---
+  // Deliberately public (no session/bearer required to reach this route at
+  // all, same as /auth/login) -- the authorization comes entirely from the
+  // body proving live possession of a specific admin account's password
+  // *and* current TOTP code, not from whatever credential the HTTP request
+  // itself carried. Rate-limited the same way as /auth/login (email + IP
+  // keys, same in-memory limiter/window), separate key prefix so it
+  // doesn't share counters with plain login attempts against the same
+  // account.
+
+  if (request.method === "POST" && requestPath === "/auth/elevate") {
+    const body = (await readJson(request)) as { email?: unknown; password?: unknown; code?: unknown };
+    if (
+      typeof body.email !== "string" ||
+      typeof body.password !== "string" ||
+      typeof body.code !== "string"
+    ) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "email, password, and code are required.")));
+      return true;
+    }
+
+    const ip = clientIp(request);
+    const emailKey = `elevate-email:${body.email.trim().toLowerCase()}`;
+    const ipKey = `elevate-ip:${ip}`;
+    const emailLimit = checkAndConsumeLoginAttempt(emailKey);
+    const ipLimit = checkAndConsumeLoginAttempt(ipKey);
+    if (!emailLimit.allowed || !ipLimit.allowed) {
+      const retryAfterSeconds = Math.max(emailLimit.retryAfterSeconds, ipLimit.retryAfterSeconds);
+      response.setHeader("retry-after", String(retryAfterSeconds));
+      send(429, fail(new AppError("VALIDATION_ERROR", "Too many elevation attempts. Try again later.")), {
+        requestBody: { email: body.email },
+        authReason: "rate_limited"
+      });
+      return true;
+    }
+
+    const grant = await auth.requestElevation(body.email, body.password, body.code, {
+      userAgent: headerString(request, "user-agent"),
+      ip
+    });
+    clearLoginAttempts(emailKey);
+    clearLoginAttempts(ipKey);
+    send(
+      200,
+      { ok: true, data: { token: grant.token, expiresAt: grant.expiresAt.toISOString() } },
+      { requestBody: { email: body.email } }
+    );
+    return true;
+  }
+
   // --- Open self-registration + admin approval (T-MEMORY-038, D-MEMORY-016) ---
 
   if (request.method === "POST" && requestPath === "/auth/register") {
@@ -1151,13 +1211,13 @@ function insufficientScope(requiredTier: ScopeTier, grantedTier: ScopeTier): Aut
   return { ok: false, kind: "insufficient_scope", requiredTier, grantedTier };
 }
 
-function isAuthorizedForScopes(
+async function isAuthorizedForScopes(
   options: GatewayServerOptions,
   request: IncomingMessage,
   auth: AuthorizationState,
   sessionAuth: SessionIdentity | null,
   requiredScopes: string[]
-): AuthorizationState {
+): Promise<AuthorizationState> {
   if (!auth.ok) {
     return auth;
   }
@@ -1167,10 +1227,28 @@ function isAuthorizedForScopes(
       return auth;
     }
     if (requiredScopes.includes(ADMIN_SCOPE)) {
-      // Defense in depth on top of oauth.ts never issuing memory:admin: even
-      // if a token somehow carried it, an OAuth-sourced request is denied
-      // without inspecting the claim.
-      return insufficientScope("admin", "write");
+      // Defense in depth on top of oauth.ts never issuing memory:admin:
+      // even if a token somehow carried it, an OAuth-sourced request is
+      // denied without inspecting the claim -- UNLESS this request also
+      // carries a valid step-up elevation grant (T-MEMORY-041,
+      // D-MEMORY-019). No elevation header at all is the cheap, common
+      // case and short-circuits exactly like before this task.
+      const elevationToken = headerString(request, ELEVATION_HEADER);
+      if (!elevationToken || !options.auth) {
+        return insufficientScope("admin", "write");
+      }
+      // The grant only ever stands in for the missing memory:admin claim,
+      // never for a missing/expired/invalid bearer -- the token's own
+      // read+write scopes are still checked independently here.
+      const baseAuth = options.oauth.authenticate(
+        request,
+        requiredScopes.filter((scope) => scope !== ADMIN_SCOPE)
+      );
+      if (!baseAuth.ok) {
+        return insufficientScope("admin", "write");
+      }
+      const grant = await options.auth.consumeElevation(elevationToken);
+      return grant.ok ? auth : insufficientScope("admin", "write");
     }
     const scopedAuth = options.oauth.authenticate(request, requiredScopes);
     if (scopedAuth.ok) {

@@ -4,15 +4,16 @@
 
 This is the per-user access model for PMemUI (see `docs/AUTH_LAYERING.md` for
 the edge/proxy layering rule it complements, and PMem decisions
-`D-MEMORY-007`, `D-MEMORY-008`, `D-MEMORY-011`, `D-MEMORY-016`). It covers the
-schema, the CLI bootstrap command, the HTTP `/auth/*` routes (the original
-invite→claim→verify-email path, session login/logout, TOTP 2FA (bind/unbind,
-shared by every role), and open self-registration with inline TOTP + admin
-approval), and the read/write/admin scope + project-membership layer
-(`T-MEMORY-029`, implementing `D-MEMORY-007` and superseding `D-MEMORY-003`'s
-"trusted internal deployment, one shared token" model) below.
+`D-MEMORY-007`, `D-MEMORY-008`, `D-MEMORY-011`, `D-MEMORY-016`, `D-MEMORY-019`).
+It covers the schema, the CLI bootstrap command, the HTTP `/auth/*` routes
+(the original invite→claim→verify-email path, session login/logout, TOTP 2FA
+(bind/unbind, shared by every role), open self-registration with inline TOTP
++ admin approval, and step-up admin elevation), and the read/write/admin
+scope + project-membership layer (`T-MEMORY-029`, implementing
+`D-MEMORY-007` and superseding `D-MEMORY-003`'s "trusted internal
+deployment, one shared token" model) below.
 
-## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns -- see "Scopes: read / write / admin" and "Project membership" below)
+## Tables (migration `006_auth_users_sessions_tokens.cjs`, plus `010_scopes_membership_attribution.cjs` for `project_members` and the `gateway_clients.owner_user_id`/`scope` columns, and `011_admin_elevations.cjs` for `admin_elevations` -- see "Scopes: read / write / admin", "Project membership", and "Step-up admin elevation" below)
 
 ### `users`
 
@@ -62,6 +63,24 @@ same "don't create the row until the flow really completes" principle the
 
 Indexed on `email` and `expires_at` (`idx_pending_registrations_email`,
 `idx_pending_registrations_expires_at`).
+
+### `admin_elevations` (migration `011_admin_elevations.cjs`)
+
+Short-lived, single-use step-up grants (`D-MEMORY-019`) minted by `POST
+/auth/elevate` and redeemed via the `X-Project-Memory-Elevation` header on
+an admin-tier gateway call — see "Step-up admin elevation" below.
+
+| column | notes |
+|---|---|
+| `id` | text pk, app-generated (`randomUUID()`, same as `sessions.id`/`tokens.id`) |
+| `user_id` | the admin whose password+TOTP minted this grant; `ON DELETE CASCADE` |
+| `token_hash` | unique, sha256 hex of the opaque grant token — same pattern as `sessions.token_hash`/`tokens.token_hash`, never the raw secret |
+| `created_at` / `expires_at` | 60-second TTL from creation (`ELEVATION_TTL_MS` in `auth.ts`) |
+| `used_at` | nullable; set atomically by the one `UPDATE ... RETURNING` in `consumeElevation` — this is the single-use enforcement, not a separate check-then-write |
+| `user_agent` / `ip` | best-effort audit fields from the `/auth/elevate` request, same as `sessions` |
+
+Indexed on `user_id` and `expires_at` (`idx_admin_elevations_user_id`,
+`idx_admin_elevations_expires_at`).
 
 ## Bootstrap: `pm3m admin create`
 
@@ -113,6 +132,7 @@ other gateway route.
 | `POST /auth/2fa/disable` | session cookie | Body `{ currentPassword }`. Verifies the password, then clears `totp_secret`/`totp_enabled`/`totp_recovery_code_hashes`. |
 | `POST /auth/2fa/recovery-codes/regenerate` | session cookie | Body `{ currentPassword }`. Verifies the password, requires `totp_enabled=true`, replaces the stored recovery-code hashes with 10 fresh ones, and returns `{ recoveryCodes }` (plaintext, once). |
 | `POST /auth/profile/password` | session cookie | Body `{ currentPassword, newPassword }`. Verifies the current password, then sets a new one (same ≥8-character rule as claim/register). |
+| `POST /auth/elevate` | none (public, like `/auth/login`) | Body `{ email, password, code }`. Step-up admin elevation (`T-MEMORY-041`, `D-MEMORY-019`) — see "Step-up admin elevation" below. Re-checks the account's password *and* current TOTP code together (full re-authentication, not a session lookup); on success returns `{ token, expiresAt }`, a short-lived (60s), single-use grant. Rejects with the same generic `"Invalid email or password."` for a wrong password, `"Invalid verification code."` for a wrong TOTP code, `"Elevation is only available to admin accounts."` for a correctly-authenticated `role=member` account, and a `VALIDATION_ERROR` telling the caller to enable 2FA first if the (admin) account has no TOTP enrolled. Rate-limited the same way as `/auth/login` (email + IP keys, same in-memory limiter), with its own key prefix so it doesn't share counters with plain login attempts against the same account. |
 | `POST /auth/register` | none | Body `{ email, password }`. Public, no invite required (D-MEMORY-016). Rejects if the email is already a `users` row or has a still-valid `pending_registrations` row (same "already exists" message as `/auth/invite`); a *password* under 8 characters is rejected the same as `/auth/claim`. Generates + encrypts a TOTP secret, stores a `pending_registrations` row (30-minute TTL) with an opaque token, and returns `{ token, otpauthUrl, secretBase32 }` for the QR/enroll screen. No `users` row exists yet. |
 | `POST /auth/register/confirm` | none | Body `{ token, code }`. Looks up the `pending_registrations` row by `token_hash`; 400 "invalid or expired" if missing/expired, same message family as the invite/claim tokens. Verifies `code` against the stored secret; on success creates the real `users` row (`role=member`, `status=pending_approval`, `totp_enabled=true`, `email_verified_at=null`), deletes the `pending_registrations` row, and returns `{ email, recoveryCodes }` (plaintext codes, once). The account cannot log in yet — see `status=pending_approval` below. |
 | `GET /auth/admin/pending-users` | admin session cookie | `[{ id, email, createdAt }]` for every `users` row with `status='pending_approval'`, oldest first. |
@@ -193,6 +213,122 @@ message `"This operation requires <tier> scope; your credential has <tier>."`
 On the MCP JSON-RPC transport this is error code `-32002` (vs `-32001` for no
 credential at all). See `docs/GRAPHQL_API.md` and `docs/MCP_TOOLS.md` for the
 exact shapes.
+
+## Step-up admin elevation (`T-MEMORY-041` / `D-MEMORY-019`)
+
+This is an *addition* on top of the scope table above, not a change to it.
+The OAuth row's "forever" still means forever: no OAuth-issued token, ever
+gets the `memory:admin` claim, regardless of what it requests or what the
+underlying human's role is (`D-MEMORY-017` decision 2, unchanged). What this
+adds is a narrow, separate door for the one realistic case that standing
+model didn't have an answer for: an admin, chatting with an agent connected
+over OAuth (Claude Code, ChatGPT), wants to *live, in that moment*,
+authorize the one destructive call the agent is proposing — without
+switching to a separate admin-scoped client. See `D-MEMORY-019` for the
+full rationale and, importantly, for why this is explicitly **not** "OAuth
+can now get admin scope": the standing credential's ceiling never moves,
+and every unelevated request behaves exactly as it did before this task
+(verified as a regression case in `scripts/smoke-gateway-elevation.ts`).
+
+Two steps:
+
+1. **Mint a grant**: `POST /auth/elevate` (see the route table above) with
+   `{ email, password, code }` for a specific `role=admin`,
+   `status=active`, `totp_enabled=true` account. This is a full
+   re-authentication (password *and* the current 6-digit TOTP code, both
+   checked fresh at that moment), not a lookup against any existing session
+   or OAuth token — deliberately, since the OAuth-connected agent that
+   actually needs this in the motivating scenario has no `pmem_session`
+   cookie to present, and `gateway_clients.owner_user_id` (the "which human
+   owns this credential" column added by `T-MEMORY-029`) is only ever
+   populated for the migrated static `MCP_TOKEN` credential today, not for
+   OAuth connector credentials — so there is no existing "this OAuth client
+   belongs to admin X" link to authenticate against instead. Re-deriving
+   identity from scratch sidesteps that gap. On success: a JSON body
+   `{ token, expiresAt }`. `token` is an opaque, high-entropy secret shown
+   exactly once, same "never store the raw secret" handling as `sessions`/
+   `tokens` — only its sha256 hash lives in the new `admin_elevations`
+   table (migration `011_admin_elevations.cjs`).
+2. **Redeem it**: attach the token as an `X-Project-Memory-Elevation`
+   header on the actual admin-tier gateway call (`/call`, `/mcp`, or
+   `/graphql` — the check lives once, in `isAuthorizedForScopes()` in
+   `http-server.ts`, so all three transports get it for free). The grant is
+   **single-use** (one atomic `UPDATE ... WHERE used_at IS NULL ...
+   RETURNING` in `auth.ts`'s `consumeElevation` — no read-then-write race
+   between two concurrent redemption attempts) and expires after **60
+   seconds** if never redeemed at all (`admin_elevations.expires_at`,
+   `ELEVATION_TTL_MS` in `auth.ts`). Either condition failing — wrong/
+   unknown token, already used, expired — is indistinguishable from the
+   outside: the call is denied with the same `INSUFFICIENT_SCOPE` 403 an
+   OAuth token gets for an admin-tier call with no elevation at all. The
+   grant only ever substitutes for the missing `memory:admin` claim; the
+   OAuth bearer's own `memory:read`/`memory:write` scopes are still checked
+   independently, so a valid-looking elevation header can never rescue an
+   otherwise missing or expired bearer token.
+
+A `role=member` account can never mint a grant at all — `requestElevation`
+in `auth.ts` checks `role === "admin"` after the password/TOTP checks
+succeed, and rejects with a distinct `"Elevation is only available to admin
+accounts."` message (not the generic invalid-credentials message, since
+this is the account owner asking about their own role, not an attacker
+probing for account existence). A `role=admin` session already gets
+`memory:admin` directly (decision 1 in the scope table above) and never
+needs to go through this flow; elevation is checked only on the
+OAuth-sourced branch of `isAuthorizedForScopes()`, so a session's own tier
+resolution is completely unaffected by any of this.
+
+### Diagnosing the 403 that motivated this task
+
+Before building any of the above, this task's acceptance criteria required
+first checking whether the 403 that prompted it (an agent's `project.delete`
+call being blocked mid-chat) actually came from this gateway's own scope
+layer at all. It did not, as far as this codebase can show: every
+`INSUFFICIENT_SCOPE` denial this gateway produces is a structured JSON body
+— `{ ok: false, error: { code: "INSUFFICIENT_SCOPE", message: "This
+operation requires <tier> scope; your credential has <tier>.", details: {
+requiredScope, grantedScope } } }` (`fail()` in
+`src/shared/mcp/tool-response.ts`, wrapping `AppError` — see
+`docs/GRAPHQL_API.md`/`docs/MCP_TOOLS.md` for the exact shape on each
+transport). The blocking message reported in that session ("blocked by a
+firewall or security service") does not match that shape at all — no `ok`
+field, no `error.code`, prose instead of a structured JSON error — which is
+characteristic of a client-/harness-side network or tool-use safety
+classifier (i.e. something in the calling agent's own runtime deciding not
+to let the request through), not of anything in this gateway's request
+path. This distinction matters because it changes what this task can
+actually fix: **the step-up elevation mechanism above only ever helps when
+the block is `INSUFFICIENT_SCOPE` from this gateway.** If a given 403 is
+instead the calling harness's own classifier refusing to send the request
+in the first place, no backend-side mechanism — elevation grants included —
+changes that outcome, because the gateway never sees the request at all.
+Confirming which case applies to any specific blocked call requires
+inspecting that call's actual response body (structured `INSUFFICIENT_SCOPE`
+JSON vs. harness prose) at the time it happens; this codebase has no way to
+distinguish the two after the fact, since a harness-level block never
+reaches the gateway to be logged.
+
+### Smoke coverage
+
+`npm run smoke:gateway:elevation` (built as
+`scripts/smoke-gateway-elevation.ts`) covers, against a real gateway/
+Postgres instance with both a session (`auth`) and OAuth (`oauth`) facade
+configured: minting a real read+write OAuth bearer token (same shape a
+Claude Code/ChatGPT connector would carry) → confirming an admin-tier call
+with no elevation header is still denied exactly as before this task
+(regression check on `D-MEMORY-017` decision 2) → `POST /auth/elevate`
+rejecting a wrong password, a wrong TOTP code (distinct message), and a
+fully-correct `role=member` account (distinct message) → a correct
+password+TOTP mint succeeding → the resulting grant, attached via
+`X-Project-Memory-Elevation`, authorizing exactly one `memory.delete` call
+over the OAuth bearer → reusing that same (now-consumed) grant being denied
+→ a separately-minted grant, backdated in the database, being denied as
+expired → and an unrecognized/garbage token in the header being denied
+cleanly rather than erroring. (Not wired into `package.json` as an npm
+script by this task — run directly via
+`node dist/scripts/smoke-gateway-elevation.js` after `npm run build`, same
+as every other script in `scripts/`; adding the `npm run smoke:gateway:*`
+alias is left to whoever next touches `package.json`, which is outside this
+task's allowed files.)
 
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 

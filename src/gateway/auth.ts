@@ -32,8 +32,19 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const PENDING_REGISTRATION_TTL_MS = 30 * 60 * 1000;
 const RECOVERY_CODE_COUNT = 10;
+// T-MEMORY-041 / D-MEMORY-019: how long a step-up elevation grant is good
+// for if it's minted but never redeemed. Deliberately short -- this is a
+// "confirm this one action right now" prompt, not a session. A grant is
+// also single-use (see consumeElevation's atomic UPDATE below), so in
+// practice this TTL is only ever the backstop for a grant nobody redeemed.
+const ELEVATION_TTL_MS = 60 * 1000;
 
 export type AuthFacade = ReturnType<typeof createAuthFacade>;
+
+export interface ElevationGrant {
+  token: string;
+  expiresAt: Date;
+}
 
 export interface SessionIdentity {
   sessionId: string;
@@ -328,6 +339,101 @@ export function createAuthFacade(db: Knex) {
     return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
   }
 
+  // --- Step-up admin elevation (T-MEMORY-041, D-MEMORY-019) ---
+  // Not a session, not a scope change on any existing credential -- a
+  // fresh, live, single-use proof that a specific admin account authorized
+  // exactly one upcoming admin-tier call. See D-MEMORY-019 for the full
+  // rationale, including why this deliberately re-checks password + TOTP
+  // together (full re-authentication) instead of trusting a pmem_session
+  // cookie or the calling OAuth credential's own claims: the OAuth channel
+  // that actually reaches this endpoint in the motivating scenario (an
+  // agent relaying a code the human typed into chat) has no session cookie
+  // to present, and gateway_clients.owner_user_id is only populated for
+  // the migrated static token today (T-MEMORY-029's
+  // ensureStaticTokenCredential), not for OAuth connector credentials --
+  // so there is no existing "which admin owns this OAuth client" link to
+  // lean on. Re-proving identity from scratch (email + password + TOTP)
+  // sidesteps that gap entirely and is at least as strong as a session
+  // would have been.
+
+  async function requestElevation(
+    email: string,
+    password: string,
+    code: string,
+    meta: RequestMeta
+  ): Promise<ElevationGrant> {
+    const normalized = normalizeEmail(email);
+    const user = await db("users").where({ email: normalized }).first();
+    if (!user || !user.password_hash) {
+      // Same timing-parity trick as login(): run the same-cost hash even
+      // when there's no user/password to compare against.
+      await hashPassword(password);
+      throw new AppError("UNAUTHORIZED", "Invalid email or password.");
+    }
+    const validPassword = await verifyPassword(password, user.password_hash);
+    if (!validPassword) {
+      throw new AppError("UNAUTHORIZED", "Invalid email or password.");
+    }
+    if (user.status === "pending_approval") {
+      throw new AppError("UNAUTHORIZED", "Your account is waiting for admin approval.");
+    }
+    if (user.status !== "active") {
+      throw new AppError("UNAUTHORIZED", "This account has been disabled.");
+    }
+    if (user.role !== "admin") {
+      // Not a secret worth hiding behind the generic "Invalid email or
+      // password" message -- this is the account owner asking about their
+      // own role, not an attacker probing for account existence.
+      throw new AppError("UNAUTHORIZED", "Elevation is only available to admin accounts.");
+    }
+    if (!user.totp_enabled || !user.totp_secret) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Enable 2FA on this admin account before requesting elevation."
+      );
+    }
+    const secretBase32 = decryptSecret(user.totp_secret);
+    if (!verifyTotpCode(secretBase32, code)) {
+      throw new AppError("UNAUTHORIZED", "Invalid verification code.");
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ELEVATION_TTL_MS);
+    const rawToken = newOpaqueToken();
+    await db("admin_elevations").insert({
+      id: randomUUID(),
+      user_id: user.id,
+      token_hash: hashToken(rawToken),
+      created_at: now,
+      expires_at: expiresAt,
+      used_at: null,
+      user_agent: meta.userAgent ?? null,
+      ip: meta.ip ?? null
+    });
+    return { token: rawToken, expiresAt };
+  }
+
+  /**
+   * Redeems an elevation grant: valid, unexpired, and not already used.
+   * One atomic UPDATE ... WHERE used_at IS NULL AND expires_at > now
+   * RETURNING is the single-use enforcement -- two concurrent redemption
+   * attempts for the same token can't both win, no separate read-then-write
+   * race window.
+   */
+  async function consumeElevation(rawToken: string): Promise<{ ok: true; userId: string } | { ok: false }> {
+    const now = new Date();
+    const rows = await db("admin_elevations")
+      .where({ token_hash: hashToken(rawToken) })
+      .whereNull("used_at")
+      .andWhere("expires_at", ">", now)
+      .update({ used_at: now })
+      .returning(["user_id"]);
+    if (!rows.length) {
+      return { ok: false };
+    }
+    return { ok: true, userId: rows[0].user_id as string };
+  }
+
   async function requirePasswordMatch(userId: string, currentPassword: string): Promise<Record<string, unknown>> {
     const user = await db("users").where({ id: userId }).first();
     if (!user || !user.password_hash || !(await verifyPassword(currentPassword, user.password_hash))) {
@@ -599,7 +705,9 @@ export function createAuthFacade(db: Knex) {
     registerConfirm,
     listPendingApprovals,
     approveUser,
-    rejectUser
+    rejectUser,
+    requestElevation,
+    consumeElevation
   };
 }
 
