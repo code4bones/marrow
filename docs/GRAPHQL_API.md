@@ -265,6 +265,7 @@ query ProjectGraph($projectId: ID!) {
       kind
       title
       status
+      createdAt
     }
     edges {
       from
@@ -278,7 +279,9 @@ query ProjectGraph($projectId: ID!) {
 `projectGraph` returns project-scoped nodes plus real related endpoints up to
 the requested depth. Edges come from stored links, task dependencies
 (`blocks`), and decision supersession (`supersedes`). Click any node with
-`record(id)` to open the shared detail drawer.
+`record(id)` to open the shared detail drawer. `createdAt` (added for
+I-PMEM-011's horizontal timeline view) is always present, including on the
+PROJECT node.
 
 Events are deliberately excluded from this graph (I-MEMORY-022 step 3):
 they're operational bookkeeping (`item.created`, `link.created`, ...), not

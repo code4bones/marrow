@@ -57,7 +57,12 @@ const memoryHygieneReportSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
 const decisionSupersedeSchema = recordDecisionSchema.extend({
-  supersedesId: z.string().min(1)
+  supersedesId: z.string().min(1),
+  // Required here (unlike plain decision.record) — I-PMEM-010: the graph/
+  // timeline visualization has nothing to render on a supersede edge without
+  // a reason ("отвергли из-за X"), and decision.supersede already has a
+  // dedicated rationale-shaped slot in its schema, unlike a bare status flip.
+  rationale: z.string().min(1)
 });
 const failedAttemptRecordSchema = z.object({
   id: z.string().min(1).optional(),

@@ -239,13 +239,13 @@ try {
 
   const graph = await graphql<{
     projectGraph: {
-      nodes: Array<{ id: string; kind: string; title: string; status: string | null }>;
+      nodes: Array<{ id: string; kind: string; title: string; status: string | null; createdAt: string | null }>;
       edges: Array<{ from: string; to: string; relation: string }>;
     };
   }>(
     `query ProjectGraph($projectId: ID!) {
       projectGraph(projectId: $projectId, depth: 2) {
-        nodes { id kind title status }
+        nodes { id kind title status createdAt }
         edges { from to relation }
       }
     }`,
@@ -256,6 +256,10 @@ try {
   assert(graphNodeIds.includes(taskId), "GraphQL projectGraph missed task node.");
   assert(graphNodeIds.includes(dependentTaskId), "GraphQL projectGraph missed dependent task node.");
   assert(graphNodeIds.includes(memoryId), "GraphQL projectGraph missed memory node.");
+  assert(
+    graph.projectGraph.nodes.every((node) => typeof node.createdAt === "string" && node.createdAt.length > 0),
+    "GraphQL projectGraph node is missing createdAt (needed for the horizontal timeline view, I-PMEM-011)."
+  );
   assert(
     graph.projectGraph.edges.some((edge) => edge.from === memoryId && edge.to === taskId && edge.relation === "documents"),
     "GraphQL projectGraph missed link edge."

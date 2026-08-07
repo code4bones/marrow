@@ -2217,6 +2217,10 @@ Behavior:
 * marks the old decision as `superseded`
 * records a `supersedes` link from the new decision to the old one
 * records `decision.superseded` and `link.created` events
+* `rationale` is **required** here (unlike plain `decision.record`, where it's
+  optional) — I-PMEM-010: the graph/timeline visualization has nothing to
+  render on a supersede edge without a stated reason ("отвергли из-за X").
+  Omitting it fails with `VALIDATION_ERROR` before touching the database.
 
 Use this when project guidance changes. Agents should prefer this over manually
 recording a new decision and separately updating the old status.

@@ -18,6 +18,7 @@ type GraphNode = {
   kind: string;
   title: string;
   status: string | null;
+  createdAt: string | null;
 };
 
 type GraphEdge = {
@@ -3045,22 +3046,22 @@ export class PgToolService {
 
     const [items, tasks, decisions, artifacts] = await Promise.all([
       this.db("items")
-        .select("id", "title", "status", "type", "project_id")
+        .select("id", "title", "status", "type", "project_id", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("tasks")
-        .select("id", "title", "status", "project_id", "depends_on")
+        .select("id", "title", "status", "project_id", "depends_on", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("decisions")
-        .select("id", "title", "status", "project_id", "supersedes_id")
+        .select("id", "title", "status", "project_id", "supersedes_id", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("artifacts")
-        .select("id", "title", "status", "project_id", "path")
+        .select("id", "title", "status", "project_id", "path", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType)
@@ -3153,11 +3154,11 @@ export class PgToolService {
     // projectGraph. Without this, a link that happened to reference an event
     // id could reintroduce event nodes through BFS expansion.
     const [projects, items, tasks, decisions, artifacts] = await Promise.all([
-      this.db("projects").select("id", "slug", "title", "status").whereIn("id", uniqueIds),
-      this.db("items").select("id", "title", "status", "type", "project_id").whereIn("id", uniqueIds),
-      this.db("tasks").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
-      this.db("decisions").select("id", "title", "status", "project_id").whereIn("id", uniqueIds),
-      this.db("artifacts").select("id", "title", "status", "project_id", "path").whereIn("id", uniqueIds)
+      this.db("projects").select("id", "slug", "title", "status", "created_at").whereIn("id", uniqueIds),
+      this.db("items").select("id", "title", "status", "type", "project_id", "created_at").whereIn("id", uniqueIds),
+      this.db("tasks").select("id", "title", "status", "project_id", "created_at").whereIn("id", uniqueIds),
+      this.db("decisions").select("id", "title", "status", "project_id", "created_at").whereIn("id", uniqueIds),
+      this.db("artifacts").select("id", "title", "status", "project_id", "path", "created_at").whereIn("id", uniqueIds)
     ]);
 
     return [
@@ -3757,7 +3758,7 @@ function artifactOut(row: Row) {
     sha256: String(row.sha256),
     tags: stringArray(row.tags),
     downloadPath: `/artifacts/${encodeURIComponent(String(row.id))}/download`,
-    archivedAt: stringOrNull(row.archived_at),
+    archivedAt: dateStringOrNull(row.archived_at),
     archivedBy: stringOrNull(row.archived_by),
     archiveReason: stringOrNull(row.archive_reason),
     createdAt: String(row.created_at),
@@ -4460,7 +4461,12 @@ function graphNodeOut(kind: string, row: Row): GraphNode {
     id: String(row.id),
     kind,
     title: graphNodeTitle(kind, row),
-    status: stringOrNull(row.status)
+    status: stringOrNull(row.status),
+    // Most callers pass a raw db row (snake_case created_at, a Date object),
+    // but the PROJECT node is built from resolveProject()'s already-
+    // transformed projectOut() shape (camelCase createdAt, already a
+    // string) — accept either.
+    createdAt: dateStringOrNull(row.created_at) ?? dateStringOrNull(row.createdAt)
   };
 }
 
@@ -4834,6 +4840,20 @@ function asNullableString(value: unknown): string | null {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+// timestamptz columns come back from pg/knex as Date objects, not strings —
+// stringOrNull alone silently drops them. Everywhere else in this file
+// timestamps go through String(row.created_at) (JS Date.toString(), not
+// ISO — kept consistent with that, not "corrected" to ISO), which is only
+// safe because those fields are always selected/present; graphNodeOut's
+// createdAt is occasionally absent by design (unselected columns), so it
+// needs the null check stringOrNull gives plus proper Date handling.
+function dateStringOrNull(value: unknown): string | null {
+  if (value instanceof Date) {
+    return String(value);
+  }
+  return stringOrNull(value);
 }
 
 function stringArray(value: unknown): string[] {

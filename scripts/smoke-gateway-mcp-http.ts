@@ -797,6 +797,23 @@ try {
     "decision.record did not create the explicit link passed in input.links."
   );
 
+  // I-PMEM-010: the graph/timeline visualization has nothing to render on a
+  // supersede edge without a reason, so decision.supersede (unlike plain
+  // decision.record) requires rationale at the schema level.
+  const supersedeMissingRationaleResult = await client.callTool({
+    name: "decision.supersede",
+    arguments: {
+      supersedesId: originalDecisionId,
+      title: "Gateway MCP HTTP smoke replacement decision (missing rationale)",
+      decision: "Should be rejected before ever reaching the database."
+    }
+  });
+  assert(
+    supersedeMissingRationaleResult.isError === true &&
+      JSON.stringify(supersedeMissingRationaleResult.content).toLowerCase().includes("rationale"),
+    "decision.supersede accepted a call without rationale."
+  );
+
   const supersedeDecisionResult = await client.callTool({
     name: "decision.supersede",
     arguments: {
@@ -1150,6 +1167,10 @@ try {
   assert(
     readNestedString(archiveArtifactResult.structuredContent, ["data", "artifact", "status"]) === "archived",
     "artifact.archive did not mark the artifact as archived."
+  );
+  assert(
+    readNestedString(archiveArtifactResult.structuredContent, ["data", "artifact", "archivedAt"]).length > 0,
+    "artifact.archive returned a null/empty archivedAt (timestamptz columns come back as Date objects, not strings — stringOrNull silently drops them)."
   );
 
   const archivedSearchResult = await client.callTool({

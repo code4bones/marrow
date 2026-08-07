@@ -418,6 +418,7 @@ const typeDefs = `#graphql
     kind: String!
     title: String!
     status: String
+    createdAt: String
   }
 
   type GraphEdge {
