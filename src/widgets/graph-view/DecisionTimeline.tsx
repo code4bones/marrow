@@ -3,6 +3,7 @@ import {
   Controls,
   Handle,
   MarkerType,
+  MiniMap,
   Position,
   ReactFlow,
   type Edge,
@@ -391,6 +392,14 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       >
         <Background color="#2a2a2a" gap={20} />
         <Controls style={{ background: '#1f1f1f', border: '1px solid #303030' }} />
+        <MiniMap
+          nodeColor={(n) => (n.type === 'decision' ? STATUS_COLOR[(n.data as { node: GraphNode }).node.status ?? 'active'] ?? '#595959' : 'transparent')}
+          nodeStrokeWidth={0}
+          maskColor="rgba(0,0,0,0.65)"
+          style={{ background: '#1f1f1f', border: '1px solid #303030' }}
+          pannable
+          zoomable
+        />
       </ReactFlow>
 
       {/* Legend */}
