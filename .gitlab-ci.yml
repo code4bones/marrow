@@ -39,7 +39,13 @@ deploy:
   script:
     - test -d dist && [ "$(ls -A dist)" ]
     - mkdir -p "$DEPLOY_PATH"
-    - rsync -a --delete dist/ "$DEPLOY_PATH/"
+    # --omit-dir-times: DEPLOY_PATH's directory entries (., assets/) predate
+    # the pmem_front runner user and it isn't their owner, so -a's default
+    # attempt to set directory mtimes hits EPERM (non-owners can chgrp/write
+    # contents but not utime() a directory they don't own) and rsync exits 23
+    # even though every file transferred correctly. File mtimes are still
+    # preserved as normal; only directory mtimes are skipped.
+    - rsync -a --omit-dir-times --delete dist/ "$DEPLOY_PATH/"
   environment:
     name: production
     url: https://pmem.undoo.ru
