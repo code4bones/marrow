@@ -1,6 +1,7 @@
 import { useMutation } from '@apollo/client/react';
 import { Select, message } from 'antd';
 import { UPDATE_TASK_STATUS } from '../../shared/api/queries';
+import { TASK_STATUS_COLOR } from './taskStatusColor';
 
 const OPTIONS = [
   { label: 'Todo',      value: 'todo' },
@@ -9,11 +10,6 @@ const OPTIONS = [
   { label: 'Done',      value: 'done' },
   { label: 'Cancelled', value: 'cancelled' },
 ];
-
-const COLOR: Record<string, string> = {
-  todo: '#595959', doing: '#177ddc', blocked: '#d89614',
-  done: '#52c41a', cancelled: '#434343',
-};
 
 interface Props {
   id: string;
@@ -32,7 +28,7 @@ export function TaskStatusSelect({ id, value, onDone }: Props) {
       value={value}
       size="small"
       loading={loading}
-      style={{ width: 105, color: COLOR[value] }}
+      style={{ width: 105, color: TASK_STATUS_COLOR[value] }}
       options={OPTIONS}
       onClick={(e) => e.stopPropagation()}
       onChange={(status) => mutate({ variables: { id, status } })}

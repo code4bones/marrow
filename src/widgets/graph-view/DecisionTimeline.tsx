@@ -1,12 +1,19 @@
-import { CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
-import { Popover, Tag, Tooltip, Typography } from 'antd';
-import type { CSSProperties, ReactNode } from 'react';
+import {
+  CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
+} from '@ant-design/icons';
+import { AutoComplete, Input, Popover, Tag, Tooltip, Typography } from 'antd';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TONE_META } from '../../features/remark/tone';
+import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
+import { ENTITY_COLOR } from '../../shared/lib/entityId';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
-import type { GraphEdge, GraphNode, Link } from '../../shared/model/types';
+import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
 import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
+import { apolloClient } from '../../shared/api/apollo';
+import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
+import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
 // D-MEMORY-021 (supersedes D-MEMORY-020): vertical ribbon, chronological
@@ -36,6 +43,41 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: 'Rejected — considered and declined',
   archived: 'Archived',
 };
+
+// D-MEMORY-022: drill is no longer decision-only, so the card's status
+// swatch has to make sense for any kind. Rather than invent a fourth
+// palette, this reuses whatever's already canonical for that kind:
+//   - DECISION keeps the hex map above (unchanged — it's what the legend
+//     and the always-visible baseline ribbon already show).
+//   - TASK reuses TASK_STATUS_COLOR, the exact mapping the Tasks list page
+//     renders in its status column (features/task/TaskStatusSelect).
+//   - everything else (MEMORY, ARTIFACT, and any future kind) reuses
+//     shared/ui/StatusBadge's mapping — the one component already rendered
+//     for memory/artifact/project/fault statuses everywhere else in the
+//     app — translated from antd's named Tag colors to hex so it can drive
+//     this card's border/text the same way the decision palette does.
+//     (StatusBadge's own map is missing a few real task values like
+//     "todo"/"doing"/"cancelled" — pre-existing gap in that shared
+//     component, not touched here; that's exactly why TASK gets its own
+//     branch above instead of falling through to this one.)
+const ANTD_TAG_HEX: Record<string, string> = {
+  green: '#52c41a', blue: '#177ddc', orange: '#d89614', red: '#a61d24', purple: '#722ed1', default: '#595959',
+};
+
+function statusColorFor(kind: string, status: string): string {
+  if (kind === 'DECISION') return STATUS_COLOR[status] ?? '#595959';
+  if (kind === 'TASK') return TASK_STATUS_COLOR[status] ?? '#595959';
+  return ANTD_TAG_HEX[GENERIC_STATUS_COLORS[status] ?? 'default'] ?? '#595959';
+}
+
+// Small kind-identity dot used in the root-search dropdown (id/title match
+// across all kinds) — reuses the app's one canonical kind→color mapping
+// (shared/lib/entityId.ts, the same one RecordLink chips use) rather than
+// this file's own SATELLITE_KIND_COLOR below, which only covers non-decision
+// satellite dots and doesn't include decision itself.
+function kindDotColor(kind: string): string {
+  return ENTITY_COLOR[kind.toLowerCase() as keyof typeof ENTITY_COLOR] ?? ENTITY_COLOR.unknown;
+}
 
 // Matches KnowledgeGraph.tsx's (retired) kind palette so a task/item/artifact
 // reads the same color whether it's a dot here or elsewhere.
@@ -161,7 +203,7 @@ function RemarksIndicator({ remarks }: { remarks: RemarkPreview[] }) {
 }
 
 // Drill indicator — purely visual now (the whole card is the click target
-// for opening/closing its column, Finder-style; see DecisionCard's own
+// for opening/closing its column, Finder-style; see RecordCard's own
 // onClick). Filled/accent style signals "this is the currently open root
 // at its slot in the chain".
 function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
@@ -183,7 +225,7 @@ function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
 }
 
 // Opens the full record drawer — the card's own click now drives the drill
-// column instead (see DecisionCard's onClick), so viewing full details
+// column instead (see RecordCard's onClick), so viewing full details
 // moved to this small dedicated trigger rather than being the card's
 // primary action.
 function DetailsTrigger({ onClick }: { onClick: () => void }) {
@@ -232,7 +274,7 @@ function TreeBranch({ relation, direction, isLast, children }: RelationBadge & {
   );
 }
 
-interface DecisionCardProps {
+interface RecordCardProps {
   node: GraphNode;
   satellites: GraphNode[];
   remarks: RemarkPreview[];
@@ -253,15 +295,19 @@ interface DecisionCardProps {
   interactive?: boolean;
 }
 
-// The one card shape reused everywhere: baseline ribbon, a column's own
-// root header, and any decision entry inside a column's link list — same
-// component, same interaction, per D-MEMORY-021's "тот же визуальный
-// стиль, что и baseline-лента" requirement.
-function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill, interactive = true }: DecisionCardProps) {
+// The one card shape reused everywhere: baseline ribbon (decisions only),
+// a column's own root header, and any entry inside a column's link list —
+// same component, same interaction, per D-MEMORY-021's "тот же визуальный
+// стиль, что и baseline-лента" requirement. D-MEMORY-022 generalized this
+// from decisions-only to any kind (decision/task/memory/artifact) — the
+// card itself was already kind-agnostic in shape, it just needed its status
+// swatch to stop assuming decision statuses (see statusColorFor above) and
+// its details-trigger to stop hardcoding 'decision' as the drawer type.
+function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill, interactive = true }: RecordCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const status = node.status ?? 'active';
-  const color = STATUS_COLOR[status] ?? '#595959';
-  const borderColor = status === 'rejected' ? REJECTED_BORDER : color;
+  const color = statusColorFor(node.kind, status);
+  const borderColor = node.kind === 'DECISION' && status === 'rejected' ? REJECTED_BORDER : color;
   // T-MEMORY-048 pt.3: last remark's tone now colors the node itself (left
   // edge stripe), not just the bottom counter badge.
   const toneColor = remarks.length > 0 ? TONE_META[remarks[0].tone].color : null;
@@ -280,7 +326,7 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
           padding: '8px 12px',
           cursor: interactive ? 'pointer' : 'default',
           boxSizing: 'border-box',
-          opacity: status === 'superseded' || status === 'archived' ? 0.72 : 1,
+          opacity: status === 'superseded' || status === 'archived' || status === 'cancelled' ? 0.72 : 1,
           display: 'flex',
           flexDirection: 'column',
           boxShadow: toneColor ? `inset 4px 0 0 0 ${toneColor}` : undefined,
@@ -293,7 +339,10 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
           >
             {node.title}
           </Typography.Text>
-          <DetailsTrigger onClick={() => setSelectedRecord(node.id, 'decision')} />
+          {/* Was hardcoded to 'decision' before D-MEMORY-022 generalized this
+              card to any kind — a task/memory/artifact root card would have
+              opened the wrong drawer type otherwise. */}
+          <DetailsTrigger onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())} />
           {interactive && <DrillIndicator count={linkCount} isOpen={isOpen} />}
         </div>
 
@@ -327,31 +376,13 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
   );
 }
 
-// Non-decision entries inside a drill column (task/memory/artifact) — click
-// opens the record drawer directly, same as a satellite dot; only D*-nodes
-// spawn further columns.
-function SatelliteEntryRow({ node }: { node: GraphNode }) {
-  const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
-  const dotColor = SATELLITE_KIND_COLOR[node.kind] ?? '#595959';
-  return (
-    <div style={{ width: '100%', marginBottom: 10 }}>
-      <div
-        onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1px solid #303030', borderRadius: 6, background: '#1a1a1a', cursor: 'pointer' }}
-      >
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
-        <Typography.Text style={{ fontSize: 12, color: '#d9d9d9', flex: 1, minWidth: 0 }} ellipsis={{ tooltip: node.title }}>
-          {node.title}
-        </Typography.Text>
-        <Typography.Text style={{ fontSize: 9, color: '#595959', fontFamily: 'monospace' }}>{node.kind}</Typography.Text>
-      </div>
-    </div>
-  );
-}
-
 // A link whose other end isn't in the currently loaded graph nodes (depth
-// limit) — still shown so the link isn't silently dropped, via the same
-// RecordLink chip used elsewhere in the app.
+// limit) *and* hasn't come back from the lazy point-lookup yet (or the
+// lookup failed) — still shown so the link isn't silently dropped, via the
+// same RecordLink chip used elsewhere in the app. D-MEMORY-022: this used
+// to be permanent for anything outside the loaded graph; now it's just the
+// brief/failure state while DrillColumn's resolve effect (below) fetches
+// the missing node via a point `record(id)` lookup.
 function UnresolvedEntryRow({ id }: { id: string }) {
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -511,9 +542,72 @@ interface ColumnCommonProps {
   remarksByTarget: Map<string, RemarkPreview[]>;
   chain: string[];
   onToggle: (id: string, level: number) => void;
+  /**
+   * D-MEMORY-022 pt.3: point-lookup a single node missing from `nodeById`
+   * (a link target beyond the loaded graph's depth limit) via `record(id)`.
+   * Idempotent/deduped by the resolver that owns this — safe to call for
+   * the same id repeatedly (e.g. every render of a still-unresolved row).
+   */
+  resolveNode: (id: string) => void;
 }
 
-function BaselineColumn({ rows, ...common }: { rows: BaselineRow[] } & ColumnCommonProps) {
+// Root-changing search (D-MEMORY-022 pt.2) — client-side substring match
+// over id/title across every kind in the already-loaded project graph (no
+// new backend query). Deliberately does NOT reach into the lazy per-node
+// resolver: a node absent from `nodes` can't be a search result in the
+// first place (nothing to match its title against), so there's no "type an
+// id, nothing found, silently fails to lazy-resolve" gap here — see the
+// task note on T-MEMORY-049 for why this is a moot case, not a cut corner.
+const MAX_SEARCH_RESULTS = 20;
+
+function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: string) => void }) {
+  const [query, setQuery] = useState('');
+
+  const options = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return nodes
+      .filter((n) => n.id.toLowerCase().includes(q) || n.title.toLowerCase().includes(q))
+      .slice(0, MAX_SEARCH_RESULTS)
+      .map((n) => ({
+        value: n.id,
+        label: (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: kindDotColor(n.kind), flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace', flexShrink: 0 }}>{n.id}</span>
+            <span style={{ fontSize: 12, color: '#d9d9d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {n.title}
+            </span>
+          </div>
+        ),
+      }));
+  }, [nodes, query]);
+
+  return (
+    <AutoComplete
+      value={query}
+      options={options}
+      onSearch={setQuery}
+      onSelect={(id) => { onSelect(id as string); setQuery(''); }}
+      style={{ width: '100%' }}
+      popupMatchSelectWidth={300}
+    >
+      <Input
+        size="small"
+        placeholder="Find any record… (opens as new root)"
+        prefix={<SearchOutlined style={{ color: '#595959', fontSize: 11 }} />}
+        allowClear
+        onClick={(e) => e.stopPropagation()}
+      />
+    </AutoComplete>
+  );
+}
+
+function BaselineColumn({ rows, allNodes, onSelectRoot, ...common }: {
+  rows: BaselineRow[];
+  allNodes: GraphNode[];
+  onSelectRoot: (id: string) => void;
+} & ColumnCommonProps) {
   const { satellitesByDecision, linksByRecord, remarksByTarget, chain, onToggle } = common;
 
   return (
@@ -522,6 +616,7 @@ function BaselineColumn({ rows, ...common }: { rows: BaselineRow[] } & ColumnCom
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
           Timeline
         </Typography.Text>
+        <RootSearch nodes={allNodes} onSelect={onSelectRoot} />
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
         {rows.map((row, i) => {
@@ -530,7 +625,7 @@ function BaselineColumn({ rows, ...common }: { rows: BaselineRow[] } & ColumnCom
           const body = row.kind === 'task'
             ? <TaskMarkerRow marker={row.marker} />
             : (
-              <DecisionCard
+              <RecordCard
                 node={row.node}
                 satellites={satellitesByDecision.get(row.node.id) ?? []}
                 remarks={remarksByTarget.get(row.node.id) ?? []}
@@ -552,9 +647,22 @@ function BaselineColumn({ rows, ...common }: { rows: BaselineRow[] } & ColumnCom
 }
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
-  const { nodeById, satellitesByDecision, linksByRecord, remarksByTarget, chain, onToggle } = common;
+  const { nodeById, satellitesByDecision, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
+
+  // D-MEMORY-022 pt.3: any entry whose other end isn't in nodeById yet gets
+  // a point `record(id)` lookup kicked off here. Guarded/deduped inside the
+  // resolver itself (see useNodeResolver in DecisionTimeline below), so this
+  // firing again on every re-render of an already-pending or already-failed
+  // id is a cheap no-op, not a repeat network call.
+  const unresolvedIds = useMemo(
+    () => rows.filter((r): r is Extract<DrillRow, { kind: 'entry' }> => r.kind === 'entry' && !r.node).map((r) => r.id),
+    [rows],
+  );
+  useEffect(() => {
+    for (const id of unresolvedIds) resolveNode(id);
+  }, [unresolvedIds, resolveNode]);
 
   if (!rootNode) return null;
   const activeChildId = chain[level + 1];
@@ -566,7 +674,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
           Links of {rootId}
         </Typography.Text>
         {/* Closing this column is the only action left for the root card
-            below — it's inert (see DecisionCard's `interactive` prop), so a
+            below — it's inert (see RecordCard's `interactive` prop), so a
             re-click there can no longer make it appear to "vanish". */}
         <Tooltip title="Close this column">
           <span
@@ -580,7 +688,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
         <div style={{ width: COLUMN_CARD_W }}>
-          <DecisionCard
+          <RecordCard
             node={rootNode}
             satellites={satellitesByDecision.get(rootId) ?? []}
             remarks={remarksByTarget.get(rootId) ?? []}
@@ -605,9 +713,14 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             const header = row.headerIso ? <StickyDayLabel key={`day-${row.link.id}`} iso={row.headerIso} /> : null;
             const isLast = i === lastEntryIdx;
 
-            const inner = row.node?.kind === 'DECISION'
+            // D-MEMORY-022 pt.1: every kind drills now, not just decisions —
+            // any resolved node (whether from the loaded graph or from the
+            // lazy point-lookup above) renders as a full, clickable RecordCard.
+            // Only a still-unresolved (or unresolvable) id falls back to the
+            // inert id chip.
+            const inner = row.node
               ? (
-                <DecisionCard
+                <RecordCard
                   node={row.node}
                   satellites={satellitesByDecision.get(row.node.id) ?? []}
                   remarks={remarksByTarget.get(row.node.id) ?? []}
@@ -616,9 +729,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
                   onToggleDrill={() => onToggle(row.node!.id, level + 1)}
                 />
               )
-              : row.node
-                ? <SatelliteEntryRow node={row.node} />
-                : <UnresolvedEntryRow id={row.id} />;
+              : <UnresolvedEntryRow id={row.id} />;
 
             return (
               <div key={row.link.id} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
@@ -633,6 +744,66 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
       </div>
     </div>
   );
+}
+
+// Minimal shape we need out of `record(id)`'s polymorphic payload — every
+// kind this timeline actually drills into (Task/Decision/Artifact/
+// MemoryRecord) carries title/status/createdAt, which is all a synthesized
+// GraphNode needs to slot into the exact same rendering path as a node that
+// came from the batch project-graph query.
+interface LazyRecordPayload {
+  title?: string;
+  status?: string | null;
+  createdAt?: string | null;
+}
+
+// D-MEMORY-022 pt.3: point-resolves a node missing from the depth-limited
+// project graph (a link target beyond `depth`) via the existing `record(id)`
+// query — reusing GET_RECORD, the exact document the detail drawer already
+// uses, so no new GraphQL was added for this. Deliberately one request per
+// distinct missing id rather than a batch: the task scope is explicit that
+// this point-lookup must NOT replace the batched linksByRecord/remarksByTarget
+// approach for a column's own link list (T-MEMORY-045) — it only covers the
+// individual "this one id isn't in the loaded graph" gap.
+function useLazyNodeResolver() {
+  const [resolved, setResolved] = useState<Map<string, GraphNode>>(new Map());
+  // Mirrors `resolved` for synchronous reads inside resolveNode (a plain
+  // callback, not a render), plus the in-flight/failed bookkeeping that has
+  // no business being React state at all — none of this should ever cause
+  // its own re-render. Synced in an effect (not during render) since
+  // mutating a ref's `.current` while rendering is itself disallowed.
+  const resolvedRef = useRef(resolved);
+  useEffect(() => { resolvedRef.current = resolved; }, [resolved]);
+  const bookkeepingRef = useRef({ pending: new Set<string>(), failed: new Set<string>() });
+
+  const resolveNode = useCallback((id: string) => {
+    const bk = bookkeepingRef.current;
+    if (resolvedRef.current.has(id) || bk.pending.has(id) || bk.failed.has(id)) return;
+    bk.pending.add(id);
+    apolloClient.query<{ record: RecordWrapper }>({ query: GET_RECORD, variables: { id } })
+      .then(({ data }) => {
+        const rec = data?.record;
+        if (!rec || !rec.record) { bk.failed.add(id); return; }
+        const payload = rec.record as unknown as LazyRecordPayload;
+        const node: GraphNode = {
+          id: rec.id,
+          kind: rec.kind,
+          title: payload.title ?? rec.id,
+          status: payload.status ?? null,
+          createdAt: payload.createdAt ?? null,
+        };
+        setResolved((cur) => {
+          if (cur.has(id)) return cur;
+          const next = new Map(cur);
+          next.set(id, node);
+          return next;
+        });
+      })
+      .catch(() => { bk.failed.add(id); })
+      .finally(() => { bk.pending.delete(id); });
+  }, []);
+
+  return { resolved, resolveNode };
 }
 
 interface Props {
@@ -657,7 +828,19 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // useTimelineOverlay.ts for why this satisfies the "no N+1" requirement.
   const overlay = useTimelineOverlay(projectSlug, showTasks);
 
-  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  // D-MEMORY-022 pt.3: nodes point-resolved via `record(id)` because a link
+  // pointed past the loaded graph's depth. Merged into nodeById below so
+  // every downstream consumer (buildDrillRows, satellites, the chain-
+  // validity check) sees them exactly like a normal batch-loaded node —
+  // no separate "is this lazy" branch anywhere else in the file.
+  const { resolved: lazyResolved, resolveNode } = useLazyNodeResolver();
+
+  const nodeById = useMemo(() => {
+    const base = new Map(nodes.map((n) => [n.id, n]));
+    if (lazyResolved.size === 0) return base;
+    for (const [id, node] of lazyResolved) if (!base.has(id)) base.set(id, node);
+    return base;
+  }, [nodes, lazyResolved]);
 
   const { decisions, satellitesByDecision } = useMemo(() => {
     const decisions = nodes
@@ -666,7 +849,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
 
     // Satellites: any other record (task/item/artifact) linked to a decision
     // by any relation — rendered as small dots on the decision card. Reused
-    // for every DecisionCard instance, wherever it's rendered (baseline,
+    // for every RecordCard instance, wherever it's rendered (baseline,
     // column header, column entry), since the map covers every decision id
     // discovered anywhere in the loaded graph.
     const satellitesByDecision = new Map<string, GraphNode[]>();
@@ -713,12 +896,104 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     setChain((prev) => (prev[level] === id ? prev.slice(0, level) : [...prev.slice(0, level), id]));
   }, []);
 
+  // D-MEMORY-022 pt.2: a search selection always opens as the new root,
+  // replacing whatever chain is currently open — unlike handleToggle above,
+  // this is never a toggle (re-selecting the same result can't collapse
+  // anything), so there's no "click something and it vanishes" ambiguity
+  // to worry about here.
+  const openAsRoot = useCallback((id: string) => {
+    setChain([id]);
+  }, []);
+
   // Mirrors Finder auto-scrolling to reveal a freshly opened column instead
-  // of leaving it clipped off the right edge.
+  // of leaving it clipped off the right edge. Wrapped in an rAF so it runs
+  // after the browser has actually laid out the just-added column (plain
+  // effect timing already does this in practice, but a chain several levels
+  // deep opened in quick succession is exactly the case the owner reported
+  // as unreliable — this makes the read of scrollWidth robust to that).
   useEffect(() => {
     if (validChain.length === 0 || !rowRef.current) return;
-    rowRef.current.scrollTo({ left: rowRef.current.scrollWidth, behavior: 'smooth' });
+    const raf = requestAnimationFrame(() => {
+      rowRef.current?.scrollTo({ left: rowRef.current.scrollWidth, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [validChain.length]);
+
+  // Click-and-drag horizontal panning for the column row (I-PMEM owner
+  // feedback, live on v0.9.2: "чем больше вложенность, они начинают уезжать
+  // за экран, и нельзя их увидеть... если бы это был канвас, то можно было
+  // бы драгнуть" — deeper drill chains run off the right edge with no
+  // canvas-style drag to reach them). Standard grab-to-scroll: track
+  // clientX/scrollLeft on mousedown, adjust scrollLeft on mousemove, and
+  // only treat it as an actual drag once the pointer has moved past a small
+  // threshold — under that threshold this is a plain click and must fall
+  // through untouched (a card's own onClick still has to fire normally).
+  // No existing drag-to-pan code anywhere else in this codebase to mirror
+  // (the old force-directed graph used @xyflow/react's built-in canvas pan,
+  // retired in 8734746 well before this widget existed) — this is a plain
+  // DOM implementation, not a canvas.
+  const dragRef = useRef<{ startX: number; startScrollLeft: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const DRAG_THRESHOLD_PX = 5;
+
+  const handleRowMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    // Don't hijack drags starting on the search input (or any future form
+    // control) — text selection there should behave normally.
+    const target = e.target as HTMLElement;
+    if (target.closest('input, textarea, .ant-select, .ant-select-selector')) return;
+    const el = rowRef.current;
+    if (!el) return;
+    dragRef.current = { startX: e.clientX, startScrollLeft: el.scrollLeft, moved: false };
+  }, []);
+
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      const drag = dragRef.current;
+      const el = rowRef.current;
+      if (!drag || !el) return;
+      const dx = e.clientX - drag.startX;
+      if (!drag.moved && Math.abs(dx) > DRAG_THRESHOLD_PX) {
+        drag.moved = true;
+        setIsPanning(true);
+        document.body.style.userSelect = 'none';
+      }
+      if (drag.moved) {
+        e.preventDefault();
+        el.scrollLeft = drag.startScrollLeft - dx;
+      }
+    }
+    function handleMouseUp() {
+      const drag = dragRef.current;
+      if (drag?.moved) {
+        // A real drag happened — the click that the browser is about to
+        // fire on mouseup would otherwise land on whatever card is now
+        // under the cursor and toggle/open it, which is not what the user
+        // was doing. Swallow exactly that one click; a plain click (never
+        // exceeded the threshold) never sets this and passes through as
+        // click event, so cards remain clickable.
+        suppressClickRef.current = true;
+      }
+      dragRef.current = null;
+      setIsPanning(false);
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const handleRowClickCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -746,12 +1021,21 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     remarksByTarget: overlay.remarksByTarget,
     chain: validChain,
     onToggle: handleToggle,
+    resolveNode,
   };
 
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      <div ref={rowRef} style={{ height: '100%', display: 'flex', overflowX: 'auto', overflowY: 'hidden', background: '#141414' }}>
-        <BaselineColumn rows={baselineRows} {...common} />
+      <div
+        ref={rowRef}
+        onMouseDown={handleRowMouseDown}
+        onClickCapture={handleRowClickCapture}
+        style={{
+          height: '100%', display: 'flex', overflowX: 'auto', overflowY: 'hidden', background: '#141414',
+          cursor: isPanning ? 'grabbing' : 'grab',
+        }}
+      >
+        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} {...common} />
         {validChain.map((rootId, idx) => (
           <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
         ))}

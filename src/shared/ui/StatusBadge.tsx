@@ -1,17 +1,5 @@
 import { Tag } from 'antd';
-
-const STATUS_COLORS: Record<string, string> = {
-  active: 'green',
-  open: 'green',
-  in_progress: 'blue',
-  done: 'default',
-  paused: 'orange',
-  blocked: 'red',
-  archived: 'default',
-  draft: 'purple',
-  superseded: 'default',
-  rejected: 'red',
-};
+import { STATUS_COLORS } from './statusColors';
 
 export function StatusBadge({ status }: { status: string }) {
   return (
