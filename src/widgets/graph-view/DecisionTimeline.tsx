@@ -1,6 +1,6 @@
 import { CheckCircleOutlined, PlusCircleOutlined, RightOutlined } from '@ant-design/icons';
 import { Popover, Tag, Tooltip, Typography } from 'antd';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TONE_META } from '../../features/remark/tone';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
@@ -46,11 +46,17 @@ const SATELLITE_KIND_COLOR: Record<string, string> = {
 };
 const MAX_SATELLITES_SHOWN = 8;
 
-const MAX_NODES = 20;
 const TASK_MARKER_COLOR = '#177ddc';
 
 const COLUMN_CARD_W = 240;
 const COLUMN_OUTER_W = 278;
+
+// Branch-line geometry for a drill column's link list — a persistent trunk
+// down the gutter with a stub connecting to each card, not a flat row of
+// arrow+tag text (owner's explicit ask after seeing the flat-list version).
+const GUTTER_W = 22;
+const STUB_Y = 20;
+const TRUNK_COLOR = '#434343';
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 const GAP_THRESHOLD_MS = 3 * 24 * MS_PER_HOUR;
@@ -187,11 +193,26 @@ interface RelationBadge {
   direction: 'out' | 'in';
 }
 
-function RelationBadgeRow({ badge }: { badge: RelationBadge }) {
+// Branch: a fixed-height gutter carrying the trunk line + a stub to the
+// child card, with the relation tag floating at the junction — replaces
+// the old flat "arrow + tag row above the card" layout. `isLast` stops the
+// trunk right after this stub instead of running it the full row height,
+// giving the last entry in a column the expected "└" terminator look.
+function TreeBranch({ relation, direction, isLast, children }: RelationBadge & { isLast: boolean; children: ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingLeft: 2 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{badge.direction === 'out' ? '→' : '←'}</Typography.Text>
-      <Tag style={{ fontSize: 10 }}>{badge.relation}</Tag>
+    <div style={{ display: 'flex', width: COLUMN_CARD_W, marginBottom: 10 }}>
+      <div style={{ width: GUTTER_W, position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
+        <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, width: 1, background: TRUNK_COLOR, height: isLast ? STUB_Y : '100%' }} />
+        <div style={{ position: 'absolute', left: GUTTER_W / 2, top: STUB_Y, width: GUTTER_W / 2, height: 1, background: TRUNK_COLOR }} />
+        <div style={{ position: 'absolute', left: GUTTER_W / 2 - 2, top: STUB_Y - 2, width: 5, height: 5, borderRadius: '50%', background: TRUNK_COLOR }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2, marginLeft: 2 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 10 }}>{direction === 'out' ? '→' : '←'}</Typography.Text>
+          <Tag style={{ fontSize: 9, lineHeight: '14px', margin: 0, padding: '0 4px' }}>{relation}</Tag>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
@@ -203,14 +224,13 @@ interface DecisionCardProps {
   linkCount: number;
   isOpen: boolean;
   onToggleDrill: () => void;
-  relationBadge?: RelationBadge;
 }
 
 // The one card shape reused everywhere: baseline ribbon, a column's own
 // root header, and any decision entry inside a column's link list — same
 // component, same interaction, per D-MEMORY-021's "тот же визуальный
 // стиль, что и baseline-лента" requirement.
-function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill, relationBadge }: DecisionCardProps) {
+function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill }: DecisionCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const status = node.status ?? 'active';
   const color = STATUS_COLOR[status] ?? '#595959';
@@ -222,8 +242,7 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
   const overflow = satellites.length - shown.length;
 
   return (
-    <div style={{ width: COLUMN_CARD_W, marginBottom: 10 }}>
-      {relationBadge && <RelationBadgeRow badge={relationBadge} />}
+    <div style={{ width: '100%', marginBottom: 10 }}>
       <div
         onClick={() => setSelectedRecord(node.id, 'decision')}
         style={{
@@ -283,12 +302,11 @@ function DecisionCard({ node, satellites, remarks, linkCount, isOpen, onToggleDr
 // Non-decision entries inside a drill column (task/memory/artifact) — click
 // opens the record drawer directly, same as a satellite dot; only D*-nodes
 // spawn further columns.
-function SatelliteEntryRow({ node, relationBadge }: { node: GraphNode; relationBadge?: RelationBadge }) {
+function SatelliteEntryRow({ node }: { node: GraphNode }) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const dotColor = SATELLITE_KIND_COLOR[node.kind] ?? '#595959';
   return (
-    <div style={{ width: COLUMN_CARD_W, marginBottom: 10 }}>
-      {relationBadge && <RelationBadgeRow badge={relationBadge} />}
+    <div style={{ width: '100%', marginBottom: 10 }}>
       <div
         onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1px solid #303030', borderRadius: 6, background: '#1a1a1a', cursor: 'pointer' }}
@@ -306,11 +324,9 @@ function SatelliteEntryRow({ node, relationBadge }: { node: GraphNode; relationB
 // A link whose other end isn't in the currently loaded graph nodes (depth
 // limit) — still shown so the link isn't silently dropped, via the same
 // RecordLink chip used elsewhere in the app.
-function UnresolvedEntryRow({ id, badge }: { id: string; badge: RelationBadge }) {
+function UnresolvedEntryRow({ id }: { id: string }) {
   return (
-    <div style={{ width: COLUMN_CARD_W, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{badge.direction === 'out' ? '→' : '←'}</Typography.Text>
-      <Tag style={{ fontSize: 10 }}>{badge.relation}</Tag>
+    <div style={{ width: '100%', marginBottom: 10 }}>
       <RecordLink id={id} />
     </div>
   );
@@ -496,7 +512,7 @@ function BaselineColumn({ rows, ...common }: { rows: BaselineRow[] } & ColumnCom
               />
             );
           return (
-            <div key={rowKey} style={{ display: 'contents' }}>
+            <div key={rowKey} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
               {row.headerIso && <StickyDayLabel iso={row.headerIso} />}
               {body}
             </div>
@@ -523,28 +539,33 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         </Typography.Text>
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
-        <DecisionCard
-          node={rootNode}
-          satellites={satellitesByDecision.get(rootId) ?? []}
-          remarks={remarksByTarget.get(rootId) ?? []}
-          linkCount={(linksByRecord.get(rootId) ?? []).length}
-          isOpen
-          onToggleDrill={() => onToggle(rootId, level)}
-        />
+        <div style={{ width: COLUMN_CARD_W }}>
+          <DecisionCard
+            node={rootNode}
+            satellites={satellitesByDecision.get(rootId) ?? []}
+            remarks={remarksByTarget.get(rootId) ?? []}
+            linkCount={(linksByRecord.get(rootId) ?? []).length}
+            isOpen
+            onToggleDrill={() => onToggle(rootId, level)}
+          />
+        </div>
         <div style={{ width: COLUMN_CARD_W, height: 1, background: '#303030', margin: '2px 0 10px' }} />
         {rows.length === 0 && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>No links yet</Typography.Text>
         )}
-        {rows.map((row, i) => {
-          if (row.kind === 'gap') return <GapRow key={`gap-${i}`} label={row.label} />;
-          const direction: 'out' | 'in' = row.link.fromId === rootId ? 'out' : 'in';
-          const badge: RelationBadge = { relation: row.link.relation, direction };
-          const header = row.headerIso ? <StickyDayLabel key={`day-${row.link.id}`} iso={row.headerIso} /> : null;
+        {(() => {
+          // Index of the last 'entry' row (ignoring gap rows in between) —
+          // that entry's branch stops its trunk right after its own stub
+          // instead of running the line further down (the "└" terminator).
+          const lastEntryIdx = rows.reduce((acc, r, i) => (r.kind === 'entry' ? i : acc), -1);
+          return rows.map((row, i) => {
+            if (row.kind === 'gap') return <GapRow key={`gap-${i}`} label={row.label} />;
+            const direction: 'out' | 'in' = row.link.fromId === rootId ? 'out' : 'in';
+            const header = row.headerIso ? <StickyDayLabel key={`day-${row.link.id}`} iso={row.headerIso} /> : null;
+            const isLast = i === lastEntryIdx;
 
-          if (row.node?.kind === 'DECISION') {
-            return (
-              <div key={row.link.id} style={{ display: 'contents' }}>
-                {header}
+            const inner = row.node?.kind === 'DECISION'
+              ? (
                 <DecisionCard
                   node={row.node}
                   satellites={satellitesByDecision.get(row.node.id) ?? []}
@@ -552,21 +573,22 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
                   linkCount={(linksByRecord.get(row.node.id) ?? []).length}
                   isOpen={activeChildId === row.node.id}
                   onToggleDrill={() => onToggle(row.node!.id, level + 1)}
-                  relationBadge={badge}
                 />
-              </div>
-            );
-          }
-          if (row.node) {
+              )
+              : row.node
+                ? <SatelliteEntryRow node={row.node} />
+                : <UnresolvedEntryRow id={row.id} />;
+
             return (
-              <div key={row.link.id} style={{ display: 'contents' }}>
+              <div key={row.link.id} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
                 {header}
-                <SatelliteEntryRow node={row.node} relationBadge={badge} />
+                <TreeBranch relation={row.link.relation} direction={direction} isLast={isLast}>
+                  {inner}
+                </TreeBranch>
               </div>
             );
-          }
-          return <UnresolvedEntryRow key={row.link.id} id={row.id} badge={badge} />;
-        })}
+          });
+        })()}
       </div>
     </div>
   );
@@ -671,17 +693,6 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
         <Typography.Text type="secondary">No decisions recorded yet</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           The timeline fills in as decision.record / decision.supersede are used
-        </Typography.Text>
-      </div>
-    );
-  }
-
-  if (decisions.length > MAX_NODES) {
-    return (
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Typography.Text type="warning">Too broad to render — {decisions.length} decisions</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          Narrow the selection (this view caps at {MAX_NODES} to stay readable)
         </Typography.Text>
       </div>
     );
