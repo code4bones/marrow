@@ -191,6 +191,26 @@ try {
   assert(graphqlAfterLogout.status === 401, `Revoked session cookie still authorized. Status: ${graphqlAfterLogout.status}`);
   console.log("ok - auth logout invalidates the cookie for later requests");
 
+  // Placed last and deliberately: by this point the shared IP-keyed counter
+  // was already reset by memberLogin's success above, and nothing after
+  // this calls /auth/login again — so tripping it here can't leak into any
+  // earlier assertion in this run.
+  const rateLimitEmail = `gateway-auth-smoke-ratelimit-${unique}@example.test`;
+  let lastRateLimitStatus = 0;
+  for (let attempt = 0; attempt < 9; attempt += 1) {
+    const response = await fetch(`${started.url}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: rateLimitEmail, password: "wrong-password" })
+    });
+    lastRateLimitStatus = response.status;
+  }
+  assert(
+    lastRateLimitStatus === 429,
+    `9th login attempt for the same email should be rate-limited (429). Got: ${lastRateLimitStatus}`
+  );
+  console.log("ok - auth login rate-limits repeated attempts");
+
   await verifyClaimingUnclaimedAdmin();
 
   console.log(`Gateway auth smoke test passed using ${started.url}`);

@@ -85,6 +85,14 @@ other gateway route.
 | `GET /auth/bootstrap` | none | `{ adminExists }` — whether any `role=admin` user exists. Frontend uses this to decide whether to show the first-run self-register screen or the normal login form. |
 | `POST /auth/bootstrap` | none, but only while `adminExists=false` | Body `{ email, password }`. First-visitor-becomes-admin: only works while the `users` table has zero `role=admin` rows; permanently 400s once one exists (checked and inserted inside one DB transaction to close the create-two-admins race). Creates the admin, marks email verified immediately, and logs them in — same response shape as `/auth/login`'s session case. See D-MEMORY-013 (supersedes D-MEMORY-008's rejection of this pattern) for why this is safe: the expected self-host flow is deploy locally/behind a firewall, bootstrap, *then* expose publicly, so the race D-MEMORY-008 worried about doesn't apply to the operator's own first visit. `pm3m admin create`/`admin set-password` still exist for headless/scripted bootstrap or when you want the stricter shell-access-rooted guarantee. |
 
+`POST /auth/login` is rate-limited in-memory (not Redis — this gateway runs
+as a single instance, no state to share across replicas): 8 attempts per
+15-minute window, keyed independently by normalized email and by client IP,
+either one tripping blocks the attempt with `429` + `Retry-After`. The
+counter for both keys used in a request is cleared on a successful login.
+Resets on process restart — acceptable at this scale, revisit if the
+gateway ever runs more than one replica.
+
 Passwords are hashed with Node's built-in `crypto.scrypt` (`scrypt$<saltHex>$<hashHex>`,
 64-byte derived key, default N/r/p cost params) — no new dependency, matches
 the recommendation left in the schema section. Session and one-shot tokens

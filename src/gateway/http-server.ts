@@ -25,6 +25,33 @@ import {
   type GatewayGraphqlServer
 } from "./graphql.js";
 
+// In-memory login rate limiter, keyed independently by email and by IP —
+// either one tripping blocks the attempt. Deliberately not Redis-backed:
+// this gateway runs as a single instance, so there is no state to share
+// across replicas, and an in-memory counter is simpler to operate. Resets
+// on process restart, which is an acceptable tradeoff at this scale.
+const LOGIN_ATTEMPT_LIMIT = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map<string, { count: number; windowStart: number }>();
+
+function checkAndConsumeLoginAttempt(key: string): { allowed: boolean; retryAfterSeconds: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, windowStart: now });
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+  if (entry.count >= LOGIN_ATTEMPT_LIMIT) {
+    return { allowed: false, retryAfterSeconds: Math.ceil((entry.windowStart + LOGIN_WINDOW_MS - now) / 1000) };
+  }
+  entry.count += 1;
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+function clearLoginAttempts(key: string): void {
+  loginAttempts.delete(key);
+}
+
 export interface GatewayServerOptions {
   host: string;
   port: number;
@@ -530,10 +557,26 @@ async function handleAuthRoute(
       send(400, fail(new AppError("VALIDATION_ERROR", "email and password are required.")));
       return true;
     }
-    const result = await auth.login(body.email, body.password, {
-      userAgent: headerString(request, "user-agent"),
-      ip: clientIp(request)
-    });
+
+    const ip = clientIp(request);
+    const emailKey = `email:${body.email.trim().toLowerCase()}`;
+    const ipKey = `ip:${ip}`;
+    const emailLimit = checkAndConsumeLoginAttempt(emailKey);
+    const ipLimit = checkAndConsumeLoginAttempt(ipKey);
+    if (!emailLimit.allowed || !ipLimit.allowed) {
+      const retryAfterSeconds = Math.max(emailLimit.retryAfterSeconds, ipLimit.retryAfterSeconds);
+      response.setHeader("retry-after", String(retryAfterSeconds));
+      send(
+        429,
+        fail(new AppError("VALIDATION_ERROR", "Too many login attempts. Try again later.")),
+        { requestBody: { email: body.email }, authReason: "rate_limited" }
+      );
+      return true;
+    }
+
+    const result = await auth.login(body.email, body.password, { userAgent: headerString(request, "user-agent"), ip });
+    clearLoginAttempts(emailKey);
+    clearLoginAttempts(ipKey);
     if (result.status === "pending_totp") {
       send(200, { ok: true, data: { status: "pending_totp", userId: result.userId } }, {
         requestBody: { email: body.email }
