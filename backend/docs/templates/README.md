@@ -1,0 +1,42 @@
+# Bundled Artifact Templates
+
+These files are packaged with `@deadragdoll/pm3m` and seeded into the gateway
+artifact store after `pm3m migrate latest`.
+
+The seed checks both PostgreSQL metadata and bytes under `ARTIFACT_DIR`. If an
+active template artifact exists in PostgreSQL but the file is missing on disk,
+`pm3m migrate latest` or `pm3m seed templates` rewrites the missing bytes.
+
+Seeded artifacts are common-scope files with paths under:
+
+```text
+templates/
+```
+
+Agents can find them with `artifact.search` or browse them with `artifact.list`.
+Use `artifact.read_text` to load Markdown template content into model context
+without requesting base64 bytes. Use `artifact.put_text` when writing or
+replacing Markdown templates through the gateway.
+
+Current bundled files:
+
+- `templates/agents/generic/AGENTS.md`
+- `templates/agents/frontend/AGENTS.md`
+- `templates/agents/backend/AGENTS.md`
+- `templates/agents/devops/AGENTS.md`
+- `templates/review/REVIEW_CHECKLIST.md`
+- `templates/deploy/DEPLOY_CHECKLIST.md`
+- `templates/release/RELEASE_CHECKLIST.md`
+- `templates/task/TASK_TEMPLATE.md`
+- `templates/handoff/HANDOFF_TEMPLATE.md`
+- `templates/fault/FAULT_TEMPLATE.md`
+
+Example:
+
+```json
+{
+  "common": true,
+  "pathPrefix": "templates/agents",
+  "tags": ["template", "agents"]
+}
+```
