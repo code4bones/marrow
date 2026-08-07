@@ -1,9 +1,13 @@
 stages:
   - build
   - smoke
+  - deploy
 
 variables:
   DOCKER_IMAGE_TAG: "pmem-gateway-build:$CI_PIPELINE_ID"
+  DEPLOY_ENV_FILE: "/home/code4bones/devel/project-mem/.env"
+  DEPLOY_ARTIFACT_DIR: "/home/code4bones/devel/project-mem/.artifacts"
+  DEPLOY_LOG_DIR: "/home/code4bones/devel/project-mem/logs"
 
 # Runs on every branch push and merge request pipeline. typecheck + build
 # happen inside the Docker build stage (see Dockerfile) so a failure in
@@ -33,3 +37,36 @@ smoke:
     - npm run build
     - npm run smoke:gateway:mcp-http
     - npm run smoke:gateway:graphql
+    - npm run smoke:gateway:registration
+
+# Tag-triggered, same release model as pmemui: pushing a version tag (vX.Y.Z)
+# builds the runtime image and swaps the running pmem-gateway container.
+# Runs directly on the deploy host (the pmem_back runner lives there, same
+# as pmem_front does for pmemui) — no registry push/pull needed. The only
+# required config is DEPLOY_ENV_FILE, already on the host; the app loads it
+# itself from the bind-mounted /app/.env, so no -e/--env-file flags here.
+# Migration runs against the real production Postgres using the freshly
+# built image *before* the running container is touched, so a bad migration
+# fails the job without taking prod down. Old image tags are never rmi'd, so
+# a rollback is just `docker stop/rm pmem-gateway && docker run ...
+# pmem-gateway:<previous tag>` with the same flags as below.
+deploy:
+  stage: deploy
+  tags:
+    - pmem_back
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  environment:
+    name: production
+    url: https://pmem.undoo.ru/api
+  script:
+    - docker build -t "pmem-gateway:$CI_COMMIT_TAG" .
+    - docker run --rm --network host -v "$DEPLOY_ENV_FILE:/app/.env" "pmem-gateway:$CI_COMMIT_TAG" npm run db:pg:migrate
+    - docker stop pmem-gateway || true
+    - docker rm pmem-gateway || true
+    - >
+      docker run -d --name pmem-gateway --restart unless-stopped --network host
+      -v "$DEPLOY_ENV_FILE:/app/.env"
+      -v "$DEPLOY_ARTIFACT_DIR:/app/.artifacts"
+      -v "$DEPLOY_LOG_DIR:/app/logs"
+      "pmem-gateway:$CI_COMMIT_TAG"

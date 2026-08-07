@@ -227,7 +227,14 @@ async function handleRequest(
         }
       } catch (error) {
         if (error instanceof AppError) {
-          const status = error.code === "VALIDATION_ERROR" ? 400 : error.code === "UNAUTHORIZED" ? 401 : 500;
+          const status =
+            error.code === "VALIDATION_ERROR"
+              ? 400
+              : error.code === "UNAUTHORIZED"
+                ? 401
+                : error.code === "NOT_FOUND"
+                  ? 404
+                  : 500;
           send(status, fail(error));
           return;
         }
@@ -605,7 +612,13 @@ async function handleAuthRoute(
     }
     send(200, {
       ok: true,
-      data: { id: sessionAuth.userId, email: sessionAuth.email, role: sessionAuth.role }
+      data: {
+        id: sessionAuth.userId,
+        email: sessionAuth.email,
+        role: sessionAuth.role,
+        status: sessionAuth.status,
+        totpEnabled: sessionAuth.totpEnabled
+      }
     });
     return true;
   }
@@ -633,6 +646,165 @@ async function handleAuthRoute(
     }
     response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
     send(200, { ok: true, data: { status: "session", user: result.user } }, { requestBody: { email: body.email } });
+    return true;
+  }
+
+  // --- TOTP 2FA: shared bind/unbind profile section (T-MEMORY-028) ---
+
+  if (request.method === "POST" && requestPath === "/auth/2fa/enroll") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.enrollTotp(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/2fa/confirm") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { code?: unknown };
+    if (typeof body.code !== "string" || !body.code.trim()) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "code is required.")));
+      return true;
+    }
+    const result = await auth.confirmTotp(sessionAuth.userId, body.code);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/2fa/disable") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { currentPassword?: unknown };
+    if (typeof body.currentPassword !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "currentPassword is required.")));
+      return true;
+    }
+    await auth.disableTotp(sessionAuth.userId, body.currentPassword);
+    send(200, { ok: true, data: { disabled: true } });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/2fa/recovery-codes/regenerate") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { currentPassword?: unknown };
+    if (typeof body.currentPassword !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "currentPassword is required.")));
+      return true;
+    }
+    const result = await auth.regenerateRecoveryCodes(sessionAuth.userId, body.currentPassword);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/profile/password") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { currentPassword?: unknown; newPassword?: unknown };
+    if (typeof body.currentPassword !== "string" || typeof body.newPassword !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "currentPassword and newPassword are required.")));
+      return true;
+    }
+    await auth.changePassword(sessionAuth.userId, body.currentPassword, body.newPassword);
+    send(200, { ok: true, data: { changed: true } });
+    return true;
+  }
+
+  // --- Second login step for totp_enabled accounts (T-MEMORY-028) ---
+  // Rate-limited the same way as /auth/login, but keyed by userId (there's
+  // no email in this body) alongside client IP.
+
+  if (request.method === "POST" && requestPath === "/auth/login/2fa") {
+    const body = (await readJson(request)) as { userId?: unknown; code?: unknown };
+    if (typeof body.userId !== "string" || typeof body.code !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "userId and code are required.")));
+      return true;
+    }
+
+    const ip = clientIp(request);
+    const userKey = `userId:${body.userId}`;
+    const ipKey = `ip:${ip}`;
+    const userLimit = checkAndConsumeLoginAttempt(userKey);
+    const ipLimit = checkAndConsumeLoginAttempt(ipKey);
+    if (!userLimit.allowed || !ipLimit.allowed) {
+      const retryAfterSeconds = Math.max(userLimit.retryAfterSeconds, ipLimit.retryAfterSeconds);
+      response.setHeader("retry-after", String(retryAfterSeconds));
+      send(429, fail(new AppError("VALIDATION_ERROR", "Too many login attempts. Try again later.")), {
+        requestBody: { userId: body.userId },
+        authReason: "rate_limited"
+      });
+      return true;
+    }
+
+    const result = await auth.loginTotp(body.userId, body.code, {
+      userAgent: headerString(request, "user-agent"),
+      ip
+    });
+    clearLoginAttempts(userKey);
+    clearLoginAttempts(ipKey);
+    response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
+    send(200, { ok: true, data: { status: "session", user: result.user } }, { requestBody: { userId: body.userId } });
+    return true;
+  }
+
+  // --- Open self-registration + admin approval (T-MEMORY-038, D-MEMORY-016) ---
+
+  if (request.method === "POST" && requestPath === "/auth/register") {
+    const body = (await readJson(request)) as { email?: unknown; password?: unknown };
+    if (typeof body.email !== "string" || typeof body.password !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "email and password are required.")));
+      return true;
+    }
+    const result = await auth.register(body.email, body.password);
+    send(200, { ok: true, data: result }, { requestBody: { email: body.email } });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/register/confirm") {
+    const body = (await readJson(request)) as { token?: unknown; code?: unknown };
+    if (typeof body.token !== "string" || typeof body.code !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "token and code are required.")));
+      return true;
+    }
+    const result = await auth.registerConfirm(body.token, body.code);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "GET" && requestPath === "/auth/admin/pending-users") {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to list pending users.")));
+      return true;
+    }
+    const result = await auth.listPendingApprovals();
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  const pendingMatch = requestPath.match(/^\/auth\/admin\/pending-users\/([^/]+)\/(approve|reject)$/);
+  if (request.method === "POST" && pendingMatch) {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to approve or reject users.")));
+      return true;
+    }
+    const [, pendingUserId, action] = pendingMatch;
+    if (action === "approve") {
+      await auth.approveUser(pendingUserId);
+    } else {
+      await auth.rejectUser(pendingUserId);
+    }
+    send(200, { ok: true, data: { id: pendingUserId, status: action === "approve" ? "active" : "disabled" } });
     return true;
   }
 

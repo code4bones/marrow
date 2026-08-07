@@ -9,6 +9,16 @@ import { promisify } from "node:util";
 import type { IncomingMessage } from "node:http";
 import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
+import {
+  base32Encode,
+  buildOtpauthUrl,
+  decryptSecret,
+  encryptSecret,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashRecoveryCode,
+  verifyTotpCode
+} from "./totp.js";
 
 const scrypt = promisify(scryptCallback) as (
   password: string,
@@ -20,6 +30,8 @@ export const SESSION_COOKIE_NAME = "pmem_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
+const PENDING_REGISTRATION_TTL_MS = 30 * 60 * 1000;
+const RECOVERY_CODE_COUNT = 10;
 
 export type AuthFacade = ReturnType<typeof createAuthFacade>;
 
@@ -28,6 +40,8 @@ export interface SessionIdentity {
   userId: string;
   email: string;
   role: string;
+  status: string;
+  totpEnabled: boolean;
 }
 
 interface RequestMeta {
@@ -38,6 +52,8 @@ interface RequestMeta {
 type LoginResult =
   | { status: "session"; token: string; user: { id: string; email: string; role: string } }
   | { status: "pending_totp"; userId: string };
+
+type SessionLoginResult = { status: "session"; token: string; user: { id: string; email: string; role: string } };
 
 export function createAuthFacade(db: Knex) {
   async function invite(email: string, invitedByUserId: string): Promise<{ token: string; email: string }> {
@@ -159,16 +175,26 @@ export function createAuthFacade(db: Knex) {
     if (!valid) {
       throw new AppError("UNAUTHORIZED", "Invalid email or password.");
     }
+    if (user.status === "pending_approval") {
+      throw new AppError("UNAUTHORIZED", "Your account is waiting for admin approval.");
+    }
     if (user.status !== "active") {
       throw new AppError("UNAUTHORIZED", "This account has been disabled.");
     }
-    if (!user.email_verified_at) {
+    // Self-registered accounts (D-MEMORY-016) never verify email — inline
+    // TOTP enrollment is their proof-of-ownership instead, and their row is
+    // created with email_verified_at permanently null (see registerConfirm
+    // below). totp_enabled=true is set at that same moment and never
+    // unset by the approval step, so it's a reliable signal that this
+    // account belongs to that path and the email-verification gate (which
+    // only ever applies to the invite→claim→verify-email path) doesn't
+    // apply to it.
+    if (!user.totp_enabled && !user.email_verified_at) {
       throw new AppError("UNAUTHORIZED", "Please verify your email before logging in.");
     }
     if (user.totp_enabled) {
-      // No code path sets totp_enabled=true yet (that's the 2FA task) so this
-      // is currently unreachable, but the response shape is fixed here so the
-      // 2FA task only has to add the second step, not touch this contract.
+      // Second step is POST /auth/login/2fa (loginTotp below) — TOTP code or
+      // an unused recovery code, keyed off this userId.
       return { status: "pending_totp", userId: user.id };
     }
 
@@ -190,6 +216,235 @@ export function createAuthFacade(db: Knex) {
       ip: meta.ip ?? null
     });
     return rawSessionToken;
+  }
+
+  // --- TOTP 2FA: shared bind/unbind profile section (T-MEMORY-028) ---
+  // Available to every role, including admin (D-MEMORY-016) — the bootstrap
+  // admin has no other path to ever get 2FA, since /auth/bootstrap stays
+  // password-only by decision.
+
+  async function enrollTotp(userId: string): Promise<{ otpauthUrl: string; secretBase32: string }> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+    if (user.totp_enabled) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "TOTP is already enabled on this account. Disable it before enrolling a new device."
+      );
+    }
+    const secretBase32 = base32Encode(generateTotpSecret());
+    await db("users")
+      .where({ id: userId })
+      .update({ totp_secret: encryptSecret(secretBase32), updated_at: new Date() });
+    return { otpauthUrl: buildOtpauthUrl(secretBase32, user.email), secretBase32 };
+  }
+
+  async function confirmTotp(userId: string, code: string): Promise<{ recoveryCodes: string[] }> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+    if (user.totp_enabled) {
+      throw new AppError("VALIDATION_ERROR", "TOTP is already enabled on this account.");
+    }
+    if (!user.totp_secret) {
+      throw new AppError("VALIDATION_ERROR", "No TOTP enrollment in progress. Call enroll first.");
+    }
+    const secretBase32 = decryptSecret(user.totp_secret);
+    if (!verifyTotpCode(secretBase32, code)) {
+      throw new AppError("UNAUTHORIZED", "Invalid verification code.");
+    }
+    const recoveryCodes = generateRecoveryCodes(RECOVERY_CODE_COUNT);
+    await db("users").where({ id: userId }).update({
+      totp_enabled: true,
+      totp_recovery_code_hashes: recoveryCodes.map(hashRecoveryCode),
+      updated_at: new Date()
+    });
+    return { recoveryCodes };
+  }
+
+  async function disableTotp(userId: string, currentPassword: string): Promise<void> {
+    const user = await requirePasswordMatch(userId, currentPassword);
+    if (!user.totp_enabled) {
+      throw new AppError("VALIDATION_ERROR", "TOTP is not enabled on this account.");
+    }
+    await db("users").where({ id: userId }).update({
+      totp_secret: null,
+      totp_enabled: false,
+      totp_recovery_code_hashes: null,
+      updated_at: new Date()
+    });
+  }
+
+  async function regenerateRecoveryCodes(
+    userId: string,
+    currentPassword: string
+  ): Promise<{ recoveryCodes: string[] }> {
+    const user = await requirePasswordMatch(userId, currentPassword);
+    if (!user.totp_enabled) {
+      throw new AppError("VALIDATION_ERROR", "TOTP is not enabled on this account.");
+    }
+    const recoveryCodes = generateRecoveryCodes(RECOVERY_CODE_COUNT);
+    await db("users")
+      .where({ id: userId })
+      .update({ totp_recovery_code_hashes: recoveryCodes.map(hashRecoveryCode), updated_at: new Date() });
+    return { recoveryCodes };
+  }
+
+  /** Second step of login for totp_enabled accounts — code is a 6-digit TOTP or an unused recovery code. */
+  async function loginTotp(userId: string, code: string, meta: RequestMeta): Promise<SessionLoginResult> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user || !user.totp_enabled || !user.totp_secret) {
+      throw new AppError("UNAUTHORIZED", "Invalid or expired code.");
+    }
+
+    let matched = verifyTotpCode(decryptSecret(user.totp_secret), code);
+    if (!matched) {
+      const hashes: string[] = user.totp_recovery_code_hashes ?? [];
+      const candidateHash = hashRecoveryCode(code);
+      const index = hashes.indexOf(candidateHash);
+      if (index >= 0) {
+        matched = true;
+        const remaining = [...hashes.slice(0, index), ...hashes.slice(index + 1)];
+        await db("users")
+          .where({ id: userId })
+          .update({ totp_recovery_code_hashes: remaining, updated_at: new Date() });
+      }
+    }
+    if (!matched) {
+      throw new AppError("UNAUTHORIZED", "Invalid or expired code.");
+    }
+
+    if (user.status === "pending_approval") {
+      throw new AppError("UNAUTHORIZED", "Your account is waiting for admin approval.");
+    }
+    if (user.status !== "active") {
+      throw new AppError("UNAUTHORIZED", "This account has been disabled.");
+    }
+
+    const rawSessionToken = await issueSession(user.id, meta);
+    return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
+  }
+
+  async function requirePasswordMatch(userId: string, currentPassword: string): Promise<Record<string, unknown>> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user || !user.password_hash || !(await verifyPassword(currentPassword, user.password_hash))) {
+      throw new AppError("UNAUTHORIZED", "Invalid password.");
+    }
+    return user;
+  }
+
+  async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    await requirePasswordMatch(userId, currentPassword);
+    if (newPassword.length < 8) {
+      throw new AppError("VALIDATION_ERROR", "Password must be at least 8 characters.");
+    }
+    await db("users")
+      .where({ id: userId })
+      .update({ password_hash: await hashPassword(newPassword), updated_at: new Date() });
+  }
+
+  // --- Open self-registration + admin approval (T-MEMORY-038, D-MEMORY-016) ---
+  // Parallel to, not a replacement for, invite→claim→verify-email above.
+
+  async function register(
+    email: string,
+    password: string
+  ): Promise<{ token: string; otpauthUrl: string; secretBase32: string }> {
+    if (password.length < 8) {
+      throw new AppError("VALIDATION_ERROR", "Password must be at least 8 characters.");
+    }
+    const normalized = normalizeEmail(email);
+    const now = new Date();
+
+    // Lazy cleanup: no cron needed, an expired pending registration for this
+    // email is simply swept out of the way the next time someone tries to
+    // register with it.
+    await db("pending_registrations").where({ email: normalized }).andWhere("expires_at", "<", now).del();
+
+    const existingUser = await db("users").where({ email: normalized }).first();
+    if (existingUser) {
+      throw new AppError("VALIDATION_ERROR", `A user with email ${normalized} already exists.`);
+    }
+    const existingPending = await db("pending_registrations").where({ email: normalized }).first();
+    if (existingPending) {
+      throw new AppError("VALIDATION_ERROR", `A user with email ${normalized} already exists.`);
+    }
+
+    const passwordHash = await hashPassword(password);
+    const secretBase32 = base32Encode(generateTotpSecret());
+    const rawToken = newOpaqueToken();
+    await db("pending_registrations").insert({
+      id: randomUUID(),
+      email: normalized,
+      password_hash: passwordHash,
+      totp_secret_enc: encryptSecret(secretBase32),
+      token_hash: hashToken(rawToken),
+      created_at: now,
+      expires_at: new Date(now.getTime() + PENDING_REGISTRATION_TTL_MS)
+    });
+
+    return { token: rawToken, otpauthUrl: buildOtpauthUrl(secretBase32, normalized), secretBase32 };
+  }
+
+  async function registerConfirm(rawToken: string, code: string): Promise<{ email: string; recoveryCodes: string[] }> {
+    const now = new Date();
+    const row = await db("pending_registrations").where({ token_hash: hashToken(rawToken) }).first();
+    if (!row || new Date(row.expires_at) < now) {
+      throw new AppError("VALIDATION_ERROR", "This link is invalid or has expired.");
+    }
+    const secretBase32 = decryptSecret(row.totp_secret_enc);
+    if (!verifyTotpCode(secretBase32, code)) {
+      throw new AppError("UNAUTHORIZED", "Invalid verification code.");
+    }
+
+    const recoveryCodes = generateRecoveryCodes(RECOVERY_CODE_COUNT);
+    const userId = randomUUID();
+    await db.transaction(async (trx) => {
+      const alreadyExists = await trx("users").where({ email: row.email }).first();
+      if (alreadyExists) {
+        throw new AppError("VALIDATION_ERROR", `A user with email ${row.email} already exists.`);
+      }
+      await trx("users").insert({
+        id: userId,
+        email: row.email,
+        password_hash: row.password_hash,
+        email_verified_at: null,
+        totp_secret: row.totp_secret_enc,
+        totp_enabled: true,
+        totp_recovery_code_hashes: recoveryCodes.map(hashRecoveryCode),
+        role: "member",
+        status: "pending_approval",
+        created_at: now,
+        updated_at: now
+      });
+      await trx("pending_registrations").where({ id: row.id }).del();
+    });
+
+    return { email: row.email as string, recoveryCodes };
+  }
+
+  async function listPendingApprovals(): Promise<{ id: string; email: string; createdAt: Date }[]> {
+    return db("users")
+      .where({ status: "pending_approval" })
+      .orderBy("created_at")
+      .select("id", "email", "created_at as createdAt");
+  }
+
+  async function approveUser(userId: string): Promise<void> {
+    const updated = await db("users").where({ id: userId }).update({ status: "active", updated_at: new Date() });
+    if (!updated) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+  }
+
+  async function rejectUser(userId: string): Promise<void> {
+    const updated = await db("users").where({ id: userId }).update({ status: "disabled", updated_at: new Date() });
+    if (!updated) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
   }
 
   // "Bootstrapped" means a usable admin exists — role=admin AND a password
@@ -288,7 +543,9 @@ export function createAuthFacade(db: Knex) {
         "sessions.id as sessionId",
         "users.id as userId",
         "users.email as email",
-        "users.role as role"
+        "users.role as role",
+        "users.status as status",
+        "users.totp_enabled as totpEnabled"
       )
       .first();
     if (!row) {
@@ -300,7 +557,14 @@ export function createAuthFacade(db: Knex) {
       .catch(() => {
         // Best-effort activity timestamp; a failed update must not fail the request.
       });
-    return { sessionId: row.sessionId, userId: row.userId, email: row.email, role: row.role };
+    return {
+      sessionId: row.sessionId,
+      userId: row.userId,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      totpEnabled: row.totpEnabled
+    };
   }
 
   async function activeToken(rawToken: string, allowedPurposes: string[]): Promise<Record<string, unknown>> {
@@ -324,7 +588,18 @@ export function createAuthFacade(db: Knex) {
     logout,
     identifyFromRequest,
     bootstrapStatus,
-    bootstrapFirstAdmin
+    bootstrapFirstAdmin,
+    enrollTotp,
+    confirmTotp,
+    disableTotp,
+    regenerateRecoveryCodes,
+    loginTotp,
+    changePassword,
+    register,
+    registerConfirm,
+    listPendingApprovals,
+    approveUser,
+    rejectUser
   };
 }
 
