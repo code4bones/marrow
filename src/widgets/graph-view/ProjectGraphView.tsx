@@ -1,10 +1,9 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Segmented, Select, Space, Typography } from 'antd';
+import { Alert, Select, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
-import { KnowledgeGraph } from './KnowledgeGraph';
 
 const DEPTH_OPTIONS = [
   { label: 'Depth 1', value: 1 },
@@ -16,12 +15,12 @@ interface Props {
   slug: string;
 }
 
+// I-PMEM-011: the horizontal decision timeline replaced the force-directed
+// knowledge graph as the project-overview visualization entirely (owner:
+// "Graph — убирай, это фигня. акцент на этом новом Timeline"). No toggle,
+// no fallback — KnowledgeGraph.tsx is retired.
 export function ProjectGraphView({ slug }: Props) {
   const [depth, setDepth] = useState(2);
-  // Timeline first (I-PMEM-011): the story of a project reads left-to-right
-  // over time, not as a force-directed blob — the graph stays available for
-  // the rarer "dotty inspection of exact relationships" case.
-  const [view, setView] = useState<'timeline' | 'graph'>('timeline');
 
   const { data: projectData, loading: projectLoading, error: projectError } = useQuery<{ project: { id: string } }>(
     GET_PROJECT,
@@ -49,28 +48,16 @@ export function ProjectGraphView({ slug }: Props) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #303030', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <Segmented
-          value={view}
-          onChange={(v) => setView(v as 'timeline' | 'graph')}
-          size="small"
-          options={[
-            { label: 'Timeline', value: 'timeline' },
-            { label: 'Graph', value: 'graph' },
-          ]}
-        />
+        <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>Timeline</Typography.Text>
         <Space size={8}>
-          {view === 'graph' && (
-            <>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Graph depth:</Typography.Text>
-              <Select
-                value={depth}
-                onChange={setDepth}
-                options={DEPTH_OPTIONS}
-                size="small"
-                style={{ width: 100 }}
-              />
-            </>
-          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Link depth:</Typography.Text>
+          <Select
+            value={depth}
+            onChange={setDepth}
+            options={DEPTH_OPTIONS}
+            size="small"
+            style={{ width: 100 }}
+          />
           {graph && (
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
               {nodes.length} nodes · {edges.length} edges
@@ -79,11 +66,7 @@ export function ProjectGraphView({ slug }: Props) {
         </Space>
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {view === 'timeline' ? (
-          <DecisionTimeline nodes={nodes} edges={edges} loading={loading} />
-        ) : (
-          <KnowledgeGraph nodes={nodes} edges={edges} loading={loading} />
-        )}
+        <DecisionTimeline nodes={nodes} edges={edges} loading={loading} />
       </div>
     </div>
   );

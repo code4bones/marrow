@@ -152,13 +152,23 @@ export function ProjectOverview({ slug }: { slug: string }) {
         </Row>
       </div>
 
-      {/* Tabs: Summary | Graph */}
+      {/* Tabs: Timeline | Summary — timeline first (I-PMEM-011): it's the
+          entry point into a project's history, tables are the reference view */}
       <Tabs
-        defaultActiveKey="summary"
+        defaultActiveKey="timeline"
         size="small"
         className="tabs-fill"
         tabBarStyle={{ paddingLeft: 24, marginBottom: 0, flexShrink: 0 }}
         items={[
+          {
+            key: 'timeline',
+            label: 'Timeline',
+            children: (
+              <div style={{ height: '100%' }}>
+                <ProjectGraphView slug={slug} />
+              </div>
+            ),
+          },
           {
             key: 'summary',
             label: 'Summary',
@@ -184,15 +194,6 @@ export function ProjectOverview({ slug }: { slug: string }) {
                     <Table<Event> dataSource={s.recentEvents} columns={eventColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
                   </Section>
                 )}
-              </div>
-            ),
-          },
-          {
-            key: 'graph',
-            label: 'Knowledge Graph',
-            children: (
-              <div style={{ height: '100%' }}>
-                <ProjectGraphView slug={slug} />
               </div>
             ),
           },
