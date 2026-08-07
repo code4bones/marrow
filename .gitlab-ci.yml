@@ -16,18 +16,21 @@ stages:
 #   front-vX.Y.Z     -> builds + deploys front/ only
 # A plain vX.Y.Z tag (old habit) triggers nothing here.
 #
-# Deploy targets, runner tags (pmem_back/pmem_front), container/image names,
-# and the production domain are all UNCHANGED from before the monorepo
-# merge — renaming those is a separate, deliberate step (not part of this
-# reorg), see D-MEMORY-023 / T-MEMORY-050.
+# Deploy targets and runner tags (pmem_back/pmem_front) are UNCHANGED from
+# before the monorepo merge — renaming those is a separate, deliberate step
+# (not part of this reorg), see D-MEMORY-023 / T-MEMORY-050. `tags:` can't
+# be sourced from a CI/CD variable (GitLab resolves runner tags before
+# variable expansion), so those two stay literal until that renaming step.
+#
+# Everything host/path/domain-specific now comes from group-level CI/CD
+# variables (Settings > CI/CD > Variables on the marrow group) instead of
+# being hardcoded here, ahead of this repo also going out to a public
+# GitHub mirror: DEPLOY_ENV_FILE, DEPLOY_ARTIFACT_DIR, DEPLOY_LOG_DIR,
+# FRONT_DEPLOY_PATH, PROD_DOMAIN, BACKEND_CONTAINER_NAME.
 
 variables:
-  BACKEND_IMAGE_TAG: "pmem-gateway-build:$CI_PIPELINE_ID"
+  BACKEND_IMAGE_TAG: "$BACKEND_CONTAINER_NAME-build:$CI_PIPELINE_ID"
   FRONT_IMAGE_TAG: "pmemui-build:$CI_PIPELINE_ID"
-  DEPLOY_ENV_FILE: "/home/code4bones/devel/project-mem/.env"
-  DEPLOY_ARTIFACT_DIR: "/home/code4bones/devel/project-mem/.artifacts"
-  DEPLOY_LOG_DIR: "/home/code4bones/devel/project-mem/logs"
-  FRONT_DEPLOY_PATH: "/var/www/pmemui"
 
 # --- backend/ (project-memory-mcp / pm3m gateway) ---
 
@@ -66,19 +69,19 @@ backend:deploy:
     - if: '$CI_COMMIT_TAG =~ /^backend-v/'
   environment:
     name: production
-    url: https://pmem.undoo.ru/api
+    url: "https://$PROD_DOMAIN/api"
   script:
     - cd backend
-    - docker build -t "pmem-gateway:$CI_COMMIT_TAG" .
-    - docker run --rm --network host -v "$DEPLOY_ENV_FILE:/app/.env" "pmem-gateway:$CI_COMMIT_TAG" npm run db:pg:migrate
-    - docker stop pmem-gateway || true
-    - docker rm pmem-gateway || true
+    - docker build -t "$BACKEND_CONTAINER_NAME:$CI_COMMIT_TAG" .
+    - docker run --rm --network host -v "$DEPLOY_ENV_FILE:/app/.env" "$BACKEND_CONTAINER_NAME:$CI_COMMIT_TAG" npm run db:pg:migrate
+    - docker stop "$BACKEND_CONTAINER_NAME" || true
+    - docker rm "$BACKEND_CONTAINER_NAME" || true
     - >
-      docker run -d --name pmem-gateway --restart unless-stopped --network host
+      docker run -d --name "$BACKEND_CONTAINER_NAME" --restart unless-stopped --network host
       -v "$DEPLOY_ENV_FILE:/app/.env"
       -v "$DEPLOY_ARTIFACT_DIR:/app/.artifacts"
       -v "$DEPLOY_LOG_DIR:/app/logs"
-      "pmem-gateway:$CI_COMMIT_TAG"
+      "$BACKEND_CONTAINER_NAME:$CI_COMMIT_TAG"
 
 # --- front/ (PMemUI) ---
 
@@ -118,4 +121,4 @@ front:deploy:
     - rsync -a --omit-dir-times --delete front/dist/ "$FRONT_DEPLOY_PATH/"
   environment:
     name: production
-    url: https://pmem.undoo.ru
+    url: "https://$PROD_DOMAIN"
