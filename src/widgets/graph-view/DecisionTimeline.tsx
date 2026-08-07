@@ -153,9 +153,11 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
     const decisionIds = new Set(decisions.map((n) => n.id));
 
-    const chainEdges = edges.filter(
-      (e) => (e.relation === 'supersedes' || e.relation === 'revives') && decisionIds.has(e.from) && decisionIds.has(e.to),
-    );
+    // Any relation between two decisions draws a connecting line — not just
+    // supersedes/revives. Most links between decisions in real data are
+    // relates_to, not evolution edges, and dropping those left the timeline
+    // looking disconnected even where real, curated links existed.
+    const chainEdges = edges.filter((e) => decisionIds.has(e.from) && decisionIds.has(e.to));
 
     // Satellites: any other record (task/item/artifact) linked to a decision
     // by any relation — rendered as small dots on the decision node itself
@@ -188,21 +190,26 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
     }));
 
     const rawEdges: Edge[] = chainEdges.map((e) => {
-      const color = e.relation === 'revives' ? '#b37feb' : '#8c8c8c';
+      // Evolution edges (supersedes/revives) are strong and directional;
+      // everything else (relates_to, and any other curated relation) is a
+      // softer, undirected association — thinner, no arrowhead, dimmer.
+      const isEvolution = e.relation === 'supersedes' || e.relation === 'revives';
+      const color = e.relation === 'revives' ? '#b37feb' : isEvolution ? '#8c8c8c' : '#4a90d9';
       return {
         id: `${e.from}->${e.to}-${e.relation}`,
         source: e.from,
         target: e.to,
         type: 'smoothstep',
-        zIndex: 1000,
+        zIndex: isEvolution ? 1000 : 500,
         style: {
           stroke: color,
-          strokeWidth: 2.5,
-          strokeDasharray: e.relation === 'revives' ? '6 4' : '5 4',
+          strokeWidth: isEvolution ? 2.5 : 1.5,
+          strokeDasharray: e.relation === 'revives' ? '6 4' : isEvolution ? '5 4' : '2 4',
+          opacity: isEvolution ? 1 : 0.7,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+        markerEnd: isEvolution ? { type: MarkerType.ArrowClosed, color, width: 16, height: 16 } : undefined,
         label: e.relation,
-        labelStyle: { fill: color, fontSize: 11, fontWeight: 600 },
+        labelStyle: { fill: color, fontSize: isEvolution ? 11 : 10, fontWeight: isEvolution ? 600 : 400 },
         labelBgStyle: { fill: '#141414', fillOpacity: 0.9 },
         labelBgPadding: [4, 2] as [number, number],
       };
@@ -303,7 +310,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
           </div>
         ))}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 6 }}>
-          Dashed gray = supersedes · dashed purple = revives
+          Gray = supersedes · purple = revives · blue dotted = relates_to
         </Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
           Dots on a card
