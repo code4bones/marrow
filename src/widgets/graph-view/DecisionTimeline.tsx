@@ -1,4 +1,3 @@
-import dagre from '@dagrejs/dagre';
 import {
   Background,
   Controls,
@@ -52,17 +51,96 @@ const MAX_NODES = 20;
 const NODE_W = 240;
 const NODE_H = 100;
 
-function layoutDagre(nodes: Node[], edges: Edge[]): Node[] {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', ranksep: 90, nodesep: 32 });
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-  return nodes.map((n) => {
-    const pos = g.node(n.id);
-    return { ...n, position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 } };
-  });
+// Real timebar (owner: "по принципу timebar... экстраполировать эту шкалу
+// на граф, графически"). X is real elapsed time, not topological rank —
+// but real activity is bursty (weeks of silence, then a cluster of
+// decisions in an hour), so a naive linear scale would either crush every
+// burst into a sliver or force absurd canvas widths. Gaps above the
+// threshold compress to a fixed-width "⋯ Nd ⋯" break instead; within a
+// burst the scale stays linear so relative spacing still means something.
+const MS_PER_HOUR = 60 * 60 * 1000;
+const GAP_THRESHOLD_MS = 3 * 24 * MS_PER_HOUR;
+const COMPRESSED_GAP_PX = 110;
+const PX_PER_HOUR = 5;
+const MIN_SPACING = NODE_W + 60;
+const LANE_HEIGHT = NODE_H + 56;
+const AXIS_GAP = 46;
+
+function formatTick(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '?';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+}
+
+function formatDuration(ms: number): string {
+  const hours = ms / MS_PER_HOUR;
+  const days = hours / 24;
+  if (days >= 7) return `${Math.round(days / 7)}w`;
+  if (days >= 1) return `${Math.round(days)}d`;
+  return `${Math.round(hours)}h`;
+}
+
+interface TimeLayout {
+  xById: Map<string, number>;
+  yById: Map<string, number>;
+  gapMarkers: Array<{ x: number; label: string }>;
+  tickMarkers: Array<{ id: string; x: number; label: string }>;
+  axisY: number;
+  spanX: number;
+}
+
+function computeTimeLayout(decisions: GraphNode[]): TimeLayout {
+  const xById = new Map<string, number>();
+  const gapMarkers: Array<{ x: number; label: string }> = [];
+  const tickMarkers: Array<{ id: string; x: number; label: string }> = [];
+  let x = MIN_SPACING / 2;
+  let prevTime: number | null = null;
+
+  for (const d of decisions) {
+    const t = d.createdAt ? new Date(d.createdAt).getTime() : NaN;
+    if (prevTime !== null) {
+      if (!Number.isNaN(t)) {
+        const deltaMs = t - prevTime;
+        if (deltaMs > GAP_THRESHOLD_MS) {
+          gapMarkers.push({ x: x + COMPRESSED_GAP_PX / 2, label: `⋯ ${formatDuration(deltaMs)} ⋯` });
+          x += COMPRESSED_GAP_PX;
+        } else {
+          x += Math.max(MIN_SPACING, (deltaMs / MS_PER_HOUR) * PX_PER_HOUR);
+        }
+      } else {
+        x += MIN_SPACING;
+      }
+    }
+    xById.set(d.id, x);
+    if (d.createdAt) tickMarkers.push({ id: d.id, x, label: formatTick(d.createdAt) });
+    if (!Number.isNaN(t)) prevTime = t;
+  }
+
+  // Dead branches (superseded/rejected/archived) drop below the main lane;
+  // greedy interval packing keeps ones close in time from overlapping
+  // instead of all piling onto lane 1.
+  const laneEndX: number[] = [];
+  const yById = new Map<string, number>();
+  for (const d of decisions) {
+    const status = d.status ?? 'active';
+    const nodeX = xById.get(d.id) ?? 0;
+    if (status === 'superseded' || status === 'rejected' || status === 'archived') {
+      let lane = laneEndX.findIndex((endX) => endX + MIN_SPACING <= nodeX);
+      if (lane === -1) {
+        lane = laneEndX.length;
+        laneEndX.push(nodeX);
+      } else {
+        laneEndX[lane] = nodeX;
+      }
+      yById.set(d.id, (lane + 1) * LANE_HEIGHT);
+    } else {
+      yById.set(d.id, 0);
+    }
+  }
+
+  const axisY = (laneEndX.length + 1) * LANE_HEIGHT + AXIS_GAP;
+  const spanX = Math.max(0, ...Array.from(xById.values())) + MIN_SPACING / 2;
+  return { xById, yById, gapMarkers, tickMarkers, axisY, spanX };
 }
 
 function DecisionNode({ data }: NodeProps) {
@@ -138,7 +216,29 @@ function DecisionNode({ data }: NodeProps) {
   );
 }
 
-const NODE_TYPES = { decision: DecisionNode };
+function TickNode({ data }: NodeProps) {
+  const { label } = data as { label: string };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 60, marginLeft: -30 }}>
+      <div style={{ width: 1, height: 10, background: '#434343' }} />
+      <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', whiteSpace: 'nowrap' }}>{label}</Typography.Text>
+    </div>
+  );
+}
+
+function GapBreakNode({ data }: NodeProps) {
+  const { label } = data as { label: string };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 80, marginLeft: -40 }}>
+      <div style={{ width: 1, height: 10, borderLeft: '1px dashed #595959' }} />
+      <Typography.Text style={{ fontSize: 10, color: '#595959', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+        {label}
+      </Typography.Text>
+    </div>
+  );
+}
+
+const NODE_TYPES = { decision: DecisionNode, tick: TickNode, gapBreak: GapBreakNode };
 
 interface Props {
   nodes: GraphNode[];
@@ -183,11 +283,31 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       }
     }
 
-    const rawNodes: Node[] = decisions.map((n) => ({
+    const layout = computeTimeLayout(decisions);
+
+    const decisionNodes: Node[] = decisions.map((n) => ({
       id: n.id,
       type: 'decision',
-      position: { x: 0, y: 0 },
+      position: { x: (layout.xById.get(n.id) ?? 0) - NODE_W / 2, y: layout.yById.get(n.id) ?? 0 },
       data: { node: n, satellites: satellitesByDecision.get(n.id) ?? [] },
+    }));
+
+    const tickNodes: Node[] = layout.tickMarkers.map((t) => ({
+      id: `tick-${t.id}`,
+      type: 'tick',
+      position: { x: t.x, y: layout.axisY },
+      draggable: false,
+      selectable: false,
+      data: { label: t.label },
+    }));
+
+    const gapNodes: Node[] = layout.gapMarkers.map((g, i) => ({
+      id: `gap-${i}`,
+      type: 'gapBreak',
+      position: { x: g.x, y: layout.axisY },
+      draggable: false,
+      selectable: false,
+      data: { label: g.label },
     }));
 
     const rawEdges: Edge[] = chainEdges.map((e) => {
@@ -216,24 +336,11 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
       };
     });
 
-    // Order-only edges between chronologically adjacent, otherwise-unrelated
-    // decisions keep dagre from scattering isolated nodes at rank 0 — the
-    // point is "what happened over time", so time order should still read
-    // left-to-right even where there's no causal edge to draw.
-    const orderEdges: Edge[] = [];
-    for (let i = 1; i < decisions.length; i += 1) {
-      const prev = decisions[i - 1];
-      const curr = decisions[i];
-      const alreadyLinked = chainEdges.some(
-        (e) => (e.from === prev.id && e.to === curr.id) || (e.from === curr.id && e.to === prev.id),
-      );
-      if (!alreadyLinked) {
-        orderEdges.push({ id: `order-${prev.id}-${curr.id}`, source: prev.id, target: curr.id, style: { opacity: 0 } });
-      }
-    }
-
-    const laid = layoutDagre(rawNodes, [...rawEdges, ...orderEdges]);
-    return { flowNodes: laid, flowEdges: rawEdges, decisionCount: decisions.length };
+    return {
+      flowNodes: [...decisionNodes, ...tickNodes, ...gapNodes],
+      flowEdges: rawEdges,
+      decisionCount: decisions.length,
+    };
   }, [nodes, edges]);
 
   if (loading) {
@@ -277,7 +384,9 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        onNodeClick={(_, node) => setSelectedRecord(node.id, 'decision')}
+        onNodeClick={(_, node) => {
+          if (node.type === 'decision') setSelectedRecord(node.id, 'decision');
+        }}
         style={{ background: '#141414' }}
       >
         <Background color="#2a2a2a" gap={20} />
@@ -324,7 +433,7 @@ export function DecisionTimeline({ nodes, edges, loading }: Props) {
           </div>
         ))}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-          {decisionCount} decision{decisionCount === 1 ? '' : 's'}
+          {decisionCount} decision{decisionCount === 1 ? '' : 's'} · axis below shows real dates, ⋯Nd⋯ = compressed gap
         </Typography.Text>
       </div>
     </div>
