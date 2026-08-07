@@ -15,8 +15,9 @@ import {
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Divider, Menu, Tooltip, Typography } from 'antd';
+import { Avatar, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
+import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_GATEWAY_VERSION } from '../../shared/api/queries';
 import { useAuthStore } from '../../shared/model/auth.store';
@@ -69,12 +70,24 @@ function getSelectedKey(pathname: string): string {
   return segs[0] ?? '';
 }
 
+const ACCOUNT_MENU_ITEMS: MenuProps['items'] = [
+  { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
+  { type: 'divider' },
+  { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
+];
+
 export function NavigationRail() {
   const navigate = useNavigate();
   const location = useLocation();
+  const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+
+  const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'profile') { navigate('/profile'); return; }
+    if (key === 'logout') { void logout(); }
+  };
 
   const selectedKey = getSelectedKey(location.pathname);
 
@@ -192,31 +205,38 @@ export function NavigationRail() {
 
       {/* Account */}
       <div style={{ padding: 8, borderTop: '1px solid #303030', flexShrink: 0 }}>
-        <Button
-          type="text"
-          icon={<UserOutlined />}
-          size="small"
-          onClick={() => navigate('/profile')}
-          style={{
-            width: '100%',
-            textAlign: 'left',
-            marginBottom: 2,
-            color: selectedKey === 'profile' ? '#fff' : 'rgba(255,255,255,0.65)',
-            background: selectedKey === 'profile' ? 'rgba(255,255,255,0.08)' : 'transparent',
-          }}
+        <Dropdown
+          trigger={['click']}
+          placement="top"
+          menu={{ items: ACCOUNT_MENU_ITEMS, onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
         >
-          Profile
-        </Button>
-        <Button
-          type="text"
-          icon={<LogoutOutlined />}
-          danger
-          size="small"
-          onClick={() => void logout()}
-          style={{ width: '100%', textAlign: 'left' }}
-        >
-          Logout
-        </Button>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 8px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: selectedKey === 'profile' ? 'rgba(255,255,255,0.08)' : 'transparent',
+            }}
+          >
+            <Avatar size={24} icon={<UserOutlined />} />
+            <Typography.Text
+              style={{
+                flex: 1,
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.85)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={user?.email}
+            >
+              {user?.email ?? '...'}
+            </Typography.Text>
+          </div>
+        </Dropdown>
       </div>
     </div>
   );
