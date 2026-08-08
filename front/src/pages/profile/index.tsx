@@ -468,43 +468,42 @@ function ConnectSection() {
   ];
 
   return (
-    <Card title="Connect" size="small" style={{ marginBottom: 16 }}>
-      <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
+    <>
+      <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 16 }}>
         How to connect this Marrow instance to a coding agent or a web chat. The endpoint below (
-        <Text code>{mcpUrl}</Text>) is this deployment's real address — everything here, including the web-connector
-        Client ID/Secret further down, is real and copy-pasteable as-is.
+        <Text code>{mcpUrl}</Text>) is this deployment's real address — everything on this page, including the
+        web-connector Client ID/Secret, is real and copy-pasteable as-is.
       </Paragraph>
 
-      <Text strong style={{ display: 'block', marginBottom: 8 }}>
-        Your personal token
-      </Text>
-      <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-        Used by Claude Code / Codex below (<Text code>MARROW_MCP_TOKEN</Text>) — tied to your account and role, not a
-        shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
-      </Paragraph>
-      <PersonalTokenPanel onTokenChange={setPersonalToken} onStatusChange={setTokenStatus} />
+      <Card title="Personal API token" size="small" style={{ marginBottom: 16 }}>
+        <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
+          Used by Claude Code / Codex below (<Text code>MARROW_MCP_TOKEN</Text>) — tied to your account and role, not
+          a shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
+        </Paragraph>
+        <PersonalTokenPanel onTokenChange={setPersonalToken} onStatusChange={setTokenStatus} />
+      </Card>
 
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="Web connectors: Claude.ai and ChatGPT only, for now"
-        description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
-      />
+      <Card title="OAuth connector credentials" size="small" style={{ marginBottom: 16 }}>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Web connectors: Claude.ai and ChatGPT only, for now"
+          description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
+        />
+        <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
+          A few Claude.ai/ChatGPT connector setups ask for a Client ID / Client Secret in addition to the URL below.
+          Create one credential per connector — each is independent, so setting up ChatGPT never disturbs an
+          already-working Claude.ai credential (or vice versa). Every credential is your own, tied to your account,
+          not a shared deployment secret.
+        </Paragraph>
+        <OAuthClientPanel />
+      </Card>
 
-      <Text strong style={{ display: 'block', marginBottom: 8 }}>
-        Client ID / Client Secret (web connectors only)
-      </Text>
-      <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-        A few Claude.ai/ChatGPT connector setups ask for these in addition to the URL below. Create one credential
-        per connector — each is independent, so setting up ChatGPT never disturbs an already-working Claude.ai
-        credential (or vice versa). Every credential is your own, tied to your account, not a shared deployment
-        secret.
-      </Paragraph>
-      <OAuthClientPanel />
-
-      <Tabs size="small" items={items} />
-    </Card>
+      <Card title="Setup guide" size="small">
+        <Tabs size="small" items={items} />
+      </Card>
+    </>
   );
 }
 
@@ -836,12 +835,16 @@ function GitHostsSection() {
 }
 
 export function ProfilePage() {
+  const sections = [
+    { key: 'connect', label: 'Connect', children: <ConnectSection /> },
+    { key: 'account', label: 'Account', children: <AccountSection /> },
+    { key: 'security', label: 'Security', children: <TwoFactorSection /> },
+    { key: 'git', label: 'Git hosts', children: <GitHostsSection /> },
+  ];
+
   return (
     <PageLayout title="Profile" subtitle="Account, security and access">
-      <ConnectSection />
-      <AccountSection />
-      <TwoFactorSection />
-      <GitHostsSection />
+      <Tabs tabPosition="left" items={sections} style={{ minHeight: 480 }} />
     </PageLayout>
   );
 }
