@@ -1255,11 +1255,12 @@ export class PgToolService {
   }
 
   private async projectSummaryCounts(projectId: string) {
-    const [tasks, openTasks, items, decisions, artifacts, events] = await Promise.all([
+    const [tasks, openTasks, items, decisions, links, artifacts, events] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
       this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked"])),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
       this.countQueryRows(this.db("decisions").where("project_id", projectId)),
+      this.countQueryRows(this.db("links").where("project_id", projectId)),
       this.countQueryRows(this.db("artifacts").where("project_id", projectId)),
       this.countQueryRows(this.db("events").where("project_id", projectId))
     ]);
@@ -1268,6 +1269,7 @@ export class PgToolService {
       openTasks,
       items,
       decisions,
+      links,
       artifacts,
       events
     };
