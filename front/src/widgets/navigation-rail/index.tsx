@@ -20,8 +20,10 @@ import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { ProjectCounts, ProjectSummary } from '../../shared/model/types';
 import { useAuthStore } from '../../shared/model/auth.store';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 
 interface GatewayVersionData {
@@ -103,11 +105,16 @@ export function NavigationRail() {
   const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
 
-  const { data: summaryData } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {
+  const { data: summaryData, refetch: refetchSummary } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {
     variables: { project: selectedSlug },
     skip: !selectedSlug,
     fetchPolicy: 'cache-first',
   });
+  // T-MEMORY-051: keep nav-rail badge counts live without a manual refresh.
+  useRefetchOnVersion(
+    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.eventsVersion),
+    refetchSummary,
+  );
   const projectSections = buildProjectSections(summaryData?.projectSummary?.counts);
 
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {

@@ -10,6 +10,8 @@ import { Alert, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } fr
 import type { ColumnsType } from 'antd/es/table';
 import { GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Artifact, Decision, Event, ProjectSummary, Task } from '../../shared/model/types';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -85,9 +87,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function ProjectOverview({ slug }: { slug: string }) {
-  const { data, loading, error } = useQuery<{ projectSummary: ProjectSummary }>(
+  const { data, loading, error, refetch } = useQuery<{ projectSummary: ProjectSummary }>(
     GET_PROJECT_SUMMARY,
     { variables: { project: slug } },
+  );
+  // T-MEMORY-051: keep the overview live without a manual refresh.
+  useRefetchOnVersion(
+    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.eventsVersion),
+    refetch,
   );
 
   if (loading) {
