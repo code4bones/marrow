@@ -433,6 +433,33 @@ async function handleRequest(
       }
     }
 
+    // Project sharing: unauthenticated invite-landing lookup, same
+    // "no scope/session gate at all" shape as GET /auth/claim above -- a
+    // fully anonymous visitor who followed a shared /invite/:code link
+    // needs to see "You're invited to join {projectTitle}" before this
+    // gateway even knows who they are. Deliberately a dedicated REST route,
+    // not a GraphQL query: the GraphQL pipeline always runs
+    // isAuthorizedForScopes() first (memory:read at minimum), which would
+    // 401 a caller with no credential at all whenever a static token is
+    // configured -- this route bypasses that entirely, matching /auth/*'s
+    // own pattern above. Returns only {projectTitle, projectSlug}, nothing
+    // else -- see resolveProjectInviteContext's own comment in
+    // projects-core.mixin.ts for why that's safe to expose with no auth.
+    const projectInviteContextMatch = requestPath.match(/^\/project-invites\/([^/]+)$/);
+    if (request.method === "GET" && projectInviteContextMatch) {
+      try {
+        const result = await service.projectInviteContext(decodeURIComponent(projectInviteContextMatch[1]!));
+        send(200, { ok: true, data: result });
+      } catch (error) {
+        if (error instanceof AppError) {
+          send(error.code === "NOT_FOUND" ? 404 : 500, fail(error));
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
     const auth = isAuthorized(options, request, sessionAuth, personalTokenAuth);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth);

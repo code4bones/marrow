@@ -85,6 +85,10 @@ const typeDefs = `#graphql
     projects(status: String): [Project!]!
     projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
+    # Get-or-create: lazily creates the project's invite link on first
+    # request (T-MEMORY-047's "lazy generation" precedent). Any current
+    # project member (or admin) may call this.
+    projectInviteLink(id: ID, slug: String): ProjectInviteLink!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
     projectGraph(projectId: ID!, depth: Int = 2, maxPerType: Int = 60): ProjectGraph!
     record(id: ID!): RecordLookup!
@@ -207,6 +211,9 @@ const typeDefs = `#graphql
 
   type Mutation {
     createProject(input: CreateProjectInput!): Project!
+    updateProject(id: ID, slug: String, title: String, description: String): Project!
+    regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
+    claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
 
     createMemory(input: CreateMemoryInput!): MemoryRecord!
@@ -441,6 +448,18 @@ const typeDefs = `#graphql
   type PaginatedProjects {
     items: [Project!]!
     pageInfo: PageInfo!
+  }
+
+  # Project sharing: reusable, per-project invite link (get-or-create /
+  # regenerate) and the result of following one.
+  type ProjectInviteLink {
+    code: String!
+    url: String!
+  }
+
+  type ClaimProjectInviteLinkResult {
+    project: Project!
+    joined: Boolean!
   }
 
   type GatewayClient {
@@ -866,6 +885,8 @@ const resolvers = {
       await pageQuery(context, "projects", cleanInput(args)),
     project: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.get", requireOne(cleanInput(args), ["id", "slug"], "project"))).project,
+    projectInviteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.invite_link_get", requireOne(cleanInput(args), ["id", "slug"], "projectInviteLink")),
     projectSummary: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.summary", cleanInput(args)),
     projectGraph: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -940,6 +961,12 @@ const resolvers = {
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.create", cleanInput(args.input as Row))).project,
+    updateProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.update", requireOne(cleanInput(args), ["id", "slug"], "updateProject"))).project,
+    regenerateProjectInviteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.invite_link_regenerate", requireOne(cleanInput(args), ["id", "slug"], "regenerateProjectInviteLink")),
+    claimProjectInviteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.invite_claim", cleanInput(args)),
     deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
     createMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
