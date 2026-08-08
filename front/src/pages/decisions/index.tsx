@@ -27,6 +27,7 @@ function statusOptions(t: (key: string) => string) {
     { label: t('statusDraft'), value: 'draft' },
     { label: t('statusSuperseded'), value: 'superseded' },
     { label: t('statusRejected'), value: 'rejected' },
+    { label: t('statusArchived'), value: 'archived' },
   ];
 }
 
@@ -65,9 +66,12 @@ export function DecisionsPage() {
     },
     { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
-      title: '', key: 'actions', width: 60, fixed: 'right',
+      title: '', key: 'actions', width: 90, fixed: 'right',
       render: (_, row) => (
         <div style={{ display: 'flex', gap: 2 }}>
+          {slug && row.status !== 'superseded' && (
+            <RecordDecisionDrawer projectSlug={slug} supersedesId={row.id} onDone={() => refetch()} />
+          )}
           <ArchiveDecisionButton id={row.id} onDone={() => refetch()} />
           <DeleteDecisionButton id={row.id} onDone={() => refetch()} />
         </div>
