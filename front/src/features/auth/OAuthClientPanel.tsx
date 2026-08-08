@@ -7,29 +7,55 @@ import { type OAuthClient, useAuthStore } from '../../shared/model/auth.store';
 
 const { Text } = Typography;
 
+interface OAuthClientPanelProps {
+  /**
+   * Scopes this panel to exactly one service (e.g. "Claude.ai", "ChatGPT")
+   * instead of showing every credential the user owns. When set, the Label
+   * input is hidden entirely — a credential created from this panel is
+   * always labeled `fixedLabel`, so which credential belongs to which
+   * connector is never something the user has to figure out; it's implied
+   * by which part of the page they're looking at.
+   */
+  fixedLabel?: string;
+  /**
+   * Also locks the Redirect URI to a known, unchanging value (Claude.ai's
+   * callback never changes, unlike ChatGPT's) — when set, creating a
+   * credential from this panel needs zero manual input at all, just one
+   * click.
+   */
+  fixedRedirectUri?: string;
+  /**
+   * Inverse of fixedLabel: shows only credentials whose label is NOT in
+   * this list — the catch-all for anything that doesn't belong to a known
+   * service (legacy credentials created before per-service labeling, or a
+   * genuinely custom connector). Keeps the free-text Label input.
+   */
+  excludeLabels?: string[];
+}
+
 /**
- * This user's OAuth connector credentials, for the web-connector
- * (Claude.ai/ChatGPT) tabs of the profile's Connect section — replaces the
- * old static, shared PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair (one per
- * whole deployment), and then the one-per-user pair that followed it, with
- * one self-generated, independently-owned credential PER NAMED CONNECTOR.
+ * This user's OAuth connector credentials. Used three ways from
+ * ConnectSection: once per known service (fixedLabel="Claude.ai" /
+ * fixedLabel="ChatGPT", embedded directly under that service's own web-setup
+ * instructions) and once as a catch-all for anything else
+ * (excludeLabels=["Claude.ai","ChatGPT"]) — replaces the old static, shared
+ * PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair (one per whole deployment),
+ * and then the one-per-user pair that followed it, with one self-generated,
+ * independently-owned credential PER NAMED CONNECTOR.
  *
  * Each credential is fully independent: creating, regenerating, or deleting
  * one never touches another. That's the fix for a real problem hit live —
  * under the old one-per-user model, regenerating to set up a second
  * connector (e.g. ChatGPT) silently invalidated the first one already
- * working (e.g. Claude.ai). Each credential also stores its own
- * redirect_uri, captured at creation time, so a connector's one-off
- * callback URL (ChatGPT mints a new one per connector) never requires an
- * admin to hand-edit PROJECT_MEMORY_ALLOWED_REDIRECT_URIS.
+ * working (e.g. Claude.ai).
  */
-export function OAuthClientPanel() {
+export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }: OAuthClientPanelProps) {
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
   const createOAuthClient = useAuthStore((s) => s.createOAuthClient);
   const regenerateOAuthClient = useAuthStore((s) => s.regenerateOAuthClient);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
 
-  const [clients, setClients] = useState<OAuthClient[] | null>(null);
+  const [allClients, setAllClients] = useState<OAuthClient[] | null>(null);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -43,8 +69,7 @@ export function OAuthClientPanel() {
 
   const load = async () => {
     try {
-      const result = await fetchOAuthClients();
-      setClients(result);
+      setAllClients(await fetchOAuthClients());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load your OAuth connector credentials.');
     }
@@ -56,7 +81,7 @@ export function OAuthClientPanel() {
       try {
         const result = await fetchOAuthClients();
         if (cancelled) return;
-        setClients(result);
+        setAllClients(result);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Could not load your OAuth connector credentials.');
@@ -70,15 +95,28 @@ export function OAuthClientPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const clients = (allClients ?? []).filter((c) => {
+    if (fixedLabel) return c.label === fixedLabel;
+    if (excludeLabels) return !excludeLabels.includes(c.label ?? '');
+    return true;
+  });
+
+  const resetCreateForm = () => {
+    setAddingOpen(false);
+    setCreateError(null);
+    setNewLabel('');
+    setNewRedirectUri('');
+  };
+
   const create = async () => {
     setCreateError(null);
     setCreating(true);
     try {
-      const result = await createOAuthClient(newLabel.trim(), newRedirectUri.trim());
+      const label = fixedLabel ?? newLabel.trim();
+      const redirectUri = fixedRedirectUri ?? newRedirectUri.trim();
+      const result = await createOAuthClient(label, redirectUri);
       setRevealedSecrets((prev) => ({ ...prev, [result.id]: result.clientSecret }));
-      setNewLabel('');
-      setNewRedirectUri('');
-      setAddingOpen(false);
+      resetCreateForm();
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Could not create an OAuth connector credential.');
@@ -122,48 +160,41 @@ export function OAuthClientPanel() {
   if (loading) {
     return (
       <div style={{ marginBottom: 16 }}>
-        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Loading your OAuth connector credentials…</Text>
+        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Loading…</Text>
       </div>
     );
   }
 
-  const hasClients = (clients?.length ?? 0) > 0;
+  const hasClients = clients.length > 0;
+  const canOneClickCreate = Boolean(fixedLabel && fixedRedirectUri);
+  const addButtonLabel = fixedLabel ? `Create ${fixedLabel} credential` : 'Add connector credential';
 
   return (
     <div style={{ marginBottom: 16 }}>
       {error && <Alert type="error" message={error} style={{ marginBottom: 12 }} showIcon />}
 
-      {!hasClients && !addingOpen && (
-        <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-          A few connector setups ask for a Client ID / Client Secret in addition to the URL. This generates your own
-          — one per connector, tied to your account, not a shared deployment secret. Most setups don't need it; skip
-          this unless yours asks.
-        </Text>
-      )}
-
-      {!hasClients && !addingOpen && (
+      {!hasClients && !addingOpen && !fixedLabel && (
         <Empty description={false} image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '4px 0 12px' }} />
       )}
 
-      {(clients ?? []).map((client) => {
+      {clients.map((client) => {
         const revealedSecret = revealedSecrets[client.id];
         return (
-          <div
-            key={client.id}
-            style={{ border: '1px solid #303030', borderRadius: 6, padding: 12, marginBottom: 12 }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <Text strong>{client.label || 'Untitled credential'}</Text>
-              <Popconfirm
-                title="Delete this credential?"
-                description="This connector's Client ID and Secret stop working immediately. It has no effect on your other credentials."
-                okText="Delete"
-                okButtonProps={{ danger: true, loading: busyId === client.id }}
-                onConfirm={() => void remove(client.id)}
-              >
-                <Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={busyId !== null && busyId !== client.id} />
-              </Popconfirm>
-            </div>
+          <div key={client.id} style={{ border: '1px solid #303030', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+            {!fixedLabel && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <Text strong>{client.label || 'Untitled credential'}</Text>
+                <Popconfirm
+                  title="Delete this credential?"
+                  description="This connector's Client ID and Secret stop working immediately. It has no effect on your other credentials."
+                  okText="Delete"
+                  okButtonProps={{ danger: true, loading: busyId === client.id }}
+                  onConfirm={() => void remove(client.id)}
+                >
+                  <Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={busyId !== null && busyId !== client.id} />
+                </Popconfirm>
+              </div>
+            )}
 
             <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>
               Client ID:
@@ -195,71 +226,94 @@ export function OAuthClientPanel() {
               </Text>
             )}
 
-            <Popconfirm
-              title="Regenerate this credential?"
-              description="This connector's current Client ID and Secret both stop working immediately. Any connector using them will need the new pair. Your other credentials are unaffected."
-              okText="Regenerate"
-              okButtonProps={{ danger: true, loading: busyId === client.id }}
-              onConfirm={() => void regenerate(client.id)}
-            >
-              <Button size="small" disabled={busyId !== null && busyId !== client.id}>
-                Regenerate
-              </Button>
-            </Popconfirm>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Popconfirm
+                title="Regenerate this credential?"
+                description="This connector's current Client ID and Secret both stop working immediately. Any connector using them will need the new pair. Your other credentials are unaffected."
+                okText="Regenerate"
+                okButtonProps={{ danger: true, loading: busyId === client.id }}
+                onConfirm={() => void regenerate(client.id)}
+              >
+                <Button size="small" disabled={busyId !== null && busyId !== client.id}>
+                  Regenerate
+                </Button>
+              </Popconfirm>
+              {fixedLabel && (
+                <Popconfirm
+                  title="Delete this credential?"
+                  description="This connector's Client ID and Secret stop working immediately."
+                  okText="Delete"
+                  okButtonProps={{ danger: true, loading: busyId === client.id }}
+                  onConfirm={() => void remove(client.id)}
+                >
+                  <Button size="small" danger disabled={busyId !== null && busyId !== client.id}>
+                    Delete
+                  </Button>
+                </Popconfirm>
+              )}
+            </div>
           </div>
         );
       })}
 
-      {addingOpen ? (
-        <div style={{ border: '1px dashed #303030', borderRadius: 6, padding: 12 }}>
-          {createError && <Alert type="error" message={createError} style={{ marginBottom: 12 }} showIcon />}
-          <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
-            Label
-          </Text>
-          <Input
-            placeholder="e.g. Claude.ai or ChatGPT"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-            style={{ marginBottom: 12 }}
-          />
-          <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
-            Redirect URI
-          </Text>
-          <Input
-            placeholder="https://…/callback"
-            value={newRedirectUri}
-            onChange={(e) => setNewRedirectUri(e.target.value)}
-            style={{ marginBottom: 12 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button
-              type="primary"
-              size="small"
-              loading={creating}
-              disabled={!newLabel.trim() || !newRedirectUri.trim()}
-              onClick={() => void create()}
-            >
-              Create credential
-            </Button>
-            <Button
-              size="small"
-              disabled={creating}
-              onClick={() => {
-                setAddingOpen(false);
-                setCreateError(null);
-                setNewLabel('');
-                setNewRedirectUri('');
-              }}
-            >
-              Cancel
-            </Button>
+      {/* A fixedLabel panel only ever holds one credential at a time -- once
+          it exists, hide the create affordance entirely (Regenerate above
+          covers "I lost the secret"). An unscoped/excludeLabels panel can
+          always add more. */}
+      {(!hasClients || !fixedLabel) &&
+        (addingOpen ? (
+          <div style={{ border: '1px dashed #303030', borderRadius: 6, padding: 12 }}>
+            {createError && <Alert type="error" message={createError} style={{ marginBottom: 12 }} showIcon />}
+            {!fixedLabel && (
+              <>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
+                  Label
+                </Text>
+                <Input
+                  placeholder="e.g. Claude.ai or ChatGPT"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  style={{ marginBottom: 12 }}
+                />
+              </>
+            )}
+            {!fixedRedirectUri && (
+              <>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
+                  Redirect URI
+                </Text>
+                <Input
+                  placeholder="https://…/callback"
+                  value={newRedirectUri}
+                  onChange={(e) => setNewRedirectUri(e.target.value)}
+                  style={{ marginBottom: 12 }}
+                />
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                type="primary"
+                size="small"
+                loading={creating}
+                disabled={!(fixedLabel ?? newLabel.trim()) || !(fixedRedirectUri ?? newRedirectUri.trim())}
+                onClick={() => void create()}
+              >
+                Create credential
+              </Button>
+              <Button size="small" disabled={creating} onClick={resetCreateForm}>
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <Button size="small" onClick={() => setAddingOpen(true)}>
-          Add connector credential
-        </Button>
-      )}
+        ) : (
+          <Button
+            size="small"
+            loading={creating}
+            onClick={() => (canOneClickCreate ? void create() : setAddingOpen(true))}
+          >
+            {hasClients ? 'Add another credential' : addButtonLabel}
+          </Button>
+        ))}
     </div>
   );
 }

@@ -4,7 +4,9 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Descriptions,
+  Divider,
   Empty,
   Form,
   Input,
@@ -36,7 +38,7 @@ import {
 } from '../../shared/api/queries';
 import type { GitCredential } from '../../shared/model/types';
 
-const { Text, Paragraph } = Typography;
+const { Text, Paragraph, Title } = Typography;
 
 interface ChangePasswordValues {
   currentPassword: string;
@@ -376,12 +378,25 @@ function ConnectSection() {
   // appending them here would just be inert query noise.
   const webConnectorUrl = mcpUrl;
 
+  // Claude.ai's callback is fixed and never changes -- captured here once so
+  // creating that credential needs zero manual input. ChatGPT mints a fresh,
+  // one-off callback per connector it has no such constant.
+  const claudeCallbackUrl = 'https://claude.ai/api/mcp/auth_callback';
+
+  // Grouped by SERVICE (Claude, Codex), each with its CLI + web instructions
+  // together and that service's own OAuth credential embedded directly
+  // underneath -- previously this was grouped by connection TYPE (CLI tabs
+  // separate from web tabs, credentials in one flat undifferentiated list
+  // elsewhere on the page), which meant figuring out which Client ID/Secret
+  // belonged to which connector required guessing. Now it's implied by
+  // which tab you're already reading.
   const items = [
     {
-      key: 'claude-code',
-      label: 'Claude Code',
+      key: 'claude',
+      label: 'Claude',
       children: (
         <>
+          <Title level={5} style={{ marginTop: 0 }}>Claude Code (CLI)</Title>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             Claude Code talks to Marrow over Streamable HTTP, using your own personal API token (
             <Text code>MARROW_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
@@ -395,33 +410,10 @@ function ConnectSection() {
             Restart Claude Code, then ask it "What is Marrow, and how do I use it?" — it should call{' '}
             <Text code>gateway.about</Text>.
           </Step>
-        </>
-      ),
-    },
-    {
-      key: 'codex',
-      label: 'Codex',
-      children: (
-        <>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code.
-          </Text>
-          <Step n={1}>Set the token in the shell that will run Codex:</Step>
-          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
-          <Step n={2}>Register Marrow as an MCP server:</Step>
-          <CodeBlock code={codexCmd} />
-          <Step n={3}>
-            Restart Codex, then ask it to check Marrow — it should call <Text code>gateway.status</Text> and{' '}
-            <Text code>gateway.version</Text>.
-          </Step>
-        </>
-      ),
-    },
-    {
-      key: 'claude-web',
-      label: 'Claude.ai (web)',
-      children: (
-        <>
+
+          <Divider />
+
+          <Title level={5}>Claude.ai (web)</Title>
           <Step n={1}>
             In Claude.ai go to <Text strong>Settings → Connectors</Text> and choose{' '}
             <Text strong>Add custom connector</Text>.
@@ -436,19 +428,35 @@ function ConnectSection() {
           <Step n={5}>
             Back in the chat, ask Claude to check Marrow — it should call <Text code>gateway.status</Text>.
           </Step>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginTop: 8 }}>
-            If your setup asks for a Client ID / Client Secret too, Claude.ai's callback URL is fixed:{' '}
-            <Text code>https://claude.ai/api/mcp/auth_callback</Text> — use it as the redirect URI when creating a
-            credential below.
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
+            If your setup also asks for a Client ID / Client Secret, create one below — Claude.ai's callback URL is
+            fixed, so it's filled in for you automatically.
           </Text>
+          <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} />
         </>
       ),
     },
     {
-      key: 'chatgpt-web',
-      label: 'ChatGPT (web)',
+      key: 'codex',
+      label: 'Codex',
       children: (
         <>
+          <Title level={5} style={{ marginTop: 0 }}>Codex (CLI)</Title>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
+            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code.
+          </Text>
+          <Step n={1}>Set the token in the shell that will run Codex:</Step>
+          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
+          <Step n={2}>Register Marrow as an MCP server:</Step>
+          <CodeBlock code={codexCmd} />
+          <Step n={3}>
+            Restart Codex, then ask it to check Marrow — it should call <Text code>gateway.status</Text> and{' '}
+            <Text code>gateway.version</Text>.
+          </Step>
+
+          <Divider />
+
+          <Title level={5}>ChatGPT (web)</Title>
           <Step n={1}>
             In ChatGPT go to <Text strong>Settings → Connectors</Text> and choose to create/add a new connector.
           </Step>
@@ -457,11 +465,12 @@ function ConnectSection() {
           <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
           <Step n={4}>Log in with your own Marrow account and approve access.</Step>
           <Step n={5}>Ask ChatGPT to use the Marrow tools — it should be able to call them directly.</Step>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginTop: 8 }}>
-            If your setup asks for a Client ID / Client Secret too, ChatGPT shows its callback URL on its own "Add
-            connector" screen — it's different every time you create a connector, so copy it fresh and use it as the
-            redirect URI when creating a credential below.
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
+            If your setup also asks for a Client ID / Client Secret, create one below. ChatGPT shows its callback URL
+            on its own "Add connector" screen — it's different every time you create a connector, so copy it fresh
+            and paste it as the redirect URI.
           </Text>
+          <OAuthClientPanel fixedLabel="ChatGPT" />
         </>
       ),
     },
@@ -483,26 +492,30 @@ function ConnectSection() {
         <PersonalTokenPanel onTokenChange={setPersonalToken} onStatusChange={setTokenStatus} />
       </Card>
 
-      <Card title="OAuth connector credentials" size="small" style={{ marginBottom: 16 }}>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="Web connectors: Claude.ai and ChatGPT only, for now"
-          description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
-        />
-        <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-          A few Claude.ai/ChatGPT connector setups ask for a Client ID / Client Secret in addition to the URL below.
-          Create one credential per connector — each is independent, so setting up ChatGPT never disturbs an
-          already-working Claude.ai credential (or vice versa). Every credential is your own, tied to your account,
-          not a shared deployment secret.
-        </Paragraph>
-        <OAuthClientPanel />
-      </Card>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Web connectors: Claude.ai and ChatGPT only, for now"
+        description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
+      />
 
-      <Card title="Setup guide" size="small">
+      <Card size="small">
         <Tabs size="small" items={items} />
       </Card>
+
+      <Collapse
+        ghost
+        size="small"
+        style={{ marginTop: 16 }}
+        items={[
+          {
+            key: 'other',
+            label: <Text type="secondary" style={{ fontSize: 12.5 }}>Other / legacy credentials</Text>,
+            children: <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />,
+          },
+        ]}
+      />
     </>
   );
 }
