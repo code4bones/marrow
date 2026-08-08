@@ -49,6 +49,11 @@ export interface PersonalTokenRegenerateResult {
   createdAt: string;
 }
 
+/** T-MEMORY-051: null = never viewed the notifications page — every event counts as unread. */
+export interface NotificationsStatus {
+  seenAt: string | null;
+}
+
 interface ClaimContextResult {
   email: string | null;
   purpose: string;
@@ -67,6 +72,8 @@ interface AuthState {
   bootstrapNeeded: boolean | null;
   /** Set after a login() call returns pending_totp — second login step is needed. */
   pendingTotpUserId: string | null;
+  /** T-MEMORY-051: last known notifications_seen_at, kept in sync by fetchNotificationsSeenAt/markNotificationsSeen — the nav-rail badge reads this to compute unreadCount. */
+  notificationsSeenAt: string | null;
 
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -93,6 +100,11 @@ interface AuthState {
   fetchPersonalToken: () => Promise<PersonalTokenStatus>;
   /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
   regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
+
+  /** T-MEMORY-051: current notifications-seen status — drives the nav-rail unread badge. */
+  fetchNotificationsSeenAt: () => Promise<NotificationsStatus>;
+  /** Stamps notifications_seen_at = now() server-side (survives across devices) — called once on mount by the notifications page. */
+  markNotificationsSeen: () => Promise<NotificationsStatus>;
 
   fetchPendingUsers: () => Promise<PendingRegistration[]>;
   approvePendingUser: (id: string) => Promise<void>;
@@ -137,6 +149,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   bootstrapNeeded: null,
   pendingTotpUserId: null,
+  notificationsSeenAt: null,
 
   initialize: async () => {
     const bootstrapResponse = await fetch(`${API_BASE_URL}/auth/bootstrap`, { credentials: 'include' });
@@ -307,6 +320,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       {},
       'Could not generate a personal token.',
     ),
+
+  fetchNotificationsSeenAt: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/notifications`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load your notifications status.');
+    }
+    const data = body.data as NotificationsStatus;
+    set({ notificationsSeenAt: data.seenAt });
+    return data;
+  },
+
+  markNotificationsSeen: async () => {
+    const data = await postJson<NotificationsStatus>('/auth/profile/notifications-seen', {}, 'Could not mark notifications as seen.');
+    set({ notificationsSeenAt: data.seenAt });
+    return data;
+  },
 
   fetchPendingUsers: async () => {
     const response = await fetch(`${API_BASE_URL}/auth/admin/pending-users`, { credentials: 'include' });

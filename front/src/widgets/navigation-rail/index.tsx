@@ -3,6 +3,7 @@ import {
   ApartmentOutlined,
   ArrowLeftOutlined,
   AuditOutlined,
+  BellOutlined,
   BugOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
@@ -18,13 +19,26 @@ import {
 import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
-import type { ProjectCounts, ProjectSummary } from '../../shared/model/types';
+import type { Event, Paginated, ProjectCounts, ProjectSummary } from '../../shared/model/types';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
+
+// T-MEMORY-051: how far back the badge looks for unread events. A small
+// window (not the full global feed) is enough to compute an accurate count
+// against any realistic notifications_seen_at, and keeps this query cheap
+// since it polls on every realtime version bump.
+const UNREAD_WINDOW_SIZE = 50;
+
+/** null seenAt means "never viewed" — everything counts as unread; an event with no createdAt (defensive — the gateway always sets one) counts as unread too. */
+function isUnreadEvent(createdAt: string | null, notificationsSeenAt: string | null): boolean {
+  if (!createdAt) return true;
+  return notificationsSeenAt === null || new Date(createdAt) > new Date(notificationsSeenAt);
+}
 
 interface GatewayVersionData {
   gatewayVersion: { packageVersion?: string } | null;
@@ -93,6 +107,7 @@ function getSelectedKey(pathname: string): string {
 
 const ACCOUNT_MENU_ITEMS: MenuProps['items'] = [
   { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
+  { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
   { type: 'divider' },
   { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
 ];
@@ -102,8 +117,25 @@ export function NavigationRail() {
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
+  const fetchNotificationsSeenAt = useAuthStore((s) => s.fetchNotificationsSeenAt);
   const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+
+  useEffect(() => {
+    void fetchNotificationsSeenAt();
+  }, [fetchNotificationsSeenAt]);
+
+  // T-MEMORY-051: unread badge — a small recent-events window, re-fetched on
+  // every realtime version bump the same way the dedicated pages are.
+  const { data: unreadEventsData, refetch: refetchUnreadEvents } = useQuery<{ eventsPage: Paginated<Event> }>(
+    GET_EVENTS_PAGE,
+    { variables: { limit: UNREAD_WINDOW_SIZE, offset: 0 } },
+  );
+  useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchUnreadEvents);
+  const unreadCount = (unreadEventsData?.eventsPage.items ?? []).filter((event) =>
+    isUnreadEvent(event.createdAt, notificationsSeenAt),
+  ).length;
 
   const { data: summaryData, refetch: refetchSummary } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {
     variables: { project: selectedSlug },
@@ -119,6 +151,7 @@ export function NavigationRail() {
 
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'profile') { navigate('/profile'); return; }
+    if (key === 'notifications') { navigate('/notifications'); return; }
     if (key === 'logout') { void logout(); }
   };
 
@@ -250,10 +283,12 @@ export function NavigationRail() {
               padding: '6px 8px',
               borderRadius: 6,
               cursor: 'pointer',
-              background: selectedKey === 'profile' ? 'rgba(255,255,255,0.08)' : 'transparent',
+              background: selectedKey === 'profile' || selectedKey === 'notifications' ? 'rgba(255,255,255,0.08)' : 'transparent',
             }}
           >
-            <Avatar size={24} icon={<UserOutlined />} />
+            <Badge count={unreadCount} size="small" overflowCount={99}>
+              <Avatar size={24} icon={<UserOutlined />} />
+            </Badge>
             <Typography.Text
               style={{
                 flex: 1,

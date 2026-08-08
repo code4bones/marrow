@@ -12,6 +12,7 @@ import { FaultsPage } from '../../pages/faults';
 import { LinksPage } from '../../pages/links';
 import { LoginPage } from '../../pages/login';
 import { MemoryPage } from '../../pages/memory';
+import { NotificationsPage } from '../../pages/notifications';
 import { OAuthAuthorizePage } from '../../pages/oauth-authorize';
 import { ProfilePage } from '../../pages/profile';
 import { ProjectInvitePage } from '../../pages/project-invite';
@@ -82,8 +83,9 @@ export function AppRouter() {
         <Route path="projects/:slug/settings"   element={<ProjectSettingsPage />} />
 
         {/* Global */}
-        <Route path="common"  element={<CommonPage />} />
-        <Route path="profile" element={<ProfilePage />} />
+        <Route path="common"        element={<CommonPage />} />
+        <Route path="profile"       element={<ProfilePage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
       </Route>
     </Routes>
   );
