@@ -261,3 +261,10 @@ export class BaseService {
     return row?.value ?? null;
   }
 }
+
+// Standard TS constructor-mixin helper, shared by every mixin function in
+// this directory so each domain/tier file composes onto the chain built so
+// far. `any[]` is required by the pattern (a mixin must accept whatever
+// constructor args the base it's wrapping declares).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-object-type
+export type Constructor<T = {}> = new (...args: any[]) => T;
