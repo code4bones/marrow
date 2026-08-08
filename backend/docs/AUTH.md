@@ -194,7 +194,7 @@ strict superset of the one before it (`admin` implies `write` and `read`).
 | session cookie, `role=member` | `write` | Decision 1: session scope is derived straight from the user's role, no separate "elevate to admin" UX — PMemUI has no destructive UI to elevate into anyway (`D-MEMORY-015`). |
 | personal API token, owner `role=admin` (`T-MEMORY-047`) | `admin` | Same role-derived resolution as a session cookie — see "Personal API tokens" below. |
 | personal API token, owner `role=member` (`T-MEMORY-047`) | `write` | Same role-derived resolution as a session cookie. A personal token IS that specific user connecting programmatically, not a separate, wider-scoped credential class. |
-| OAuth bearer (Claude Code / ChatGPT connectors) | `read` + `write` only, **forever** | Decision 2: an OAuth-issued token never gets `admin`, regardless of the underlying human's role or what a token claims. This is deliberate protection against an agent hallucinating a delete call, not a defense against a malicious user — in a hard-delete system with no undo, that is the scenario worth capping. Enforced twice: `oauth.ts`'s `requestedScopes()` never issues the `memory:admin` claim (even if `PROJECT_MEMORY_OAUTH_SCOPES` is misconfigured to include it), and `http-server.ts`'s scope check denies any OAuth-sourced request needing `memory:admin` without even inspecting the token. |
+| OAuth bearer (Claude Code / ChatGPT connectors) | role-derived, identical to a session's (`T-MEMORY-0xx` SSO, supersedes decision 2 below) | `/oauth/authorize` now requires a real Marrow login (`pmem_session`) instead of the old shared magic token — see `docs/OAUTH_FACADE_FOR_CHATGPT_APPS.md`'s "Session-based authorize (SSO)" — so the issued JWT's `sub` is the real logged-in user's `userId`, not the old hardcoded `"project-memory-user"` literal. `http-server.ts`'s `resolveScopeTier()` resolves that user's *current* role fresh from `users` on every request (never cached in the token): `admin` role → `admin` tier, `member` role → `write` tier, same as a session or personal token. A `sub` that doesn't resolve to an active user (disabled/deleted account, or a still-valid pre-SSO token with the old hardcoded `sub`) fails closed as `401 unauthenticated`, never silently downgraded to `write`. ~~Decision 2 (original text, kept for history): an OAuth-issued token never gets `admin`, regardless of the underlying human's role — deliberate protection against an agent hallucinating a delete call, since the old magic-token flow had no way to prove who was behind the token.~~ That rationale no longer applies once the authorize step verifies real identity; the elevation mechanism below is unaffected and still covers the member-role-OAuth case. |
 
 `admin` covers every hard-delete operation: `memory.delete`, `decision.delete`,
 `project.delete`, `event.delete`, `link.delete`, `artifact.delete`,
@@ -223,19 +223,20 @@ exact shapes.
 
 ## Step-up admin elevation (`T-MEMORY-041` / `D-MEMORY-019`)
 
-This is an *addition* on top of the scope table above, not a change to it.
-The OAuth row's "forever" still means forever: no OAuth-issued token, ever
-gets the `memory:admin` claim, regardless of what it requests or what the
-underlying human's role is (`D-MEMORY-017` decision 2, unchanged). What this
-adds is a narrow, separate door for the one realistic case that standing
-model didn't have an answer for: an admin, chatting with an agent connected
-over OAuth (Claude Code, ChatGPT), wants to *live, in that moment*,
-authorize the one destructive call the agent is proposing — without
-switching to a separate admin-scoped client. See `D-MEMORY-019` for the
-full rationale and, importantly, for why this is explicitly **not** "OAuth
-can now get admin scope": the standing credential's ceiling never moves,
-and every unelevated request behaves exactly as it did before this task
-(verified as a regression case in `scripts/smoke-gateway-elevation.ts`).
+This was originally an *addition* on top of a hard OAuth-never-admin ceiling
+(`D-MEMORY-017` decision 2), for the one realistic case that standing model
+didn't have an answer for: an admin, chatting with an agent connected over
+OAuth (Claude Code, ChatGPT), wants to *live, in that moment*, authorize the
+one destructive call the agent is proposing — without switching to a
+separate admin-scoped client. Since `T-MEMORY-0xx` (SSO), an admin-role
+user's OAuth token reaches admin-tier tools directly via `resolveScopeTier()`
+(see the scope table above), so this door is no longer the *only* path for
+that scenario — but it still matters for a member-role user's OAuth session,
+which still resolves to `write` and still needs a live admin password+TOTP
+to reach an admin-tier call in the moment. Every request from a source this
+mechanism doesn't apply to behaves exactly as before
+(`scripts/smoke-gateway-elevation.ts` covers both the still-capped member
+case and the now-direct admin case).
 
 Two steps:
 

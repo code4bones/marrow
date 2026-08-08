@@ -90,7 +90,6 @@ For ChatGPT Apps/custom MCP Apps, enable the OAuth facade on the gateway:
 PROJECT_MEMORY_PUBLIC_URL=https://memory.example.internal/project-memory
 PROJECT_MEMORY_OAUTH_ISSUER=https://memory.example.internal/project-memory
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://memory.example.internal/project-memory
-PROJECT_MEMORY_MAGIC_TOKEN=...
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...,https://claude.ai/api/mcp/auth_callback
 PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
 # Optional confidential-client secret; omit to use public PKCE client auth.

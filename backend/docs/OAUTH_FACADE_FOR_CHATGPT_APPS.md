@@ -177,8 +177,8 @@ Behavior:
 3. Require `code_challenge_method=S256`.
 4. Preserve `state`.
 5. Preserve `resource`.
-6. Show a small HTML form asking for the magic token.
-7. On success, issue a short-lived authorization code.
+6. `GET` 302s to Marrow's own frontend (`<publicUrl origin>/oauth/authorize`, same query string) instead of rendering any backend HTML -- see "Session-based authorize (SSO)" below. There is no magic token anywhere in this flow.
+7. Once the frontend confirms a real `pmem_session` (existing cookie, or a fresh login through Marrow's own login/TOTP screens) and the user clicks Approve, its `POST /oauth/authorize` call issues a short-lived authorization code bound to that session's real `userId`.
 8. Redirect to:
 
 ```text
@@ -256,12 +256,16 @@ Return:
 
 Refresh token is optional.
 
-For v1, do not add refresh tokens unless they are actually needed.
+For v1, do not add refresh tokens unless they are actually needed. (No
+`refresh_token` grant exists today; a token nearing its 30-day `exp` requires
+re-authorization through `/oauth/authorize`, same as the first time.)
 
 The authorization code should be short-lived and one-time-use. The issued
-access token is intentionally non-expiring for the internal trusted-token
-deployment model, because ChatGPT may otherwise drop MCP authorization during a
-long-lived chat.
+access token carries a real `exp` (30 days, matching session TTL) -- an
+earlier "intentionally non-expiring" design was retired once the token
+started carrying a real per-user identity, since a leaked never-expiring
+token bound to a real account is a materially worse exposure than a leaked
+never-expiring identity-less one.
 
 ## JWKS endpoint
 
@@ -284,11 +288,20 @@ Recommended JWT claims:
 ```text
 iss: https://mcp.example.com
 aud: https://mcp.example.com
-sub: project-memory-user
+sub: <the real Marrow userId who approved this OAuth client at /oauth/authorize>
 scope: memory:read memory:write
 iat: issued at
+exp: iat + 30 days
 jti: unique token id
 ```
+
+`sub` is not a fixed literal (an earlier design used the constant
+`project-memory-user` for every token, before the authorize step verified any
+real identity -- see "Session-based authorize (SSO)" below). The gateway
+resolves `sub` against `users` fresh on every request; a disabled/deleted
+account or an unresolvable `sub` (e.g. a still-valid pre-SSO token minted
+before this change, or its old hardcoded `sub`) is rejected outright, not
+silently downgraded.
 
 The MCP server must verify:
 
@@ -339,12 +352,17 @@ memory:write  create/update/delete project memory entries
 memory:admin  optional future admin operations
 ```
 
-Keep scopes coarse for now. Project Memory is an internal-company gateway: any
-user who completes OAuth is trusted for the configured gateway scopes. The
-facade grants the full configured scope set, currently
-`memory:read memory:write`, even if a host initially asks only for
-`memory:read`. This avoids read-only connector tokens in hosts that do not
-retry OAuth scope escalation before calling write tools.
+Keep scopes coarse for now. The facade still grants the full configured base
+scope set on the JWT's own `scope` claim, currently `memory:read memory:write`,
+even if a host initially asks only for `memory:read` (avoids read-only
+connector tokens in hosts that don't retry OAuth scope escalation before
+calling write tools) -- but that claim is no longer what decides `memory:admin`
+access. Since the authorize step now verifies a real Marrow login, the granted
+*tier* (read/write vs. admin) is resolved fresh on every request from that
+user's actual, current role in `users` (see `docs/AUTH.md`'s scope table) --
+an admin-role user's OAuth session reaches admin-tier tools directly, a
+member-role user's does not, regardless of what the JWT's `scope` claim says
+or what `PROJECT_MEMORY_OAUTH_SCOPES` is configured to.
 
 Suggested mapping:
 
@@ -354,34 +372,44 @@ create/update/delete tools  -> memory:read memory:write
 admin/maintenance tools     -> memory:admin
 ```
 
-## Magic token behavior
+## Session-based authorize (SSO)
 
-The magic token is configured server-side.
+There is no magic token in this gateway anymore. `PROJECT_MEMORY_MAGIC_TOKEN`
+and `PROJECT_MEMORY_MAGIC_TOKEN_HASH` were an early bootstrap gate for
+`/oauth/authorize` -- a single shared secret with no concept of *which*
+Marrow user was behind it, which is why the resulting JWT used to be
+identity-less (`sub: project-memory-user` for every token) and OAuth-sourced
+requests were permanently capped below admin scope regardless of role
+(`D-MEMORY-017` decision 2, since superseded). Both env vars are gone; the
+gateway now treats `PROJECT_MEMORY_PUBLIC_URL` being set as the OAuth-facade
+opt-in instead.
 
-Environment variable:
+Flow:
 
-```bash
-PROJECT_MEMORY_MAGIC_TOKEN="..."
-```
-
-Optional safer variant:
-
-```bash
-PROJECT_MEMORY_MAGIC_TOKEN_HASH="..."
-```
-
-Prefer storing a hash instead of a raw token if easy.
-
-Rules:
-
-- The magic token is only accepted at `/oauth/authorize`.
-- Never accept the magic token as `Authorization: Bearer`.
-- Never return the magic token to ChatGPT.
-- Never store the magic token in memory records.
-- Never log it.
-- Rate-limit failed attempts.
-- Add a generic error message: `Invalid token`.
-- Consider adding a lockout/backoff after repeated failures.
+1. `GET /oauth/authorize` 302s to Marrow's own frontend at
+   `<publicUrl origin>/oauth/authorize?<original query string>` --
+   `oauth.ts`'s `authorizeRedirectUrl()`.
+2. The frontend page (`front/src/pages/oauth-authorize/index.tsx`) checks for
+   an existing `pmem_session` cookie. If there isn't one, it renders Marrow's
+   normal login + TOTP screens in place (reusing the same components/actions
+   `/login` uses) until there is one -- no separate credential type, no magic
+   token field anywhere.
+3. Once authenticated, the page renders a consent screen ("Marrow wants to
+   let `{client_id}` access your account (`{email}`, `{role}`)") with
+   Approve/Deny buttons. Approve is the only thing that fires the next
+   request -- there is no auto-submit, so a cross-origin page cannot trigger
+   this without the user's own browser rendering and the user clicking it.
+4. Approve calls the backend's session-cookie-authenticated
+   `POST /oauth/authorize` (`oauth.ts`'s `authorizeWithSession()`, wired in
+   `http-server.ts`) -- rejects with 401 if there is no valid session. On
+   success it mints the authorization code stamped with that session's real
+   `userId` and returns `{ redirectUri }` as JSON; the frontend does the
+   actual top-level navigation via `window.location.href`. Deny redirects to
+   `redirect_uri` with `error=access_denied` per the OAuth spec, no backend
+   call at all.
+5. Rate-limiting on failed login attempts during this flow comes from the
+   same `checkAndConsumeLoginAttempt` mechanism `/auth/login` already uses --
+   there is no separate magic-token-specific limiter anymore.
 
 ## State storage
 
@@ -476,7 +504,6 @@ Add env vars:
 PROJECT_MEMORY_PUBLIC_URL="https://mcp.example.com"
 PROJECT_MEMORY_OAUTH_ISSUER="https://mcp.example.com"
 PROJECT_MEMORY_OAUTH_AUDIENCE="https://mcp.example.com"
-PROJECT_MEMORY_MAGIC_TOKEN="change-me"
 PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS="300"
 PROJECT_MEMORY_ALLOWED_REDIRECT_URIS="https://chatgpt.com/connector/oauth/...,https://claude.ai/api/mcp/auth_callback"
 PROJECT_MEMORY_OAUTH_CLIENT_ID="chatgpt"
@@ -544,7 +571,11 @@ PROJECT_MEMORY_PUBLIC_URL == PROJECT_MEMORY_OAUTH_ISSUER
 
 ## Minimal route examples
 
-These examples are conceptual. Adapt them to the actual framework used by `project-memory`.
+These examples are conceptual and predate the real implementation -- in
+particular the magic-token check below is historical only, see
+"Session-based authorize (SSO)" above for what `/oauth/authorize` actually
+does today (`backend/src/gateway/oauth.ts`). Adapt the rest to the actual
+framework used by `project-memory`.
 
 ### Protected resource metadata
 
