@@ -20,7 +20,7 @@ import {
 import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { isNewSince } from '../../shared/lib/isNewSince';
@@ -102,15 +102,20 @@ function getSelectedKey(pathname: string): string {
   return segs[0] ?? '';
 }
 
-function buildAccountMenuItems(isAdmin: boolean): MenuProps['items'] {
+function buildAccountMenuItems(isAdmin: boolean, pendingApprovals: number): MenuProps['items'] {
   return [
     { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
     { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
-    ...(isAdmin ? [{ key: 'approvals', icon: <TeamOutlined />, label: 'Approvals' }] : []),
+    ...(isAdmin ? [{ key: 'approvals', icon: <TeamOutlined />, label: sectionLabel('Approvals', pendingApprovals) }] : []),
     { type: 'divider' as const },
     { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
   ];
 }
+
+// Admin-only, no realtime hook exists for registrations yet -- a short poll
+// is enough to make "someone is waiting" show up promptly without wiring a
+// new event type through the WS pipe for this one signal.
+const PENDING_APPROVALS_POLL_MS = 20_000;
 
 export function NavigationRail() {
   const navigate = useNavigate();
@@ -121,10 +126,26 @@ export function NavigationRail() {
   const fetchNotificationsSeenAt = useAuthStore((s) => s.fetchNotificationsSeenAt);
   const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+  const fetchPendingUsers = useAuthStore((s) => s.fetchPendingUsers);
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     void fetchNotificationsSeenAt();
   }, [fetchNotificationsSeenAt]);
+
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    const poll = () => {
+      fetchPendingUsers()
+        .then((users) => { if (!cancelled) setPendingApprovals(users.length); })
+        .catch(() => { /* transient — next poll retries */ });
+    };
+    poll();
+    const interval = setInterval(poll, PENDING_APPROVALS_POLL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isAdmin, fetchPendingUsers]);
 
   // T-MEMORY-051: unread badge — a small recent-events window, re-fetched on
   // every realtime version bump the same way the dedicated pages are.
@@ -277,7 +298,7 @@ export function NavigationRail() {
         <Dropdown
           trigger={['click']}
           placement="top"
-          menu={{ items: buildAccountMenuItems(user?.role === 'admin'), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
+          menu={{ items: buildAccountMenuItems(isAdmin, pendingApprovals), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
         >
           <div
             style={{
@@ -290,7 +311,7 @@ export function NavigationRail() {
               background: ['profile', 'notifications', 'approvals'].includes(selectedKey) ? 'rgba(255,255,255,0.08)' : 'transparent',
             }}
           >
-            <Badge count={unreadCount} size="small" overflowCount={99}>
+            <Badge count={unreadCount + pendingApprovals} size="small" overflowCount={99}>
               <Avatar size={24} icon={<UserOutlined />} />
             </Badge>
             <Typography.Text
