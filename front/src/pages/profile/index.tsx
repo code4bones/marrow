@@ -30,7 +30,7 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
-import { type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
+import { type OAuthClient, type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -358,6 +358,121 @@ function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string
  * OAuth SSO rework (D-MEMORY-027) removed that shared magic-token gate
  * entirely in favor of a real per-user login at /oauth/authorize.
  */
+/**
+ * "Which of my chats are actually connected right now" — pulled together
+ * from data already fetched elsewhere on this page (OAuth credential
+ * lastUsedAt, personal-token lastUsedAt), no new backend endpoint needed.
+ * Reported live: after generating a Codex/ChatGPT credential successfully,
+ * there was no single place to see "yes, this is connected" across all
+ * services at once without opening each service's own tab.
+ *
+ * "Revoke" here means deleting/regenerating the underlying credential --
+ * it stops any FUTURE login/token-refresh immediately, but an
+ * already-issued OAuth access token is a self-contained, unrevoked-until-
+ * expiry JWT (30 days) with no server-side session list, so an existing
+ * connection doesn't die instantly. That's an OAuth architecture property,
+ * not a bug here — not worth a bigger token-blocklist feature just for
+ * this.
+ */
+function ConnectedSummary({ personalTokenState }: { personalTokenState: PersonalTokenState }) {
+  const { t } = useTranslation('profile');
+  const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
+  const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
+  const [clients, setClients] = useState<OAuthClient[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () => {
+    fetchOAuthClients().then(setClients).catch(() => setClients([]));
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const findClient = (label: string) => clients?.find((c) => c.label === label) ?? null;
+  const claude = findClient('Claude.ai');
+  const chatgpt = findClient('ChatGPT');
+
+  const revokeOAuth = async (id: string) => {
+    setBusyId(id);
+    try {
+      await deleteOAuthClient(id);
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const rows: {
+    key: string;
+    name: string;
+    connected: boolean;
+    lastUsed: string | null;
+    onRevoke?: () => void;
+    revokeLabel: string;
+    busy?: boolean;
+  }[] = [
+    {
+      key: 'cli',
+      name: t('cliConnectionName'),
+      connected: Boolean(personalTokenState.status?.exists),
+      lastUsed: personalTokenState.status?.lastUsedAt ?? null,
+      onRevoke: () => void personalTokenState.generate(),
+      revokeLabel: t('regenerate'),
+      busy: personalTokenState.busy,
+    },
+    {
+      key: 'claude-web',
+      name: t('claudeWebConnectionName'),
+      connected: Boolean(claude),
+      lastUsed: claude?.lastUsedAt ?? null,
+      onRevoke: claude ? () => void revokeOAuth(claude.id) : undefined,
+      revokeLabel: t('revoke'),
+      busy: claude ? busyId === claude.id : false,
+    },
+    {
+      key: 'chatgpt-web',
+      name: t('chatgptWebConnectionName'),
+      connected: Boolean(chatgpt),
+      lastUsed: chatgpt?.lastUsedAt ?? null,
+      onRevoke: chatgpt ? () => void revokeOAuth(chatgpt.id) : undefined,
+      revokeLabel: t('revoke'),
+      busy: chatgpt ? busyId === chatgpt.id : false,
+    },
+  ];
+
+  return (
+    <Card title={t('connected')} size="small" style={{ marginBottom: 16 }}>
+      {rows.map((row, i) => (
+        <div
+          key={row.key}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 0',
+            borderBottom: i < rows.length - 1 ? '1px solid #303030' : undefined,
+          }}
+        >
+          <div>
+            <Text strong style={{ marginRight: 8 }}>{row.name}</Text>
+            <Tag color={row.connected ? 'green' : 'default'}>{row.connected ? t('connected') : t('notConnectedYet')}</Tag>
+            {row.connected && (
+              <Text type="secondary" style={{ fontSize: 12.5, marginLeft: 8 }}>
+                {t('lastUsed')} <Timestamp value={row.lastUsed} />
+              </Text>
+            )}
+          </div>
+          {row.connected && row.onRevoke && (
+            <Popconfirm title={t('revokeConfirmTitle')} description={t('revokeConfirmDescription')} onConfirm={row.onRevoke}>
+              <Button size="small" danger loading={row.busy}>
+                {row.revokeLabel}
+              </Button>
+            </Popconfirm>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 function ConnectSection() {
   const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
@@ -486,6 +601,8 @@ function ConnectSection() {
 
   return (
     <>
+      <ConnectedSummary personalTokenState={personalTokenState} />
+
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 16 }}>
         {t('connectIntroBefore')} (
         <Text code>{mcpUrl}</Text>) {t('connectIntroAfter')}
