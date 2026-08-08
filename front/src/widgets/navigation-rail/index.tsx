@@ -23,6 +23,7 @@ import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { isNewSince } from '../../shared/lib/isNewSince';
+import { MarrowMark } from '../../shared/ui/MarrowMark';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { Event, Paginated, ProjectCounts, ProjectSummary } from '../../shared/model/types';
 import { useAuthStore } from '../../shared/model/auth.store';
@@ -168,9 +169,12 @@ export function NavigationRail() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Logo */}
       <div style={{ padding: '16px 16px 8px', flexShrink: 0 }}>
-        <Typography.Text strong style={{ fontSize: 13, letterSpacing: 1 }}>
-          MARROW
-        </Typography.Text>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <MarrowMark size={20} />
+          <Typography.Text strong style={{ fontSize: 13, letterSpacing: 1 }}>
+            MARROW
+          </Typography.Text>
+        </div>
         <VersionLine />
       </div>
 
