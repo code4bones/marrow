@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { RealtimeProvider } from '../providers/RealtimeProvider';
+import { ApprovalsPage } from '../../pages/approvals';
 import { ArtifactsPage } from '../../pages/artifacts';
 import { ClaimPage } from '../../pages/claim';
 import { CommonPage } from '../../pages/common';
@@ -86,6 +87,7 @@ export function AppRouter() {
         <Route path="common"        element={<CommonPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="approvals"     element={<ApprovalsPage />} />
       </Route>
     </Routes>
   );

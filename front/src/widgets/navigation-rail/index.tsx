@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
   PartitionOutlined,
   SettingOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -101,12 +102,15 @@ function getSelectedKey(pathname: string): string {
   return segs[0] ?? '';
 }
 
-const ACCOUNT_MENU_ITEMS: MenuProps['items'] = [
-  { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
-  { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
-  { type: 'divider' },
-  { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
-];
+function buildAccountMenuItems(isAdmin: boolean): MenuProps['items'] {
+  return [
+    { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
+    { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
+    ...(isAdmin ? [{ key: 'approvals', icon: <TeamOutlined />, label: 'Approvals' }] : []),
+    { type: 'divider' as const },
+    { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
+  ];
+}
 
 export function NavigationRail() {
   const navigate = useNavigate();
@@ -148,6 +152,7 @@ export function NavigationRail() {
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'profile') { navigate('/profile'); return; }
     if (key === 'notifications') { navigate('/notifications'); return; }
+    if (key === 'approvals') { navigate('/approvals'); return; }
     if (key === 'logout') { void logout(); }
   };
 
@@ -272,7 +277,7 @@ export function NavigationRail() {
         <Dropdown
           trigger={['click']}
           placement="top"
-          menu={{ items: ACCOUNT_MENU_ITEMS, onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
+          menu={{ items: buildAccountMenuItems(user?.role === 'admin'), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
         >
           <div
             style={{
@@ -282,7 +287,7 @@ export function NavigationRail() {
               padding: '6px 8px',
               borderRadius: 6,
               cursor: 'pointer',
-              background: selectedKey === 'profile' || selectedKey === 'notifications' ? 'rgba(255,255,255,0.08)' : 'transparent',
+              background: ['profile', 'notifications', 'approvals'].includes(selectedKey) ? 'rgba(255,255,255,0.08)' : 'transparent',
             }}
           >
             <Badge count={unreadCount} size="small" overflowCount={99}>
