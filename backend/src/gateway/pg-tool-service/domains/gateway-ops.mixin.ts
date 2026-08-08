@@ -234,6 +234,27 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
     };
   }
 
+  // Deliberately DOES expose a real secret value (oauthClientSecret), unlike
+  // gatewayDiagnostics above (whose own security.bearerAuth field only ever
+  // returns a presence boolean, never MCP_TOKEN itself). This tool exists
+  // specifically so a `role=member` user can self-serve their own OAuth
+  // connector setup (MCP URL + client id/secret) from their own profile
+  // page instead of needing an operator to SSH in and read .env -- the
+  // motivating gap for this tool. Safe to do at `read` scope: the OAuth
+  // client_id/secret pair is shared identically across every user of this
+  // instance (it authenticates "this is the pmem connector app", not any
+  // individual), and the real access boundary is the login step OAuth's
+  // authorize flow requires (D-MEMORY-027) -- knowing this pair alone,
+  // without also completing that login, grants nothing.
+  protected async gatewayConnectorInfo() {
+    const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL;
+    return {
+      mcpUrl: publicUrl ? `${publicUrl.replace(/\/$/, "")}/mcp` : null,
+      oauthClientId: process.env.PROJECT_MEMORY_OAUTH_CLIENT_ID ?? null,
+      oauthClientSecret: process.env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET ?? null
+    };
+  }
+
   protected async gatewayBackupManifest() {
     const [version, migrations, artifacts] = await Promise.all([
       this.gatewayVersion(),

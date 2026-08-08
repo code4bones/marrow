@@ -79,6 +79,7 @@ const typeDefs = `#graphql
     gatewayVersion: JSON!
     gatewayStatus: JSON!
     gatewayDiagnostics: JSON!
+    gatewayConnectorInfo: JSON!
     gatewayClients(anonymous: Boolean, staleOlderThanSeconds: Int, limit: Int): [GatewayClient!]!
     gatewayClientsPage(anonymous: Boolean, staleOlderThanSeconds: Int, pagination: PaginationInput): PaginatedGatewayClients!
 
@@ -898,6 +899,8 @@ const resolvers = {
       (await callTool<Row>(context, "gateway.status", {})).status,
     gatewayDiagnostics: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "gateway.diagnostics", {})).diagnostics,
+    gatewayConnectorInfo: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "gateway.connector_info", {})).connectorInfo,
     gatewayClients: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "gateway.clients", cleanInput(args))).clients,
     gatewayClientsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

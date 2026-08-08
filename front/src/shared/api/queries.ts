@@ -302,6 +302,13 @@ export const GET_GATEWAY_VERSION = gql`
   }
 `;
 
+/** Self-serve OAuth connector setup info for the profile Connect section (mcpUrl, oauthClientId, oauthClientSecret). */
+export const GET_GATEWAY_CONNECTOR_INFO = gql`
+  query GetGatewayConnectorInfo {
+    gatewayConnectorInfo
+  }
+`;
+
 export const GET_ARTIFACTS = gql`
   query GetArtifacts($project: String, $limit: Int) {
     artifacts(project: $project, limit: $limit) {

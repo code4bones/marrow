@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Descriptions,
   Empty,
   Form,
@@ -30,6 +31,7 @@ import { type PendingRegistration, type PersonalTokenStatus, useAuthStore } from
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
+  GET_GATEWAY_CONNECTOR_INFO,
   GET_GIT_CREDENTIALS,
   GET_GIT_PIPELINE_STATUS,
 } from '../../shared/api/queries';
@@ -293,18 +295,20 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
 /**
  * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
  * up to this Marrow instance. The point of this section is that a brand-new
- * user can follow it without ever opening the repo's docs/.
+ * user (including one who just joined via a project invite link) can follow
+ * it without ever opening the repo's docs/ or asking an operator to SSH in.
  *
  * The MCP endpoint is derived from API_BASE_URL (same source the app already
  * uses for every /auth/* call — see shared/config/env.ts), so it always
  * reflects the real deployed host instead of a placeholder. The Claude
- * Code / Codex bearer token is now this user's own personal Marrow API token
+ * Code / Codex bearer token is this user's own personal Marrow API token
  * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
- * shared secret — everything in the commands below is real and
- * copy-pasteable as-is once a token has been generated. The OAuth "magic
- * token" for the web-connector paths is still a per-deployment secret only
- * an admin holds (out of scope for this task), so that one stays a
- * fill-in-the-blank placeholder.
+ * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/secret
+ * come from the new gatewayConnectorInfo GraphQL query — a real, deployed
+ * value read live from the server, not a placeholder — replacing what used
+ * to be a "the magic token your admin gave you" instruction from before the
+ * OAuth SSO rework (D-MEMORY-027) removed that shared magic-token gate
+ * entirely in favor of a real per-user login at /oauth/authorize.
  */
 function ConnectSection() {
   const user = useAuthStore((s) => s.user);
@@ -312,6 +316,11 @@ function ConnectSection() {
 
   const [personalToken, setPersonalToken] = useState<string | null>(null);
   const [tokenStatus, setTokenStatus] = useState<PersonalTokenStatus | null>(null);
+
+  const { data: connectorInfoData } = useQuery<{
+    gatewayConnectorInfo: { mcpUrl: string | null; oauthClientId: string | null; oauthClientSecret: string | null };
+  }>(GET_GATEWAY_CONNECTOR_INFO);
+  const connectorInfo = connectorInfoData?.gatewayConnectorInfo;
 
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
@@ -342,8 +351,38 @@ function ConnectSection() {
     '  --bearer-token-env-var MARROW_MCP_TOKEN',
   ].join('\n');
 
-  const claudeWebUrl = urlFor('claude');
-  const chatgptWebUrl = urlFor('chatgpt');
+  // Bare mcpUrl, deliberately WITHOUT the ?client_id=/client_label=/client_kind=
+  // query params urlFor() appends for the CLI paths above: those identify a
+  // static bearer-token connection (Claude Code, Codex) with no login step,
+  // but an OAuth web connector identifies the caller through the real
+  // per-user login /oauth/authorize now requires (D-MEMORY-027) instead —
+  // appending them here would just be inert query noise.
+  const webConnectorUrl = mcpUrl;
+  const connectorIdSecretPanel = (
+    <Collapse
+      size="small"
+      style={{ marginTop: 4 }}
+      items={[
+        {
+          key: 'client-id-secret',
+          label: 'If it also asks for a Client ID / Client Secret',
+          children: connectorInfo ? (
+            <>
+              <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 8 }}>
+                Most connector setups only need the URL above, then log in with your own Marrow account when
+                prompted. A few ask for these too — they identify this Marrow deployment's connector app, not you
+                personally, and are the same for every user here.
+              </Text>
+              <CodeBlock code={`Client ID: ${connectorInfo.oauthClientId ?? '(not configured)'}`} />
+              <CodeBlock code={`Client Secret: ${connectorInfo.oauthClientSecret ?? '(not configured)'}`} />
+            </>
+          ) : (
+            <Spin size="small" />
+          ),
+        },
+      ]}
+    />
+  );
 
   const items = [
     {
@@ -396,12 +435,12 @@ function ConnectSection() {
             <Text strong>Add custom connector</Text>.
           </Step>
           <Step n={2}>Paste this as the connector URL:</Step>
-          <CodeBlock code={claudeWebUrl} />
+          <CodeBlock code={webConnectorUrl} />
+          {connectorIdSecretPanel}
           <Step n={3}>Click Connect — Claude opens Marrow's sign-in page in a new tab.</Step>
           <Step n={4}>
-            Enter the Marrow <Text strong>magic token</Text> your admin gave you (this is a separate one-time login
-            credential for web connectors, not your Marrow account password or the personal API token above), then
-            approve access.
+            Log in with your own Marrow account (email + password, same as this profile) and approve access — this
+            is a real login, not a shared token, so Claude connects as <Text strong>you</Text> specifically.
           </Step>
           <Step n={5}>
             Back in the chat, ask Claude to check pmem — it should call <Text code>gateway.status</Text>.
@@ -418,11 +457,10 @@ function ConnectSection() {
             In ChatGPT go to <Text strong>Settings → Connectors</Text> and choose to create/add a new connector.
           </Step>
           <Step n={2}>Paste this as the connector (MCP server) URL:</Step>
-          <CodeBlock code={chatgptWebUrl} />
+          <CodeBlock code={webConnectorUrl} />
+          {connectorIdSecretPanel}
           <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
-          <Step n={4}>
-            Enter the Marrow <Text strong>magic token</Text> your admin gave you and approve access.
-          </Step>
+          <Step n={4}>Log in with your own Marrow account and approve access.</Step>
           <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call Marrow tools directly.</Step>
         </>
       ),
@@ -433,8 +471,8 @@ function ConnectSection() {
     <Card title="Connect" size="small" style={{ marginBottom: 16 }}>
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
         How to connect this Marrow instance to a coding agent or a web chat. The endpoint below (
-        <Text code>{mcpUrl}</Text>) is this deployment's real address — nothing here is a placeholder except the
-        web-connector magic token, a per-deployment secret only your admin holds.
+        <Text code>{mcpUrl}</Text>) is this deployment's real address — everything here, including the web-connector
+        Client ID/Secret further down, is real and copy-pasteable as-is.
       </Paragraph>
 
       <Text strong style={{ display: 'block', marginBottom: 8 }}>

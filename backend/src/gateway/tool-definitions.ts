@@ -683,6 +683,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: emptySchema
   },
   {
+    name: "gateway.connector_info",
+    description:
+      "Return this deployment's OAuth connector setup info (MCP URL, OAuth client id/secret) so any logged-in user can self-serve connecting their own Claude/ChatGPT connector, without an operator reading .env for them. Unlike gateway.diagnostics, this intentionally includes a real secret value (the OAuth client secret) -- see gatewayConnectorInfo()'s own comment for why that's safe here.",
+    schema: emptySchema
+  },
+  {
     name: "gateway.backup_manifest",
     description:
       "Return the safe backup surface for operators: PostgreSQL identity, required tables, artifact directory, counts, sizes, and migration state without exposing secrets.",
