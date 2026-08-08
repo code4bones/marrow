@@ -553,6 +553,59 @@ export function createAuthFacade(db: Knex) {
     }
   }
 
+  // Full account roster for the admin Users screen -- deliberately excludes
+  // status="pending_approval" rows, which have their own dedicated Approvals
+  // screen/flow (listPendingApprovals above) rather than living here too.
+  async function listUsers(): Promise<
+    { id: string; email: string; role: string; status: string; totpEnabled: boolean; createdAt: Date }[]
+  > {
+    return db("users")
+      .whereIn("status", ["active", "disabled"])
+      .orderBy("created_at")
+      .select("id", "email", "role", "status", "totp_enabled as totpEnabled", "created_at as createdAt");
+  }
+
+  // Refuses to let an admin change their own role/status through this
+  // endpoint (self-lockout is a one-way door on a self-hosted, single-owner
+  // instance -- ask another admin instead) and refuses to demote or disable
+  // the last remaining admin, for the same reason.
+  async function assertNotSelfOrLastAdmin(actingUserId: string, targetUserId: string, targetRole: string): Promise<void> {
+    if (actingUserId === targetUserId) {
+      throw new AppError("VALIDATION_ERROR", "You cannot change your own role or status here — ask another admin.");
+    }
+    if (targetRole === "admin") {
+      const otherAdmins = await db("users")
+        .where({ role: "admin", status: "active" })
+        .whereNot({ id: targetUserId })
+        .first();
+      if (!otherAdmins) {
+        throw new AppError("VALIDATION_ERROR", "This is the last active admin — promote another admin first.");
+      }
+    }
+  }
+
+  async function setUserRole(actingUserId: string, targetUserId: string, role: "admin" | "member"): Promise<void> {
+    const target = await db("users").where({ id: targetUserId }).first();
+    if (!target) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+    if (role !== target.role) {
+      await assertNotSelfOrLastAdmin(actingUserId, targetUserId, target.role);
+    }
+    await db("users").where({ id: targetUserId }).update({ role, updated_at: new Date() });
+  }
+
+  async function setUserStatus(actingUserId: string, targetUserId: string, status: "active" | "disabled"): Promise<void> {
+    const target = await db("users").where({ id: targetUserId }).first();
+    if (!target) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+    if (status !== target.status) {
+      await assertNotSelfOrLastAdmin(actingUserId, targetUserId, target.role);
+    }
+    await db("users").where({ id: targetUserId }).update({ status, updated_at: new Date() });
+  }
+
   // "Bootstrapped" means a usable admin exists — role=admin AND a password
   // actually set. A CLI-created (`pm3m admin create`) admin row with
   // password_hash still null does NOT count: that account can't log in yet,
@@ -927,6 +980,9 @@ export function createAuthFacade(db: Knex) {
     listPendingApprovals,
     approveUser,
     rejectUser,
+    listUsers,
+    setUserRole,
+    setUserStatus,
     requestElevation,
     consumeElevation,
     personalTokenStatus,

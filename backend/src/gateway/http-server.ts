@@ -1235,6 +1235,54 @@ async function handleAuthRoute(
     return true;
   }
 
+  // --- Admin user management (roster of already-onboarded accounts) ---
+
+  if (request.method === "GET" && requestPath === "/auth/admin/users") {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to list users.")));
+      return true;
+    }
+    const result = await auth.listUsers();
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  const roleMatch = requestPath.match(/^\/auth\/admin\/users\/([^/]+)\/role$/);
+  if (request.method === "POST" && roleMatch) {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to change a user's role.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { role?: unknown };
+    if (body.role !== "admin" && body.role !== "member") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "role must be \"admin\" or \"member\".")));
+      return true;
+    }
+    const [, targetUserId] = roleMatch;
+    await auth.setUserRole(sessionAuth.userId, targetUserId, body.role);
+    await service.recordSystemEvent("user.role_changed", `Role changed to ${body.role}`, targetUserId);
+    send(200, { ok: true, data: { id: targetUserId, role: body.role } });
+    return true;
+  }
+
+  const statusMatch = requestPath.match(/^\/auth\/admin\/users\/([^/]+)\/status$/);
+  if (request.method === "POST" && statusMatch) {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to change a user's status.")));
+      return true;
+    }
+    const body = (await readJson(request)) as { status?: unknown };
+    if (body.status !== "active" && body.status !== "disabled") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "status must be \"active\" or \"disabled\".")));
+      return true;
+    }
+    const [, targetUserId] = statusMatch;
+    await auth.setUserStatus(sessionAuth.userId, targetUserId, body.status);
+    await service.recordSystemEvent("user.status_changed", `Status changed to ${body.status}`, targetUserId);
+    send(200, { ok: true, data: { id: targetUserId, status: body.status } });
+    return true;
+  }
+
   return false;
 }
 

@@ -21,6 +21,7 @@ import { ProjectsPage } from '../../pages/projects';
 import { ProjectSettingsPage } from '../../pages/projects/settings';
 import { RegisterPage } from '../../pages/register';
 import { TasksPage } from '../../pages/tasks';
+import { UsersPage } from '../../pages/users';
 import { AppShell } from '../AppShell';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -88,6 +89,7 @@ export function AppRouter() {
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="approvals"     element={<ApprovalsPage />} />
+        <Route path="users"         element={<UsersPage />} />
       </Route>
     </Routes>
   );

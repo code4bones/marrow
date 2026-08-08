@@ -15,6 +15,15 @@ export interface PendingRegistration {
   createdAt: string;
 }
 
+export interface AccountUser {
+  id: string;
+  email: string;
+  role: 'admin' | 'member';
+  status: 'active' | 'disabled';
+  totpEnabled: boolean;
+  createdAt: string;
+}
+
 type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated';
 
 interface RegisterStartResult {
@@ -129,6 +138,10 @@ interface AuthState {
   fetchPendingUsers: () => Promise<PendingRegistration[]>;
   approvePendingUser: (id: string) => Promise<void>;
   rejectPendingUser: (id: string) => Promise<void>;
+
+  fetchUsers: () => Promise<AccountUser[]>;
+  setUserRole: (id: string, role: 'admin' | 'member') => Promise<void>;
+  setUserStatus: (id: string, status: 'active' | 'disabled') => Promise<void>;
 }
 
 async function readJson(response: Response): Promise<{ ok: boolean; data?: unknown; error?: { message?: string } }> {
@@ -393,5 +406,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   rejectPendingUser: async (id) => {
     await postJson(`/auth/admin/pending-users/${id}/reject`, {}, 'Could not reject user.');
+  },
+
+  fetchUsers: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/admin/users`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load users.');
+    }
+    const data = body.data as { users?: AccountUser[] } | AccountUser[] | undefined;
+    if (Array.isArray(data)) {
+      return data;
+    }
+    return data?.users ?? [];
+  },
+
+  setUserRole: async (id, role) => {
+    await postJson(`/auth/admin/users/${id}/role`, { role }, 'Could not change this user’s role.');
+  },
+
+  setUserStatus: async (id, status) => {
+    await postJson(`/auth/admin/users/${id}/status`, { status }, 'Could not change this user’s status.');
   },
 }));

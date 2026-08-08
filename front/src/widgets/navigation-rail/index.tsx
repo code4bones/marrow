@@ -15,6 +15,7 @@ import {
   SettingOutlined,
   TeamOutlined,
   ThunderboltOutlined,
+  UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
@@ -106,7 +107,8 @@ function buildAccountMenuItems(isAdmin: boolean, pendingApprovals: number): Menu
   return [
     { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
     { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
-    ...(isAdmin ? [{ key: 'approvals', icon: <TeamOutlined />, label: sectionLabel('Approvals', pendingApprovals) }] : []),
+    ...(isAdmin ? [{ key: 'approvals', icon: <UserAddOutlined />, label: sectionLabel('Approvals', pendingApprovals) }] : []),
+    ...(isAdmin ? [{ key: 'users', icon: <TeamOutlined />, label: 'Users' }] : []),
     { type: 'divider' as const },
     { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
   ];
@@ -169,6 +171,7 @@ export function NavigationRail() {
     if (key === 'profile') { navigate('/profile'); return; }
     if (key === 'notifications') { navigate('/notifications'); return; }
     if (key === 'approvals') { navigate('/approvals'); return; }
+    if (key === 'users') { navigate('/users'); return; }
     if (key === 'logout') { void logout(); }
   };
 
@@ -303,7 +306,7 @@ export function NavigationRail() {
               padding: '6px 8px',
               borderRadius: 6,
               cursor: 'pointer',
-              background: ['profile', 'notifications', 'approvals'].includes(selectedKey) ? 'rgba(255,255,255,0.08)' : 'transparent',
+              background: ['profile', 'notifications', 'approvals', 'users'].includes(selectedKey) ? 'rgba(255,255,255,0.08)' : 'transparent',
             }}
           >
             <Badge count={unreadCount + pendingApprovals} size="small" overflowCount={99}>
