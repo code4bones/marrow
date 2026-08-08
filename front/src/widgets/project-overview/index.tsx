@@ -6,16 +6,39 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Alert, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
-import { useRealtimeStore } from '../../shared/model/realtime.store';
-import type { Artifact, Decision, Event, ProjectSummary, Task } from '../../shared/model/types';
+import { useAuthStore } from '../../shared/model/auth.store';
+import { PREFIX_MAP, useRealtimeStore, type VersionKey } from '../../shared/model/realtime.store';
+import type { Artifact, Decision, Event, Paginated, ProjectSummary, Task } from '../../shared/model/types';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
+
+// T-MEMORY-051 follow-up: bounded recent-events window backing the
+// per-category "new since last viewed" badges below — same tradeoff as the
+// nav-rail's own UNREAD_WINDOW_SIZE (cheap to poll on every realtime bump,
+// wide enough to be accurate against any realistic notificationsSeenAt).
+const NEW_BADGE_WINDOW_SIZE = 100;
+
+/** First PREFIX_MAP entry whose prefix matches this event's type, or null (e.g. "gitCredential." has no bucket). */
+function categorizeEvent(type: string): VersionKey | null {
+  return PREFIX_MAP.find(([prefix]) => type.startsWith(prefix))?.[1] ?? null;
+}
+
+/** Small count badge next to a Statistic's title — only rendered once there's something new to show. */
+function StatTitle({ label, newCount }: { label: string; newCount: number }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {label}
+      {newCount > 0 && <Badge count={newCount} size="small" overflowCount={99} color="#177ddc" />}
+    </span>
+  );
+}
 
 const taskColumns: ColumnsType<Task> = [
   {
@@ -97,6 +120,17 @@ export function ProjectOverview({ slug }: { slug: string }) {
     refetch,
   );
 
+  // T-MEMORY-051 follow-up: per-category "new since last viewed" badges on
+  // the stats row above — a second, independent query/refetch pair (rather
+  // than folding into the summary query above) since it needs its own
+  // window of raw events to bucket by type prefix, not the summary's counts.
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
+  const { data: newEventsData, refetch: refetchNewEvents } = useQuery<{ eventsPage: Paginated<Event> }>(
+    GET_EVENTS_PAGE,
+    { variables: { project: slug, limit: NEW_BADGE_WINDOW_SIZE, offset: 0 } },
+  );
+  useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchNewEvents);
+
   if (loading) {
     return (
       <div style={{ padding: 24 }}>
@@ -115,6 +149,22 @@ export function ProjectOverview({ slug }: { slug: string }) {
   const s = data!.projectSummary;
   const { counts } = s;
 
+  // T-MEMORY-051 follow-up: bucket the fetched window of recent events by
+  // type prefix (reusing realtime.store's own PREFIX_MAP categorization) and
+  // count how many of each landed after notificationsSeenAt.
+  const newEvents = (newEventsData?.eventsPage.items ?? []).filter((event) => isNewSince(event.createdAt, notificationsSeenAt));
+  const newCategoryCounts = newEvents.reduce<Partial<Record<VersionKey, number>>>((acc, event) => {
+    const category = categorizeEvent(event.type);
+    if (category) acc[category] = (acc[category] ?? 0) + 1;
+    return acc;
+  }, {});
+  const newTaskCount = newCategoryCounts.tasksVersion ?? 0;
+  const newDecisionCount = newCategoryCounts.decisionsVersion ?? 0;
+  const newArtifactCount = newCategoryCounts.artifactsVersion ?? 0;
+  const newMemoryCount = newCategoryCounts.memoryVersion ?? 0;
+  // Every fetched row is itself an event, so the Events stat just counts however many of them are new.
+  const newEventCount = newEvents.length;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Fixed header */}
@@ -129,22 +179,42 @@ export function ProjectOverview({ slug }: { slug: string }) {
         )}
         <Row gutter={24}>
           <Col>
-            <Statistic title="Open Tasks" value={counts.openTasks} prefix={<CalendarOutlined />} valueStyle={{ fontSize: 20 }} />
+            <Statistic
+              title={<StatTitle label="Open Tasks" newCount={newTaskCount} />}
+              value={counts.openTasks}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ fontSize: 20 }}
+            />
           </Col>
           <Col>
-            <Statistic title="All Tasks" value={counts.tasks} valueStyle={{ fontSize: 20 }} />
+            <Statistic title={<StatTitle label="All Tasks" newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
           </Col>
           <Col>
-            <Statistic title="Decisions" value={counts.decisions} prefix={<ApartmentOutlined />} valueStyle={{ fontSize: 20 }} />
+            <Statistic
+              title={<StatTitle label="Decisions" newCount={newDecisionCount} />}
+              value={counts.decisions}
+              prefix={<ApartmentOutlined />}
+              valueStyle={{ fontSize: 20 }}
+            />
           </Col>
           <Col>
-            <Statistic title="Artifacts" value={counts.artifacts} prefix={<DatabaseOutlined />} valueStyle={{ fontSize: 20 }} />
+            <Statistic
+              title={<StatTitle label="Artifacts" newCount={newArtifactCount} />}
+              value={counts.artifacts}
+              prefix={<DatabaseOutlined />}
+              valueStyle={{ fontSize: 20 }}
+            />
           </Col>
           <Col>
-            <Statistic title="Events" value={counts.events} prefix={<ThunderboltOutlined />} valueStyle={{ fontSize: 20 }} />
+            <Statistic
+              title={<StatTitle label="Events" newCount={newEventCount} />}
+              value={counts.events}
+              prefix={<ThunderboltOutlined />}
+              valueStyle={{ fontSize: 20 }}
+            />
           </Col>
           <Col>
-            <Statistic title="Memory" value={counts.items} valueStyle={{ fontSize: 20 }} />
+            <Statistic title={<StatTitle label="Memory" newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
           </Col>
           {counts.openTasks > 0 && (
             <Col>

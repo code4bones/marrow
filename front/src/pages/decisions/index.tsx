@@ -7,10 +7,13 @@ import { ArchiveDecisionButton } from '../../features/decision/ArchiveDecisionBu
 import { DeleteDecisionButton } from '../../features/decision/DeleteDecisionButton';
 import { RecordDecisionDrawer } from '../../features/decision/RecordDecisionDrawer';
 import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Decision, Paginated } from '../../shared/model/types';
+import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -33,6 +36,7 @@ export function DecisionsPage() {
     variables: { project: slug, status: status || undefined, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.decisionsVersion), refetch);
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   const pageInfo = data?.decisionsPage.pageInfo;
 
@@ -41,7 +45,15 @@ export function DecisionsPage() {
       title: 'ID', dataIndex: 'id', width: 160, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
-    { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
+    {
+      title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true,
+      render: (v, row) => (
+        <span>
+          {v}
+          {isNewSince(row.updatedAt ?? row.createdAt, notificationsSeenAt) && <NewTag />}
+        </span>
+      ),
+    },
     { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
     {
       title: 'Tags', dataIndex: 'tags', minWidth: 180,

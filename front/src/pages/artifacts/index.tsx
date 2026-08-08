@@ -7,10 +7,13 @@ import { DeleteArtifactButton } from '../../features/artifact/DeleteArtifactButt
 import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { UpdateArtifactMetaModal } from '../../features/artifact/UpdateArtifactMetaModal';
 import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Artifact, Paginated } from '../../shared/model/types';
+import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -31,6 +34,7 @@ export function ArtifactsPage() {
     variables: { project: slug, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.artifactsVersion), refetch);
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   const pageInfo = data?.artifactsPage.pageInfo;
 
@@ -41,7 +45,12 @@ export function ArtifactsPage() {
     },
     {
       title: 'Path', dataIndex: 'path', minWidth: 220, ellipsis: true,
-      render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+      render: (v, row) => (
+        <span>
+          <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>
+          {isNewSince(row.updatedAt ?? row.createdAt, notificationsSeenAt) && <NewTag />}
+        </span>
+      ),
     },
     { title: 'Title', dataIndex: 'title', minWidth: 180, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     { title: 'Scope', dataIndex: 'scope', width: 80, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },

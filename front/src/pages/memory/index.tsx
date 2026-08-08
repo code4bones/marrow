@@ -7,10 +7,13 @@ import { ArchiveMemoryButton } from '../../features/memory/ArchiveMemoryButton';
 import { CreateMemoryDrawer } from '../../features/memory/CreateMemoryDrawer';
 import { DeleteMemoryButton } from '../../features/memory/DeleteMemoryButton';
 import { GET_MEMORY_ITEMS_PAGE } from '../../shared/api/queries';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { MemoryRecord, Paginated } from '../../shared/model/types';
+import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -36,6 +39,7 @@ export function MemoryPage() {
     variables: { project: slug, type: type || undefined, includeCommon, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.memoryVersion), refetch);
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   const pageInfo = data?.memoryItemsPage.pageInfo;
 
@@ -45,7 +49,15 @@ export function MemoryPage() {
       render: (v) => <RecordLink id={v} />,
     },
     { title: 'Type', dataIndex: 'type', width: 150, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-    { title: 'Title', dataIndex: 'title', minWidth: 240, ellipsis: true },
+    {
+      title: 'Title', dataIndex: 'title', minWidth: 240, ellipsis: true,
+      render: (v, row) => (
+        <span>
+          {v}
+          {isNewSince(row.updatedAt ?? row.createdAt, notificationsSeenAt) && <NewTag />}
+        </span>
+      ),
+    },
     { title: 'Status', dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
     {
       title: 'Excerpt', dataIndex: 'excerpt', minWidth: 260, ellipsis: true,

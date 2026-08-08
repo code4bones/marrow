@@ -22,6 +22,7 @@ import type { MenuProps } from 'antd';
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { Event, Paginated, ProjectCounts, ProjectSummary } from '../../shared/model/types';
 import { useAuthStore } from '../../shared/model/auth.store';
@@ -33,12 +34,6 @@ import { useWorkspaceStore } from '../../shared/model/workspace.store';
 // against any realistic notifications_seen_at, and keeps this query cheap
 // since it polls on every realtime version bump.
 const UNREAD_WINDOW_SIZE = 50;
-
-/** null seenAt means "never viewed" — everything counts as unread; an event with no createdAt (defensive — the gateway always sets one) counts as unread too. */
-function isUnreadEvent(createdAt: string | null, notificationsSeenAt: string | null): boolean {
-  if (!createdAt) return true;
-  return notificationsSeenAt === null || new Date(createdAt) > new Date(notificationsSeenAt);
-}
 
 interface GatewayVersionData {
   gatewayVersion: { packageVersion?: string } | null;
@@ -134,7 +129,7 @@ export function NavigationRail() {
   );
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchUnreadEvents);
   const unreadCount = (unreadEventsData?.eventsPage.items ?? []).filter((event) =>
-    isUnreadEvent(event.createdAt, notificationsSeenAt),
+    isNewSince(event.createdAt, notificationsSeenAt),
   ).length;
 
   const { data: summaryData, refetch: refetchSummary } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {

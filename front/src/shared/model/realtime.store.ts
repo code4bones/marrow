@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type VersionKey =
+export type VersionKey =
   | 'tasksVersion'
   | 'decisionsVersion'
   | 'projectsVersion'
@@ -14,8 +14,13 @@ interface RealtimeState extends Record<VersionKey, number> {
   handleGatewayEvent: (event: string, payload: unknown) => void;
 }
 
-/** Ordered [prefix, storeKey] pairs — checked with startsWith(), first match wins. */
-const PREFIX_MAP: Array<[string, VersionKey]> = [
+/**
+ * Ordered [prefix, storeKey] pairs — checked with startsWith(), first match wins.
+ * Exported (T-MEMORY-051 follow-up) so the Overview widget can bucket its own
+ * recent-events fetch into the same categories this store already tracks, for
+ * the per-category "new since last viewed" badges.
+ */
+export const PREFIX_MAP: Array<[string, VersionKey]> = [
   ['task.', 'tasksVersion'],
   ['decision.', 'decisionsVersion'],
   ['project.', 'projectsVersion'],

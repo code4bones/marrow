@@ -7,10 +7,13 @@ import { CreateTaskDrawer } from '../../features/task/CreateTaskDrawer';
 import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { GET_TASKS_PAGE } from '../../shared/api/queries';
+import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Paginated, Task } from '../../shared/model/types';
+import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -52,6 +55,7 @@ export function TasksPage() {
     skip: !slug,
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
+  const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   if (!slug) {
     return (
@@ -69,7 +73,15 @@ export function TasksPage() {
       title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
-    { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
+    {
+      title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true,
+      render: (v, row) => (
+        <span>
+          {v}
+          {isNewSince(row.updatedAt ?? row.createdAt, notificationsSeenAt) && <NewTag />}
+        </span>
+      ),
+    },
     {
       title: 'Status', dataIndex: 'status', width: 120,
       render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
