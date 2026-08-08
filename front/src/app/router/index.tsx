@@ -12,6 +12,7 @@ import { FaultsPage } from '../../pages/faults';
 import { LinksPage } from '../../pages/links';
 import { LoginPage } from '../../pages/login';
 import { MemoryPage } from '../../pages/memory';
+import { OAuthAuthorizePage } from '../../pages/oauth-authorize';
 import { ProfilePage } from '../../pages/profile';
 import { ProjectsPage } from '../../pages/projects';
 import { RegisterPage } from '../../pages/register';
@@ -52,6 +53,7 @@ export function AppRouter() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/claim" element={<ClaimPage />} />
+      <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
       <Route
         path="/"
         element={
