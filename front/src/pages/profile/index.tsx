@@ -546,17 +546,15 @@ function ConnectSection() {
           </Step>
           <Step n={2}>{t('pasteAsConnectorUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
-          <Step n={3}>{t('clickConnectClaude')}</Step>
-          <Step n={4}>
+          <Step n={3}>{t('clientIdSecretClaude')}</Step>
+          <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} />
+          <Step n={4}>{t('clickConnectClaude')}</Step>
+          <Step n={5}>
             {t('logInApproveAccessClaude')} <Text strong>{t('you')}</Text> {t('specifically')}
           </Step>
-          <Step n={5}>
+          <Step n={6}>
             {t('backInChatAskClaude')} <Text code>gateway.status</Text>.
           </Step>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
-            {t('clientIdSecretClaude')}
-          </Text>
-          <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} />
         </>
       ),
     },
@@ -587,13 +585,11 @@ function ConnectSection() {
           </Step>
           <Step n={2}>{t('pasteAsConnectorMcpUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
-          <Step n={3}>{t('clickConnectChatGpt')}</Step>
-          <Step n={4}>{t('logInApproveAccess')}</Step>
-          <Step n={5}>{t('askChatGptToUseTools')}</Step>
-          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
-            {t('clientIdSecretChatGpt')}
-          </Text>
+          <Step n={3}>{t('clientIdSecretChatGpt')}</Step>
           <OAuthClientPanel fixedLabel="ChatGPT" />
+          <Step n={4}>{t('clickConnectChatGpt')}</Step>
+          <Step n={5}>{t('logInApproveAccess')}</Step>
+          <Step n={6}>{t('askChatGptToUseTools')}</Step>
         </>
       ),
     },
