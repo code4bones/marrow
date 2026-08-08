@@ -1330,23 +1330,26 @@ function requestContext(
       kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
       userAgent: headerString(request, "user-agent")
     },
-    sessionUserId: identity?.userId,
-    sessionRole: identity?.role,
-    // Distinguishes a real browser session from a personal-token bearer for
-    // the one consumer that must NOT treat them alike: git-credential
-    // management (create/delete) in pg-tool-service.ts, which stays
-    // deliberately browser-session-only -- see requireSessionUserId() there.
-    // Every other consumer of sessionUserId/sessionRole (scope-tier
-    // resolution, project-membership filtering, git-credential *reads*)
-    // does not care about this field and treats both sources the same.
-    sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : undefined,
-    // T-MEMORY-0xx SSO: deliberately separate from sessionUserId/sessionRole
-    // above, which drive project-membership filtering and git-credential
-    // ownership -- neither of those behaviors is in scope for this task, so
-    // an OAuth-sourced request does NOT populate sessionUserId/sessionRole
-    // (it keeps being treated like before for those two concerns). This
-    // narrower field exists solely so touchClient() (base.ts) can attribute
-    // a gateway_clients row to the real human behind an OAuth connector.
+    // T-MEMORY-052: falls back to the resolved OAuth owner when there's no
+    // session/personal-token identity, so project-membership filtering
+    // (assertProjectMember, applyProjectMembershipFilter, eventsPage's
+    // T-MEMORY-051 filter) treats a role=member user identically whether
+    // they're connected via browser, personal token, or an OAuth client --
+    // closing the gap where the same user's OAuth connector saw every
+    // project system-wide instead of just their own memberships. Safe to
+    // widen this way: the one consumer that must NOT treat an OAuth-derived
+    // identity like a real session -- git-credential management's
+    // requireSessionUserId() -- checks sessionSource === "cookie"
+    // specifically, not just sessionUserId presence, and "oauth" below never
+    // satisfies that.
+    sessionUserId: identity?.userId ?? oauthOwner?.userId,
+    sessionRole: identity?.role ?? oauthOwner?.role,
+    sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : oauthOwner ? "oauth" : undefined,
+    // The real Marrow user behind an OAuth-sourced request specifically --
+    // kept as its own field (distinct from sessionUserId above, even though
+    // sessionUserId now also carries it) because touchClient() (base.ts)
+    // wants "was this OAuth" for gateway_clients attribution, not just "do
+    // we know who this is".
     ownerUserId: oauthOwner?.userId
   };
 }

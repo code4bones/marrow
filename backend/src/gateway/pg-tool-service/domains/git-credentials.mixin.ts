@@ -9,13 +9,22 @@ import { type Constructor, BaseService } from "../base.js";
 export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base: TBase) {
   return class extends Base {
   // T-MEMORY-044: git host credentials + the pipeline-status proxy. Static
-  // token, OAuth, and anonymous callers never populate sessionUserId
+  // token and anonymous callers never populate sessionUserId
   // (normalizeContext() below) at all. A personal-API-token bearer
   // (T-MEMORY-047) DOES populate sessionUserId/sessionRole, same as a real
   // browser session -- but management (create/delete, immediately below)
   // additionally requires sessionSource === "cookie", so a personal token
   // still can't manage credentials even though it resolves an owner id; see
   // requireSessionUserId's own comment for why that extra check exists.
+  // Since T-MEMORY-052, an OAuth connector's real identity ALSO populates
+  // sessionUserId/sessionRole (for project-membership filtering) -- but a
+  // git credential can only ever have been created through the trusted
+  // browser UI (sessionSource === "cookie"), so an OAuth-authenticated
+  // member who has never opened their profile page in a browser has no
+  // credential of their own to read; resolveGitCredentialReader below
+  // deliberately keeps treating OAuth like "no resolved reader" (falls back
+  // to the admin) rather than like a cookie/personal-token session, even
+  // though sessionUserId is technically set for it now.
   //
   // Managing the credential itself (create/delete, where a raw secret is
   // typed in or destroyed) stays session-only -- a token should only ever
@@ -28,12 +37,12 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   // building this was so an agent (Claude Code, an OAuth connector) could
   // check CI status through PMem instead of the operator SSH-ing in and
   // grepping journalctl by hand. So for the read paths, a caller with no
-  // resolved sessionUserId at all (static token, OAuth, no auth configured)
-  // falls back to the instance's primary admin -- same "earliest-created
-  // admin" resolution already used for the static token's own
-  // owner_user_id in ensureStaticTokenCredential (T-MEMORY-029). A browser
-  // session's or personal token's own user id always takes precedence when
-  // present.
+  // cookie/personal-token identity (static token, OAuth, no auth
+  // configured) falls back to the instance's primary admin -- same
+  // "earliest-created admin" resolution already used for the static
+  // token's own owner_user_id in ensureStaticTokenCredential
+  // (T-MEMORY-029). A browser session's or personal token's own user id
+  // always takes precedence when present.
   protected requireSessionUserId(context: NormalizedGatewayRequestContext): string {
     // T-MEMORY-047: deliberately checks sessionSource, not just
     // sessionUserId -- a personal-API-token bearer also populates
@@ -54,7 +63,11 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   }
 
   protected async resolveGitCredentialReader(context: NormalizedGatewayRequestContext): Promise<string> {
-    if (context.sessionUserId) {
+    // T-MEMORY-052: sessionSource, not just sessionUserId presence -- an
+    // OAuth connector's resolved identity must still fall through to the
+    // admin fallback below, same as before that task widened sessionUserId
+    // to also cover OAuth for project-membership purposes.
+    if (context.sessionUserId && context.sessionSource !== "oauth") {
       return context.sessionUserId;
     }
     const owner = await this.db("users").select("id").where({ role: "admin" }).orderBy("created_at", "asc").first();

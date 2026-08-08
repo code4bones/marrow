@@ -94,8 +94,12 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   }
 
   // Centralized project-membership gate (D-MEMORY-007 decision 3): only a
-  // role=member session is ever filtered. Admin sessions and every
-  // non-session auth source (static token, OAuth, anonymous/none) bypass
+  // caller who actually resolves to role=member is ever filtered -- which,
+  // since T-MEMORY-052, includes a role=member user connecting over an
+  // OAuth-authenticated client, not just a session cookie or personal token
+  // (context.sessionRole/sessionUserId fall back to the OAuth owner's real
+  // role in requestContext(), http-server.ts). Admin callers and every
+  // identity-less auth source (static token, anonymous/none) still bypass
   // this entirely and see every project, unchanged from pre-T-MEMORY-029
   // behavior. A member without a project_members row gets the same
   // PROJECT_NOT_FOUND a nonexistent project would produce -- existence is

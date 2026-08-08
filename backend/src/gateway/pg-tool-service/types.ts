@@ -21,31 +21,36 @@ export interface GatewayRequestContext {
   clientId?: string;
   clientLabel?: string;
   metadata?: Row;
-  // Threaded from the session cookie (if any) so project-membership
-  // filtering (D-MEMORY-007 / T-MEMORY-029) can tell a role=member session
-  // apart from an admin session, a static-token/OAuth/anonymous caller, none
-  // of which are ever membership-filtered. Absent for every non-session auth
-  // source.
+  // Threaded from the session cookie, personal token, OR (T-MEMORY-052) a
+  // real OAuth-authenticated identity, so project-membership filtering
+  // (D-MEMORY-007 / T-MEMORY-029) can tell a role=member caller apart from
+  // an admin caller. Only a static-token/anonymous caller (never
+  // membership-filtered by design) leaves this absent. T-MEMORY-052 closed a
+  // gap where a role=member user connecting over an OAuth-authenticated
+  // client (now role-derived since D-MEMORY-027's SSO work) bypassed
+  // project_members filtering entirely -- the same user's session or
+  // personal token was correctly filtered, but their OAuth connector wasn't,
+  // because this field used to stay unset for OAuth on purpose.
   sessionUserId?: string;
   sessionRole?: string;
-  // T-MEMORY-047: distinguishes a real browser session (cookie) from a
-  // personal-API-token bearer -- both populate sessionUserId/sessionRole
-  // identically (scope-tier resolution and project-membership filtering
-  // treat them the same), but git-credential *management*
-  // (create/delete, see requireSessionUserId below) stays deliberately
-  // browser-session-only, so it checks this field too. Absent for every
-  // non-session, non-personal-token auth source (static token, OAuth,
-  // anonymous), same as sessionUserId/sessionRole above.
-  sessionSource?: "cookie" | "personal_token";
-  // T-MEMORY-0xx SSO: the real Marrow user behind an OAuth-sourced request,
-  // resolved fresh from the bearer's JWT `sub` on every request (see
-  // resolveOAuthOwner in http-server.ts). Deliberately NOT folded into
-  // sessionUserId/sessionRole above -- those two drive project-membership
-  // filtering and git-credential ownership, neither of which changes for
-  // OAuth callers as part of this task. Consumed solely by touchClient()
-  // (base.ts) to attribute a gateway_clients row to its real owner, the
-  // same way ensureStaticTokenCredential() already does for the static
-  // MCP_TOKEN. Absent for every non-OAuth auth source.
+  // T-MEMORY-047 / T-MEMORY-052: distinguishes *how* sessionUserId/sessionRole
+  // were resolved. Only one consumer cares about the distinction:
+  // git-credential *management* (create/delete, see requireSessionUserId
+  // below) stays deliberately browser-session-only, so it checks this field
+  // is exactly "cookie" -- a personal token or an OAuth connector resolving
+  // the same user's real identity still can't mint/destroy a raw credential.
+  // Every other consumer (scope-tier resolution, project-membership
+  // filtering, git-credential *reads*) treats all three sources alike and
+  // ignores this field. Absent only for static-token/anonymous callers.
+  sessionSource?: "cookie" | "personal_token" | "oauth";
+  // The real Marrow user behind an OAuth-sourced request, resolved fresh
+  // from the bearer's JWT `sub` on every request (see resolveOAuthOwner in
+  // http-server.ts). Since T-MEMORY-052 this is also the source
+  // sessionUserId/sessionRole fall back to for an OAuth caller (see
+  // requestContext() in http-server.ts) -- kept as its own field too because
+  // touchClient() (base.ts) specifically wants "was this OAuth" for
+  // gateway_clients attribution, not just "do we know who this is".
+  // Absent for every non-OAuth auth source.
   ownerUserId?: string;
 }
 
@@ -55,7 +60,7 @@ export interface NormalizedGatewayRequestContext {
   metadata: Row;
   sessionUserId: string | null;
   sessionRole: string | null;
-  sessionSource: "cookie" | "personal_token" | null;
+  sessionSource: "cookie" | "personal_token" | "oauth" | null;
   ownerUserId: string | null;
 }
 

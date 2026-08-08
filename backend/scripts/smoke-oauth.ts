@@ -317,6 +317,26 @@ try {
   assert(projectAStillThere, "Project must survive a denied member-OAuth project.delete attempt.");
   console.log("ok - a member-role user's OAuth token gets INSUFFICIENT_SCOPE on an admin-tier tool (project.delete), no elevation involved");
 
+  // --- T-MEMORY-052: project-membership filtering must treat an OAuth
+  // connector's real identity the same as that user's session/personal
+  // token, not bypass it -- regression case for the gap where sessionRole
+  // was never populated for OAuth, so a role=member caller's project.list
+  // saw every project system-wide instead of just their own memberships.
+  await db("project_members").insert({ project_id: projectIdForMemberDenial, user_id: memberUserId, created_at: new Date() });
+  const memberProjectList = await callTool("project.list", {}, oauthHeaders(memberAccessToken));
+  const memberVisibleIds = (readNestedArray(memberProjectList.json, ["data", "projects"]) as Array<Record<string, unknown>>).map(
+    (project) => project.id
+  );
+  assert(
+    memberVisibleIds.includes(projectIdForMemberDenial),
+    "Member OAuth token's project.list should include the project they're a member of."
+  );
+  assert(
+    !memberVisibleIds.includes(projectIdForAdminDelete),
+    "Member OAuth token's project.list must NOT include a project they were never added to -- T-MEMORY-052 regression."
+  );
+  console.log("ok - a member-role user's OAuth token is project-membership-filtered on project.list, exactly like their session/personal token (T-MEMORY-052)");
+
   // cascade:true -- project.create itself records a project.created event,
   // so a freshly created project already has one dependent row.
   const adminDelete = await callTool("project.delete", { id: projectIdForAdminDelete, cascade: true }, oauthHeaders(adminAccessToken));
