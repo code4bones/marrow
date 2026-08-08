@@ -112,6 +112,13 @@ const projectDeleteSchema = projectLookupSchema.extend({
   cascade: z.boolean().optional(),
   reason: z.string().optional()
 });
+const updateProjectSchema = projectLookupSchema.extend({
+  title: z.string().min(1).optional(),
+  description: z.string().optional()
+});
+const projectInviteClaimSchema = z.object({
+  code: z.string().min(1)
+});
 const projectSummarySchema = z.object({
   project: z.string().nullable().optional(),
   query: z.string().min(1).optional(),
@@ -735,6 +742,37 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "project.get",
     description: "Get a shared project by id or slug.",
     schema: projectLookupSchema
+  },
+  {
+    name: "project.update",
+    description:
+      "Rename a shared project (title/description). Any current project member (or admin) can rename -- there is no separate per-project owner concept.",
+    schema: updateProjectSchema,
+    access: "write"
+  },
+  {
+    name: "project.invite_link_get",
+    description:
+      "Get this project's reusable invite link, lazily creating it on first request. Any current project member (or admin) can share it -- opening the link and joining adds the project to whoever opens it.",
+    schema: projectLookupSchema,
+    outputSchema: output(z.object({ code: z.string(), url: z.string() })),
+    access: "write"
+  },
+  {
+    name: "project.invite_link_regenerate",
+    description:
+      "Replace this project's invite link with a new code, invalidating the old one immediately (like regenerating a Slack workspace invite link, not a single-use token).",
+    schema: projectLookupSchema,
+    outputSchema: output(z.object({ code: z.string(), url: z.string() })),
+    access: "write"
+  },
+  {
+    name: "project.invite_claim",
+    description:
+      "Join a project by its invite code. Requires a logged-in session or personal API token; idempotent -- claiming an already-joined project is a no-op, not an error.",
+    schema: projectInviteClaimSchema,
+    outputSchema: output(z.object({ project: looseRecordSchema, joined: z.boolean() })),
+    access: "write"
   },
   {
     name: "project.delete",

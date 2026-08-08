@@ -1,13 +1,22 @@
 import type { Knex } from "knex";
+import { randomBytes, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { createProjectId } from "../../../shared/ids/id.service.js";
 import { artifactAbsolutePath } from "../formatters/artifacts.js";
 import { currentProjectKey, stringOrNull, writeActorFields } from "../formatters/common.js";
-import { compactProject, projectOut, scoreProjectCandidate } from "../formatters/projects.js";
+import { compactProject, projectInviteLinkOut, projectOut, scoreProjectCandidate } from "../formatters/projects.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
+
+// Project sharing: URL-safe random invite codes -- same base64url shape as
+// oauth.ts's randomToken()/base64url() (24 raw bytes, base64url-encoded, no
+// padding), reimplemented here as a small local equivalent since those two
+// helpers are private to oauth.ts.
+function randomInviteCode(): string {
+  return randomBytes(24).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
 
 export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: TBase) {
   return class extends Base {
@@ -62,6 +71,25 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.", { ...input });
     }
     await this.assertProjectMember(String(row.id), context);
+    return projectOut(row);
+  }
+
+  // Any current project member (or an admin, which always bypasses the
+  // membership gate) can rename -- no separate per-project "owner" concept
+  // exists or is introduced here, per the owner's explicit decision. Reuses
+  // getProject()'s existing membership gate rather than duplicating it, so
+  // a role=member session with no project_members row gets the exact same
+  // PROJECT_NOT_FOUND every other project tool already gives it.
+  protected async updateProject(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.getProject(input, context);
+    const patch: Row = { updated_at: nowIso(), updated_by: context.clientId };
+    if (typeof input.title === "string") {
+      patch.title = input.title;
+    }
+    if (input.description !== undefined) {
+      patch.description = stringOrNull(input.description);
+    }
+    const [row] = await this.db("projects").where({ id: project.id }).update(patch).returning("*");
     return projectOut(row);
   }
 
@@ -161,6 +189,119 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
         currentProjectKeys
       }
     };
+  }
+
+  // Project sharing: reusable, per-project invite link. One row per
+  // project (unique on project_id, migrations/pg/014), get-or-create
+  // semantics -- the first request for a project's link lazily creates it,
+  // same "lazy generation on first visit" precedent as personal API tokens
+  // (T-MEMORY-047). Same membership gate as updateProject above (reused via
+  // getProject, not duplicated): any current member (or admin) can invite
+  // others, per the owner's explicit decision.
+  protected async getOrCreateProjectInviteLink(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.getProject(input, context);
+    const existing = await this.db("project_invite_links").where({ project_id: project.id }).first();
+    const row = existing ?? (await this.createProjectInviteLinkRow(project.id, context));
+    return projectInviteLinkOut(row);
+  }
+
+  // Reusable and stable per project, like a Slack workspace invite link --
+  // NOT single-use (owner's explicit decision, see this task's plan).
+  // Regenerating replaces the code in place; the old code stops resolving
+  // immediately (claimProjectInviteLink looks it up by exact match).
+  protected async regenerateProjectInviteLink(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.getProject(input, context);
+    const code = randomInviteCode();
+    const updatedRows = await this.db("project_invite_links")
+      .where({ project_id: project.id })
+      .update({ code, updated_at: nowIso() })
+      .returning("*");
+    const row = updatedRows[0] ?? (await this.createProjectInviteLinkRow(project.id, context, code));
+    return projectInviteLinkOut(row);
+  }
+
+  protected async createProjectInviteLinkRow(
+    projectId: string,
+    context: NormalizedGatewayRequestContext,
+    code: string = randomInviteCode()
+  ): Promise<Row> {
+    const now = nowIso();
+    const row = {
+      id: randomUUID(),
+      project_id: projectId,
+      code,
+      created_by: context.sessionUserId,
+      created_at: now,
+      updated_at: now
+    };
+    await this.db("project_invite_links").insert(row);
+    return row;
+  }
+
+  // UNAUTHENTICATED lookup for the invite-landing page (wired as a
+  // dedicated REST route in http-server.ts, GET /project-invites/:code --
+  // same "no scope/session gate at all" shape as GET /auth/claim, not a
+  // GraphQL query, since the GraphQL/MCP request pipelines both always run
+  // through the memory:read scope check first and this must work for a
+  // fully anonymous visitor). Deliberately returns only {projectTitle,
+  // projectSlug} -- safe to expose with no auth at all, since any current
+  // project member could already just tell someone the project's name; does
+  // NOT confirm anything about the code beyond "this project exists and has
+  // this title", never project internals.
+  protected async resolveProjectInviteContext(code: string): Promise<{ projectTitle: string; projectSlug: string }> {
+    const linkRow = await this.db("project_invite_links").where({ code }).first();
+    if (!linkRow) {
+      throw new AppError("NOT_FOUND", "This invite link is no longer valid.", { code });
+    }
+    const projectRow = await this.db("projects").where({ id: linkRow.project_id }).first();
+    if (!projectRow) {
+      throw new AppError("NOT_FOUND", "This invite link is no longer valid.", { code });
+    }
+    return { projectTitle: String(projectRow.title), projectSlug: String(projectRow.slug) };
+  }
+
+  // Joining a project via its invite link requires a real user identity --
+  // context.sessionUserId, populated for both a browser session AND a
+  // personal API token bearer (see NormalizedGatewayRequestContext's own
+  // comment), deliberately NOT the narrower requireSessionUserId used by
+  // git-credential management (that one additionally requires
+  // sessionSource === "cookie" for a different reason -- a raw secret only
+  // ever entering/leaving through the trusted browser UI -- which doesn't
+  // apply here). A static token, OAuth connector, or anonymous caller never
+  // populates sessionUserId, so it gets a clear, fail-closed error instead
+  // of silently doing nothing or joining nobody.
+  protected async claimProjectInviteLink(input: Row, context: NormalizedGatewayRequestContext) {
+    if (!context.sessionUserId) {
+      throw new AppError(
+        "UNAUTHORIZED",
+        "Joining a project requires a logged-in session or personal API token (no static token, OAuth connector, or anonymous caller can join a project this way)."
+      );
+    }
+    const code = String(input.code);
+    const linkRow = await this.db("project_invite_links").where({ code }).first();
+    if (!linkRow) {
+      throw new AppError("PROJECT_INVITE_NOT_FOUND", "This invite link is no longer valid.", { code });
+    }
+    const projectRow = await this.db("projects").where({ id: linkRow.project_id }).first();
+    if (!projectRow) {
+      throw new AppError("PROJECT_INVITE_NOT_FOUND", "This invite link is no longer valid.", { code });
+    }
+    // Idempotent: re-claiming an already-joined project is a friendly
+    // no-op, not an error (this task's explicit acceptance criteria).
+    const alreadyMember = await this.isMemberOfProject(String(projectRow.id), context.sessionUserId);
+    if (!alreadyMember) {
+      await this.db("project_members").insert({
+        project_id: projectRow.id,
+        user_id: context.sessionUserId,
+        created_at: nowIso()
+      });
+      await this.recordEventForProject(String(projectRow.id), {
+        type: "project.member_joined",
+        title: `Project joined via invite link: ${String(projectRow.title)}`,
+        related_id: String(projectRow.id)
+      }, context);
+    }
+    return { project: projectOut(projectRow), joined: !alreadyMember };
   }
 
   protected async resolveProjectCandidates(input: Row, context?: NormalizedGatewayRequestContext) {

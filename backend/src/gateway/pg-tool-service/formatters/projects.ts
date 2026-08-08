@@ -26,6 +26,34 @@ export function projectOut(row: Row) {
   };
 }
 
+// Project sharing (invite links): the frontend is always served from the
+// same origin as this gateway's own publicUrl, root path instead of the API
+// prefix -- same reasoning/deployment shape as oauth.ts's frontendOrigin()
+// helper (added for the OAuth SSO feature), reimplemented here as a small
+// standalone equivalent since PgToolService has no OAuthConfig to read from.
+// Falls back to a relative path when PROJECT_MEMORY_PUBLIC_URL isn't set
+// (e.g. local/dev without the OAuth facade configured) -- still a usable,
+// copy/pasteable link relative to wherever the gateway is being browsed.
+export function projectInviteLinkUrl(code: string): string {
+  const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL;
+  if (!publicUrl) {
+    return `/invite/${code}`;
+  }
+  try {
+    return new URL(`/invite/${code}`, new URL(publicUrl).origin).toString();
+  } catch {
+    return `/invite/${code}`;
+  }
+}
+
+export function projectInviteLinkOut(row: Row) {
+  const code = String(row.code);
+  return {
+    code,
+    url: projectInviteLinkUrl(code)
+  };
+}
+
 
 export function scoreProjectCandidate(row: Row, input: Row) {
   let score = 0;

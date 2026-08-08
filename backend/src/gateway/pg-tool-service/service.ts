@@ -112,6 +112,14 @@ export class PgToolService extends ComposedService {
           return ok("Projects listed.", { projects: await this.listProjects(parsed, requestContext) });
         case "project.get":
           return ok("Project loaded.", { project: await this.getProject(parsed, requestContext) });
+        case "project.update":
+          return ok("Project updated.", { project: await this.updateProject(parsed, requestContext) });
+        case "project.invite_link_get":
+          return ok("Project invite link loaded.", await this.getOrCreateProjectInviteLink(parsed, requestContext));
+        case "project.invite_link_regenerate":
+          return ok("Project invite link regenerated.", await this.regenerateProjectInviteLink(parsed, requestContext));
+        case "project.invite_claim":
+          return ok("Project joined.", await this.claimProjectInviteLink(parsed, requestContext));
         case "project.delete":
           return ok("Project deleted.", await this.deleteProject(parsed));
         case "project.resolve":
@@ -307,6 +315,14 @@ export class PgToolService extends ComposedService {
 
   async close(): Promise<void> {
     await this.db.destroy();
+  }
+
+  // Unauthenticated invite-landing lookup (GET /project-invites/:code in
+  // http-server.ts) -- deliberately bypasses call()'s scope/session
+  // machinery entirely, same as artifactDownload below, since this must
+  // work for a fully anonymous visitor who hasn't logged in yet.
+  async projectInviteContext(code: string): Promise<{ projectTitle: string; projectSlug: string }> {
+    return this.resolveProjectInviteContext(code);
   }
 
   async artifactDownload(id: string): Promise<ArtifactDownload> {
