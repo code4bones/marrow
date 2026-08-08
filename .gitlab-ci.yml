@@ -82,6 +82,18 @@ backend:deploy:
       -v "$DEPLOY_ARTIFACT_DIR:/app/.artifacts"
       -v "$DEPLOY_LOG_DIR:/app/logs"
       "$BACKEND_CONTAINER_NAME:$CI_COMMIT_TAG"
+    # T-MEMORY-046: keep only the 3 most recent backend-vX.Y.Z images.
+    # Rollback beyond that is a git tag + rebuild, not a kept image, so
+    # older tags are pure disk cost. Never touches the image the
+    # just-started container is running (it's always among the newest 3).
+    # See docs/DEPLOY_CLEANUP.md.
+    - >
+      docker images "$BACKEND_CONTAINER_NAME" --format '{{.Tag}}'
+      | grep -E '^backend-v'
+      | sort -rV
+      | tail -n +4
+      | xargs -r -I{} docker rmi "$BACKEND_CONTAINER_NAME:{}"
+    - docker builder prune -af
 
 # --- front/ (PMemUI) ---
 
@@ -119,6 +131,10 @@ front:deploy:
     - test -d front/dist && [ "$(ls -A front/dist)" ]
     - mkdir -p "$FRONT_DEPLOY_PATH"
     - rsync -a --omit-dir-times --delete front/dist/ "$FRONT_DEPLOY_PATH/"
+    # T-MEMORY-046: both runners share one docker daemon/build cache on the
+    # deploy host, so pruning here also clears what front:build produced.
+    # See docs/DEPLOY_CLEANUP.md.
+    - docker builder prune -af
   environment:
     name: production
     url: "https://$PROD_DOMAIN"
