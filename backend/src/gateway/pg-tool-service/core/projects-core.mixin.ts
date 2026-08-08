@@ -11,7 +11,7 @@ import { type Constructor, BaseService } from "../base.js";
 
 export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: TBase) {
   return class extends Base {
-  private async createProject(input: Row, context: NormalizedGatewayRequestContext) {
+  protected async createProject(input: Row, context: NormalizedGatewayRequestContext) {
     const now = nowIso();
     const baseId = createProjectId(String(input.slug));
     const id = await this.uniqueProjectId(baseId);
@@ -36,7 +36,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return projectOut(row);
   }
 
-  private async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
+  protected async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
     let query = this.db("projects").select("*").orderBy("slug");
     if (input.status) {
       query = query.where("status", String(input.status));
@@ -45,7 +45,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return (await query).map(input.compact === true ? compactProject : projectOut);
   }
 
-  private async projectsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+  protected async projectsPage(input: Row, context?: NormalizedGatewayRequestContext) {
     const base = this.db("projects");
     if (input.status) {
       base.where("status", String(input.status));
@@ -54,7 +54,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.pageRows(base, input, (query) => query.select("*").orderBy("slug"), projectOut);
   }
 
-  private async getProject(input: Row, context?: NormalizedGatewayRequestContext) {
+  protected async getProject(input: Row, context?: NormalizedGatewayRequestContext) {
     const row = input.id
       ? await this.db("projects").where({ id: String(input.id) }).first()
       : await this.db("projects").where({ slug: String(input.slug) }).first();
@@ -73,7 +73,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // PROJECT_NOT_FOUND a nonexistent project would produce -- existence is
   // never leaked, matching this codebase's other don't-distinguish-why
   // conventions (see auth.ts login()).
-  private async assertProjectMember(projectId: string, context?: NormalizedGatewayRequestContext): Promise<void> {
+  protected async assertProjectMember(projectId: string, context?: NormalizedGatewayRequestContext): Promise<void> {
     if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
       return;
     }
@@ -86,7 +86,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // above (REST/MCP/GraphQL request path) and isProjectVisibleToSession below
   // (WS subscription event filtering, T-MEMORY-042) -- one query, two
   // call sites, instead of duplicating the project_members lookup.
-  private async isMemberOfProject(projectId: string, userId: string): Promise<boolean> {
+  protected async isMemberOfProject(projectId: string, userId: string): Promise<boolean> {
     const membership = await this.db("project_members").where({ project_id: projectId, user_id: userId }).first();
     return Boolean(membership);
   }
@@ -94,7 +94,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // Query-builder counterpart of assertProjectMember for list/search
   // endpoints that scan many projects (project.list, project.resolve)
   // instead of resolving one specific id/slug.
-  private applyProjectMembershipFilter<T extends Knex.QueryBuilder>(
+  protected applyProjectMembershipFilter<T extends Knex.QueryBuilder>(
     query: T,
     context?: NormalizedGatewayRequestContext
   ): T {
@@ -124,7 +124,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.isMemberOfProject(projectId, session.userId);
   }
 
-  private async deleteProject(input: Row) {
+  protected async deleteProject(input: Row) {
     const project = await this.getProject(input);
     const counts = await this.projectDeleteCounts(project.id);
     const dependentRows = counts.tasks + counts.items + counts.decisions + counts.links + counts.events + counts.artifacts;
@@ -163,7 +163,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     };
   }
 
-  private async resolveProjectCandidates(input: Row, context?: NormalizedGatewayRequestContext) {
+  protected async resolveProjectCandidates(input: Row, context?: NormalizedGatewayRequestContext) {
     const rows = await this.applyProjectMembershipFilter(
       this.db("projects").select("*").where({ status: "active" }),
       context
@@ -185,7 +185,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   }
 
 
-  private async projectDeleteCounts(projectId: string) {
+  protected async projectDeleteCounts(projectId: string) {
     const [tasks, taskClaims, items, decisions, links, events, artifacts] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
       this.countQueryRows(this.db("task_claims").where("project_id", projectId)),
@@ -207,13 +207,13 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   }
 
 
-  private async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
+  protected async setCurrentProject(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input, context);
     await this.setKv(currentProjectKey(context.clientId), project.id);
     return project;
   }
 
-  private async currentProject(context?: NormalizedGatewayRequestContext) {
+  protected async currentProject(context?: NormalizedGatewayRequestContext) {
     const currentProjectId = context
       ? (await this.getKv(currentProjectKey(context.clientId))) ?? (await this.getKv("current_project_id"))
       : await this.getKv("current_project_id");
@@ -223,7 +223,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.getProject({ id: currentProjectId }, context);
   }
 
-  private async resolveProject(project?: unknown, context?: NormalizedGatewayRequestContext) {
+  protected async resolveProject(project?: unknown, context?: NormalizedGatewayRequestContext) {
     if (typeof project === "string" && project.length > 0) {
       return project.startsWith("P-")
         ? this.getProject({ id: project }, context)
@@ -233,7 +233,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   }
 
 
-  private async tryCurrentProject(context?: NormalizedGatewayRequestContext) {
+  protected async tryCurrentProject(context?: NormalizedGatewayRequestContext) {
     try {
       return await this.currentProject(context);
     } catch (error) {
