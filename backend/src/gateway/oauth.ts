@@ -299,7 +299,7 @@ async function validateAuthorizeParams(
   }
 
   const redirectUri = params.get("redirect_uri") ?? "";
-  if (!isAllowedRedirectUri(redirectUri, config.allowedRedirectUris)) {
+  if (!isAllowedRedirectUri(redirectUri, config.allowedRedirectUris) && redirectUri !== clientRow.redirect_uri) {
     return { ok: false, error: "redirect_uri is not allowed." };
   }
 

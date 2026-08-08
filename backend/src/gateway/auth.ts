@@ -789,65 +789,140 @@ export function createAuthFacade(db: Knex) {
     return { token: rawToken, tokenHint, createdAt: now };
   }
 
-  // --- Per-user OAuth connector credentials (replaces the old static,
-  // shared PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) ---
-  // Mirrors personal_tokens exactly: one live credential row per user
-  // (owner_user_id UNIQUE), hash-only secret storage, a plaintext last-4
-  // hint for UI recognition, session-only management (no MCP tool or
-  // GraphQL mutation -- only the /auth/profile/oauth-client* REST routes
-  // below). The one difference from a personal token: client_id is NOT
-  // secret -- it identifies "this is a registered pmem connector app", the
-  // actual access boundary is still the real per-user login /oauth/
-  // authorize requires (D-MEMORY-027) -- so oauthClientStatus returns it in
-  // full (persistently displayable), unlike clientSecretHint.
+  // --- Per-connector OAuth credentials (replaces the old static, shared
+  // PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair, and then replaced the
+  // one-per-user model that followed it) ---
+  // A user may hold many oauth_clients rows now, one per named connector
+  // (e.g. "Claude.ai", "ChatGPT") -- owner_user_id is no longer UNIQUE, only
+  // client_id is (still looked up directly by value at /oauth/authorize and
+  // /oauth/token). This is the fix for two real problems live testing
+  // surfaced under the one-per-user model: (1) regenerating a credential for
+  // a new connector used to invalidate every other connector's
+  // already-working credential, since there was only ever one row per user;
+  // (2) each connector's expected redirect_uri is now captured and stored
+  // on its own row at creation time (see validateAuthorizeParams, oauth.ts),
+  // instead of requiring an admin to hand-edit the deployment-wide
+  // PROJECT_MEMORY_ALLOWED_REDIRECT_URIS env var for every new one-off
+  // ChatGPT/Codex connector callback URL.
+  //
+  // Otherwise this still mirrors personal_tokens: hash-only secret storage,
+  // a plaintext last-4 hint for UI recognition, session-only management (no
+  // MCP tool or GraphQL mutation -- only the /auth/profile/oauth-clients*
+  // REST routes below). client_id is still NOT secret -- it identifies
+  // "this is a registered pmem connector app", the actual access boundary is
+  // still the real per-user login /oauth/authorize requires (D-MEMORY-027)
+  // -- so listOAuthClients returns it in full (persistently displayable),
+  // unlike clientSecretHint.
 
-  async function oauthClientStatus(userId: string): Promise<{
-    exists: boolean;
-    clientId: string | null;
-    clientSecretHint: string | null;
-    createdAt: string | null;
+  type OAuthClientRow = {
+    id: string;
+    label: string | null;
+    clientId: string;
+    clientSecretHint: string;
+    redirectUri: string | null;
+    createdAt: string;
     lastUsedAt: string | null;
-  }> {
-    const row = await db("oauth_clients").where({ owner_user_id: userId }).first();
-    if (!row) {
-      return { exists: false, clientId: null, clientSecretHint: null, createdAt: null, lastUsedAt: null };
-    }
+  };
+
+  function toOAuthClientRow(row: Record<string, unknown>): OAuthClientRow {
     return {
-      exists: true,
+      id: row.id as string,
+      label: (row.label as string | null) ?? null,
       clientId: row.client_id as string,
       clientSecretHint: row.client_secret_hint as string,
+      redirectUri: (row.redirect_uri as string | null) ?? null,
       createdAt: new Date(row.created_at as string).toISOString(),
       lastUsedAt: row.last_used_at ? new Date(row.last_used_at as string).toISOString() : null
     };
   }
 
+  async function listOAuthClients(userId: string): Promise<OAuthClientRow[]> {
+    const rows = await db("oauth_clients").where({ owner_user_id: userId }).orderBy("created_at", "desc");
+    return rows.map(toOAuthClientRow);
+  }
+
   /**
-   * Serves both first-time generation and explicit regenerate, same
-   * "replace, don't mutate, a secret row" convention as
-   * regeneratePersonalToken above -- issues a brand-new client_id too, not
-   * just a new secret, so a leaked/rotated credential can't be reused even
-   * by guessing the old client_id. The raw client_secret is returned
-   * exactly once, at the moment of this call (shown-once); client_id is not
-   * secret and remains readable afterward via oauthClientStatus.
+   * Always inserts a brand-new row -- unlike the old regenerateOAuthClient,
+   * this never deletes any of the user's other credentials, which is the
+   * actual fix for problem (1) above: creating a credential for a new
+   * connector can no longer knock out an unrelated, already-working one.
+   * The raw client_secret is returned exactly once, at the moment of this
+   * call (shown-once), same as personal tokens.
    */
-  async function regenerateOAuthClient(userId: string): Promise<{ clientId: string; clientSecret: string; createdAt: Date }> {
+  async function createOAuthClient(
+    userId: string,
+    label: string,
+    redirectUri: string
+  ): Promise<{ id: string; clientId: string; clientSecret: string; redirectUri: string; createdAt: Date }> {
+    const now = new Date();
+    const id = randomUUID();
+    const clientId = newOpaqueToken();
+    const clientSecret = newOpaqueToken();
+    const clientSecretHint = clientSecret.slice(-4);
+    await db("oauth_clients").insert({
+      id,
+      owner_user_id: userId,
+      client_id: clientId,
+      client_secret_hash: hashToken(clientSecret),
+      client_secret_hint: clientSecretHint,
+      label,
+      redirect_uri: redirectUri,
+      created_at: now,
+      last_used_at: null
+    });
+    return { id, clientId, clientSecret, redirectUri, createdAt: now };
+  }
+
+  // Ownership-checked lookup shared by regenerateOAuthClient/deleteOAuthClient
+  // below -- same "don't distinguish a row that isn't yours from a row that
+  // doesn't exist" convention as assertProjectMember (projects-core.mixin.ts)
+  // and every other owner-scoped lookup in this codebase.
+  async function requireOwnedOAuthClient(userId: string, id: string): Promise<Record<string, unknown>> {
+    const row = await db("oauth_clients").where({ id }).first();
+    if (!row || row.owner_user_id !== userId) {
+      throw new AppError("NOT_FOUND", "OAuth client credential not found.");
+    }
+    return row;
+  }
+
+  /**
+   * Rotates client_id + client_secret in place on one specific credential
+   * row, leaving its label/redirect_uri and every other credential for this
+   * user untouched -- issues a brand-new client_id too, not just a new
+   * secret, so a leaked/rotated credential can't be reused even by guessing
+   * the old client_id. The raw client_secret is returned exactly once, at
+   * the moment of this call (shown-once); client_id is not secret and
+   * remains readable afterward via listOAuthClients.
+   */
+  async function regenerateOAuthClient(
+    userId: string,
+    id: string
+  ): Promise<{ id: string; clientId: string; clientSecret: string; redirectUri: string | null; createdAt: Date }> {
+    const existing = await requireOwnedOAuthClient(userId, id);
     const now = new Date();
     const clientId = newOpaqueToken();
     const clientSecret = newOpaqueToken();
     const clientSecretHint = clientSecret.slice(-4);
-    await db.transaction(async (trx) => {
-      await trx("oauth_clients").where({ owner_user_id: userId }).del();
-      await trx("oauth_clients").insert({
-        id: randomUUID(),
-        owner_user_id: userId,
+    await db("oauth_clients")
+      .where({ id })
+      .update({
         client_id: clientId,
         client_secret_hash: hashToken(clientSecret),
         client_secret_hint: clientSecretHint,
-        created_at: now,
         last_used_at: null
       });
-    });
-    return { clientId, clientSecret, createdAt: now };
+    return {
+      id,
+      clientId,
+      clientSecret,
+      redirectUri: (existing.redirect_uri as string | null) ?? null,
+      createdAt: now
+    };
+  }
+
+  async function deleteOAuthClient(userId: string, id: string): Promise<void> {
+    await requireOwnedOAuthClient(userId, id);
+    await db("oauth_clients").where({ id }).del();
   }
 
   /**
@@ -987,8 +1062,10 @@ export function createAuthFacade(db: Knex) {
     consumeElevation,
     personalTokenStatus,
     regeneratePersonalToken,
-    oauthClientStatus,
+    listOAuthClients,
+    createOAuthClient,
     regenerateOAuthClient,
+    deleteOAuthClient,
     identifyPersonalToken,
     notificationsSeenAt,
     markNotificationsSeen,

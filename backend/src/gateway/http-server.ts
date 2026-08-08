@@ -1036,36 +1036,81 @@ async function handleAuthRoute(
     return true;
   }
 
-  // --- Per-user OAuth connector credentials (replaces the old static,
-  // shared PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) ---
+  // --- Per-connector OAuth credentials (replaces the old static, shared
+  // PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair, and then the one-per-user
+  // model that followed it) ---
   // Session-only, same convention as the personal-token pair just above --
   // no MCP tool or GraphQL mutation manages this. GET never creates a
-  // client (side-effect-free); the frontend's Connect section calls
-  // regenerate only on an explicit "Generate"/"Regenerate" click (no
-  // lazy-auto-generate on first visit, unlike personal tokens -- client_id/
-  // secret are for the web-connector OAuth flow, not needed just to view
-  // the profile page) -- see front/src/features/auth/OAuthClientPanel.
+  // client (side-effect-free); the frontend's Connect section lists every
+  // credential the user already has and lets them add a new named one (each
+  // independent, so regenerating/deleting one never touches another) or
+  // regenerate/delete an existing one -- see
+  // front/src/features/auth/OAuthClientPanel.
 
-  if (request.method === "GET" && requestPath === "/auth/profile/oauth-client") {
+  if (request.method === "GET" && requestPath === "/auth/profile/oauth-clients") {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
       return true;
     }
-    const result = await auth.oauthClientStatus(sessionAuth.userId);
+    const result = await auth.listOAuthClients(sessionAuth.userId);
     send(200, { ok: true, data: result });
     return true;
   }
 
-  if (request.method === "POST" && requestPath === "/auth/profile/oauth-client/regenerate") {
+  if (request.method === "POST" && requestPath === "/auth/profile/oauth-clients") {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
       return true;
     }
-    const result = await auth.regenerateOAuthClient(sessionAuth.userId);
+    const body = (await readJson(request)) as { label?: unknown; redirectUri?: unknown };
+    if (typeof body.label !== "string" || !body.label.trim() || typeof body.redirectUri !== "string" || !body.redirectUri.trim()) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "label and redirectUri are required.")));
+      return true;
+    }
+    const result = await auth.createOAuthClient(sessionAuth.userId, body.label.trim(), body.redirectUri.trim());
     send(200, {
       ok: true,
-      data: { clientId: result.clientId, clientSecret: result.clientSecret, createdAt: result.createdAt.toISOString() }
+      data: {
+        id: result.id,
+        clientId: result.clientId,
+        clientSecret: result.clientSecret,
+        redirectUri: result.redirectUri,
+        createdAt: result.createdAt.toISOString()
+      }
     });
+    return true;
+  }
+
+  const oauthClientRegenerateMatch = requestPath.match(/^\/auth\/profile\/oauth-clients\/([^/]+)\/regenerate$/);
+  if (request.method === "POST" && oauthClientRegenerateMatch) {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const [, id] = oauthClientRegenerateMatch;
+    const result = await auth.regenerateOAuthClient(sessionAuth.userId, id);
+    send(200, {
+      ok: true,
+      data: {
+        id: result.id,
+        clientId: result.clientId,
+        clientSecret: result.clientSecret,
+        redirectUri: result.redirectUri,
+        createdAt: result.createdAt.toISOString()
+      }
+    });
+    return true;
+  }
+
+  const oauthClientMatch = requestPath.match(/^\/auth\/profile\/oauth-clients\/([^/]+)$/);
+  if (request.method === "DELETE" && oauthClientMatch) {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const [, id] = oauthClientMatch;
+    await auth.deleteOAuthClient(sessionAuth.userId, id);
+    send(200, { ok: true, data: { id } });
     return true;
   }
 

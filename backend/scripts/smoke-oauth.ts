@@ -40,6 +40,18 @@ const clientId = `chatgpt-smoke-${unique}`;
 const clientSecret = `chatgpt-smoke-secret-${unique}`;
 const pmemClientId = `oauth-smoke-client-${unique}`;
 
+// A second, independent oauth_clients row for the SAME admin user --
+// exercises the per-connector credential rewrite (T-MEMORY-0xx follow-up):
+// owner_user_id is no longer UNIQUE, so a user can hold many credentials,
+// each with its own redirect_uri, and regenerating/deleting one must never
+// touch another. redirectUriB is deliberately NOT on the static
+// PROJECT_MEMORY_ALLOWED_REDIRECT_URIS allowlist (redirectUri, above) --
+// only credential B's own stored redirect_uri column authorizes it.
+const redirectUriB = "https://chatgpt.com/connector/oauth/pmem-smoke-b";
+const clientIdB = `chatgpt-smoke-b-${unique}`;
+const clientSecretB = `chatgpt-smoke-secret-b-${unique}`;
+const credentialBId = randomUUID();
+
 // A known keypair (not the facade's own internally-generated one) so this
 // script can mint its own custom-signed JWTs -- needed to test "expired
 // token rejected" without waiting 30 real days, and to know the exact `kid`
@@ -131,6 +143,23 @@ try {
     last_used_at: null
   });
   console.log("ok - oauth_clients row seeded for the admin user (replaces the old static client env vars)");
+
+  // A second, independent credential (own label + redirect_uri) for the
+  // same admin user -- proves the "one row per connector" model: this row
+  // is unrelated to the one seeded just above, and neither regenerating nor
+  // deleting it should ever touch the other (asserted further down).
+  await db("oauth_clients").insert({
+    id: credentialBId,
+    owner_user_id: adminUserId,
+    client_id: clientIdB,
+    client_secret_hash: hashToken(clientSecretB),
+    client_secret_hint: clientSecretB.slice(-4),
+    label: "ChatGPT (smoke)",
+    redirect_uri: redirectUriB,
+    created_at: now,
+    last_used_at: null
+  });
+  console.log("ok - a second, independent oauth_clients row seeded for the same admin user (per-connector credentials)");
 
   // --- Metadata endpoints (unaffected by the SSO change) -----------------
   const protectedResource = await getJson(`${started.url}/.well-known/oauth-protected-resource`);
@@ -314,6 +343,181 @@ try {
   );
   assert(basicToken.status === 200, `Basic client auth token exchange failed: ${JSON.stringify(basicToken.body)}`);
   console.log("ok - oauth client_secret_basic token exchange");
+
+  // --- Per-connector credential independence (multi-credential rewrite) ---
+  // Credential B completes the full authorize+token flow on its own,
+  // redirect_uri, using ONLY its own stored redirect_uri column (not on the
+  // static allowlist) -- proves per-credential redirect_uri storage works,
+  // not just the deployment-wide PROJECT_MEMORY_ALLOWED_REDIRECT_URIS
+  // fallback.
+  const bAuthorizeUrl = new URL(`${started.url}/oauth/authorize`);
+  bAuthorizeUrl.searchParams.set("response_type", "code");
+  bAuthorizeUrl.searchParams.set("client_id", clientIdB);
+  bAuthorizeUrl.searchParams.set("redirect_uri", redirectUriB);
+  bAuthorizeUrl.searchParams.set("scope", "memory:read memory:write");
+  bAuthorizeUrl.searchParams.set("code_challenge", codeChallenge);
+  bAuthorizeUrl.searchParams.set("code_challenge_method", "S256");
+  bAuthorizeUrl.searchParams.set("resource", publicUrl);
+
+  const bCode1 = await requestAuthorizationCode(bAuthorizeUrl, adminCookie, "oauth-smoke-b-state-1");
+  const bToken1 = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: bCode1,
+    redirect_uri: redirectUriB,
+    client_id: clientIdB,
+    client_secret: clientSecretB,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(bToken1.status === 200, `Credential B's own token exchange failed: ${JSON.stringify(bToken1.body)}`);
+  console.log(
+    "ok - a second, independent oauth_clients credential (its own redirect_uri, not on the static allowlist) completes /oauth/authorize + /oauth/token on its own"
+  );
+
+  // Credential A's client_id with credential B's redirect_uri is rejected --
+  // redirect_uri is scoped to the specific credential row it's stored on,
+  // not to any client_id that happens to ask.
+  const crossClientAuthorizeUrl = new URL(authorizeUrl);
+  crossClientAuthorizeUrl.searchParams.set("client_id", clientId);
+  crossClientAuthorizeUrl.searchParams.set("redirect_uri", redirectUriB);
+  crossClientAuthorizeUrl.searchParams.set("state", "oauth-smoke-cross-state");
+  const crossClientGet = await fetch(crossClientAuthorizeUrl, { redirect: "manual" });
+  assert(
+    crossClientGet.status === 400,
+    `Credential A's client_id with credential B's redirect_uri should be rejected. Status: ${crossClientGet.status}`
+  );
+  console.log("ok - a redirect_uri that only matches credential B's stored value is rejected for credential A's client_id");
+
+  // --- Per-connector CRUD surface (session-cookie REST routes) ------------
+  // GET lists every credential this user owns.
+  const listResult = await cookieRequest("GET", "/auth/profile/oauth-clients", adminCookie);
+  assert(listResult.status === 200, `GET oauth-clients failed: ${JSON.stringify(listResult.body)}`);
+  const listedClientIds = (readNestedArray(listResult.body, ["data"]) as Array<Record<string, unknown>>).map((row) => row.clientId);
+  assert(listedClientIds.includes(clientId), "GET oauth-clients did not include credential A.");
+  assert(listedClientIds.includes(clientIdB), "GET oauth-clients did not include credential B.");
+  console.log("ok - GET /auth/profile/oauth-clients lists every credential this user owns");
+
+  // POST create requires both label and redirectUri.
+  const missingFieldsCreate = await cookieRequest("POST", "/auth/profile/oauth-clients", adminCookie, { label: "Incomplete" });
+  assert(missingFieldsCreate.status === 400, "POST oauth-clients without redirectUri should be rejected (400).");
+  console.log("ok - POST /auth/profile/oauth-clients requires both label and redirectUri");
+
+  // POST create makes a brand-new, independently-usable credential (credential C).
+  const redirectUriC = "https://claude.ai/api/mcp/auth_callback";
+  const createResult = await cookieRequest("POST", "/auth/profile/oauth-clients", adminCookie, {
+    label: "Claude.ai (smoke)",
+    redirectUri: redirectUriC
+  });
+  assert(createResult.status === 200, `POST oauth-clients failed: ${JSON.stringify(createResult.body)}`);
+  const credentialCId = readNestedString(createResult.body, ["data", "id"]);
+  const clientIdC = readNestedString(createResult.body, ["data", "clientId"]);
+  const clientSecretC = readNestedString(createResult.body, ["data", "clientSecret"]);
+  assert(readNestedString(createResult.body, ["data", "redirectUri"]) === redirectUriC, "Created credential did not echo back its redirectUri.");
+  const cAuthorizeUrl = new URL(`${started.url}/oauth/authorize`);
+  cAuthorizeUrl.searchParams.set("response_type", "code");
+  cAuthorizeUrl.searchParams.set("client_id", clientIdC);
+  cAuthorizeUrl.searchParams.set("redirect_uri", redirectUriC);
+  cAuthorizeUrl.searchParams.set("scope", "memory:read memory:write");
+  cAuthorizeUrl.searchParams.set("code_challenge", codeChallenge);
+  cAuthorizeUrl.searchParams.set("code_challenge_method", "S256");
+  cAuthorizeUrl.searchParams.set("resource", publicUrl);
+  const cCode = await requestAuthorizationCode(cAuthorizeUrl, adminCookie, "oauth-smoke-c-state");
+  const cToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: cCode,
+    redirect_uri: redirectUriC,
+    client_id: clientIdC,
+    client_secret: clientSecretC,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(cToken.status === 200, `Freshly-created credential C's token exchange failed: ${JSON.stringify(cToken.body)}`);
+  console.log("ok - POST /auth/profile/oauth-clients creates a new, independently-usable credential");
+
+  // Regenerating credential B rotates only B's client_id/secret -- credential
+  // A (and the just-created credential C) keep working entirely unchanged.
+  const regenerateBResult = await cookieRequest("POST", `/auth/profile/oauth-clients/${credentialBId}/regenerate`, adminCookie);
+  assert(regenerateBResult.status === 200, `Regenerate credential B failed: ${JSON.stringify(regenerateBResult.body)}`);
+  const clientIdB2 = readNestedString(regenerateBResult.body, ["data", "clientId"]);
+  const clientSecretB2 = readNestedString(regenerateBResult.body, ["data", "clientSecret"]);
+  assert(clientIdB2 !== clientIdB, "Regenerate did not issue a new client_id for credential B.");
+
+  // B's OLD client_id/secret no longer authorize.
+  const bOldAuthorizeUrl = new URL(bAuthorizeUrl);
+  bOldAuthorizeUrl.searchParams.set("state", "oauth-smoke-b-old-state");
+  const bOldAuthorizeGet = await fetch(bOldAuthorizeUrl, { redirect: "manual" });
+  assert(bOldAuthorizeGet.status === 400, "Credential B's old (pre-regenerate) client_id should no longer be allowed.");
+
+  // B's NEW client_id/secret work, still against B's own stored redirect_uri.
+  const bNewAuthorizeUrl = new URL(`${started.url}/oauth/authorize`);
+  bNewAuthorizeUrl.searchParams.set("response_type", "code");
+  bNewAuthorizeUrl.searchParams.set("client_id", clientIdB2);
+  bNewAuthorizeUrl.searchParams.set("redirect_uri", redirectUriB);
+  bNewAuthorizeUrl.searchParams.set("scope", "memory:read memory:write");
+  bNewAuthorizeUrl.searchParams.set("code_challenge", codeChallenge);
+  bNewAuthorizeUrl.searchParams.set("code_challenge_method", "S256");
+  bNewAuthorizeUrl.searchParams.set("resource", publicUrl);
+  const bCode2 = await requestAuthorizationCode(bNewAuthorizeUrl, adminCookie, "oauth-smoke-b-state-2");
+  const bToken2 = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: bCode2,
+    redirect_uri: redirectUriB,
+    client_id: clientIdB2,
+    client_secret: clientSecretB2,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(bToken2.status === 200, `Credential B's regenerated token exchange failed: ${JSON.stringify(bToken2.body)}`);
+
+  // Credential A's original client_id/secret (seeded before B even existed)
+  // still work, completely unaffected by B's regenerate.
+  const aCode3 = await requestAuthorizationCode(authorizeUrl, adminCookie, "oauth-smoke-a-after-b-regen-state");
+  const aToken3 = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: aCode3,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(aToken3.status === 200, `Credential A's token exchange after regenerating B failed: ${JSON.stringify(aToken3.body)}`);
+  console.log("ok - regenerating credential B rotates only B's client_id/secret; credential A keeps working unchanged");
+
+  // Deleting credential B leaves credential A (and C) intact.
+  const deleteBResult = await cookieRequest("DELETE", `/auth/profile/oauth-clients/${credentialBId}`, adminCookie);
+  assert(deleteBResult.status === 200, `Delete credential B failed: ${JSON.stringify(deleteBResult.body)}`);
+  const bGoneRow = await db("oauth_clients").where({ id: credentialBId }).first();
+  assert(!bGoneRow, "Credential B row still exists after delete.");
+
+  const bDeletedAuthorizeUrl = new URL(bNewAuthorizeUrl);
+  bDeletedAuthorizeUrl.searchParams.set("state", "oauth-smoke-b-deleted-state");
+  const bDeletedAuthorizeGet = await fetch(bDeletedAuthorizeUrl, { redirect: "manual" });
+  assert(bDeletedAuthorizeGet.status === 400, "Deleted credential B's client_id should no longer be allowed.");
+
+  const aCode4 = await requestAuthorizationCode(authorizeUrl, adminCookie, "oauth-smoke-a-after-b-delete-state");
+  const aToken4 = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: aCode4,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(aToken4.status === 200, `Credential A's token exchange after deleting B failed: ${JSON.stringify(aToken4.body)}`);
+  console.log("ok - deleting credential B leaves credential A intact and working");
+
+  // Delete is ownership-scoped: the member can't delete the admin's credential C.
+  const foreignDelete = await cookieRequest("DELETE", `/auth/profile/oauth-clients/${credentialCId}`, memberCookie);
+  assert(foreignDelete.status === 404, `A non-owner deleting another user's credential should get NOT_FOUND (404). Status: ${foreignDelete.status}`);
+  const cStillThere = await db("oauth_clients").where({ id: credentialCId }).first();
+  assert(cStillThere, "Credential C was deleted by a non-owner request -- ownership check did not hold.");
+  console.log("ok - regenerate/delete are ownership-scoped -- another user's session can't touch this credential (NOT_FOUND, existence not leaked)");
+
+  // Clean up credential C explicitly (owner delete) so it doesn't linger for the rest of this run.
+  const ownerDeleteC = await cookieRequest("DELETE", `/auth/profile/oauth-clients/${credentialCId}`, adminCookie);
+  assert(ownerDeleteC.status === 200, `Owner delete of credential C failed: ${JSON.stringify(ownerDeleteC.body)}`);
 
   // --- Identity-driven scope resolution: the actual point of this task ----
   const projectA = expectData<{ project: { id: string } }>(
@@ -532,6 +736,24 @@ async function postJson(url: string, body: unknown, bearer?: string): Promise<{ 
     body: JSON.stringify(body)
   });
   return { status: response.status, headers: response.headers, body: await response.json() };
+}
+
+// Session-cookie request helper for the /auth/profile/oauth-clients* REST
+// CRUD surface (list/create/regenerate/delete) -- these routes are gated on
+// sessionAuth (a real Marrow login), never a bearer token, same convention
+// as loginSession/postAuthorize above.
+async function cookieRequest(
+  method: string,
+  path: string,
+  cookie: string,
+  body?: unknown
+): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(`${started.url}${path}`, {
+    method,
+    headers: { cookie, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  return { status: response.status, body: await response.json() };
 }
 
 async function postFormJson(url: string, body: Record<string, string>): Promise<{ status: number; body: unknown }> {

@@ -58,18 +58,23 @@ export interface PersonalTokenRegenerateResult {
   createdAt: string;
 }
 
-/** Per-user OAuth connector credential (replaces the old static, shared OAuth client id/secret pair). clientId is NOT secret — safe to display persistently, unlike clientSecretHint. */
-export interface OAuthClientStatus {
-  exists: boolean;
-  clientId: string | null;
-  clientSecretHint: string | null;
-  createdAt: string | null;
+/** One named OAuth connector credential (e.g. "Claude.ai", "ChatGPT") — a user may hold several, each fully independent: regenerating or deleting one never touches another. clientId is NOT secret — safe to display persistently, unlike clientSecretHint. */
+export interface OAuthClient {
+  id: string;
+  label: string | null;
+  clientId: string;
+  clientSecretHint: string;
+  redirectUri: string | null;
+  createdAt: string;
   lastUsedAt: string | null;
 }
 
-export interface OAuthClientRegenerateResult {
+/** Returned once, at creation or regeneration time — the only moment the raw client_secret is ever visible (shown-once, same as recovery codes / the TOTP secret). */
+export interface OAuthClientSecretResult {
+  id: string;
   clientId: string;
   clientSecret: string;
+  redirectUri: string | null;
   createdAt: string;
 }
 
@@ -125,10 +130,14 @@ interface AuthState {
   /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
   regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
 
-  /** This user's own OAuth connector credential (client id + secret), for the web-connector (Claude.ai/ChatGPT) tabs of the Connect section — replaces the old static, shared OAuth client id/secret pair. */
-  fetchOAuthClient: () => Promise<OAuthClientStatus>;
-  /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh client_id AND client_secret, invalidating the previous pair. clientSecret is returned exactly once (shown-once); clientId is not secret and stays visible via fetchOAuthClient afterward. */
-  regenerateOAuthClient: () => Promise<OAuthClientRegenerateResult>;
+  /** This user's OAuth connector credentials (client id + secret hint per named connector), for the web-connector (Claude.ai/ChatGPT) tabs of the Connect section — replaces the old one-per-user OAuth client id/secret pair. */
+  fetchOAuthClients: () => Promise<OAuthClient[]>;
+  /** Creates a brand-new, independent credential — never touches any of this user's other credentials (the fix for the old "regenerating one invalidates all" problem). clientSecret is returned exactly once (shown-once). */
+  createOAuthClient: (label: string, redirectUri: string) => Promise<OAuthClientSecretResult>;
+  /** Rotates client_id AND client_secret for one specific credential (by id), invalidating only that credential's previous pair — every other credential keeps working unchanged. clientSecret is returned exactly once (shown-once); clientId is not secret and stays visible via fetchOAuthClients afterward. */
+  regenerateOAuthClient: (id: string) => Promise<OAuthClientSecretResult>;
+  /** Permanently removes one credential; every other credential is unaffected. */
+  deleteOAuthClient: (id: string) => Promise<void>;
 
   /** T-MEMORY-051: current notifications-seen status — drives the nav-rail unread badge. */
   fetchNotificationsSeenAt: () => Promise<NotificationsStatus>;
@@ -165,6 +174,18 @@ async function postJson<T>(path: string, body: unknown, fallbackError: string): 
     throw new Error(responseBody.error?.message ?? fallbackError);
   }
   return responseBody.data as T;
+}
+
+/** DELETE helper, same base URL/cookie/JSON-response shape as postJson — used only by deleteOAuthClient (the first endpoint in this store to need one). */
+async function deleteRequest(path: string, fallbackError: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  const responseBody = await readJson(response);
+  if (!response.ok || responseBody.ok === false) {
+    throw new Error(responseBody.error?.message ?? fallbackError);
+  }
 }
 
 function requireUser(data: { status: string; user?: AuthUser }): AuthUser | null {
@@ -354,21 +375,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       'Could not generate a personal token.',
     ),
 
-  fetchOAuthClient: async () => {
-    const response = await fetch(`${API_BASE_URL}/auth/profile/oauth-client`, { credentials: 'include' });
+  fetchOAuthClients: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/oauth-clients`, { credentials: 'include' });
     const body = await readJson(response);
     if (!response.ok || body.ok === false) {
-      throw new Error(body.error?.message ?? 'Could not load your OAuth connector credential.');
+      throw new Error(body.error?.message ?? 'Could not load your OAuth connector credentials.');
     }
-    return body.data as OAuthClientStatus;
+    return body.data as OAuthClient[];
   },
 
-  regenerateOAuthClient: () =>
-    postJson<OAuthClientRegenerateResult>(
-      '/auth/profile/oauth-client/regenerate',
-      {},
-      'Could not generate an OAuth connector credential.',
+  createOAuthClient: (label, redirectUri) =>
+    postJson<OAuthClientSecretResult>(
+      '/auth/profile/oauth-clients',
+      { label, redirectUri },
+      'Could not create an OAuth connector credential.',
     ),
+
+  regenerateOAuthClient: (id) =>
+    postJson<OAuthClientSecretResult>(
+      `/auth/profile/oauth-clients/${id}/regenerate`,
+      {},
+      'Could not regenerate this OAuth connector credential.',
+    ),
+
+  deleteOAuthClient: (id) => deleteRequest(`/auth/profile/oauth-clients/${id}`, 'Could not delete this OAuth connector credential.'),
 
   fetchNotificationsSeenAt: async () => {
     const response = await fetch(`${API_BASE_URL}/auth/profile/notifications`, { credentials: 'include' });

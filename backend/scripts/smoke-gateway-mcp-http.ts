@@ -165,8 +165,8 @@ try {
   });
   assertOk(aboutResult.structuredContent, "gateway.about failed.");
   assert(
-    readNestedString(aboutResult.structuredContent, ["data", "about", "shortName"]) === "pmem",
-    "gateway.about did not describe pmem."
+    readNestedString(aboutResult.structuredContent, ["data", "about", "shortName"]) === "marrow",
+    "gateway.about did not describe marrow."
   );
   assert(
     readNestedString(aboutResult.structuredContent, ["data", "about", "manuals", "tool"]) === "gateway.manuals",

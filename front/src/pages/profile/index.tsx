@@ -292,26 +292,6 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
 }
 
 /**
- * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
- * up to this Marrow instance. The point of this section is that a brand-new
- * user (including one who just joined via a project invite link) can follow
- * it without ever opening the repo's docs/ or asking an operator to SSH in.
- *
- * The MCP endpoint is derived from API_BASE_URL (same source the app already
- * uses for every /auth/* call — see shared/config/env.ts), so it always
- * reflects the real deployed host instead of a placeholder. The Claude
- * Code / Codex bearer token is this user's own personal Marrow API token
- * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
- * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/
- * secret are this user's own OAuth connector credential (see
- * OAuthClientPanel above, rendered once for both web-connector tabs since
- * the same credential serves both) instead of a static, shared pair --
- * replacing what used to be a "the magic token your admin gave you"
- * instruction from before the OAuth SSO rework (D-MEMORY-027) removed that
- * shared magic-token gate entirely in favor of a real per-user login at
- * /oauth/authorize.
- */
-/**
  * Renders "Set the token in the shell" as a real, copy-pasteable command
  * ONLY when a real token is actually in hand. A CodeBlock's copy icon makes
  * whatever's inside it look like a runnable command -- rendering the old
@@ -345,6 +325,26 @@ function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string
   );
 }
 
+/**
+ * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
+ * up to this Marrow instance. The point of this section is that a brand-new
+ * user (including one who just joined via a project invite link) can follow
+ * it without ever opening the repo's docs/ or asking an operator to SSH in.
+ *
+ * The MCP endpoint is derived from API_BASE_URL (same source the app already
+ * uses for every /auth/* call — see shared/config/env.ts), so it always
+ * reflects the real deployed host instead of a placeholder. The Claude
+ * Code / Codex bearer token is this user's own personal Marrow API token
+ * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
+ * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/
+ * secret come from this user's own OAuth connector credentials -- one
+ * independent credential per connector (see OAuthClientPanel above,
+ * rendered once above both web-connector tabs, listing every credential the
+ * user has created) instead of a static, shared pair -- replacing what used
+ * to be a "the magic token your admin gave you" instruction from before the
+ * OAuth SSO rework (D-MEMORY-027) removed that shared magic-token gate
+ * entirely in favor of a real per-user login at /oauth/authorize.
+ */
 function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
@@ -436,6 +436,11 @@ function ConnectSection() {
           <Step n={5}>
             Back in the chat, ask Claude to check Marrow — it should call <Text code>gateway.status</Text>.
           </Step>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginTop: 8 }}>
+            If your setup asks for a Client ID / Client Secret too, Claude.ai's callback URL is fixed:{' '}
+            <Text code>https://claude.ai/api/mcp/auth_callback</Text> — use it as the redirect URI when creating a
+            credential below.
+          </Text>
         </>
       ),
     },
@@ -452,6 +457,11 @@ function ConnectSection() {
           <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
           <Step n={4}>Log in with your own Marrow account and approve access.</Step>
           <Step n={5}>Ask ChatGPT to use the Marrow tools — it should be able to call them directly.</Step>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginTop: 8 }}>
+            If your setup asks for a Client ID / Client Secret too, ChatGPT shows its callback URL on its own "Add
+            connector" screen — it's different every time you create a connector, so copy it fresh and use it as the
+            redirect URI when creating a credential below.
+          </Text>
         </>
       ),
     },
@@ -486,8 +496,9 @@ function ConnectSection() {
         Client ID / Client Secret (web connectors only)
       </Text>
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-        A few Claude.ai/ChatGPT connector setups ask for these in addition to the URL below — the same pair serves
-        both. This is your own, personally-owned connector credential, tied to your account, not a shared deployment
+        A few Claude.ai/ChatGPT connector setups ask for these in addition to the URL below. Create one credential
+        per connector — each is independent, so setting up ChatGPT never disturbs an already-working Claude.ai
+        credential (or vice versa). Every credential is your own, tied to your account, not a shared deployment
         secret.
       </Paragraph>
       <OAuthClientPanel />
