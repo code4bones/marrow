@@ -108,14 +108,12 @@ const publicUrl = "https://pmem-git-credentials-smoke.example/api";
 const redirectUri = "https://claude.ai/connector/oauth/pmem-git-credentials-smoke";
 const oauthClientId = `git-credentials-smoke-oauth-client-${unique}`;
 const oauthClientSecret = `git-credentials-smoke-oauth-secret-${unique}`;
-const magicToken = `git-credentials-smoke-magic-${unique}`;
 
 const oauth = createOAuthFacadeFromEnv({
   ...process.env,
   PROJECT_MEMORY_PUBLIC_URL: publicUrl,
   PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
   PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
-  PROJECT_MEMORY_MAGIC_TOKEN: magicToken,
   PROJECT_MEMORY_OAUTH_CLIENT_ID: oauthClientId,
   PROJECT_MEMORY_OAUTH_CLIENT_SECRET: oauthClientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
@@ -190,7 +188,11 @@ try {
   const adminCookie = await login(adminEmail, adminPassword);
   console.log("ok - sessions established for both members and the admin");
 
-  const oauthAccessToken = await mintOAuthAccessToken();
+  // T-MEMORY-0xx SSO: OAuth connectors now authenticate through a real
+  // Marrow login (session cookie), not a shared magic token -- member A's
+  // own session mints this OAuth bearer, same as a real Claude Code/ChatGPT
+  // connector would after the user signs in through the frontend.
+  const oauthAccessToken = await mintOAuthAccessToken(memberACookie);
   console.log("ok - minted a read+write OAuth bearer token (same shape a Claude Code/ChatGPT connector would carry)");
 
   // --- Session-required enforcement: static token, OAuth, and the
@@ -551,29 +553,31 @@ async function login(email: string, password: string): Promise<string> {
   return cookie!;
 }
 
-async function mintOAuthAccessToken(): Promise<string> {
+async function mintOAuthAccessToken(sessionCookie: string): Promise<string> {
   const codeVerifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
   const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
-  const authorizeUrl = new URL(`${started.url}/oauth/authorize`);
-  authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("client_id", oauthClientId);
-  authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-  authorizeUrl.searchParams.set("scope", "memory:read memory:write");
-  authorizeUrl.searchParams.set("state", "git-credentials-smoke-state");
-  authorizeUrl.searchParams.set("code_challenge", codeChallenge);
-  authorizeUrl.searchParams.set("code_challenge_method", "S256");
-  authorizeUrl.searchParams.set("resource", publicUrl);
 
+  // T-MEMORY-0xx SSO: POST /oauth/authorize is now session-cookie-backed
+  // (JSON body, no magic_token) -- the frontend calls this exact shape
+  // after its own login/consent screen confirms a pmem_session.
   const authorize = await fetch(`${started.url}/oauth/authorize`, {
     method: "POST",
-    redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...Object.fromEntries(authorizeUrl.searchParams.entries()), magic_token: magicToken })
+    headers: { "content-type": "application/json", cookie: sessionCookie },
+    body: JSON.stringify({
+      response_type: "code",
+      client_id: oauthClientId,
+      redirect_uri: redirectUri,
+      scope: "memory:read memory:write",
+      state: "git-credentials-smoke-state",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      resource: publicUrl
+    })
   });
-  assert(authorize.status === 302, "OAuth authorize did not redirect with a code.");
-  const location = authorize.headers.get("location");
-  assert(location, "OAuth authorize redirect missing Location.");
-  const code = new URL(location!).searchParams.get("code");
+  const authorizeBody = (await authorize.json()) as { data?: { redirectUri?: string } };
+  assert(authorize.status === 200, `OAuth authorize (session) failed. Status: ${authorize.status}, body: ${JSON.stringify(authorizeBody)}`);
+  assert(authorizeBody.data?.redirectUri, "OAuth authorize did not return a redirectUri.");
+  const code = new URL(authorizeBody.data!.redirectUri!).searchParams.get("code");
   assert(code, "OAuth authorize redirect missing code.");
 
   const tokenResponse = await fetch(`${started.url}/oauth/token`, {

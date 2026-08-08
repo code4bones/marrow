@@ -34,7 +34,6 @@ const auth = createAuthFacade(db);
 
 const unique = Date.now();
 const staticToken = `gateway-elevation-smoke-static-${unique}`;
-const magicToken = `gateway-elevation-smoke-magic-${unique}`;
 const publicUrl = "https://pmem-elevation-smoke.example/api";
 const redirectUri = "https://claude.ai/connector/oauth/pmem-elevation-smoke";
 const oauthClientId = `elevation-smoke-oauth-client-${unique}`;
@@ -46,7 +45,6 @@ const oauth = createOAuthFacadeFromEnv({
   PROJECT_MEMORY_PUBLIC_URL: publicUrl,
   PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
   PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
-  PROJECT_MEMORY_MAGIC_TOKEN: magicToken,
   PROJECT_MEMORY_OAUTH_CLIENT_ID: oauthClientId,
   PROJECT_MEMORY_OAUTH_CLIENT_SECRET: oauthClientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
@@ -120,12 +118,16 @@ try {
   itemBId = await createItem("B");
   itemCId = await createItem("C");
 
-  // Real OAuth token, capped at read+write forever (D-MEMORY-017 decision
-  // 2) -- exactly the credential class this task's motivating scenario
-  // (an agent connected over OAuth, hitting 403 on a destructive call) is
-  // about.
-  const oauthAccessToken = await mintOAuthAccessToken();
-  console.log("ok - minted a read+write OAuth bearer token, same as a Claude Code / ChatGPT connector would carry");
+  // Real OAuth token for the MEMBER account (T-MEMORY-0xx SSO: an OAuth
+  // bearer's scope tier now tracks its owning user's role, same as a
+  // session -- an admin-role OAuth bearer would reach admin-tier tools
+  // directly and never need this grant at all, which is exactly what
+  // scripts/smoke-oauth.ts covers separately). Minting as the member
+  // account keeps this script's actual subject -- the elevation
+  // mechanism's step-up door for a non-admin credential -- meaningful.
+  const memberSessionCookie = await loginSession(memberEmail, memberPassword, memberTotpSecret);
+  const oauthAccessToken = await mintOAuthAccessToken(memberSessionCookie);
+  console.log("ok - minted a read+write OAuth bearer token (member role), same as a Claude Code / ChatGPT connector would carry");
 
   // --- Regression: OAuth admin-tier call with no elevation header at all
   // is still denied exactly like before this task -----------------------
@@ -284,29 +286,47 @@ async function createItem(label: string): Promise<string> {
   return created.item.id;
 }
 
-async function mintOAuthAccessToken(): Promise<string> {
+// T-MEMORY-0xx SSO: session-cookie login (POST /auth/login, then
+// /auth/login/2fa for a totp_enabled account like this script's admin/member
+// seeds) instead of a magic token -- same real-login flow the frontend's
+// oauth-authorize page drives.
+async function loginSession(email: string, password: string, totpSecret: string): Promise<string> {
+  const loginResponse = await postJson(`${started.url}/auth/login`, { email, password });
+  assert(loginResponse.status === 200, `Login failed for ${email}. Status: ${loginResponse.status}`);
+  const userId = readNestedString(loginResponse.body, ["data", "userId"]);
+
+  const totpResponse = await fetch(`${started.url}/auth/login/2fa`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId, code: currentTotpCode(totpSecret) })
+  });
+  assert(totpResponse.status === 200, `TOTP login failed for ${email}. Status: ${totpResponse.status}`);
+  const cookie = totpResponse.headers.get("set-cookie")?.split(";")[0];
+  assert(cookie, `TOTP login for ${email} did not set a session cookie.`);
+  return cookie!;
+}
+
+async function mintOAuthAccessToken(sessionCookie: string): Promise<string> {
   const codeVerifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
   const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
-  const authorizeUrl = new URL(`${started.url}/oauth/authorize`);
-  authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("client_id", oauthClientId);
-  authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-  authorizeUrl.searchParams.set("scope", "memory:read memory:write");
-  authorizeUrl.searchParams.set("state", "elevation-smoke-state");
-  authorizeUrl.searchParams.set("code_challenge", codeChallenge);
-  authorizeUrl.searchParams.set("code_challenge_method", "S256");
-  authorizeUrl.searchParams.set("resource", publicUrl);
 
   const authorize = await fetch(`${started.url}/oauth/authorize`, {
     method: "POST",
-    redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...Object.fromEntries(authorizeUrl.searchParams.entries()), magic_token: magicToken })
+    headers: { "content-type": "application/json", cookie: sessionCookie },
+    body: JSON.stringify({
+      response_type: "code",
+      client_id: oauthClientId,
+      redirect_uri: redirectUri,
+      scope: "memory:read memory:write",
+      state: "elevation-smoke-state",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      resource: publicUrl
+    })
   });
-  assert(authorize.status === 302, "OAuth authorize did not redirect with a code.");
-  const location = authorize.headers.get("location");
-  assert(location, "OAuth authorize redirect missing Location.");
-  const code = new URL(location!).searchParams.get("code");
+  const authorizeBody = (await authorize.json()) as { data?: { redirectUri?: string } };
+  assert(authorize.status === 200, `OAuth authorize (session) failed. Status: ${authorize.status}, body: ${JSON.stringify(authorizeBody)}`);
+  const code = new URL(authorizeBody.data!.redirectUri!).searchParams.get("code");
   assert(code, "OAuth authorize redirect missing code.");
 
   const tokenResponse = await fetch(`${started.url}/oauth/token`, {
