@@ -489,3 +489,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
 
   };
 }
+
+// Convenience instance type for Tier 2 mixins that also need createMemory
+// (e.g. tasks.mixin.ts's addTaskNote, handoffs.mixin.ts) -- avoids
+// re-deriving this InstanceType<ReturnType<...>> chain in every dependent
+// file.
+export type MemoryInstance = InstanceType<ReturnType<typeof MemoryMixin<Constructor<Tier1Instance>>>>;
