@@ -228,7 +228,8 @@ export function normalizeContext(context: GatewayRequestContext): NormalizedGate
     metadata: context.metadata ?? {},
     sessionUserId: context.sessionUserId ?? null,
     sessionRole: context.sessionRole ?? null,
-    sessionSource: context.sessionSource ?? null
+    sessionSource: context.sessionSource ?? null,
+    ownerUserId: context.ownerUserId ?? null
   };
 }
 

@@ -147,22 +147,33 @@ export class BaseService {
     if (options.cleanupAnonymous !== false) {
       await this.cleanupExpiredAnonymousClients();
     }
-    await this.db("gateway_clients")
-      .insert({
-        id: context.clientId,
-        label: context.clientLabel,
-        last_seen_at: now,
-        metadata: JSON.stringify(context.metadata),
-        created_at: now,
-        updated_at: now
-      })
-      .onConflict("id")
-      .merge({
-        label: context.clientLabel,
-        last_seen_at: now,
-        metadata: JSON.stringify(context.metadata),
-        updated_at: now
-      });
+    const insertRow: Record<string, unknown> = {
+      id: context.clientId,
+      label: context.clientLabel,
+      last_seen_at: now,
+      metadata: JSON.stringify(context.metadata),
+      created_at: now,
+      updated_at: now
+    };
+    const mergeRow: Record<string, unknown> = {
+      label: context.clientLabel,
+      last_seen_at: now,
+      metadata: JSON.stringify(context.metadata),
+      updated_at: now
+    };
+    // T-MEMORY-0xx SSO: attributes this client row to the real Marrow user
+    // behind an OAuth-sourced request, the same way
+    // ensureStaticTokenCredential() (clients.mixin.ts) already does for the
+    // static MCP_TOKEN bootstrap -- this generic per-request upsert
+    // previously never touched owner_user_id at all. Only ever set, never
+    // cleared: a client that was OAuth-attributed once and is later touched
+    // by an auth source that doesn't resolve an owner (e.g. no oauthOwner
+    // this request) keeps its existing attribution rather than losing it.
+    if (context.ownerUserId) {
+      insertRow.owner_user_id = context.ownerUserId;
+      mergeRow.owner_user_id = context.ownerUserId;
+    }
+    await this.db("gateway_clients").insert(insertRow).onConflict("id").merge(mergeRow);
   }
 
   protected async cleanupExpiredAnonymousClients(): Promise<void> {

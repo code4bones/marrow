@@ -37,6 +37,16 @@ export interface GatewayRequestContext {
   // non-session, non-personal-token auth source (static token, OAuth,
   // anonymous), same as sessionUserId/sessionRole above.
   sessionSource?: "cookie" | "personal_token";
+  // T-MEMORY-0xx SSO: the real Marrow user behind an OAuth-sourced request,
+  // resolved fresh from the bearer's JWT `sub` on every request (see
+  // resolveOAuthOwner in http-server.ts). Deliberately NOT folded into
+  // sessionUserId/sessionRole above -- those two drive project-membership
+  // filtering and git-credential ownership, neither of which changes for
+  // OAuth callers as part of this task. Consumed solely by touchClient()
+  // (base.ts) to attribute a gateway_clients row to its real owner, the
+  // same way ensureStaticTokenCredential() already does for the static
+  // MCP_TOKEN. Absent for every non-OAuth auth source.
+  ownerUserId?: string;
 }
 
 export interface NormalizedGatewayRequestContext {
@@ -46,6 +56,7 @@ export interface NormalizedGatewayRequestContext {
   sessionUserId: string | null;
   sessionRole: string | null;
   sessionSource: "cookie" | "personal_token" | null;
+  ownerUserId: string | null;
 }
 
 export const manualSpecs = [

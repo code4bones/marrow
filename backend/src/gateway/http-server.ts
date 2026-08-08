@@ -278,7 +278,13 @@ async function handleRequest(
   // JWT instead) simply resolves this to null, same as sessionAuth above
   // for a request with no session cookie.
   const personalTokenAuth = options.auth ? await options.auth.identifyPersonalToken(request) : null;
-  const context = requestContext(request, requestId, sessionAuth, personalTokenAuth, options);
+  // T-MEMORY-0xx SSO: an OAuth bearer's owning Marrow user, resolved fresh
+  // from `users` via its JWT `sub` -- same "resolve once up front, reuse
+  // for both context and scope authorization" shape as sessionAuth/
+  // personalTokenAuth above. null for a request with no (or invalid/stale)
+  // OAuth bearer, same graceful-null convention as those two.
+  const oauthOwner = await resolveOAuthOwner(options, request);
+  const context = requestContext(request, requestId, sessionAuth, personalTokenAuth, oauthOwner, options);
 
   const send = (status: number, body: unknown, extra?: LogFields) => {
     sendJson(response, status, body, requestId);
@@ -448,7 +454,8 @@ async function handleRequest(
         startedAt,
         auth,
         sessionAuth,
-        personalTokenAuth
+        personalTokenAuth,
+        oauthOwner
       );
       return;
     }
@@ -464,7 +471,8 @@ async function handleRequest(
         startedAt,
         auth,
         sessionAuth,
-        personalTokenAuth
+        personalTokenAuth,
+        oauthOwner
       );
       return;
     }
@@ -505,6 +513,7 @@ async function handleRequest(
         auth,
         sessionAuth,
         personalTokenAuth,
+        oauthOwner,
         gatewayToolRequiredScopes(body.tool)
       );
       if (!scopeAuth.ok) {
@@ -565,12 +574,21 @@ async function handleGraphqlRequest(
   startedAt: number,
   auth: AuthorizationState,
   sessionAuth: SessionIdentity | null,
-  personalTokenAuth: SessionIdentity | null
+  personalTokenAuth: SessionIdentity | null,
+  oauthOwner: OAuthOwner | null
 ): Promise<void> {
   try {
     const body = request.method === "POST" ? await readJson(request) : undefined;
     const requiredScopes = graphqlRequiredScopes(request, body);
-    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, personalTokenAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(
+      options,
+      request,
+      auth,
+      sessionAuth,
+      personalTokenAuth,
+      oauthOwner,
+      requiredScopes
+    );
     if (!scopeAuth.ok) {
       sendUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -652,7 +670,8 @@ async function handleMcpRequest(
   startedAt: number,
   auth: AuthorizationState,
   sessionAuth: SessionIdentity | null,
-  personalTokenAuth: SessionIdentity | null
+  personalTokenAuth: SessionIdentity | null,
+  oauthOwner: OAuthOwner | null
 ): Promise<void> {
   if (request.method !== "POST") {
     sendJson(
@@ -683,7 +702,15 @@ async function handleMcpRequest(
     const body = await readJson(request);
     logFields = mcpLogFields(body);
     const requiredScopes = mcpRequiredScopes(body);
-    const scopeAuth = await isAuthorizedForScopes(options, request, auth, sessionAuth, personalTokenAuth, requiredScopes);
+    const scopeAuth = await isAuthorizedForScopes(
+      options,
+      request,
+      auth,
+      sessionAuth,
+      personalTokenAuth,
+      oauthOwner,
+      requiredScopes
+    );
     if (!scopeAuth.ok) {
       sendMcpUnauthorized(response, requestId, scopeAuth);
       logRequest(options, request, authFailureStatus(scopeAuth), Date.now() - startedAt, requestId, context, {
@@ -1217,6 +1244,7 @@ function requestContext(
   requestId: string,
   sessionAuth: SessionIdentity | null,
   personalTokenAuth: SessionIdentity | null,
+  oauthOwner: OAuthOwner | null,
   options: GatewayServerOptions
 ): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
@@ -1258,7 +1286,15 @@ function requestContext(
     // Every other consumer of sessionUserId/sessionRole (scope-tier
     // resolution, project-membership filtering, git-credential *reads*)
     // does not care about this field and treats both sources the same.
-    sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : undefined
+    sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : undefined,
+    // T-MEMORY-0xx SSO: deliberately separate from sessionUserId/sessionRole
+    // above, which drive project-membership filtering and git-credential
+    // ownership -- neither of those behaviors is in scope for this task, so
+    // an OAuth-sourced request does NOT populate sessionUserId/sessionRole
+    // (it keeps being treated like before for those two concerns). This
+    // narrower field exists solely so touchClient() (base.ts) can attribute
+    // a gateway_clients row to the real human behind an OAuth connector.
+    ownerUserId: oauthOwner?.userId
   };
 }
 
@@ -1316,15 +1352,25 @@ function isAuthorized(
   return { ok: false, kind: "unauthenticated", reason: "missing_static_token" };
 }
 
+// A Marrow user's identity as resolved from an OAuth bearer's `sub` claim
+// (auth.ts's identifyOAuthOwner), fresh on every request -- never cached in
+// the token itself, see resolveOAuthOwner below.
+type OAuthOwner = { userId: string; role: string };
+
 // Scope tier granted by a request that already passed isAuthorized(). Static
-// token, no-token ("none"), and any OAuth-sourced request are fixed ceilings;
-// a session's tier is role-derived (decision 1 in D-MEMORY-007: no separate
-// "elevate to admin" UX, PMemUI has no destructive UI anyway per
-// D-MEMORY-015). See the scope-resolution table in docs/AUTH.md.
+// token and no-token ("none") are fixed ceilings; a session's tier is
+// role-derived (decision 1 in D-MEMORY-007: no separate "elevate to admin"
+// UX, PMemUI has no destructive UI anyway per D-MEMORY-015). An OAuth
+// bearer's tier is role-derived the same way (T-MEMORY-0xx SSO) -- it IS a
+// specific Marrow user, connecting through a connector instead of a browser
+// tab or CLI, and its tier tracks that user's CURRENT role exactly like a
+// session/personal token's does. See the scope-resolution table in
+// docs/AUTH.md.
 function resolveScopeTier(
   auth: Extract<AuthorizationState, { ok: true }>,
   sessionAuth: SessionIdentity | null,
-  personalTokenAuth: SessionIdentity | null
+  personalTokenAuth: SessionIdentity | null,
+  oauthOwner: OAuthOwner | null
 ): ScopeTier {
   switch (auth.source) {
     case "static":
@@ -1337,10 +1383,11 @@ function resolveScopeTier(
       // personal token IS that specific user, connecting programmatically.
       return personalTokenAuth?.role === "admin" ? "admin" : "write";
     case "oauth":
-      // Decision 2: OAuth connectors (Claude Code, ChatGPT) never get admin
-      // scope, forever, regardless of the underlying user or JWT claims --
-      // deliberate protection against an agent hallucinating a delete call.
-      return "write";
+      // A null oauthOwner (sub doesn't resolve to an active user) is
+      // handled by the caller (isAuthorizedForScopes) as a 401 before this
+      // is ever reached for that case -- treated as "write" here only as a
+      // defensive fallback, never actually returned to a real caller.
+      return oauthOwner?.role === "admin" ? "admin" : "write";
   }
 }
 
@@ -1354,6 +1401,7 @@ async function isAuthorizedForScopes(
   auth: AuthorizationState,
   sessionAuth: SessionIdentity | null,
   personalTokenAuth: SessionIdentity | null,
+  oauthOwner: OAuthOwner | null,
   requiredScopes: string[]
 ): Promise<AuthorizationState> {
   if (!auth.ok) {
@@ -1365,12 +1413,28 @@ async function isAuthorizedForScopes(
       return auth;
     }
     if (requiredScopes.includes(ADMIN_SCOPE)) {
+      // T-MEMORY-0xx SSO: a real admin-role user's own OAuth bearer reaches
+      // admin-tier tools directly, mirroring how a session/personal token's
+      // role resolves to admin tier -- no elevation header needed in that
+      // case. Still independently re-checks the base bearer's own
+      // signature/exp/resource validity (baseAuth) before trusting it.
+      if (oauthOwner?.role === "admin") {
+        const baseAuth = options.oauth.authenticate(
+          request,
+          requiredScopes.filter((scope) => scope !== ADMIN_SCOPE)
+        );
+        if (baseAuth.ok) {
+          return auth;
+        }
+      }
       // Defense in depth on top of oauth.ts never issuing memory:admin:
       // even if a token somehow carried it, an OAuth-sourced request is
       // denied without inspecting the claim -- UNLESS this request also
       // carries a valid step-up elevation grant (T-MEMORY-041,
       // D-MEMORY-019). No elevation header at all is the cheap, common
-      // case and short-circuits exactly like before this task.
+      // case and short-circuits exactly like before this task. Untouched by
+      // the SSO task above: a non-admin OAuth user (or one whose subject
+      // didn't resolve at all) still needs this grant, exactly as before.
       const elevationToken = headerString(request, ELEVATION_HEADER);
       if (!elevationToken || !options.auth) {
         return insufficientScope("admin", "write");
@@ -1388,28 +1452,50 @@ async function isAuthorizedForScopes(
       const grant = await options.auth.consumeElevation(elevationToken);
       return grant.ok ? auth : insufficientScope("admin", "write");
     }
-    const scopedAuth = options.oauth.authenticate(request, requiredScopes);
-    if (scopedAuth.ok) {
-      return auth;
+
+    if (!oauthOwner) {
+      // sub doesn't resolve to an active user -- a disabled/deleted
+      // account, or a still-valid pre-migration token whose sub was the old
+      // hardcoded "project-memory-user" literal. Fail closed (401) rather
+      // than silently downgrading to write scope.
+      return {
+        ok: false,
+        kind: "unauthenticated",
+        reason: "invalid_subject",
+        challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname))
+      };
     }
-    if (scopedAuth.reason === "scope") {
-      return insufficientScope(requiredTierFor(requiredScopes), "read");
-    }
-    return {
-      ok: false,
-      kind: "unauthenticated",
-      reason: scopedAuth.reason,
-      challenge: options.oauth.challengeHeader(requiredScopes, options.oauth.resourceForPath(parseRequestUrl(request).pathname))
-    };
+    // Falls through to the shared role-derived tier check below, exactly
+    // like session/personal_token -- the JWT's own `scope` claim no longer
+    // drives this decision (see oauth.ts's validateAuthorizeParams).
   }
 
-  const grantedTier = resolveScopeTier(auth, sessionAuth, personalTokenAuth);
+  const grantedTier = resolveScopeTier(auth, sessionAuth, personalTokenAuth, oauthOwner);
   const grantedScopes = scopesForTier(grantedTier);
   const missing = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
   if (missing.length === 0) {
     return auth;
   }
   return insufficientScope(requiredTierFor(requiredScopes), grantedTier);
+}
+
+// Resolves an OAuth bearer's identity, fresh, once per request: structural
+// token validity (signature/exp/resource -- empty requiredScopes here since
+// the JWT's own `scope` claim no longer drives the authorization decision,
+// see resolveScopeTier's oauth case above) plus a live `users` lookup on its
+// `sub`. Returns null for anything that isn't a currently-valid OAuth
+// bearer for an active user -- including "there's no bearer at all" (same
+// graceful-null shape as identifyFromRequest/identifyPersonalToken for a
+// request with no cookie/token), not just a resolution failure.
+async function resolveOAuthOwner(options: GatewayServerOptions, request: IncomingMessage): Promise<OAuthOwner | null> {
+  if (!options.oauth || !options.auth) {
+    return null;
+  }
+  const baseAuth = options.oauth.authenticate(request, []);
+  if (!baseAuth.ok) {
+    return null;
+  }
+  return options.auth.identifyOAuthOwner(baseAuth.subject);
 }
 
 function defaultOAuthScopes(): string[] {

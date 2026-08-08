@@ -788,6 +788,31 @@ export function createAuthFacade(db: Knex) {
     };
   }
 
+  // --- OAuth SSO identity resolution (real per-user login for OAuth
+  // connectors, replacing the old shared-magic-token gate) ---
+  // Resolves an OAuth access token's `sub` claim (a users.id, frozen onto
+  // the authorization code at authorize time -- see oauth.ts's
+  // OAuthCodeRecord.ownerUserId / authorizeWithSession) to that user's
+  // CURRENT role, fresh on every call so a role change or account disable
+  // takes effect immediately -- never cached in the token itself. Only an
+  // `active` user resolves, same convention as identifyPersonalToken above.
+  // Returns null for a sub that doesn't match any active user, which
+  // includes: a disabled/deleted account, and a still-valid pre-migration
+  // token whose sub was the old hardcoded "project-memory-user" literal
+  // (never a real users.id) -- both cases are handled identically by the
+  // caller (http-server.ts's isAuthorizedForScopes), which fails closed
+  // (401) rather than silently downgrading to write scope.
+  async function identifyOAuthOwner(userId: string): Promise<{ userId: string; role: string } | null> {
+    if (!userId) {
+      return null;
+    }
+    const row = await db("users").where({ id: userId }).andWhere("status", "active").select("id", "role").first();
+    if (!row) {
+      return null;
+    }
+    return { userId: row.id as string, role: row.role as string };
+  }
+
   async function activeToken(rawToken: string, allowedPurposes: string[]): Promise<Record<string, unknown>> {
     const now = new Date();
     const row = await db("tokens").where({ token_hash: hashToken(rawToken) }).first();
@@ -825,7 +850,8 @@ export function createAuthFacade(db: Knex) {
     consumeElevation,
     personalTokenStatus,
     regeneratePersonalToken,
-    identifyPersonalToken
+    identifyPersonalToken,
+    identifyOAuthOwner
   };
 }
 
