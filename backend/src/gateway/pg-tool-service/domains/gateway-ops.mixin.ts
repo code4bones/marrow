@@ -4,8 +4,23 @@ import { nowIso } from "../../../shared/dates.js";
 import { anonymousClientTtlSeconds } from "../formatters/clients.js";
 import { connectionSnippets } from "../formatters/common.js";
 import { migrationField, packageRoot, readBundledManual, readPackageMetadata } from "../formatters/gateway-ops.js";
-import { manualSpecs, type Row } from "../types.js";
+import { manualSpecs, type NormalizedGatewayRequestContext, type Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
+
+// Self-registration (POST /auth/register/confirm, and admin approve/reject)
+// happens over http-server.ts's REST routes, entirely outside the MCP/
+// GraphQL tool-call path -- there is no authenticated caller to attribute a
+// normal recordEvent(...) tool call to. This is the one legitimate synthetic
+// context for that case.
+const SYSTEM_REGISTRATION_CONTEXT: NormalizedGatewayRequestContext = {
+  clientId: "system:registration",
+  clientLabel: "Registration",
+  metadata: {},
+  sessionUserId: null,
+  sessionRole: null,
+  sessionSource: null,
+  ownerUserId: null
+};
 
 export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TBase) {
   return class extends Base {
@@ -379,6 +394,16 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
       },
       clients
     };
+  }
+
+  // Public (not `protected` like recordEvent/recordEventForProject): the one
+  // call site is http-server.ts's auth routes, which sit outside the tool
+  // dispatch path this class otherwise only calls itself. Routes every
+  // registration lifecycle change through the same gatewayEvents WS publish
+  // every other mutation already uses (T-MEMORY-042), so the admin-facing
+  // pending-approvals badge updates live instead of on a poll.
+  async recordSystemEvent(type: string, title: string, relatedId: string | null = null): Promise<void> {
+    await this.recordEventForProject(null, { type, title, related_id: relatedId }, SYSTEM_REGISTRATION_CONTEXT);
   }
 
   };

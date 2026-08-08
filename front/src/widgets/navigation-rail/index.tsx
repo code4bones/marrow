@@ -112,11 +112,6 @@ function buildAccountMenuItems(isAdmin: boolean, pendingApprovals: number): Menu
   ];
 }
 
-// Admin-only, no realtime hook exists for registrations yet -- a short poll
-// is enough to make "someone is waiting" show up promptly without wiring a
-// new event type through the WS pipe for this one signal.
-const PENDING_APPROVALS_POLL_MS = 20_000;
-
 export function NavigationRail() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,19 +128,19 @@ export function NavigationRail() {
     void fetchNotificationsSeenAt();
   }, [fetchNotificationsSeenAt]);
 
+  // Backend now emits user.registration_pending/user.approved/user.rejected
+  // as real gateway events (common-scope, projectId: null) on every
+  // registration lifecycle change, so this refreshes on the same WS
+  // eventsVersion bump as everything else instead of polling.
   const [pendingApprovals, setPendingApprovals] = useState(0);
-  useEffect(() => {
+  const refreshPendingApprovals = () => {
     if (!isAdmin) return;
-    let cancelled = false;
-    const poll = () => {
-      fetchPendingUsers()
-        .then((users) => { if (!cancelled) setPendingApprovals(users.length); })
-        .catch(() => { /* transient — next poll retries */ });
-    };
-    poll();
-    const interval = setInterval(poll, PENDING_APPROVALS_POLL_MS);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [isAdmin, fetchPendingUsers]);
+    fetchPendingUsers()
+      .then((users) => setPendingApprovals(users.length))
+      .catch(() => { /* transient — next event retries */ });
+  };
+  useEffect(refreshPendingApprovals, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refreshPendingApprovals);
 
   // T-MEMORY-051: unread badge — a small recent-events window, re-fetched on
   // every realtime version bump the same way the dedicated pages are.

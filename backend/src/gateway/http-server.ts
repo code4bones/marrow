@@ -404,6 +404,7 @@ async function handleRequest(
       try {
         const handled = await handleAuthRoute(
           options.auth,
+          service,
           request,
           response,
           requestUrl,
@@ -778,6 +779,7 @@ async function handleMcpRequest(
 
 async function handleAuthRoute(
   auth: AuthFacade,
+  service: PgToolService,
   request: IncomingMessage,
   response: ServerResponse,
   requestUrl: URL,
@@ -1200,6 +1202,7 @@ async function handleAuthRoute(
       return true;
     }
     const result = await auth.registerConfirm(body.token, body.code);
+    await service.recordSystemEvent("user.registration_pending", `Awaiting approval: ${result.email}`);
     send(200, { ok: true, data: result });
     return true;
   }
@@ -1223,8 +1226,10 @@ async function handleAuthRoute(
     const [, pendingUserId, action] = pendingMatch;
     if (action === "approve") {
       await auth.approveUser(pendingUserId);
+      await service.recordSystemEvent("user.approved", "User approved", pendingUserId);
     } else {
       await auth.rejectUser(pendingUserId);
+      await service.recordSystemEvent("user.rejected", "User rejected", pendingUserId);
     }
     send(200, { ok: true, data: { id: pendingUserId, status: action === "approve" ? "active" : "disabled" } });
     return true;
