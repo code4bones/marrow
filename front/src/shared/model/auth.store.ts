@@ -49,6 +49,21 @@ export interface PersonalTokenRegenerateResult {
   createdAt: string;
 }
 
+/** Per-user OAuth connector credential (replaces the old static, shared OAuth client id/secret pair). clientId is NOT secret — safe to display persistently, unlike clientSecretHint. */
+export interface OAuthClientStatus {
+  exists: boolean;
+  clientId: string | null;
+  clientSecretHint: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface OAuthClientRegenerateResult {
+  clientId: string;
+  clientSecret: string;
+  createdAt: string;
+}
+
 /** T-MEMORY-051: null = never viewed the notifications page — every event counts as unread. */
 export interface NotificationsStatus {
   seenAt: string | null;
@@ -100,6 +115,11 @@ interface AuthState {
   fetchPersonalToken: () => Promise<PersonalTokenStatus>;
   /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
   regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
+
+  /** This user's own OAuth connector credential (client id + secret), for the web-connector (Claude.ai/ChatGPT) tabs of the Connect section — replaces the old static, shared OAuth client id/secret pair. */
+  fetchOAuthClient: () => Promise<OAuthClientStatus>;
+  /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh client_id AND client_secret, invalidating the previous pair. clientSecret is returned exactly once (shown-once); clientId is not secret and stays visible via fetchOAuthClient afterward. */
+  regenerateOAuthClient: () => Promise<OAuthClientRegenerateResult>;
 
   /** T-MEMORY-051: current notifications-seen status — drives the nav-rail unread badge. */
   fetchNotificationsSeenAt: () => Promise<NotificationsStatus>;
@@ -319,6 +339,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       '/auth/profile/personal-token/regenerate',
       {},
       'Could not generate a personal token.',
+    ),
+
+  fetchOAuthClient: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/oauth-client`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load your OAuth connector credential.');
+    }
+    return body.data as OAuthClientStatus;
+  },
+
+  regenerateOAuthClient: () =>
+    postJson<OAuthClientRegenerateResult>(
+      '/auth/profile/oauth-client/regenerate',
+      {},
+      'Could not generate an OAuth connector credential.',
     ),
 
   fetchNotificationsSeenAt: async () => {

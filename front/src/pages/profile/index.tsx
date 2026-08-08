@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Empty,
   Form,
@@ -23,6 +22,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { type ReactNode, useEffect, useState } from 'react';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
+import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
@@ -31,7 +31,6 @@ import { type PendingRegistration, type PersonalTokenStatus, useAuthStore } from
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
-  GET_GATEWAY_CONNECTOR_INFO,
   GET_GIT_CREDENTIALS,
   GET_GIT_PIPELINE_STATUS,
 } from '../../shared/api/queries';
@@ -303,12 +302,14 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
  * reflects the real deployed host instead of a placeholder. The Claude
  * Code / Codex bearer token is this user's own personal Marrow API token
  * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
- * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/secret
- * come from the new gatewayConnectorInfo GraphQL query — a real, deployed
- * value read live from the server, not a placeholder — replacing what used
- * to be a "the magic token your admin gave you" instruction from before the
- * OAuth SSO rework (D-MEMORY-027) removed that shared magic-token gate
- * entirely in favor of a real per-user login at /oauth/authorize.
+ * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/
+ * secret are this user's own OAuth connector credential (see
+ * OAuthClientPanel above, rendered once for both web-connector tabs since
+ * the same credential serves both) instead of a static, shared pair --
+ * replacing what used to be a "the magic token your admin gave you"
+ * instruction from before the OAuth SSO rework (D-MEMORY-027) removed that
+ * shared magic-token gate entirely in favor of a real per-user login at
+ * /oauth/authorize.
  */
 function ConnectSection() {
   const user = useAuthStore((s) => s.user);
@@ -316,11 +317,6 @@ function ConnectSection() {
 
   const [personalToken, setPersonalToken] = useState<string | null>(null);
   const [tokenStatus, setTokenStatus] = useState<PersonalTokenStatus | null>(null);
-
-  const { data: connectorInfoData } = useQuery<{
-    gatewayConnectorInfo: { mcpUrl: string | null; oauthClientId: string | null; oauthClientSecret: string | null };
-  }>(GET_GATEWAY_CONNECTOR_INFO);
-  const connectorInfo = connectorInfoData?.gatewayConnectorInfo;
 
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
@@ -358,31 +354,6 @@ function ConnectSection() {
   // per-user login /oauth/authorize now requires (D-MEMORY-027) instead —
   // appending them here would just be inert query noise.
   const webConnectorUrl = mcpUrl;
-  const connectorIdSecretPanel = (
-    <Collapse
-      size="small"
-      style={{ marginTop: 4 }}
-      items={[
-        {
-          key: 'client-id-secret',
-          label: 'If it also asks for a Client ID / Client Secret',
-          children: connectorInfo ? (
-            <>
-              <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 8 }}>
-                Most connector setups only need the URL above, then log in with your own Marrow account when
-                prompted. A few ask for these too — they identify this Marrow deployment's connector app, not you
-                personally, and are the same for every user here.
-              </Text>
-              <CodeBlock code={`Client ID: ${connectorInfo.oauthClientId ?? '(not configured)'}`} />
-              <CodeBlock code={`Client Secret: ${connectorInfo.oauthClientSecret ?? '(not configured)'}`} />
-            </>
-          ) : (
-            <Spin size="small" />
-          ),
-        },
-      ]}
-    />
-  );
 
   const items = [
     {
@@ -436,7 +407,6 @@ function ConnectSection() {
           </Step>
           <Step n={2}>Paste this as the connector URL:</Step>
           <CodeBlock code={webConnectorUrl} />
-          {connectorIdSecretPanel}
           <Step n={3}>Click Connect — Claude opens Marrow's sign-in page in a new tab.</Step>
           <Step n={4}>
             Log in with your own Marrow account (email + password, same as this profile) and approve access — this
@@ -458,7 +428,6 @@ function ConnectSection() {
           </Step>
           <Step n={2}>Paste this as the connector (MCP server) URL:</Step>
           <CodeBlock code={webConnectorUrl} />
-          {connectorIdSecretPanel}
           <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
           <Step n={4}>Log in with your own Marrow account and approve access.</Step>
           <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call Marrow tools directly.</Step>
@@ -491,6 +460,17 @@ function ConnectSection() {
         message="Web connectors: Claude.ai and ChatGPT only, for now"
         description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
       />
+
+      <Text strong style={{ display: 'block', marginBottom: 8 }}>
+        Client ID / Client Secret (web connectors only)
+      </Text>
+      <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
+        A few Claude.ai/ChatGPT connector setups ask for these in addition to the URL below — the same pair serves
+        both. This is your own, personally-owned connector credential, tied to your account, not a shared deployment
+        secret.
+      </Paragraph>
+      <OAuthClientPanel />
+
       <Tabs size="small" items={items} />
     </Card>
   );
