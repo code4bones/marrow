@@ -42,6 +42,21 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         const project = await this.resolveProject(input.project, context);
         base.where("project_id", project.id);
       }
+    } else if (context?.sessionRole === "member" && context.sessionUserId) {
+      // T-MEMORY-051: no `project` argument means the global notifications
+      // feed -- without this, a role=member session would see events from
+      // every project system-wide, including ones it was never added to.
+      // Mirrors applyProjectMembershipFilter's project_members subquery
+      // (projects-core.mixin.ts), adapted for events.project_id (not
+      // projects.id) and for the fact that a NULL project_id (a
+      // common/global-scope event) is visible to every member, not just
+      // members of one particular project.
+      const sessionUserId = context.sessionUserId;
+      base.where((builder) => {
+        builder
+          .whereNull("project_id")
+          .orWhereIn("project_id", this.db("project_members").select("project_id").where({ user_id: sessionUserId }));
+      });
     }
     if (input.relatedId) {
       base.andWhere("related_id", String(input.relatedId));
