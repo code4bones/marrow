@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { Badge, Collapse, Skeleton, Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { GET_TASK_CLAIMS } from '../../shared/api/queries';
 import type { TaskClaim } from '../../shared/model/types';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function TaskClaimsPanel({ taskId, activeClaimCount }: Props) {
+  const { t } = useTranslation('tasks');
   const [loaded, setLoaded] = useState(false);
   const { data, loading } = useQuery<{ taskClaims: TaskClaim[] }>(GET_TASK_CLAIMS, {
     variables: { taskId },
@@ -26,7 +28,7 @@ export function TaskClaimsPanel({ taskId, activeClaimCount }: Props) {
 
   const label = (
     <span>
-      Claims
+      {t('claims')}
       {activeClaimCount > 0 && (
         <Badge count={activeClaimCount} color="#1668dc" style={{ marginLeft: 6 }} />
       )}
@@ -44,7 +46,7 @@ export function TaskClaimsPanel({ taskId, activeClaimCount }: Props) {
         children: loading
           ? <Skeleton active paragraph={{ rows: 2 }} />
           : !data?.taskClaims.length
-            ? <span style={{ color: '#8c8c8c', fontSize: 12 }}>No claims yet</span>
+            ? <span style={{ color: '#8c8c8c', fontSize: 12 }}>{t('noClaimsYet')}</span>
             : data.taskClaims.map((c) => (
                 <div key={c.id} style={{
                   padding: '6px 0',
@@ -58,7 +60,7 @@ export function TaskClaimsPanel({ taskId, activeClaimCount }: Props) {
                       {c.clientLabel && <span style={{ color: '#ccc' }}>{c.clientLabel}</span>}
                     </span>
                     <span style={{ color: '#595959', fontSize: 11 }}>
-                      expires <Timestamp value={c.leaseExpiresAt} />
+                      {t('expires')} <Timestamp value={c.leaseExpiresAt} />
                     </span>
                   </div>
                   {c.note && (

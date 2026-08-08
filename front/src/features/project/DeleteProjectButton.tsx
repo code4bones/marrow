@@ -2,6 +2,7 @@ import { useApolloClient, useMutation } from '@apollo/client/react';
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Input, Modal, Typography, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DELETE_PROJECT } from '../../shared/api/queries';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function DeleteProjectButton({ slug, onDone }: Props) {
+  const { t } = useTranslation('projects');
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const [cascade, setCascade] = useState(false);
@@ -18,7 +20,7 @@ export function DeleteProjectButton({ slug, onDone }: Props) {
 
   const [mutate, { loading }] = useMutation(DELETE_PROJECT, {
     onCompleted: (result) => {
-      message.success(`Project "${slug}" deleted`);
+      message.success(t('projectDeleted', { slug }));
       setOpen(false);
       setTyped('');
       // Now called from the project settings page (a different route than
@@ -50,20 +52,20 @@ export function DeleteProjectButton({ slug, onDone }: Props) {
         icon={<DeleteOutlined />}
         onClick={() => setOpen(true)}
       >
-        Delete Project
+        {t('deleteProject')}
       </Button>
       <Modal
         open={open}
         onCancel={() => { setOpen(false); setTyped(''); }}
         onOk={() => mutate({ variables: { slug, cascade, reason: reason || undefined } })}
         okButtonProps={{ danger: true, disabled: !confirmed, loading }}
-        okText="Delete"
-        title={`Delete project "${slug}"`}
+        okText={t('delete')}
+        title={t('deleteProjectConfirmTitle', { slug })}
         width={440}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
           <Typography.Text type="secondary">
-            Type the project slug to confirm deletion.
+            {t('typeSlugToConfirm')}
           </Typography.Text>
           <Input
             placeholder={slug}
@@ -72,12 +74,12 @@ export function DeleteProjectButton({ slug, onDone }: Props) {
             status={typed && !confirmed ? 'error' : undefined}
           />
           <Input
-            placeholder="Reason (optional)"
+            placeholder={t('reasonOptional')}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
           <Checkbox checked={cascade} onChange={(e) => setCascade(e.target.checked)}>
-            <Typography.Text type="danger">Cascade delete all tasks, artifacts, decisions, events</Typography.Text>
+            <Typography.Text type="danger">{t('cascadeDeleteWarning')}</Typography.Text>
           </Checkbox>
         </div>
       </Modal>

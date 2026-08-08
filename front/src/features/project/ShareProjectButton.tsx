@@ -1,6 +1,7 @@
 import { ShareAltOutlined } from '@ant-design/icons';
 import { Button, Modal } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProjectInviteLink } from './ProjectInviteLink';
 
 /**
@@ -11,14 +12,15 @@ import { ProjectInviteLink } from './ProjectInviteLink';
  * item first.
  */
 export function ShareProjectButton({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <Button icon={<ShareAltOutlined />} onClick={() => setOpen(true)}>
-        Share
+        {t('share')}
       </Button>
-      <Modal title="Share this project" open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
+      <Modal title={t('shareThisProject')} open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
         <ProjectInviteLink slug={slug} />
       </Modal>
     </>

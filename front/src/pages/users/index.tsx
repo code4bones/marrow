@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Card, Popconfirm, Select, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -9,6 +10,7 @@ import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { type AccountUser, useAuthStore } from '../../shared/model/auth.store';
 
 export function UsersPage() {
+  const { t } = useTranslation('users');
   const currentUser = useAuthStore((s) => s.user);
   const fetchUsers = useAuthStore((s) => s.fetchUsers);
   const setUserRole = useAuthStore((s) => s.setUserRole);
@@ -22,7 +24,7 @@ export function UsersPage() {
   const load = () => {
     fetchUsers()
       .then((data) => { setUsers(data); setError(null); })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load users.'))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t('couldNotLoadUsers')))
       .finally(() => setLoading(false));
   };
 
@@ -40,10 +42,10 @@ export function UsersPage() {
     setActingId(id);
     try {
       await setUserRole(id, role);
-      message.success('Role updated.');
+      message.success(t('roleUpdated'));
       load();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Could not change role.');
+      message.error(err instanceof Error ? err.message : t('couldNotChangeRole'));
     } finally {
       setActingId(null);
     }
@@ -53,19 +55,19 @@ export function UsersPage() {
     setActingId(id);
     try {
       await setUserStatus(id, status);
-      message.success(status === 'active' ? 'User re-enabled.' : 'User disabled.');
+      message.success(status === 'active' ? t('userReEnabled') : t('userDisabled'));
       load();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Could not change status.');
+      message.error(err instanceof Error ? err.message : t('couldNotChangeStatus'));
     } finally {
       setActingId(null);
     }
   };
 
   const columns: ColumnsType<AccountUser> = [
-    { title: 'Email', dataIndex: 'email' },
+    { title: t('email'), dataIndex: 'email' },
     {
-      title: 'Role',
+      title: t('role'),
       dataIndex: 'role',
       width: 160,
       render: (role: AccountUser['role'], row) => (
@@ -74,21 +76,21 @@ export function UsersPage() {
           value={role}
           disabled={row.id === currentUser?.id || actingId === row.id}
           style={{ width: 120 }}
-          options={[{ value: 'member', label: 'Member' }, { value: 'admin', label: 'Admin' }]}
+          options={[{ value: 'member', label: t('member') }, { value: 'admin', label: t('admin') }]}
           onChange={(value) => void changeRole(row.id, value)}
         />
       ),
     },
     {
-      title: 'Status',
+      title: t('status'),
       dataIndex: 'status',
       width: 120,
       render: (status: AccountUser['status']) => (
         <Tag color={status === 'active' ? 'green' : 'default'}>{status}</Tag>
       ),
     },
-    { title: '2FA', dataIndex: 'totpEnabled', width: 80, render: (v: boolean) => (v ? 'On' : 'Off') },
-    { title: 'Joined', dataIndex: 'createdAt', width: 180, render: (v) => <Timestamp value={v} /> },
+    { title: t('twoFa'), dataIndex: 'totpEnabled', width: 80, render: (v: boolean) => (v ? t('on') : t('off')) },
+    { title: t('joined'), dataIndex: 'createdAt', width: 180, render: (v) => <Timestamp value={v} /> },
     {
       title: '',
       key: 'actions',
@@ -96,17 +98,17 @@ export function UsersPage() {
       render: (_, row) =>
         row.id === currentUser?.id ? null : (
           <Popconfirm
-            title={row.status === 'active' ? 'Disable this account?' : 'Re-enable this account?'}
+            title={row.status === 'active' ? t('disableAccountConfirm') : t('enableAccountConfirm')}
             onConfirm={() => void changeStatus(row.id, row.status === 'active' ? 'disabled' : 'active')}
           >
-            <a>{row.status === 'active' ? 'Disable' : 'Enable'}</a>
+            <a>{row.status === 'active' ? t('disable') : t('enable')}</a>
           </Popconfirm>
         ),
     },
   ];
 
   return (
-    <PageLayout title="Users" subtitle="Everyone with an account on this instance">
+    <PageLayout title={t('users')} subtitle={t('everyoneWithAccount')}>
       <Card size="small">
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
         <Table<AccountUser>

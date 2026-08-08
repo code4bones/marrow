@@ -1,6 +1,7 @@
 import { useMutation } from '@apollo/client/react';
 import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
 import { CLAIM_PROJECT_INVITE_LINK } from '../../shared/api/queries';
@@ -37,6 +38,7 @@ interface ClaimResult {
  * navigates to /projects/{slug}.
  */
 export function ProjectInvitePage() {
+  const { t } = useTranslation('auth');
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const status = useAuthStore((s) => s.status);
@@ -47,7 +49,7 @@ export function ProjectInvitePage() {
 
   const [context, setContext] = useState<{ projectTitle: string; projectSlug: string } | null>(null);
   const [contextError, setContextError] = useState<string | null>(
-    code ? null : 'This invite link is missing a code.',
+    code ? null : t('inviteLinkMissingCode'),
   );
   const [contextLoading, setContextLoading] = useState(Boolean(code));
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -67,12 +69,12 @@ export function ProjectInvitePage() {
         const body: InviteContextResponse = await response.json().catch(() => ({}));
         if (cancelled) return;
         if (!response.ok || body.ok === false || !body.data) {
-          setContextError(body.error?.message ?? 'This invite link is no longer valid.');
+          setContextError(body.error?.message ?? t('inviteLinkNoLongerValid'));
         } else {
           setContext(body.data);
         }
       } catch {
-        if (!cancelled) setContextError('Could not check this invite link. Try again.');
+        if (!cancelled) setContextError(t('couldNotCheckInviteLink'));
       } finally {
         if (!cancelled) setContextLoading(false);
       }
@@ -80,7 +82,7 @@ export function ProjectInvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, t]);
 
   if (status === 'checking' || contextLoading) {
     return (
@@ -94,9 +96,9 @@ export function ProjectInvitePage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Invalid invite link
+          {t('invalidInviteLink')}
         </Title>
-        <Text type="secondary">{contextError ?? 'This invite link is missing a code.'}</Text>
+        <Text type="secondary">{contextError ?? t('inviteLinkMissingCode')}</Text>
       </CenteredCard>
     );
   }
@@ -115,7 +117,7 @@ export function ProjectInvitePage() {
       try {
         await login(email.trim(), password);
       } catch (err) {
-        setLoginError(err instanceof Error ? err.message : 'Something went wrong.');
+        setLoginError(err instanceof Error ? err.message : t('somethingWentWrong'));
       } finally {
         setSubmitting(false);
       }
@@ -124,22 +126,22 @@ export function ProjectInvitePage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Sign in to join {context?.projectTitle}
+          {t('signInToJoin', { project: context?.projectTitle })}
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          Sign in to your Marrow account to accept this invite.
+          {t('signInToAcceptInvite')}
         </Text>
         {loginError && <Alert type="error" message={loginError} style={{ marginBottom: 16 }} showIcon />}
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
+          <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
             <Input type="email" autoComplete="username" autoFocus />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Password is required' }]}>
+          <Form.Item name="password" label={t('password')} rules={[{ required: true, message: t('passwordRequired') }]}>
             <Input.Password autoComplete="current-password" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={submitting}>
-              Sign in
+              {t('signIn')}
             </Button>
           </Form.Item>
         </Form>
@@ -153,26 +155,26 @@ export function ProjectInvitePage() {
       const result = await claim({ variables: { code } });
       const project = result.data?.claimProjectInviteLink.project;
       if (!project) {
-        throw new Error('Could not join this project.');
+        throw new Error(t('couldNotJoinProject'));
       }
       setSelectedProject(project.slug);
       navigate(`/projects/${project.slug}`);
     } catch (err) {
-      setJoinError(err instanceof Error ? err.message : 'Could not join this project.');
+      setJoinError(err instanceof Error ? err.message : t('couldNotJoinProject'));
     }
   };
 
   return (
     <CenteredCard width={440}>
       <Title level={4} style={{ marginBottom: 4 }}>
-        You're invited to join {context?.projectTitle}
+        {t('youreInvitedToJoin', { project: context?.projectTitle })}
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Joining adds this project to your Marrow account.
+        {t('joiningAddsProject')}
       </Text>
       {joinError && <Alert type="error" message={joinError} style={{ marginBottom: 16 }} showIcon />}
       <Button type="primary" block loading={joining} onClick={onJoin}>
-        Join project
+        {t('joinProject')}
       </Button>
     </CenteredCard>
   );

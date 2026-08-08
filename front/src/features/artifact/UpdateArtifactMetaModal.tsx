@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { EditOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Modal, message } from 'antd';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { UPDATE_ARTIFACT_METADATA } from '../../shared/api/queries';
 import type { Artifact } from '../../shared/model/types';
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function UpdateArtifactMetaModal({ artifact, onDone }: Props) {
+  const { t } = useTranslation('artifacts');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
@@ -25,7 +27,7 @@ export function UpdateArtifactMetaModal({ artifact, onDone }: Props) {
   }, [open, artifact, form]);
 
   const [mutate, { loading }] = useMutation(UPDATE_ARTIFACT_METADATA, {
-    onCompleted: () => { message.success('Metadata updated'); setOpen(false); onDone?.(); },
+    onCompleted: () => { message.success(t('metadataUpdated')); setOpen(false); onDone?.(); },
     onError: (e) => message.error(e.message),
   });
 
@@ -51,25 +53,25 @@ export function UpdateArtifactMetaModal({ artifact, onDone }: Props) {
         type="text"
         icon={<EditOutlined />}
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        title="Edit metadata"
+        title={t('editMetadata')}
       />
       <Modal
         open={open}
         onCancel={() => setOpen(false)}
         onOk={submit}
         confirmLoading={loading}
-        title="Edit Artifact Metadata"
-        okText="Save"
+        title={t('editArtifactMetadata')}
+        okText={t('save')}
         width={480}
       >
         <Form form={form} layout="vertical" size="small" style={{ marginTop: 16 }}>
-          <Form.Item name="title" label="Title">
+          <Form.Item name="title" label={t('title')}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="Description">
+          <Form.Item name="description" label={t('description')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="tags" label="Tags (comma-separated)">
+          <Form.Item name="tags" label={t('tagsCommaSeparated')}>
             <Input />
           </Form.Item>
         </Form>

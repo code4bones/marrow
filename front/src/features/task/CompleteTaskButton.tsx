@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Form, Input, Modal, message } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { COMPLETE_TASK } from '../../shared/api/queries';
 
 interface Props {
@@ -11,11 +12,12 @@ interface Props {
 }
 
 export function CompleteTaskButton({ taskId, activeClaimCount = 0, onDone }: Props) {
+  const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(COMPLETE_TASK, {
     onCompleted: () => {
-      message.success('Task completed');
+      message.success(t('taskCompleted'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -36,28 +38,28 @@ export function CompleteTaskButton({ taskId, activeClaimCount = 0, onDone }: Pro
   return (
     <>
       <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => setOpen(true)}>
-        Complete
+        {t('complete')}
       </Button>
       <Modal
         open={open}
         onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.submit()}
         okButtonProps={{ loading }}
-        okText="Complete"
-        title="Complete task"
+        okText={t('complete')}
+        title={t('completeTask')}
         width={440}
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-          <Form.Item name="acceptanceEvidence" label="Acceptance evidence">
+          <Form.Item name="acceptanceEvidence" label={t('acceptanceEvidence')}>
             <Input.TextArea
               rows={4}
-              placeholder="What demonstrates the acceptance criteria are met?"
+              placeholder={t('acceptanceEvidencePlaceholder')}
             />
           </Form.Item>
           {activeClaimCount > 0 && (
             <Form.Item name="force" valuePropName="checked">
               <Checkbox>
-                Force completion ({activeClaimCount} active claim{activeClaimCount > 1 ? 's' : ''})
+                {t('forceCompletionWithCount', { count: activeClaimCount })}
               </Checkbox>
             </Form.Item>
           )}

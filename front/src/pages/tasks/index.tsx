@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { Alert, Badge, Select, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { CreateTaskDrawer } from '../../features/task/CreateTaskDrawer';
 import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
@@ -19,25 +20,30 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { TaskFlowchart } from '../../widgets/graph-view/TaskFlowchart';
 
-const STATUS_OPTIONS = [
-  { label: 'All statuses', value: '' },
-  { label: 'Todo', value: 'todo' },
-  { label: 'Doing', value: 'doing' },
-  { label: 'Blocked', value: 'blocked' },
-  { label: 'Done', value: 'done' },
-  { label: 'Cancelled', value: 'cancelled' },
-];
+function statusOptions(t: (key: string) => string) {
+  return [
+    { label: t('allStatuses'), value: '' },
+    { label: t('statusTodo'), value: 'todo' },
+    { label: t('statusDoing'), value: 'doing' },
+    { label: t('statusBlocked'), value: 'blocked' },
+    { label: t('statusDone'), value: 'done' },
+    { label: t('statusCancelled'), value: 'cancelled' },
+  ];
+}
 
 // T-MEMORY-051 follow-up: server-driven sort. Values are "<TaskSortField>:<SortDirection>"
 // GraphQL enum pairs, split apart before being sent as query variables.
-const SORT_OPTIONS = [
-  { label: 'Updated (newest)', value: 'UPDATED_AT:DESC' },
-  { label: 'Created (newest)', value: 'CREATED_AT:DESC' },
-  { label: 'Priority', value: 'PRIORITY:ASC' },
-];
-const DEFAULT_SORT = SORT_OPTIONS[0].value;
+function sortOptions(t: (key: string) => string) {
+  return [
+    { label: t('sortUpdatedNewest'), value: 'UPDATED_AT:DESC' },
+    { label: t('sortCreatedNewest'), value: 'CREATED_AT:DESC' },
+    { label: t('priority'), value: 'PRIORITY:ASC' },
+  ];
+}
+const DEFAULT_SORT = 'UPDATED_AT:DESC';
 
 export function TasksPage() {
+  const { t } = useTranslation('tasks');
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState(DEFAULT_SORT);
@@ -59,8 +65,8 @@ export function TasksPage() {
 
   if (!slug) {
     return (
-      <PageLayout title="Tasks">
-        <Typography.Text type="secondary">Select a project first.</Typography.Text>
+      <PageLayout title={t('tasks')}>
+        <Typography.Text type="secondary">{t('selectProjectFirst')}</Typography.Text>
       </PageLayout>
     );
   }
@@ -70,11 +76,11 @@ export function TasksPage() {
 
   const columns: ColumnsType<Task> = [
     {
-      title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
+      title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
     {
-      title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true,
+      title: t('title'), dataIndex: 'title', minWidth: 220, ellipsis: true,
       render: (v, row) => (
         <span>
           {v}
@@ -83,20 +89,20 @@ export function TasksPage() {
       ),
     },
     {
-      title: 'Status', dataIndex: 'status', width: 120,
+      title: t('status'), dataIndex: 'status', width: 120,
       render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
     },
-    { title: 'Pri', dataIndex: 'priority', width: 55, align: 'center', sorter: (a, b) => (a.priority ?? 0) - (b.priority ?? 0) },
+    { title: t('priorityShort'), dataIndex: 'priority', width: 55, align: 'center', sorter: (a, b) => (a.priority ?? 0) - (b.priority ?? 0) },
     {
-      title: 'Claims', dataIndex: 'activeClaimCount', width: 68, align: 'center',
+      title: t('claims'), dataIndex: 'activeClaimCount', width: 68, align: 'center',
       render: (v: number) => v > 0 ? <Badge count={v} color="#1668dc" /> : null,
     },
-    { title: 'Milestone', dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    { title: t('milestone'), dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     {
-      title: 'Scope', dataIndex: 'scope', width: 80,
+      title: t('scope'), dataIndex: 'scope', width: 80,
       render: (v) => v ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : '—',
     },
-    { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
       render: (_, row) => <DeleteTaskButton id={row.id} onDone={() => refetch()} />,
@@ -108,14 +114,14 @@ export function TasksPage() {
       <Select
         value={status}
         onChange={(v) => { setStatus(v); onChange(1, pageSize); }}
-        options={STATUS_OPTIONS}
+        options={statusOptions(t)}
         style={{ width: 150 }}
         size="small"
       />
       <Select
         value={sort}
         onChange={(v) => { setSort(v); onChange(1, pageSize); }}
-        options={SORT_OPTIONS}
+        options={sortOptions(t)}
         style={{ width: 160 }}
         size="small"
       />
@@ -124,7 +130,7 @@ export function TasksPage() {
   );
 
   return (
-    <PageLayout title="Tasks" subtitle={slug} headerExtra={header} fill>
+    <PageLayout title={t('tasks')} subtitle={slug} headerExtra={header} fill>
       <Tabs
         defaultActiveKey="list"
         size="small"
@@ -133,7 +139,7 @@ export function TasksPage() {
         items={[
           {
             key: 'list',
-            label: 'List',
+            label: t('list'),
             children: (
               <div style={{ height: '100%', overflowY: 'auto', padding: '0 0 8px' }}>
                 {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
@@ -151,7 +157,7 @@ export function TasksPage() {
                     onChange,
                     showSizeChanger: true,
                     pageSizeOptions: ['15', '25', '50', '100'],
-                    showTotal: (t) => `${t} tasks`,
+                    showTotal: (count) => t('tasksCount', { count }),
                   }}
                 />
               </div>
@@ -159,7 +165,7 @@ export function TasksPage() {
           },
           {
             key: 'flowchart',
-            label: 'Dependency Flowchart',
+            label: t('dependencyFlowchart'),
             children: (
               <div style={{ height: '100%', minHeight: 400 }}>
                 <TaskFlowchart tasks={allTasks} />

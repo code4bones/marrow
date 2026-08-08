@@ -13,6 +13,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Typography } from 'antd';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { Task } from '../../shared/model/types';
 
@@ -24,9 +25,15 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: '#303030',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  todo: 'Todo', doing: 'Doing', blocked: 'Blocked', done: 'Done', cancelled: 'Cancelled',
-};
+function statusLabels(translate: (key: string) => string): Record<string, string> {
+  return {
+    todo: translate('statusTodo'),
+    doing: translate('statusDoing'),
+    blocked: translate('statusBlocked'),
+    done: translate('statusDone'),
+    cancelled: translate('statusCancelled'),
+  };
+}
 
 const NODE_W = 200;
 const NODE_H = 60;
@@ -88,6 +95,7 @@ interface Props {
 }
 
 export function TaskFlowchart({ tasks }: Props) {
+  const { t: translate } = useTranslation('tasks');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { nodes, edges } = useMemo(() => {
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
@@ -118,7 +126,7 @@ export function TaskFlowchart({ tasks }: Props) {
   if (tasks.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-        <Typography.Text type="secondary">No tasks</Typography.Text>
+        <Typography.Text type="secondary">{translate('noTasks')}</Typography.Text>
       </div>
     );
   }
@@ -126,8 +134,8 @@ export function TaskFlowchart({ tasks }: Props) {
   if (edges.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 8 }}>
-        <Typography.Text type="secondary">No dependencies defined</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>Tasks with dependsOn links will appear here</Typography.Text>
+        <Typography.Text type="secondary">{translate('noDependenciesDefined')}</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>{translate('tasksWithDependsOnHint')}</Typography.Text>
       </div>
     );
   }
@@ -168,16 +176,16 @@ export function TaskFlowchart({ tasks }: Props) {
         zIndex: 10,
       }}>
         <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2, display: 'block' }}>
-          Status
+          {translate('status')}
         </Typography.Text>
-        {Object.entries(STATUS_LABEL).map(([key, label]) => (
+        {Object.entries(statusLabels(translate)).map(([key, label]) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_COLOR[key] }} />
             <Typography.Text style={{ fontSize: 11 }}>{label}</Typography.Text>
           </div>
         ))}
         <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-          Arrow = "blocks"
+          {translate('arrowMeansBlocks')}
         </Typography.Text>
       </div>
     </div>

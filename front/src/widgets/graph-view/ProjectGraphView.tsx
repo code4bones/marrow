@@ -1,16 +1,19 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Select, Space, Switch, Typography } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
 import { ROOT_KIND_OPTIONS, type RootKind } from './rootKind';
 
-const DEPTH_OPTIONS = [
-  { label: 'Depth 1', value: 1 },
-  { label: 'Depth 2', value: 2 },
-  { label: 'Depth 3', value: 3 },
-];
+function depthOptions(t: (key: string) => string) {
+  return [
+    { label: t('depth1'), value: 1 },
+    { label: t('depth2'), value: 2 },
+    { label: t('depth3'), value: 3 },
+  ];
+}
 
 interface Props {
   slug: string;
@@ -21,6 +24,7 @@ interface Props {
 // "Graph — убирай, это фигня. акцент на этом новом Timeline"). No toggle,
 // no fallback — KnowledgeGraph.tsx is retired.
 export function ProjectGraphView({ slug }: Props) {
+  const { t } = useTranslation('projects');
   const [depth, setDepth] = useState(2);
   // D-MEMORY-024: what the baseline ribbon lists — decisions by default
   // (D-MEMORY-014's original quiet default), switchable to any kind.
@@ -57,10 +61,10 @@ export function ProjectGraphView({ slug }: Props) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #303030', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>Timeline</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 600 }}>{t('timeline')}</Typography.Text>
         <Space size={12}>
           <Space size={6}>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Root:</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('root')}</Typography.Text>
             <Select
               value={rootKind}
               onChange={setRootKind}
@@ -72,20 +76,20 @@ export function ProjectGraphView({ slug }: Props) {
           {rootKind === 'DECISION' && (
             <Space size={6}>
               <Switch size="small" checked={showTasks} onChange={setShowTasks} />
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Show tasks</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('showTasks')}</Typography.Text>
             </Space>
           )}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Link depth:</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('linkDepth')}</Typography.Text>
           <Select
             value={depth}
             onChange={setDepth}
-            options={DEPTH_OPTIONS}
+            options={depthOptions(t)}
             size="small"
             style={{ width: 100 }}
           />
           {graph && (
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {nodes.length} nodes · {edges.length} edges
+              {t('nodesAndEdges', { nodes: nodes.length, edges: edges.length })}
             </Typography.Text>
           )}
         </Space>

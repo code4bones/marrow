@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, List, Skeleton, Typography } from 'antd';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
 import { GET_PROJECTS } from '../../shared/api/queries';
@@ -13,6 +14,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 import { ProjectOverview } from '../../widgets/project-overview';
 
 export function ProjectsPage() {
+  const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
@@ -30,7 +32,7 @@ export function ProjectsPage() {
       <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #303030' }}>
         <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Projects
+            {t('projects')}
           </Typography.Text>
           <CreateProjectModal onDone={() => refetch()} />
         </div>
@@ -77,7 +79,7 @@ export function ProjectsPage() {
           <ProjectOverview slug={slug} />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography.Text type="secondary">Select a project</Typography.Text>
+            <Typography.Text type="secondary">{t('selectAProject')}</Typography.Text>
           </div>
         )}
       </div>

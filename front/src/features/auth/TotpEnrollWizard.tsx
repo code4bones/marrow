@@ -1,6 +1,7 @@
 import { Alert, Button, Checkbox, Input, Spin, Typography } from 'antd';
 import { toDataURL } from 'qrcode';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const { Text, Paragraph } = Typography;
 
@@ -31,8 +32,10 @@ export function TotpEnrollWizard({
   onConfirm,
   onFinish,
   finishNote,
-  finishLabel = 'Continue',
+  finishLabel,
 }: TotpEnrollWizardProps) {
+  const { t } = useTranslation('profile');
+  const resolvedFinishLabel = finishLabel ?? t('continue');
   const [step, setStep] = useState<'code' | 'recovery'>('code');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -63,7 +66,7 @@ export function TotpEnrollWizard({
       setRecoveryCodes(result.recoveryCodes);
       setStep('recovery');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid code.');
+      setError(err instanceof Error ? err.message : t('invalidCode'));
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +80,7 @@ export function TotpEnrollWizard({
           {qrDataUrl ? (
             <img
               src={qrDataUrl}
-              alt="Scan this QR code with your authenticator app"
+              alt={t('scanQrCodeAlt')}
               width={220}
               height={220}
               style={{ background: '#fff', padding: 8, borderRadius: 4 }}
@@ -89,8 +92,7 @@ export function TotpEnrollWizard({
           )}
         </div>
         <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
-          Scan with your authenticator app (Google Authenticator, 1Password, Authy, …). Can't scan? Enter this code
-          manually:
+          {t('scanWithAuthenticatorApp')}
         </Text>
         <Paragraph
           copyable={{ text: secretBase32 }}
@@ -99,7 +101,7 @@ export function TotpEnrollWizard({
         >
           {secretBase32}
         </Paragraph>
-        <Text style={{ display: 'block', marginBottom: 4 }}>Enter the 6-digit code from the app</Text>
+        <Text style={{ display: 'block', marginBottom: 4 }}>{t('enter6DigitCode')}</Text>
         <Input
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -110,7 +112,7 @@ export function TotpEnrollWizard({
           style={{ marginBottom: 16, letterSpacing: 2, fontSize: 16 }}
         />
         <Button type="primary" block loading={submitting} disabled={code.trim().length !== 6} onClick={() => void submitCode()}>
-          Verify code
+          {t('verifyCode')}
         </Button>
       </div>
     );
@@ -121,8 +123,8 @@ export function TotpEnrollWizard({
       <Alert
         type="warning"
         showIcon
-        message="Save these recovery codes now"
-        description="Each code can be used once to sign in if you lose access to your authenticator app. They will not be shown again."
+        message={t('saveRecoveryCodesNow')}
+        description={t('recoveryCodesDescription')}
         style={{ marginBottom: 16 }}
       />
       <div
@@ -148,10 +150,10 @@ export function TotpEnrollWizard({
         </Text>
       )}
       <Checkbox checked={saved} onChange={(e) => setSaved(e.target.checked)} style={{ marginBottom: 16 }}>
-        I've saved these recovery codes somewhere safe
+        {t('savedRecoveryCodesConfirm')}
       </Checkbox>
       <Button type="primary" block disabled={!saved} onClick={onFinish}>
-        {finishLabel}
+        {resolvedFinishLabel}
       </Button>
     </div>
   );

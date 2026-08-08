@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Table, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { type PendingRegistration, useAuthStore } from '../../shared/model/auth.store';
 
-const baseColumns: ColumnsType<PendingRegistration> = [
-  { title: 'Email', dataIndex: 'email' },
-  { title: 'Registered', dataIndex: 'createdAt', width: 180, render: (v) => <Timestamp value={v} /> },
-];
+function baseColumns(t: (key: string) => string): ColumnsType<PendingRegistration> {
+  return [
+    { title: t('email'), dataIndex: 'email' },
+    { title: t('registered'), dataIndex: 'createdAt', width: 180, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
 export function ApprovalsPage() {
+  const { t } = useTranslation('approvals');
   const user = useAuthStore((s) => s.user);
   const fetchPendingUsers = useAuthStore((s) => s.fetchPendingUsers);
   const approvePendingUser = useAuthStore((s) => s.approvePendingUser);
@@ -28,7 +32,7 @@ export function ApprovalsPage() {
       setUsers(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load pending users.');
+      setError(err instanceof Error ? err.message : t('couldNotLoadPendingUsers'));
     } finally {
       setLoading(false);
     }
@@ -44,7 +48,7 @@ export function ApprovalsPage() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load pending users.');
+        setError(err instanceof Error ? err.message : t('couldNotLoadPendingUsers'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -64,21 +68,21 @@ export function ApprovalsPage() {
     try {
       if (action === 'approve') {
         await approvePendingUser(id);
-        message.success('User approved.');
+        message.success(t('userApproved'));
       } else {
         await rejectPendingUser(id);
-        message.success('User rejected.');
+        message.success(t('userRejected'));
       }
       await load();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Action failed.');
+      message.error(err instanceof Error ? err.message : t('actionFailed'));
     } finally {
       setActingId(null);
     }
   };
 
   const columns: ColumnsType<PendingRegistration> = [
-    ...baseColumns,
+    ...baseColumns(t),
     {
       title: '',
       key: 'actions',
@@ -86,10 +90,10 @@ export function ApprovalsPage() {
       render: (_, row) => (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button size="small" type="primary" loading={actingId === row.id} onClick={() => void act(row.id, 'approve')}>
-            Approve
+            {t('approve')}
           </Button>
           <Button size="small" danger loading={actingId === row.id} onClick={() => void act(row.id, 'reject')}>
-            Reject
+            {t('reject')}
           </Button>
         </div>
       ),
@@ -97,7 +101,7 @@ export function ApprovalsPage() {
   ];
 
   return (
-    <PageLayout title="Approvals" subtitle="Accounts waiting for admin sign-off">
+    <PageLayout title={t('approvals')} subtitle={t('accountsWaitingForApproval')}>
       <Card size="small">
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
         <Table<PendingRegistration>
@@ -107,7 +111,7 @@ export function ApprovalsPage() {
           dataSource={users}
           columns={columns}
           pagination={false}
-          locale={{ emptyText: <Empty description="No accounts waiting for approval" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+          locale={{ emptyText: <Empty description={t('noAccountsWaiting')} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
         />
       </Card>
     </PageLayout>

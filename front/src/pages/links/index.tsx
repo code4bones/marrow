@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { Alert, Checkbox, Input, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { CreateLinkModal } from '../../features/link/CreateLinkModal';
 import { DeleteLinkButton } from '../../features/link/DeleteLinkButton';
@@ -13,6 +14,7 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
 export function LinksPage() {
+  const { t } = useTranslation('links');
   const { slug } = useParams<{ slug: string }>();
   const [relation, setRelation] = useState('');
   const [includeCommon, setIncludeCommon] = useState(false);
@@ -26,16 +28,16 @@ export function LinksPage() {
 
   const columns: ColumnsType<Link> = [
     {
-      title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
+      title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
-    { title: 'From', dataIndex: 'fromId', width: 160, render: (v) => <RecordLink id={v} /> },
+    { title: t('from'), dataIndex: 'fromId', width: 160, render: (v) => <RecordLink id={v} /> },
     {
-      title: 'Relation', dataIndex: 'relation', width: 180,
+      title: t('relation'), dataIndex: 'relation', width: 180,
       render: (v) => <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontFamily: 'monospace' }}>{v}</span>,
     },
-    { title: 'To', dataIndex: 'toId', width: 160, render: (v) => <RecordLink id={v} /> },
-    { title: 'At', dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('to'), dataIndex: 'toId', width: 160, render: (v) => <RecordLink id={v} /> },
+    { title: t('at'), dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
       render: (_, row) => <DeleteLinkButton id={row.id} onDone={() => refetch()} />,
@@ -44,12 +46,12 @@ export function LinksPage() {
 
   return (
     <PageLayout
-      title="Links"
+      title={t('links')}
       subtitle={slug}
       headerExtra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Input
-            placeholder="Filter relation…"
+            placeholder={t('filterRelationPlaceholder')}
             value={relation}
             onChange={(e) => { setRelation(e.target.value); onChange(1, pageSize); }}
             allowClear
@@ -61,7 +63,7 @@ export function LinksPage() {
             onChange={(e) => { setIncludeCommon(e.target.checked); onChange(1, pageSize); }}
             style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}
           >
-            + common
+            {t('plusCommon')}
           </Checkbox>
           {slug && <CreateLinkModal projectSlug={slug} onDone={() => refetch()} />}
         </div>
@@ -82,7 +84,7 @@ export function LinksPage() {
           onChange,
           showSizeChanger: true,
           pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (t) => `${t} links`,
+          showTotal: (count) => t('linksCount', { count }),
         }}
       />
     </PageLayout>

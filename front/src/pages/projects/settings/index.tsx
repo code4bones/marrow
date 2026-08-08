@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Form, Input, Spin, Typography, message } from 'antd';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DeleteProjectButton } from '../../../features/project/DeleteProjectButton';
 import { ProjectInviteLink } from '../../../features/project/ProjectInviteLink';
@@ -18,10 +19,11 @@ interface RenameFormValues {
 
 /** Title/description form -- any current project member (or admin) can rename, no separate owner concept. */
 function RenameSection({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   const { data, loading, error } = useQuery<{ project: Project }>(GET_PROJECT_SETTINGS, { variables: { slug } });
   const [form] = Form.useForm<RenameFormValues>();
   const [mutate, { loading: saving }] = useMutation(UPDATE_PROJECT, {
-    onCompleted: () => message.success('Project updated'),
+    onCompleted: () => message.success(t('projectUpdated')),
     onError: (e) => message.error(e.message),
   });
 
@@ -37,19 +39,19 @@ function RenameSection({ slug }: { slug: string }) {
     );
 
   return (
-    <Card title="Rename" size="small" style={{ marginBottom: 16 }}>
+    <Card title={t('rename')} size="small" style={{ marginBottom: 16 }}>
       {loading && <Spin size="small" />}
       {error && <Alert type="error" message={error.message} showIcon />}
       {data?.project && (
         <Form form={form} layout="vertical" size="small" disabled={saving}>
-          <Form.Item name="title" label="Title" rules={[{ required: true, message: 'Title is required' }]}>
+          <Form.Item name="title" label={t('title')} rules={[{ required: true, message: t('titleRequired') }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="Description">
+          <Form.Item name="description" label={t('description')}>
             <Input.TextArea rows={3} />
           </Form.Item>
           <Button type="primary" size="small" onClick={submit} loading={saving}>
-            Save
+            {t('save')}
           </Button>
         </Form>
       )}
@@ -58,21 +60,23 @@ function RenameSection({ slug }: { slug: string }) {
 }
 
 function InviteSection({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   return (
-    <Card title="Invite" size="small" style={{ marginBottom: 16 }}>
+    <Card title={t('invite')} size="small" style={{ marginBottom: 16 }}>
       <ProjectInviteLink slug={slug} />
     </Card>
   );
 }
 
 function DangerZoneSection({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
 
   return (
-    <Card title="Danger zone" size="small" style={{ borderColor: '#a61d24' }}>
+    <Card title={t('dangerZone')} size="small" style={{ borderColor: '#a61d24' }}>
       <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-        Hard-deletes this project. This does not depend on project membership -- only a system admin can do this.
+        {t('dangerZoneDescription')}
       </Text>
       <DeleteProjectButton
         slug={slug}
@@ -86,18 +90,19 @@ function DangerZoneSection({ slug }: { slug: string }) {
 }
 
 export function ProjectSettingsPage() {
+  const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
 
   if (!slug) {
     return (
-      <PageLayout title="Settings">
-        <Typography.Text type="secondary">Select a project first.</Typography.Text>
+      <PageLayout title={t('settings')}>
+        <Typography.Text type="secondary">{t('selectProjectFirst')}</Typography.Text>
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout title="Settings" subtitle={slug}>
+    <PageLayout title={t('settings')} subtitle={slug}>
       <RenameSection slug={slug} />
       <InviteSection slug={slug} />
       <DangerZoneSection slug={slug} />

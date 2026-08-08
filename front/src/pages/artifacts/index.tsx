@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
 import { DeleteArtifactButton } from '../../features/artifact/DeleteArtifactButton';
@@ -27,6 +28,7 @@ function sizeLabel(bytes: number | null) {
 }
 
 export function ArtifactsPage() {
+  const { t } = useTranslation('artifacts');
   const { slug } = useParams<{ slug: string }>();
   const { page, pageSize, offset, onChange } = usePage();
 
@@ -40,11 +42,11 @@ export function ArtifactsPage() {
 
   const columns: ColumnsType<Artifact> = [
     {
-      title: 'ID', dataIndex: 'id', width: 140, fixed: 'left',
+      title: t('idCol'), dataIndex: 'id', width: 140, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
     {
-      title: 'Path', dataIndex: 'path', minWidth: 220, ellipsis: true,
+      title: t('path'), dataIndex: 'path', minWidth: 220, ellipsis: true,
       render: (v, row) => (
         <span>
           <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>
@@ -52,16 +54,16 @@ export function ArtifactsPage() {
         </span>
       ),
     },
-    { title: 'Title', dataIndex: 'title', minWidth: 180, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
-    { title: 'Scope', dataIndex: 'scope', width: 80, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-    { title: 'Type', dataIndex: 'contentType', width: 170, ellipsis: true },
-    { title: 'Size', dataIndex: 'sizeBytes', width: 80, align: 'right', sorter: (a, b) => (a.sizeBytes ?? 0) - (b.sizeBytes ?? 0), render: sizeLabel },
-    { title: 'Status', dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
+    { title: t('title'), dataIndex: 'title', minWidth: 180, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
+    { title: t('scope'), dataIndex: 'scope', width: 80, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
+    { title: t('contentType'), dataIndex: 'contentType', width: 170, ellipsis: true },
+    { title: t('size'), dataIndex: 'sizeBytes', width: 80, align: 'right', sorter: (a, b) => (a.sizeBytes ?? 0) - (b.sizeBytes ?? 0), render: sizeLabel },
+    { title: t('status'), dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
     {
-      title: 'Tags', dataIndex: 'tags', minWidth: 160,
-      render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
+      title: t('tagsCol'), dataIndex: 'tags', minWidth: 160,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
       title: '', key: 'actions', width: 70, fixed: 'right',
       render: (_, row) => (
@@ -76,7 +78,7 @@ export function ArtifactsPage() {
 
   return (
     <PageLayout
-      title="Artifacts"
+      title={t('artifacts')}
       subtitle={slug}
       headerExtra={slug ? <PutTextArtifactDrawer projectSlug={slug} onDone={() => refetch()} /> : undefined}
     >
@@ -95,7 +97,7 @@ export function ArtifactsPage() {
           onChange,
           showSizeChanger: true,
           pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (t) => `${t} artifacts`,
+          showTotal: (count) => t('artifactsCount', { count }),
         }}
       />
     </PageLayout>

@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Modal, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CREATE_LINK } from '../../shared/api/queries';
 
 interface Props {
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export function CreateLinkModal({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('links');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(CREATE_LINK, {
     onCompleted: () => {
-      message.success('Link created');
+      message.success(t('linkCreated'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -37,24 +39,24 @@ export function CreateLinkModal({ projectSlug, onDone }: Props) {
 
   return (
     <>
-      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Link</Button>
+      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('link')}</Button>
       <Modal
         open={open}
         onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.submit()}
         okButtonProps={{ loading }}
-        okText="Create"
-        title="Create link"
+        okText={t('create')}
+        title={t('createLink')}
         width={400}
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-          <Form.Item name="fromId" label="From ID" rules={[{ required: true }]}>
+          <Form.Item name="fromId" label={t('fromId')} rules={[{ required: true }]}>
             <Input placeholder="T-PMEM-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
-          <Form.Item name="relation" label="Relation" rules={[{ required: true }]}>
+          <Form.Item name="relation" label={t('relation')} rules={[{ required: true }]}>
             <Input placeholder="blocks, documents, related_to…" />
           </Form.Item>
-          <Form.Item name="toId" label="To ID" rules={[{ required: true }]}>
+          <Form.Item name="toId" label={t('toId')} rules={[{ required: true }]}>
             <Input placeholder="D-PMEM-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
         </Form>

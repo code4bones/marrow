@@ -1,6 +1,7 @@
 import { Alert, Button, Empty, Input, Popconfirm, Spin, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { type OAuthClient, useAuthStore } from '../../shared/model/auth.store';
@@ -50,6 +51,7 @@ interface OAuthClientPanelProps {
  * working (e.g. Claude.ai).
  */
 export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }: OAuthClientPanelProps) {
+  const { t } = useTranslation('profile');
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
   const createOAuthClient = useAuthStore((s) => s.createOAuthClient);
   const regenerateOAuthClient = useAuthStore((s) => s.regenerateOAuthClient);
@@ -71,7 +73,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
     try {
       setAllClients(await fetchOAuthClients());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your OAuth connector credentials.');
+      setError(err instanceof Error ? err.message : t('couldNotLoadCredentials'));
     }
   };
 
@@ -84,7 +86,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
         setAllClients(result);
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load your OAuth connector credentials.');
+        setError(err instanceof Error ? err.message : t('couldNotLoadCredentials'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -119,7 +121,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       resetCreateForm();
       await load();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Could not create an OAuth connector credential.');
+      setCreateError(err instanceof Error ? err.message : t('couldNotCreateCredential'));
     } finally {
       setCreating(false);
     }
@@ -133,7 +135,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       setRevealedSecrets((prev) => ({ ...prev, [id]: result.clientSecret }));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not regenerate this OAuth connector credential.');
+      setError(err instanceof Error ? err.message : t('couldNotRegenerateCredential'));
     } finally {
       setBusyId(null);
     }
@@ -151,7 +153,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this OAuth connector credential.');
+      setError(err instanceof Error ? err.message : t('couldNotDeleteCredential'));
     } finally {
       setBusyId(null);
     }
@@ -160,14 +162,14 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
   if (loading) {
     return (
       <div style={{ marginBottom: 16 }}>
-        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Loading…</Text>
+        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>{t('loading')}</Text>
       </div>
     );
   }
 
   const hasClients = clients.length > 0;
   const canOneClickCreate = Boolean(fixedLabel && fixedRedirectUri);
-  const addButtonLabel = fixedLabel ? `Create ${fixedLabel} credential` : 'Add connector credential';
+  const addButtonLabel = fixedLabel ? t('createNamedCredential', { label: fixedLabel }) : t('addConnectorCredential');
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -183,11 +185,11 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
           <div key={client.id} style={{ border: '1px solid #303030', borderRadius: 6, padding: 12, marginBottom: 12 }}>
             {!fixedLabel && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <Text strong>{client.label || 'Untitled credential'}</Text>
+                <Text strong>{client.label || t('untitledCredential')}</Text>
                 <Popconfirm
-                  title="Delete this credential?"
-                  description="This connector's Client ID and Secret stop working immediately. It has no effect on your other credentials."
-                  okText="Delete"
+                  title={t('deleteCredentialConfirmTitle')}
+                  description={t('deleteCredentialDescription')}
+                  okText={t('delete')}
                   okButtonProps={{ danger: true, loading: busyId === client.id }}
                   onConfirm={() => void remove(client.id)}
                 >
@@ -196,58 +198,65 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
               </div>
             )}
 
-            <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>
-              Client ID:
-            </Text>
-            <CodeBlock code={client.clientId} />
-
             {revealedSecret ? (
               <>
                 <Alert
                   type="warning"
                   showIcon
-                  message="Copy your Client Secret now"
-                  description="This is the only time it will be shown. If you lose it, use Regenerate below to get a new pair — the old one stops working immediately, but every other credential is unaffected."
+                  message={t('copyClientSecretNow')}
+                  description={t('copyClientSecretDescription')}
                   style={{ marginBottom: 12 }}
                 />
+                <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>
+                  {t('clientIdLabel')}
+                </Text>
+                <CodeBlock code={client.clientId} />
+                <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>
+                  {t('clientSecretLabel')}
+                </Text>
                 <CodeBlock code={revealedSecret} />
               </>
             ) : (
-              <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
-                Client Secret ending in <Text code>…{client.clientSecretHint}</Text> · created{' '}
-                <Timestamp value={client.createdAt} /> · last used <Timestamp value={client.lastUsedAt} /> · not shown
-                again — use Regenerate for a new pair.
-              </Text>
+              <>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12.5 }}>
+                  {t('clientIdLabel')}
+                </Text>
+                <CodeBlock code={client.clientId} />
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
+                  {t('clientSecretEndingIn')} <Text code>…{client.clientSecretHint}</Text> · {t('created')}{' '}
+                  <Timestamp value={client.createdAt} /> · {t('lastUsed')} <Timestamp value={client.lastUsedAt} /> · {t('notShownAgainUseRegenerate')}
+                </Text>
+              </>
             )}
 
             {client.redirectUri && (
               <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
-                Redirect URI: <Text code>{client.redirectUri}</Text>
+                {t('redirectUriLabel')} <Text code>{client.redirectUri}</Text>
               </Text>
             )}
 
             <div style={{ display: 'flex', gap: 8 }}>
               <Popconfirm
-                title="Regenerate this credential?"
-                description="This connector's current Client ID and Secret both stop working immediately. Any connector using them will need the new pair. Your other credentials are unaffected."
-                okText="Regenerate"
+                title={t('regenerateCredentialConfirmTitle')}
+                description={t('regenerateCredentialDescription')}
+                okText={t('regenerate')}
                 okButtonProps={{ danger: true, loading: busyId === client.id }}
                 onConfirm={() => void regenerate(client.id)}
               >
                 <Button size="small" disabled={busyId !== null && busyId !== client.id}>
-                  Regenerate
+                  {t('regenerate')}
                 </Button>
               </Popconfirm>
               {fixedLabel && (
                 <Popconfirm
-                  title="Delete this credential?"
-                  description="This connector's Client ID and Secret stop working immediately."
-                  okText="Delete"
+                  title={t('deleteCredentialConfirmTitle')}
+                  description={t('deleteCredentialDescriptionShort')}
+                  okText={t('delete')}
                   okButtonProps={{ danger: true, loading: busyId === client.id }}
                   onConfirm={() => void remove(client.id)}
                 >
                   <Button size="small" danger disabled={busyId !== null && busyId !== client.id}>
-                    Delete
+                    {t('delete')}
                   </Button>
                 </Popconfirm>
               )}
@@ -267,10 +276,10 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
             {!fixedLabel && (
               <>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
-                  Label
+                  {t('label')}
                 </Text>
                 <Input
-                  placeholder="e.g. Claude.ai or ChatGPT"
+                  placeholder={t('labelPlaceholder')}
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
                   style={{ marginBottom: 12 }}
@@ -280,7 +289,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
             {!fixedRedirectUri && (
               <>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
-                  Redirect URI
+                  {t('redirectUri')}
                 </Text>
                 <Input
                   placeholder="https://…/callback"
@@ -298,10 +307,10 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
                 disabled={!(fixedLabel ?? newLabel.trim()) || !(fixedRedirectUri ?? newRedirectUri.trim())}
                 onClick={() => void create()}
               >
-                Create credential
+                {t('createCredential')}
               </Button>
               <Button size="small" disabled={creating} onClick={resetCreateForm}>
-                Cancel
+                {t('cancel')}
               </Button>
             </div>
           </div>
@@ -311,7 +320,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
             loading={creating}
             onClick={() => (canOneClickCreate ? void create() : setAddingOpen(true))}
           >
-            {hasClients ? 'Add another credential' : addButtonLabel}
+            {hasClients ? t('addAnotherCredential') : addButtonLabel}
           </Button>
         ))}
     </div>

@@ -1,4 +1,5 @@
 import { Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 /**
  * T-MEMORY-051 follow-up: small "New" tag for list-page rows whose
@@ -6,9 +7,10 @@ import { Tag } from 'antd';
  * Pair with `isNewSince` (shared/lib/isNewSince.ts) to decide whether to render it.
  */
 export function NewTag() {
+  const { t } = useTranslation('common');
   return (
     <Tag color="blue" style={{ fontSize: 10, lineHeight: '14px', padding: '0 4px', marginLeft: 6 }}>
-      New
+      {t('new')}
     </Tag>
   );
 }

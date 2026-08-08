@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ShareProjectButton } from '../../features/project/ShareProjectButton';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
@@ -41,60 +42,68 @@ function StatTitle({ label, newCount }: { label: string; newCount: number }) {
   );
 }
 
-const taskColumns: ColumnsType<Task> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <RecordLink id={v} />,
-  },
-  { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
-  { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
-  { title: 'Pri', dataIndex: 'priority', width: 55, align: 'center' },
-  { title: 'Milestone', dataIndex: 'milestone', width: 120, ellipsis: true, render: (v) => v ?? '—' },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function taskColumns(t: (key: string) => string): ColumnsType<Task> {
+  return [
+    {
+      title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
+      render: (v) => <RecordLink id={v} />,
+    },
+    { title: t('title'), dataIndex: 'title', minWidth: 200, ellipsis: true },
+    { title: t('status'), dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
+    { title: t('priorityShort'), dataIndex: 'priority', width: 55, align: 'center' },
+    { title: t('milestone'), dataIndex: 'milestone', width: 120, ellipsis: true, render: (v) => v ?? '—' },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
-const decisionColumns: ColumnsType<Decision> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
-    render: (v) => <RecordLink id={v} />,
-  },
-  { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
-  { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
-  {
-    title: 'Tags', dataIndex: 'tags', width: 200,
-    render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
-  },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function decisionColumns(t: (key: string) => string): ColumnsType<Decision> {
+  return [
+    {
+      title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
+      render: (v) => <RecordLink id={v} />,
+    },
+    { title: t('title'), dataIndex: 'title', minWidth: 200, ellipsis: true },
+    { title: t('status'), dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
+    {
+      title: t('tagsCol'), dataIndex: 'tags', width: 200,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
+    },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
-const artifactColumns: ColumnsType<Artifact> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 140, fixed: 'left',
-    render: (v) => <RecordLink id={v} />,
-  },
-  {
-    title: 'Path', dataIndex: 'path', minWidth: 200, ellipsis: true,
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
-  },
-  { title: 'Type', dataIndex: 'contentType', width: 180, ellipsis: true },
-  { title: 'Size', dataIndex: 'sizeBytes', width: 75, align: 'right', render: (v) => v ? `${(v / 1024).toFixed(1)}k` : '—' },
-  { title: 'Status', dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
-  {
-    title: 'Tags', dataIndex: 'tags', width: 200,
-    render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
-  },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function artifactColumns(t: (key: string) => string): ColumnsType<Artifact> {
+  return [
+    {
+      title: t('idCol'), dataIndex: 'id', width: 140, fixed: 'left',
+      render: (v) => <RecordLink id={v} />,
+    },
+    {
+      title: t('path'), dataIndex: 'path', minWidth: 200, ellipsis: true,
+      render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    },
+    { title: t('contentType'), dataIndex: 'contentType', width: 180, ellipsis: true },
+    { title: t('size'), dataIndex: 'sizeBytes', width: 75, align: 'right', render: (v) => v ? `${(v / 1024).toFixed(1)}k` : '—' },
+    { title: t('status'), dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
+    {
+      title: t('tagsCol'), dataIndex: 'tags', width: 200,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
+    },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
-const eventColumns: ColumnsType<Event> = [
-  { title: 'Type', dataIndex: 'type', width: 160, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-  { title: 'Title', dataIndex: 'title', minWidth: 200, ellipsis: true },
-  {
-    title: 'Related', dataIndex: 'relatedId', width: 140,
-    render: (v) => <RecordLink id={v} />,
-  },
-  { title: 'At', dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function eventColumns(t: (key: string) => string): ColumnsType<Event> {
+  return [
+    { title: t('type'), dataIndex: 'type', width: 160, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
+    { title: t('title'), dataIndex: 'title', minWidth: 200, ellipsis: true },
+    {
+      title: t('related'), dataIndex: 'relatedId', width: 140,
+      render: (v) => <RecordLink id={v} />,
+    },
+    { title: t('at'), dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -111,6 +120,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function ProjectOverview({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   const { data, loading, error, refetch } = useQuery<{ projectSummary: ProjectSummary }>(
     GET_PROJECT_SUMMARY,
     { variables: { project: slug } },
@@ -184,18 +194,18 @@ export function ProjectOverview({ slug }: { slug: string }) {
         <Row gutter={24}>
           <Col>
             <Statistic
-              title={<StatTitle label="Open Tasks" newCount={newTaskCount} />}
+              title={<StatTitle label={t('openTasks')} newCount={newTaskCount} />}
               value={counts.openTasks}
               prefix={<CalendarOutlined />}
               valueStyle={{ fontSize: 20 }}
             />
           </Col>
           <Col>
-            <Statistic title={<StatTitle label="All Tasks" newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
+            <Statistic title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
           </Col>
           <Col>
             <Statistic
-              title={<StatTitle label="Decisions" newCount={newDecisionCount} />}
+              title={<StatTitle label={t('decisions')} newCount={newDecisionCount} />}
               value={counts.decisions}
               prefix={<ApartmentOutlined />}
               valueStyle={{ fontSize: 20 }}
@@ -203,7 +213,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
           </Col>
           <Col>
             <Statistic
-              title={<StatTitle label="Artifacts" newCount={newArtifactCount} />}
+              title={<StatTitle label={t('artifacts')} newCount={newArtifactCount} />}
               value={counts.artifacts}
               prefix={<DatabaseOutlined />}
               valueStyle={{ fontSize: 20 }}
@@ -211,19 +221,19 @@ export function ProjectOverview({ slug }: { slug: string }) {
           </Col>
           <Col>
             <Statistic
-              title={<StatTitle label="Events" newCount={newEventCount} />}
+              title={<StatTitle label={t('events')} newCount={newEventCount} />}
               value={counts.events}
               prefix={<ThunderboltOutlined />}
               valueStyle={{ fontSize: 20 }}
             />
           </Col>
           <Col>
-            <Statistic title={<StatTitle label="Memory" newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
+            <Statistic title={<StatTitle label={t('memory')} newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
           </Col>
           {counts.openTasks > 0 && (
             <Col>
               <Statistic
-                title="Faults"
+                title={t('faults')}
                 value={0}
                 prefix={<BugOutlined />}
                 valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
@@ -243,7 +253,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
         items={[
           {
             key: 'timeline',
-            label: 'Timeline',
+            label: t('timeline'),
             children: (
               <div style={{ height: '100%' }}>
                 <ProjectGraphView slug={slug} />
@@ -252,27 +262,27 @@ export function ProjectOverview({ slug }: { slug: string }) {
           },
           {
             key: 'summary',
-            label: 'Summary',
+            label: t('summary'),
             children: (
               <div style={{ overflowY: 'auto', padding: '16px 24px', height: '100%' }}>
                 {s.openTasks.length > 0 && (
-                  <Section title="Open Tasks">
-                    <Table<Task> dataSource={s.openTasks} columns={taskColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  <Section title={t('openTasks')}>
+                    <Table<Task> dataSource={s.openTasks} columns={taskColumns(t)} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
                   </Section>
                 )}
                 {s.decisions.length > 0 && (
-                  <Section title="Active Decisions">
-                    <Table<Decision> dataSource={s.decisions} columns={decisionColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  <Section title={t('activeDecisions')}>
+                    <Table<Decision> dataSource={s.decisions} columns={decisionColumns(t)} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
                   </Section>
                 )}
                 {s.artifacts.length > 0 && (
-                  <Section title="Artifacts">
-                    <Table<Artifact> dataSource={s.artifacts} columns={artifactColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  <Section title={t('artifacts')}>
+                    <Table<Artifact> dataSource={s.artifacts} columns={artifactColumns(t)} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
                   </Section>
                 )}
                 {s.recentEvents.length > 0 && (
-                  <Section title="Recent Events">
-                    <Table<Event> dataSource={s.recentEvents} columns={eventColumns} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
+                  <Section title={t('recentEvents')}>
+                    <Table<Event> dataSource={s.recentEvents} columns={eventColumns(t)} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }} />
                   </Section>
                 )}
               </div>

@@ -4,6 +4,7 @@ import {
 import { AutoComplete, Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { ENTITY_COLOR } from '../../shared/lib/entityId';
@@ -37,13 +38,15 @@ const STATUS_COLOR: Record<string, string> = {
 
 const REJECTED_BORDER = '#a61d24';
 
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Active — current understanding',
-  draft: 'Draft — under consideration',
-  superseded: 'Superseded — kept for context, not current',
-  rejected: 'Rejected — considered and declined',
-  archived: 'Archived',
-};
+function statusLabels(t: (key: string) => string): Record<string, string> {
+  return {
+    active: t('legendStatusActive'),
+    draft: t('legendStatusDraft'),
+    superseded: t('legendStatusSuperseded'),
+    rejected: t('legendStatusRejected'),
+    archived: t('legendStatusArchived'),
+  };
+}
 
 // D-MEMORY-022: drill is no longer decision-only, so the card's status
 // swatch has to make sense for any kind. Rather than invent a fourth
@@ -162,6 +165,7 @@ const COLUMN_SCROLL_STYLE: CSSProperties = {
 // of the same tone-colored cards RemarkPanel renders in the drawer, minus
 // the edit affordance — editing stays a drawer-only action.
 function RemarksPanelContent({ remarks }: { remarks: RemarkPreview[] }) {
+  const { t } = useTranslation('decisions');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 280, maxHeight: 320, overflowY: 'auto' }}>
       {remarks.map((r) => {
@@ -192,7 +196,7 @@ function RemarksPanelContent({ remarks }: { remarks: RemarkPreview[] }) {
         );
       })}
       <Typography.Text type="secondary" style={{ fontSize: 10 }}>
-        Edit remarks from the record&apos;s detail drawer.
+        {t('editRemarksFromDrawer')}
       </Typography.Text>
     </div>
   );
@@ -225,7 +229,8 @@ function RemarksIndicator({ remarks }: { remarks: RemarkPreview[] }) {
 // onClick). Filled/accent style signals "this is the currently open root
 // at its slot in the chain".
 function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
-  const title = isOpen ? 'Open — click card to collapse' : count > 0 ? `${count} link${count === 1 ? '' : 's'} — click card to open as a column` : 'No links yet';
+  const { t } = useTranslation('decisions');
+  const title = isOpen ? t('openClickToCollapse') : count > 0 ? t('linksClickToOpenColumn', { count }) : t('noLinksYet');
   return (
     <Tooltip title={title}>
       <span
@@ -247,8 +252,9 @@ function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
 // moved to this small dedicated trigger rather than being the card's
 // primary action.
 function DetailsTrigger({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation('decisions');
   return (
-    <Tooltip title="Open full details">
+    <Tooltip title={t('openFullDetails')}>
       <span
         role="button"
         onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -424,9 +430,10 @@ function UnresolvedEntryRow({ id }: { id: string }) {
 // row instead of a lane-positioned pin (there's no more x/y canvas to pin
 // it to). Created = hollow, done = filled, same as before.
 function TaskMarkerRow({ marker }: { marker: TaskMarker }) {
+  const { t } = useTranslation('decisions');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const Icon = marker.kind === 'done' ? CheckCircleOutlined : PlusCircleOutlined;
-  const label = marker.kind === 'done' ? 'Completed' : 'Created';
+  const label = marker.kind === 'done' ? t('completed') : t('createdLabel');
   return (
     <div style={{ width: COLUMN_CARD_W, marginBottom: 10 }}>
       <div
@@ -590,6 +597,7 @@ interface ColumnCommonProps {
 const MAX_SEARCH_RESULTS = 20;
 
 function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: string) => void }) {
+  const { t } = useTranslation('decisions');
   const [query, setQuery] = useState('');
 
   const options = useMemo(() => {
@@ -623,7 +631,7 @@ function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: st
     >
       <Input
         size="small"
-        placeholder="Find any record… (opens as new root)"
+        placeholder={t('findAnyRecordPlaceholder')}
         prefix={<SearchOutlined style={{ color: '#595959', fontSize: 11 }} />}
         allowClear
         onClick={(e) => e.stopPropagation()}
@@ -677,6 +685,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
 }
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
+  const { t } = useTranslation('decisions');
   const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
@@ -710,7 +719,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
       <div style={COLUMN_OUTER_STYLE}>
         <div style={COLUMN_TITLE_STYLE}>
           <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
-            Loading…
+            {t('loadingEllipsis')}
           </Typography.Text>
         </div>
         <div style={{ ...COLUMN_SCROLL_STYLE, justifyContent: 'center' }}>
@@ -724,13 +733,13 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
   return (
     <div style={COLUMN_OUTER_STYLE}>
       <div style={{ ...COLUMN_TITLE_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, flex: 1, minWidth: 0 }} ellipsis={{ tooltip: `Links of ${rootId}` }}>
-          Links of {rootId}
+        <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, flex: 1, minWidth: 0 }} ellipsis={{ tooltip: t('linksOf', { id: rootId }) }}>
+          {t('linksOf', { id: rootId })}
         </Typography.Text>
         {/* Closing this column is the only action left for the root card
             below — it's inert (see RecordCard's `interactive` prop), so a
             re-click there can no longer make it appear to "vanish". */}
-        <Tooltip title="Close this column">
+        <Tooltip title={t('closeThisColumn')}>
           <span
             role="button"
             onClick={() => onToggle(rootId, level)}
@@ -754,7 +763,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         </div>
         <div style={{ width: COLUMN_CARD_W, height: 1, background: '#303030', margin: '2px 0 10px' }} />
         {rows.length === 0 && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>No links yet</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('noLinksYet')}</Typography.Text>
         )}
         {(() => {
           // Index of the last 'entry' row (ignoring gap rows in between) —
@@ -873,6 +882,7 @@ interface Props {
 }
 
 export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind }: Props) {
+  const { t } = useTranslation('decisions');
   const rowRef = useRef<HTMLDivElement>(null);
   // The one open Miller-column chain (D-MEMORY-021: linear, breadcrumb-
   // style, exactly one path open at a time). chain[i] is the decision id
@@ -1079,7 +1089,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   if (loading) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography.Text type="secondary">Loading timeline…</Typography.Text>
+        <Typography.Text type="secondary">{t('loadingTimeline')}</Typography.Text>
       </div>
     );
   }
@@ -1087,7 +1097,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   if (baselineNodes.length === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Typography.Text type="secondary">No {ROOT_KIND_LABEL[rootKind].toLowerCase()} recorded yet</Typography.Text>
+        <Typography.Text type="secondary">{t('noKindRecordedYet', { kind: ROOT_KIND_LABEL[rootKind].toLowerCase() })}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           {ROOT_KIND_EMPTY_HINT[rootKind]}
         </Typography.Text>
@@ -1125,7 +1135,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
       {/* Legend — collapsed by default (owner: it was covering the columns
           underneath it), just a toggle icon until opened. */}
       <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-        <Tooltip title={legendOpen ? 'Hide legend' : 'Show legend'}>
+        <Tooltip title={legendOpen ? t('hideLegend') : t('showLegend')}>
           <span
             role="button"
             onClick={() => setLegendOpen((o) => !o)}
@@ -1152,9 +1162,9 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
             pointerEvents: 'none',
           }}>
             <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2, display: 'block' }}>
-              Status
+              {t('status')}
             </Typography.Text>
-            {Object.entries(STATUS_LABEL).map(([key, label]) => (
+            {Object.entries(statusLabels(t)).map(([key, label]) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{
                   width: 10, height: 10, borderRadius: 2,
@@ -1166,7 +1176,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
               </div>
             ))}
             <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
-              Dots on a card
+              {t('dotsOnACard')}
             </Typography.Text>
             {Object.entries(SATELLITE_KIND_COLOR).map(([kind, dotColor]) => (
               <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1176,25 +1186,25 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
             ))}
             <Typography.Text type="secondary" style={{ fontSize: 10, display: 'block' }}>
               <RightOutlined style={{ marginRight: 4 }} />
-              opens a card&apos;s links as a column to the right · left edge = last remark tone · badge = remark count
+              {t('legendOpensColumnHint')}
             </Typography.Text>
             {showTasks && (
               <>
                 <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4, display: 'block' }}>
-                  Tasks
+                  {t('tasks')}
                 </Typography.Text>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <PlusCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
-                  <Typography.Text style={{ fontSize: 11 }}>created</Typography.Text>
+                  <Typography.Text style={{ fontSize: 11 }}>{t('createdLabel')}</Typography.Text>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <CheckCircleOutlined style={{ color: TASK_MARKER_COLOR, fontSize: 12 }} />
-                  <Typography.Text style={{ fontSize: 11 }}>done</Typography.Text>
+                  <Typography.Text style={{ fontSize: 11 }}>{t('doneLabel')}</Typography.Text>
                 </div>
               </>
             )}
             <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-              {baselineNodes.length} {ROOT_KIND_LABEL[rootKind].toLowerCase()} · ⋯Nd⋯ = compressed gap · one open column chain at a time
+              {t('legendSummary', { count: baselineNodes.length, kind: ROOT_KIND_LABEL[rootKind].toLowerCase() })}
             </Typography.Text>
           </div>
         )}

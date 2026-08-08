@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { DeleteEventButton } from '../../features/event/DeleteEventButton';
 import { RecordEventModal } from '../../features/event/RecordEventModal';
@@ -14,6 +15,7 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
 export function EventsPage() {
+  const { t } = useTranslation('events');
   const { slug } = useParams<{ slug: string }>();
   const { page, pageSize, offset, onChange } = usePage(100);
 
@@ -25,11 +27,11 @@ export function EventsPage() {
   const pageInfo = data?.eventsPage.pageInfo;
 
   const columns: ColumnsType<Event> = [
-    { title: 'At', dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
-    { title: 'Type', dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-    { title: 'Title', dataIndex: 'title', minWidth: 240, ellipsis: true },
+    { title: t('at'), dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
+    { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
+    { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
     {
-      title: 'Related', dataIndex: 'relatedId', width: 160,
+      title: t('related'), dataIndex: 'relatedId', width: 160,
       render: (v) => <RecordLink id={v} />,
     },
     {
@@ -40,7 +42,7 @@ export function EventsPage() {
 
   return (
     <PageLayout
-      title="Events"
+      title={t('events')}
       subtitle={slug}
       headerExtra={slug ? <RecordEventModal projectSlug={slug} onDone={() => refetch()} /> : undefined}
     >
@@ -59,7 +61,7 @@ export function EventsPage() {
           onChange,
           showSizeChanger: true,
           pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (t) => `${t} events`,
+          showTotal: (count) => t('eventsCount', { count }),
         }}
       />
     </PageLayout>

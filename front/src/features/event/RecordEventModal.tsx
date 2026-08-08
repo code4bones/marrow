@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Modal, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RECORD_EVENT } from '../../shared/api/queries';
 
 interface Props {
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export function RecordEventModal({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('events');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(RECORD_EVENT, {
     onCompleted: () => {
-      message.success('Event recorded');
+      message.success(t('eventRecorded'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -38,27 +40,27 @@ export function RecordEventModal({ projectSlug, onDone }: Props) {
 
   return (
     <>
-      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Event</Button>
+      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('event')}</Button>
       <Modal
         open={open}
         onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.submit()}
         okButtonProps={{ loading }}
-        okText="Record"
-        title="Record event"
+        okText={t('record')}
+        title={t('recordEvent')}
         width={440}
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-          <Form.Item name="type" label="Type" rules={[{ required: true }]}>
+          <Form.Item name="type" label={t('type')} rules={[{ required: true }]}>
             <Input placeholder="ui.note, task.started, …" />
           </Form.Item>
-          <Form.Item name="title" label="Title">
+          <Form.Item name="title" label={t('title')}>
             <Input />
           </Form.Item>
-          <Form.Item name="body" label="Body">
+          <Form.Item name="body" label={t('body')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="relatedId" label="Related ID">
+          <Form.Item name="relatedId" label={t('relatedId')}>
             <Input placeholder="T-PMEM-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
         </Form>

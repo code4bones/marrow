@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RECORD_DECISION } from '../../shared/api/queries';
 
 interface Props {
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export function RecordDecisionDrawer({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('decisions');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(RECORD_DECISION, {
     onCompleted: () => {
-      message.success('Decision recorded');
+      message.success(t('decisionRecorded'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -41,39 +43,39 @@ export function RecordDecisionDrawer({ projectSlug, onDone }: Props) {
 
   return (
     <>
-      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Decision</Button>
+      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('decision')}</Button>
       <Drawer
-        title="Record decision"
+        title={t('recordDecision')}
         open={open}
         onClose={() => setOpen(false)}
         width={540}
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={loading} onClick={() => form.submit()}>Record</Button>
+            <Button onClick={() => setOpen(false)}>{t('cancel')}</Button>
+            <Button type="primary" loading={loading} onClick={() => form.submit()}>{t('record')}</Button>
           </div>
         }
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
+          <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="decision" label="Decision" rules={[{ required: true }]}>
-            <Input.TextArea rows={3} placeholder="What was decided?" />
+          <Form.Item name="decision" label={t('decision')} rules={[{ required: true }]}>
+            <Input.TextArea rows={3} placeholder={t('whatWasDecidedQ')} />
           </Form.Item>
-          <Form.Item name="context" label="Context">
-            <Input.TextArea rows={3} placeholder="Why was this decision needed?" />
+          <Form.Item name="context" label={t('context')}>
+            <Input.TextArea rows={3} placeholder={t('whyWasThisNeeded')} />
           </Form.Item>
-          <Form.Item name="rationale" label="Rationale">
-            <Input.TextArea rows={3} placeholder="Why this option?" />
+          <Form.Item name="rationale" label={t('rationale')}>
+            <Input.TextArea rows={3} placeholder={t('whyThisOption')} />
           </Form.Item>
-          <Form.Item name="consequences" label="Consequences">
-            <Input.TextArea rows={2} placeholder="Trade-offs, implications…" />
+          <Form.Item name="consequences" label={t('consequences')}>
+            <Input.TextArea rows={2} placeholder={t('tradeOffsImplications')} />
           </Form.Item>
-          <Form.Item name="supersedesId" label="Supersedes (ID)">
+          <Form.Item name="supersedesId" label={t('supersedesId')}>
             <Input placeholder="D-PMEM-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
-          <Form.Item name="tags" label="Tags (comma-separated)">
+          <Form.Item name="tags" label={t('tagsCommaSeparated')}>
             <Input placeholder="frontend, graphql" />
           </Form.Item>
         </Form>

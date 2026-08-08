@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { Alert, Checkbox, Select, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { ArchiveMemoryButton } from '../../features/memory/ArchiveMemoryButton';
 import { CreateMemoryDrawer } from '../../features/memory/CreateMemoryDrawer';
@@ -19,17 +20,20 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
-const TYPE_OPTIONS = [
-  { label: 'All types', value: '' },
-  { label: 'Handoff', value: 'handoff' },
-  { label: 'Note', value: 'note' },
-  { label: 'Fault', value: 'failed_attempt' },
-  { label: 'Convention', value: 'convention' },
-  { label: 'Architecture', value: 'architecture_question' },
-  { label: 'Smoke test', value: 'smoke-test' },
-];
+function typeOptions(t: (key: string) => string) {
+  return [
+    { label: t('allTypes'), value: '' },
+    { label: t('typeHandoff'), value: 'handoff' },
+    { label: t('typeNote'), value: 'note' },
+    { label: t('typeFault'), value: 'failed_attempt' },
+    { label: t('typeConvention'), value: 'convention' },
+    { label: t('typeArchitecture'), value: 'architecture_question' },
+    { label: t('typeSmokeTest'), value: 'smoke-test' },
+  ];
+}
 
 export function MemoryPage() {
+  const { t } = useTranslation('memory');
   const { slug } = useParams<{ slug: string }>();
   const [type, setType] = useState('');
   const [includeCommon, setIncludeCommon] = useState(false);
@@ -45,12 +49,12 @@ export function MemoryPage() {
 
   const columns: ColumnsType<MemoryRecord> = [
     {
-      title: 'ID', dataIndex: 'id', width: 150, fixed: 'left',
+      title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
       render: (v) => <RecordLink id={v} />,
     },
-    { title: 'Type', dataIndex: 'type', width: 150, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
+    { title: t('type'), dataIndex: 'type', width: 150, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
     {
-      title: 'Title', dataIndex: 'title', minWidth: 240, ellipsis: true,
+      title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true,
       render: (v, row) => (
         <span>
           {v}
@@ -58,18 +62,18 @@ export function MemoryPage() {
         </span>
       ),
     },
-    { title: 'Status', dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
+    { title: t('status'), dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
     {
-      title: 'Excerpt', dataIndex: 'excerpt', minWidth: 260, ellipsis: true,
+      title: t('excerpt'), dataIndex: 'excerpt', minWidth: 260, ellipsis: true,
       render: (v) => v
         ? <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{v}</span>
         : null,
     },
     {
-      title: 'Tags', dataIndex: 'tags', minWidth: 180,
-      render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
+      title: t('tagsCol'), dataIndex: 'tags', minWidth: 180,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
       title: '', key: 'actions', width: 60, fixed: 'right',
       render: (_, row) => (
@@ -83,14 +87,14 @@ export function MemoryPage() {
 
   return (
     <PageLayout
-      title="Memory"
+      title={t('memory')}
       subtitle={slug}
       headerExtra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Select
             value={type}
             onChange={(v) => { setType(v); onChange(1, pageSize); }}
-            options={TYPE_OPTIONS}
+            options={typeOptions(t)}
             style={{ width: 160 }}
             size="small"
           />
@@ -99,7 +103,7 @@ export function MemoryPage() {
             onChange={(e) => { setIncludeCommon(e.target.checked); onChange(1, pageSize); }}
             style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}
           >
-            + common
+            {t('plusCommon')}
           </Checkbox>
           {slug && <CreateMemoryDrawer projectSlug={slug} onDone={() => refetch()} />}
         </div>
@@ -120,7 +124,7 @@ export function MemoryPage() {
           onChange,
           showSizeChanger: true,
           pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (t) => `${t} items`,
+          showTotal: (count) => t('itemsCount', { count }),
         }}
       />
     </PageLayout>

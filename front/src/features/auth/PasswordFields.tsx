@@ -1,4 +1,5 @@
 import { Form, Input } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Password + confirm-password fields for any "set a new credential" form
@@ -8,30 +9,31 @@ import { Form, Input } from 'antd';
  * validator can read it via getFieldValue.
  */
 export function PasswordFields({ autoFocus = false }: { autoFocus?: boolean }) {
+  const { t } = useTranslation('profile');
   return (
     <>
       <Form.Item
         name="password"
-        label="Password"
+        label={t('password')}
         rules={[
-          { required: true, message: 'Password is required' },
-          { min: 8, message: 'At least 8 characters' },
+          { required: true, message: t('passwordRequired') },
+          { min: 8, message: t('atLeast8Characters') },
         ]}
       >
         <Input.Password autoComplete="new-password" autoFocus={autoFocus} />
       </Form.Item>
       <Form.Item
         name="confirmPassword"
-        label="Confirm password"
+        label={t('confirmPassword')}
         dependencies={['password']}
         rules={[
-          { required: true, message: 'Please confirm your password' },
+          { required: true, message: t('pleaseConfirmPassword') },
           ({ getFieldValue }) => ({
             validator(_, value) {
               if (!value || getFieldValue('password') === value) {
                 return Promise.resolve();
               }
-              return Promise.reject(new Error('Passwords do not match'));
+              return Promise.reject(new Error(t('passwordsDoNotMatch')));
             },
           }),
         ]}

@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { GET_ARTIFACTS, GET_DECISIONS } from '../../shared/api/queries';
 import type { Artifact, Decision } from '../../shared/model/types';
@@ -8,34 +9,38 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
-const artifactColumns: ColumnsType<Artifact> = [
-  {
-    title: 'Path', dataIndex: 'path', minWidth: 220, fixed: 'left', ellipsis: true,
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
-  },
-  { title: 'Title', dataIndex: 'title', minWidth: 180, ellipsis: true },
-  { title: 'Type', dataIndex: 'contentType', width: 170, ellipsis: true },
-  { title: 'Status', dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
-  {
-    title: 'Tags', dataIndex: 'tags', minWidth: 160,
-    render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
-  },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function artifactColumns(t: (key: string) => string): ColumnsType<Artifact> {
+  return [
+    {
+      title: t('path'), dataIndex: 'path', minWidth: 220, fixed: 'left', ellipsis: true,
+      render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    },
+    { title: t('title'), dataIndex: 'title', minWidth: 180, ellipsis: true },
+    { title: t('type'), dataIndex: 'contentType', width: 170, ellipsis: true },
+    { title: t('status'), dataIndex: 'status', width: 90, render: (v) => <StatusBadge status={v} /> },
+    {
+      title: t('tagsCol'), dataIndex: 'tags', minWidth: 160,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
+    },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
-const decisionColumns: ColumnsType<Decision> = [
-  {
-    title: 'ID', dataIndex: 'id', width: 160, fixed: 'left',
-    render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
-  },
-  { title: 'Title', dataIndex: 'title', minWidth: 220, ellipsis: true },
-  { title: 'Status', dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
-  {
-    title: 'Tags', dataIndex: 'tags', minWidth: 180,
-    render: (tags: string[]) => tags.map((t) => <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>),
-  },
-  { title: 'Updated', dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
-];
+function decisionColumns(t: (key: string) => string): ColumnsType<Decision> {
+  return [
+    {
+      title: t('idCol'), dataIndex: 'id', width: 160, fixed: 'left',
+      render: (v) => <Typography.Text code style={{ fontSize: 11 }}>{v}</Typography.Text>,
+    },
+    { title: t('title'), dataIndex: 'title', minWidth: 220, ellipsis: true },
+    { title: t('status'), dataIndex: 'status', width: 110, render: (v) => <StatusBadge status={v} /> },
+    {
+      title: t('tagsCol'), dataIndex: 'tags', minWidth: 180,
+      render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
+    },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+  ];
+}
 
 function Section({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -55,6 +60,7 @@ function Section({ title, extra, children }: { title: string; extra?: React.Reac
 }
 
 export function CommonPage() {
+  const { t } = useTranslation('common');
   const artifacts = useQuery<{ artifacts: Artifact[] }>(GET_ARTIFACTS, {
     variables: { project: null },
   });
@@ -65,32 +71,32 @@ export function CommonPage() {
   const error = artifacts.error ?? decisions.error;
 
   return (
-    <PageLayout title="Common" subtitle="Shared knowledge across all projects">
+    <PageLayout title={t('common')} subtitle={t('sharedKnowledgeAcrossProjects')}>
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
 
       <Section
-        title="Common Artifacts"
+        title={t('commonArtifacts')}
         extra={<PutTextArtifactDrawer onDone={() => void artifacts.refetch()} />}
       >
         <Table<Artifact>
           dataSource={artifacts.data?.artifacts}
-          columns={artifactColumns}
+          columns={artifactColumns(t)}
           rowKey="id"
           size="small"
           loading={artifacts.loading}
-          pagination={{ pageSize: 50, showTotal: (t) => `${t} artifacts` }}
+          pagination={{ pageSize: 50, showTotal: (count) => t('artifactsCount', { count }) }}
           scroll={{ x: 'max-content' }}
         />
       </Section>
 
-      <Section title="Common Decisions">
+      <Section title={t('commonDecisions')}>
         <Table<Decision>
           dataSource={decisions.data?.decisions}
-          columns={decisionColumns}
+          columns={decisionColumns(t)}
           rowKey="id"
           size="small"
           loading={decisions.loading}
-          pagination={{ pageSize: 50, showTotal: (t) => `${t} decisions` }}
+          pagination={{ pageSize: 50, showTotal: (count) => t('decisionsCount', { count }) }}
           scroll={{ x: 'max-content' }}
         />
       </Section>

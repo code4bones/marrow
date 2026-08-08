@@ -2,16 +2,19 @@ import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, Select, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CREATE_MEMORY } from '../../shared/api/queries';
 
-const TYPE_OPTIONS = [
-  { label: 'Note', value: 'note' },
-  { label: 'Convention', value: 'convention' },
-  { label: 'Architecture', value: 'architecture_question' },
-  { label: 'Fault', value: 'failed_attempt' },
-  { label: 'Handoff', value: 'handoff' },
-  { label: 'Smoke test', value: 'smoke-test' },
-];
+function typeOptions(t: (key: string) => string) {
+  return [
+    { label: t('typeNote'), value: 'note' },
+    { label: t('typeConvention'), value: 'convention' },
+    { label: t('typeArchitecture'), value: 'architecture_question' },
+    { label: t('typeFault'), value: 'failed_attempt' },
+    { label: t('typeHandoff'), value: 'handoff' },
+    { label: t('typeSmokeTest'), value: 'smoke-test' },
+  ];
+}
 
 interface Props {
   projectSlug: string;
@@ -19,11 +22,12 @@ interface Props {
 }
 
 export function CreateMemoryDrawer({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('memory');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(CREATE_MEMORY, {
     onCompleted: () => {
-      message.success('Memory created');
+      message.success(t('memoryCreated'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -48,30 +52,30 @@ export function CreateMemoryDrawer({ projectSlug, onDone }: Props) {
 
   return (
     <>
-      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Memory</Button>
+      <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('memory')}</Button>
       <Drawer
-        title="Create memory item"
+        title={t('createMemoryItem')}
         open={open}
         onClose={() => setOpen(false)}
         width={480}
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={loading} onClick={() => form.submit()}>Create</Button>
+            <Button onClick={() => setOpen(false)}>{t('cancel')}</Button>
+            <Button type="primary" loading={loading} onClick={() => form.submit()}>{t('create')}</Button>
           </div>
         }
       >
         <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ type: 'note' }}>
-          <Form.Item name="type" label="Type" rules={[{ required: true }]}>
-            <Select options={TYPE_OPTIONS} />
+          <Form.Item name="type" label={t('type')} rules={[{ required: true }]}>
+            <Select options={typeOptions(t)} />
           </Form.Item>
-          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
+          <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="body" label="Body" rules={[{ required: true }]}>
+          <Form.Item name="body" label={t('body')} rules={[{ required: true }]}>
             <Input.TextArea rows={8} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </Form.Item>
-          <Form.Item name="tags" label="Tags (comma-separated)">
+          <Form.Item name="tags" label={t('tagsCommaSeparated')}>
             <Input placeholder="frontend, architecture" />
           </Form.Item>
         </Form>

@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
 import { useAuthStore } from '../../shared/model/auth.store';
 
@@ -21,6 +22,7 @@ interface TotpLoginStepProps {
  * token).
  */
 export function TotpLoginStep({ onSuccess }: TotpLoginStepProps) {
+  const { t } = useTranslation('auth');
   const loginTotp = useAuthStore((s) => s.loginTotp);
   const [form] = Form.useForm<TotpFormValues>();
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function TotpLoginStep({ onSuccess }: TotpLoginStepProps) {
       await loginTotp(code.trim());
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid code.');
+      setError(err instanceof Error ? err.message : t('invalidCode'));
     } finally {
       setSubmitting(false);
     }
@@ -43,26 +45,26 @@ export function TotpLoginStep({ onSuccess }: TotpLoginStepProps) {
   return (
     <CenteredCard>
       <Title level={4} style={{ marginBottom: 4 }}>
-        Two-factor authentication
+        {t('twoFactorAuthentication')}
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         {useRecoveryCode
-          ? 'Enter one of your recovery codes.'
-          : 'Enter the 6-digit code from your authenticator app.'}
+          ? t('enterRecoveryCode')
+          : t('enterAuthenticatorCode')}
       </Text>
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-        <Form.Item name="code" label={useRecoveryCode ? 'Recovery code' : 'Code'} rules={[{ required: true, message: 'Code is required' }]}>
+        <Form.Item name="code" label={useRecoveryCode ? t('recoveryCode') : t('code')} rules={[{ required: true, message: t('codeIsRequired') }]}>
           <Input autoFocus autoComplete="one-time-code" maxLength={useRecoveryCode ? undefined : 6} />
         </Form.Item>
         <Form.Item style={{ marginBottom: 12 }}>
           <Button type="primary" htmlType="submit" block loading={submitting}>
-            Verify
+            {t('verify')}
           </Button>
         </Form.Item>
       </Form>
       <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setUseRecoveryCode((v) => !v)}>
-        {useRecoveryCode ? 'Use an authenticator code instead' : 'Use a recovery code instead'}
+        {useRecoveryCode ? t('useAuthenticatorCodeInstead') : t('useRecoveryCodeInstead')}
       </Button>
     </CenteredCard>
   );

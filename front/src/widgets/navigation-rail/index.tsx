@@ -18,14 +18,13 @@ import {
   UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Avatar, Badge, Button, Divider, Dropdown, Menu, Select, Tooltip, Typography } from 'antd';
+import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
-import i18next from '../../shared/i18n';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { MarrowMark } from '../../shared/ui/MarrowMark';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -119,7 +118,7 @@ function buildAccountMenuItems(t: (key: string) => string, isAdmin: boolean, pen
 }
 
 export function NavigationRail() {
-  const { t, i18n } = useTranslation('nav');
+  const { t } = useTranslation('nav');
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
@@ -205,17 +204,6 @@ export function NavigationRail() {
           </Typography.Text>
         </div>
         <VersionLine />
-        <Select
-          size="small"
-          value={i18n.language?.startsWith('ru') ? 'ru' : 'en'}
-          onChange={(value: string) => void i18next.changeLanguage(value)}
-          options={[
-            { value: 'en', label: 'EN' },
-            { value: 'ru', label: 'RU' },
-          ]}
-          style={{ width: 56, marginTop: 6 }}
-          variant="borderless"
-        />
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

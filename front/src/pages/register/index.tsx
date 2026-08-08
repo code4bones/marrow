@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
@@ -21,6 +22,7 @@ interface EnrollState {
 }
 
 export function RegisterPage() {
+  const { t } = useTranslation('auth');
   const registerStart = useAuthStore((s) => s.registerStart);
   const registerConfirm = useAuthStore((s) => s.registerConfirm);
   const navigate = useNavigate();
@@ -36,7 +38,7 @@ export function RegisterPage() {
       const result = await registerStart(email.trim(), password);
       setEnroll({ token: result.token, otpauthUrl: result.otpauthUrl, secretBase32: result.secretBase32 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start registration.');
+      setError(err instanceof Error ? err.message : t('couldNotStartRegistration'));
     } finally {
       setSubmitting(false);
     }
@@ -46,21 +48,21 @@ export function RegisterPage() {
     return (
       <CenteredCard width={440}>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Set up two-factor authentication
+          {t('setUpTwoFactor')}
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          Required to finish creating your account.
+          {t('requiredToFinishAccount')}
         </Text>
         <TotpEnrollWizard
           otpauthUrl={enroll.otpauthUrl}
           secretBase32={enroll.secretBase32}
           onConfirm={(code) => registerConfirm(enroll.token, code)}
-          finishNote="Your account has been created and is now pending admin approval. You'll be able to sign in once an admin approves it."
-          finishLabel="Go to sign in"
+          finishNote={t('accountCreatedPendingApproval')}
+          finishLabel={t('goToSignIn')}
           onFinish={() =>
             navigate('/login', {
               replace: true,
-              state: { notice: 'Registration complete. Your account is pending admin approval.' },
+              state: { notice: t('registrationCompleteNotice') },
             })
           }
         />
@@ -71,26 +73,25 @@ export function RegisterPage() {
   return (
     <CenteredCard>
       <Title level={4} style={{ marginBottom: 4 }}>
-        Create an account
+        {t('createAnAccount')}
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Registration requires setting up two-factor authentication, and new accounts need admin approval before
-        they can sign in.
+        {t('registrationDescription')}
       </Text>
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-        <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
+        <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
           <Input type="email" autoComplete="username" autoFocus />
         </Form.Item>
         <PasswordFields />
         <Form.Item style={{ marginBottom: 16 }}>
           <Button type="primary" htmlType="submit" block loading={submitting}>
-            Continue
+            {t('continue')}
           </Button>
         </Form.Item>
       </Form>
       <Text type="secondary" style={{ fontSize: 13 }}>
-        Already have an account? <Link to="/login">Sign in</Link>
+        {t('alreadyHaveAccount')} <Link to="/login">{t('signIn')}</Link>
       </Text>
     </CenteredCard>
   );

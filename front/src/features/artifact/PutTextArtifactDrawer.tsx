@@ -3,6 +3,7 @@ import { InboxOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Drawer, Form, Input, message, Upload } from 'antd';
 import type { UploadProps } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PUT_TEXT_ARTIFACT } from '../../shared/api/queries';
 
 // Templates/docs are text — no binary artifact.put mutation is wired up over
@@ -34,12 +35,13 @@ interface Props {
 }
 
 export function PutTextArtifactDrawer({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('artifacts');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
   const [mutate, { loading }] = useMutation(PUT_TEXT_ARTIFACT, {
     onCompleted: () => {
-      message.success('Artifact saved');
+      message.success(t('artifactSaved'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -87,7 +89,7 @@ export function PutTextArtifactDrawer({ projectSlug, onDone }: Props) {
         contentType: guessContentType(file.name),
       });
     };
-    reader.onerror = () => message.error(`Could not read ${file.name}.`);
+    reader.onerror = () => message.error(t('couldNotReadFile', { name: file.name }));
     reader.readAsText(file);
     return false;
   };
@@ -95,16 +97,16 @@ export function PutTextArtifactDrawer({ projectSlug, onDone }: Props) {
   return (
     <>
       <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-        New Artifact
+        {t('newArtifact')}
       </Button>
       <Drawer
         open={open}
         onClose={() => setOpen(false)}
-        title="Put Text Artifact"
+        title={t('putTextArtifact')}
         width={540}
         extra={
           <Button type="primary" size="small" loading={loading} onClick={submit}>
-            Save
+            {t('save')}
           </Button>
         }
       >
@@ -117,32 +119,32 @@ export function PutTextArtifactDrawer({ projectSlug, onDone }: Props) {
           >
             <p style={{ margin: '8px 0 0' }}><InboxOutlined style={{ fontSize: 24 }} /></p>
             <p style={{ margin: '4px 0 12px', fontSize: 12.5 }}>
-              Drop a file here or click to browse — fills in path/title/content below (text files only)
+              {t('dropFileHint')}
             </p>
           </Upload.Dragger>
-          <Form.Item name="path" label="Path" rules={[{ required: true }]}>
+          <Form.Item name="path" label={t('path')} rules={[{ required: true }]}>
             <Input placeholder="docs/my-file.md" />
           </Form.Item>
-          <Form.Item name="title" label="Title">
+          <Form.Item name="title" label={t('title')}>
             <Input />
           </Form.Item>
-          <Form.Item name="contentType" label="Content Type">
+          <Form.Item name="contentType" label={t('contentType')}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="Description">
+          <Form.Item name="description" label={t('description')}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="tags" label="Tags (comma-separated)">
+          <Form.Item name="tags" label={t('tagsCommaSeparated')}>
             <Input placeholder="docs, api, draft" />
           </Form.Item>
-          <Form.Item name="text" label="Content" rules={[{ required: true }]}>
+          <Form.Item name="text" label={t('content')} rules={[{ required: true }]}>
             <Input.TextArea
               rows={16}
               style={{ fontFamily: 'monospace', fontSize: 12 }}
             />
           </Form.Item>
           <Form.Item name="overwrite" valuePropName="checked">
-            <Checkbox>Overwrite if exists</Checkbox>
+            <Checkbox>{t('overwriteIfExists')}</Checkbox>
           </Form.Item>
         </Form>
       </Drawer>

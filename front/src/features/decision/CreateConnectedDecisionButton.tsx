@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { PlusCircleOutlined } from '@ant-design/icons';
 import { Alert, Button, Form, Input, Modal, Radio, Select, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CREATE_LINK, RECORD_DECISION, SUPERSEDE_DECISION } from '../../shared/api/queries';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 
@@ -18,13 +19,16 @@ const RELATIONS = ['supersedes', 'relates_to', 'refines', 'derives_from', 'reviv
 type Relation = (typeof RELATIONS)[number];
 type Direction = 'descendant' | 'ancestor';
 
-const RELATION_LABEL: Record<Relation, string> = {
-  supersedes: 'Supersedes it (replaces this decision)',
-  relates_to: 'Relates to it',
-  refines: 'Refines it',
-  derives_from: 'Derives from it',
-  revives: 'Revives it (brings a rejected/superseded idea back)',
-};
+function relationLabel(t: (key: string) => string, relation: Relation): string {
+  const labels: Record<Relation, string> = {
+    supersedes: t('relationSupersedes'),
+    relates_to: t('relationRelatesTo'),
+    refines: t('relationRefines'),
+    derives_from: t('relationDerivesFrom'),
+    revives: t('relationRevives'),
+  };
+  return labels[relation];
+}
 
 interface Props {
   currentId: string;
@@ -32,6 +36,7 @@ interface Props {
 }
 
 export function CreateConnectedDecisionButton({ currentId, projectId }: Props) {
+  const { t } = useTranslation('decisions');
   const [open, setOpen] = useState(false);
   const [relation, setRelation] = useState<Relation>('relates_to');
   const [direction, setDirection] = useState<Direction>('descendant');
@@ -93,61 +98,61 @@ export function CreateConnectedDecisionButton({ currentId, projectId }: Props) {
         });
       }
 
-      message.success('New decision created and connected');
+      message.success(t('newDecisionCreated'));
       close();
       setSelectedRecord(newId, 'decision');
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Failed to create decision');
+      message.error(e instanceof Error ? e.message : t('failedToCreateDecision'));
     }
   };
 
   return (
     <>
       <Button size="small" icon={<PlusCircleOutlined />} onClick={() => setOpen(true)}>
-        Add connected decision
+        {t('addConnectedDecision')}
       </Button>
       <Modal
         open={open}
         onCancel={close}
         onOk={() => form.submit()}
         okButtonProps={{ loading }}
-        okText="Create"
-        title="Add connected decision"
+        okText={t('create')}
+        title={t('addConnectedDecision')}
         width={520}
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-          <Form.Item label="Relation to this decision">
+          <Form.Item label={t('relationToThisDecision')}>
             <Select
               value={relation}
               onChange={setRelation}
-              options={RELATIONS.map((r) => ({ value: r, label: RELATION_LABEL[r] }))}
+              options={RELATIONS.map((r) => ({ value: r, label: relationLabel(t, r) }))}
             />
           </Form.Item>
           {relation !== 'supersedes' && (
-            <Form.Item label="Direction">
+            <Form.Item label={t('direction')}>
               <Radio.Group value={direction} onChange={(e) => setDirection(e.target.value as Direction)}>
-                <Radio.Button value="descendant">New decision → this one</Radio.Button>
-                <Radio.Button value="ancestor">This one → new decision</Radio.Button>
+                <Radio.Button value="descendant">{t('newDecisionToThisOne')}</Radio.Button>
+                <Radio.Button value="ancestor">{t('thisOneToNewDecision')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
-          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
-            <Input placeholder="Short title" />
+          <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>
+            <Input placeholder={t('shortTitle')} />
           </Form.Item>
-          <Form.Item name="decision" label="Decision" rules={[{ required: true }]}>
-            <Input.TextArea rows={3} placeholder="What was decided" style={{ fontSize: 12 }} />
+          <Form.Item name="decision" label={t('decision')} rules={[{ required: true }]}>
+            <Input.TextArea rows={3} placeholder={t('whatWasDecided')} style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item
             name="rationale"
-            label="Rationale"
-            rules={relation === 'supersedes' ? [{ required: true, message: 'Required for supersedes — explain why the old decision no longer holds' }] : []}
+            label={t('rationale')}
+            rules={relation === 'supersedes' ? [{ required: true, message: t('requiredForSupersedes') }] : []}
           >
-            <Input.TextArea rows={3} placeholder="Why this decision, why now" style={{ fontSize: 12 }} />
+            <Input.TextArea rows={3} placeholder={t('whyThisDecisionWhyNow')} style={{ fontSize: 12 }} />
           </Form.Item>
           <Alert
             type="info"
             showIcon
-            message="Tagged new + read-first so it stands out until reviewed."
+            message={t('taggedNewReadFirst')}
             style={{ marginBottom: 0 }}
           />
         </Form>

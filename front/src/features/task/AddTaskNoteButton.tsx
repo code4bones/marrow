@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { FileTextOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Modal, message } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { ADD_TASK_NOTE } from '../../shared/api/queries';
 
 interface Props {
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export function AddTaskNoteButton({ taskId, onDone }: Props) {
+  const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [mutate, { loading }] = useMutation(ADD_TASK_NOTE, {
     onCompleted: () => {
-      message.success('Note added');
+      message.success(t('noteAdded'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -28,22 +30,22 @@ export function AddTaskNoteButton({ taskId, onDone }: Props) {
 
   return (
     <>
-      <Button size="small" icon={<FileTextOutlined />} onClick={() => setOpen(true)}>Add note</Button>
+      <Button size="small" icon={<FileTextOutlined />} onClick={() => setOpen(true)}>{t('addNote')}</Button>
       <Modal
         open={open}
         onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.submit()}
         okButtonProps={{ loading }}
-        okText="Add"
-        title="Add task note"
+        okText={t('add')}
+        title={t('addTaskNote')}
         width={440}
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-          <Form.Item name="body" label="Note" rules={[{ required: true }]}>
+          <Form.Item name="body" label={t('note')} rules={[{ required: true }]}>
             <Input.TextArea
               rows={5}
               style={{ fontFamily: 'monospace', fontSize: 12 }}
-              placeholder="Implementation note, observation, finding…"
+              placeholder={t('implementationNotePlaceholder')}
             />
           </Form.Item>
         </Form>

@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { EditOutlined, MessageOutlined } from '@ant-design/icons';
 import { Button, Input, Space, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CREATE_MEMORY, GET_MEMORY, GET_RECORD_LINKS, UPDATE_MEMORY } from '../../shared/api/queries';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { TONE_META, toneOf, type Tone } from './tone';
@@ -41,12 +42,13 @@ interface MemoryQueryResult {
 }
 
 function RemarkCard({ id }: { id: string }) {
+  const { t } = useTranslation('common');
   const { data, loading, refetch } = useQuery<MemoryQueryResult>(GET_MEMORY, { variables: { id } });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [tone, setTone] = useState<Tone>('note');
   const [update, { loading: saving }] = useMutation(UPDATE_MEMORY, {
-    onCompleted: () => { message.success('Remark updated'); setEditing(false); void refetch(); },
+    onCompleted: () => { message.success(t('remarkUpdated')); setEditing(false); void refetch(); },
     onError: (e) => message.error(e.message),
   });
 
@@ -80,7 +82,7 @@ function RemarkCard({ id }: { id: string }) {
           <Text style={{ fontSize: 11, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.4 }}>
             {meta.label}
           </Text>
-          {r.tags.includes('read-first') && <Tag color="gold" style={{ fontSize: 9 }}>read first</Tag>}
+          {r.tags.includes('read-first') && <Tag color="gold" style={{ fontSize: 9 }}>{t('readFirst')}</Tag>}
         </Space>
         {!editing && <Button size="small" type="text" icon={<EditOutlined />} onClick={startEdit} />}
       </div>
@@ -89,8 +91,8 @@ function RemarkCard({ id }: { id: string }) {
           <ToneButtons value={tone} onChange={setTone} compact />
           <Input.TextArea rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} style={{ fontSize: 12 }} />
           <Space style={{ marginTop: 6 }}>
-            <Button size="small" type="primary" loading={saving} disabled={!draft.trim()} onClick={save}>Save</Button>
-            <Button size="small" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="small" type="primary" loading={saving} disabled={!draft.trim()} onClick={save}>{t('save')}</Button>
+            <Button size="small" onClick={() => setEditing(false)}>{t('cancel')}</Button>
           </Space>
         </>
       ) : (
@@ -104,10 +106,11 @@ function RemarkCard({ id }: { id: string }) {
 }
 
 function AddRemarkForm({ targetId, projectId, onDone }: { targetId: string; projectId: string | null; onDone: () => void }) {
+  const { t } = useTranslation('common');
   const [tone, setTone] = useState<Tone>('note');
   const [body, setBody] = useState('');
   const [create, { loading }] = useMutation(CREATE_MEMORY, {
-    onCompleted: () => { message.success('Remark added'); setBody(''); onDone(); },
+    onCompleted: () => { message.success(t('remarkAdded')); setBody(''); onDone(); },
     onError: (e) => message.error(e.message),
   });
 
@@ -140,7 +143,7 @@ function AddRemarkForm({ targetId, projectId, onDone }: { targetId: string; proj
         style={{ fontSize: 12 }}
       />
       <Button size="small" type="primary" loading={loading} disabled={!body.trim()} onClick={submit} style={{ marginTop: 6 }}>
-        Add remark
+        {t('addRemark')}
       </Button>
     </div>
   );
@@ -152,6 +155,7 @@ interface Props {
 }
 
 export function RemarkPanel({ id, projectId }: Props) {
+  const { t } = useTranslation('common');
   const [adding, setAdding] = useState(false);
   const { data, loading, refetch } = useQuery<{ links: Array<{ id: string; fromId: string; toId: string; relation: string }> }>(
     GET_RECORD_LINKS,
@@ -169,7 +173,7 @@ export function RemarkPanel({ id, projectId }: Props) {
       {adding ? (
         <AddRemarkForm targetId={id} projectId={projectId} onDone={() => { setAdding(false); void refetch(); }} />
       ) : (
-        <Button size="small" icon={<MessageOutlined />} onClick={() => setAdding(true)}>Add remark</Button>
+        <Button size="small" icon={<MessageOutlined />} onClick={() => setAdding(true)}>{t('addRemark')}</Button>
       )}
     </div>
   );

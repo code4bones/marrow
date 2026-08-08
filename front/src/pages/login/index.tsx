@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
@@ -15,6 +16,7 @@ interface CredentialsFormValues {
 }
 
 export function LoginPage() {
+  const { t } = useTranslation('auth');
   const status = useAuthStore((s) => s.status);
   const bootstrapNeeded = useAuthStore((s) => s.bootstrapNeeded);
   const pendingTotpUserId = useAuthStore((s) => s.pendingTotpUserId);
@@ -54,7 +56,7 @@ export function LoginPage() {
         navigate('/projects', { replace: true });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(err instanceof Error ? err.message : t('somethingWentWrong'));
     } finally {
       setSubmitting(false);
     }
@@ -64,21 +66,20 @@ export function LoginPage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Set up Marrow
+          {t('setUpMarrow')}
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          No admin account exists yet. Create the first one — this only happens once, and only while the
-          instance has no admin. Do this before exposing the instance publicly.
+          {t('bootstrapAdminDescription')}
         </Text>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-          <Form.Item name="email" label="Admin email" rules={[{ required: true, message: 'Email is required' }]}>
+          <Form.Item name="email" label={t('adminEmail')} rules={[{ required: true, message: t('emailRequired') }]}>
             <Input type="email" autoComplete="username" autoFocus />
           </Form.Item>
           <PasswordFields />
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={submitting}>
-              Create admin account
+              {t('createAdminAccount')}
             </Button>
           </Form.Item>
         </Form>
@@ -92,25 +93,25 @@ export function LoginPage() {
         Marrow
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Sign in with your account
+        {t('signInWithYourAccount')}
       </Text>
       {notice && !error && <Alert type="success" message={notice} style={{ marginBottom: 16 }} showIcon />}
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-        <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
+        <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
           <Input type="email" autoComplete="username" autoFocus />
         </Form.Item>
-        <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Password is required' }]}>
+        <Form.Item name="password" label={t('password')} rules={[{ required: true, message: t('passwordRequired') }]}>
           <Input.Password autoComplete="current-password" />
         </Form.Item>
         <Form.Item style={{ marginBottom: 16 }}>
           <Button type="primary" htmlType="submit" block loading={submitting}>
-            Sign in
+            {t('signIn')}
           </Button>
         </Form.Item>
       </Form>
       <Text type="secondary" style={{ fontSize: 13 }}>
-        Don't have an account? <Link to="/register">Register</Link>
+        {t('dontHaveAccount')} <Link to="/register">{t('register')}</Link>
       </Text>
     </CenteredCard>
   );

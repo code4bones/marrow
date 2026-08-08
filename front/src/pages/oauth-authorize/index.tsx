@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
@@ -44,6 +45,7 @@ const OAUTH_PARAM_NAMES = [
  * pages/claim, not on the authenticated app shell's routes.
  */
 export function OAuthAuthorizePage() {
+  const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
   const status = useAuthStore((s) => s.status);
   const bootstrapNeeded = useAuthStore((s) => s.bootstrapNeeded);
@@ -82,9 +84,9 @@ export function OAuthAuthorizePage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Invalid request
+          {t('invalidRequest')}
         </Title>
-        <Text type="secondary">This authorization link is missing required parameters.</Text>
+        <Text type="secondary">{t('authLinkMissingParams')}</Text>
       </CenteredCard>
     );
   }
@@ -102,7 +104,7 @@ export function OAuthAuthorizePage() {
       try {
         await login(email.trim(), password);
       } catch (err) {
-        setLoginError(err instanceof Error ? err.message : 'Something went wrong.');
+        setLoginError(err instanceof Error ? err.message : t('somethingWentWrong'));
       } finally {
         setSubmitting(false);
       }
@@ -111,22 +113,22 @@ export function OAuthAuthorizePage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Sign in to Marrow
+          {t('signInToMarrow')}
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          {clientId || 'An application'} wants to connect to your Marrow account.
+          {t('wantsToConnect', { client: clientId || t('anApplication') })}
         </Text>
         {loginError && <Alert type="error" message={loginError} style={{ marginBottom: 16 }} showIcon />}
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
+          <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
             <Input type="email" autoComplete="username" autoFocus />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Password is required' }]}>
+          <Form.Item name="password" label={t('password')} rules={[{ required: true, message: t('passwordRequired') }]}>
             <Input.Password autoComplete="current-password" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={submitting}>
-              Sign in
+              {t('signIn')}
             </Button>
           </Form.Item>
         </Form>
@@ -151,11 +153,11 @@ export function OAuthAuthorizePage() {
         // fall through to the generic error below
       }
       if (!response.ok || body.ok === false || !body.data?.redirectUri) {
-        throw new Error(body.error?.message ?? 'Could not authorize this application.');
+        throw new Error(body.error?.message ?? t('couldNotAuthorizeApplication'));
       }
       window.location.href = body.data.redirectUri;
     } catch (err) {
-      setDecisionError(err instanceof Error ? err.message : 'Could not authorize this application.');
+      setDecisionError(err instanceof Error ? err.message : t('couldNotAuthorizeApplication'));
       setDeciding(false);
     }
   };
@@ -173,19 +175,18 @@ export function OAuthAuthorizePage() {
   return (
     <CenteredCard width={440}>
       <Title level={4} style={{ marginBottom: 4 }}>
-        Authorize {clientId || 'application'}
+        {t('authorizeApplication', { client: clientId || t('application') })}
       </Title>
       <Paragraph type="secondary" style={{ marginBottom: 24 }}>
-        Marrow wants to let <strong>{clientId || 'this application'}</strong> access your account (
-        {user?.email}, {user?.role}).
+        {t('marrowWantsToLet')} <strong>{clientId || t('thisApplication')}</strong> {t('accessYourAccount', { email: user?.email, role: user?.role })}
       </Paragraph>
       {decisionError && <Alert type="error" message={decisionError} style={{ marginBottom: 16 }} showIcon />}
       <div style={{ display: 'flex', gap: 12 }}>
         <Button type="primary" block loading={deciding} onClick={onApprove}>
-          Approve
+          {t('approve')}
         </Button>
         <Button block disabled={deciding} onClick={onDeny}>
-          Deny
+          {t('deny')}
         </Button>
       </div>
     </CenteredCard>

@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { useEffect } from 'react';
 import { Alert, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { GET_EVENTS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -18,6 +19,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 // resolves to "every project this session is a member of, plus common
 // events" instead of the pre-fix "every project system-wide".
 export function NotificationsPage() {
+  const { t } = useTranslation('notifications');
   const { page, pageSize, offset, onChange } = usePage(100);
   const markNotificationsSeen = useAuthStore((s) => s.markNotificationsSeen);
 
@@ -35,17 +37,17 @@ export function NotificationsPage() {
   const pageInfo = data?.eventsPage.pageInfo;
 
   const columns: ColumnsType<Event> = [
-    { title: 'At', dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
-    { title: 'Type', dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-    { title: 'Title', dataIndex: 'title', minWidth: 240, ellipsis: true },
+    { title: t('at'), dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
+    { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
+    { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
     {
-      title: 'Related', dataIndex: 'relatedId', width: 160,
+      title: t('related'), dataIndex: 'relatedId', width: 160,
       render: (v) => <RecordLink id={v} />,
     },
   ];
 
   return (
-    <PageLayout title="Notifications">
+    <PageLayout title={t('notifications')}>
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
       <Table<Event>
         dataSource={data?.eventsPage.items}
@@ -61,7 +63,7 @@ export function NotificationsPage() {
           onChange,
           showSizeChanger: true,
           pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (t) => `${t} events`,
+          showTotal: (count) => t('eventsCount', { count }),
         }}
       />
     </PageLayout>

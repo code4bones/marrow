@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, InputNumber, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CREATE_TASK } from '../../shared/api/queries';
 
 interface Props {
@@ -10,12 +11,13 @@ interface Props {
 }
 
 export function CreateTaskDrawer({ projectSlug, onDone }: Props) {
+  const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
   const [mutate, { loading }] = useMutation(CREATE_TASK, {
     onCompleted: () => {
-      message.success('Task created');
+      message.success(t('taskCreated'));
       form.resetFields();
       setOpen(false);
       onDone?.();
@@ -43,36 +45,36 @@ export function CreateTaskDrawer({ projectSlug, onDone }: Props) {
   return (
     <>
       <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-        New Task
+        {t('newTask')}
       </Button>
       <Drawer
         open={open}
         onClose={() => setOpen(false)}
-        title="Create Task"
+        title={t('createTask')}
         width={480}
         extra={
           <Button type="primary" size="small" loading={loading} onClick={submit}>
-            Create
+            {t('create')}
           </Button>
         }
       >
         <Form form={form} layout="vertical" size="small">
-          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
+          <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="milestone" label="Milestone">
+          <Form.Item name="milestone" label={t('milestone')}>
             <Input />
           </Form.Item>
-          <Form.Item name="priority" label="Priority">
+          <Form.Item name="priority" label={t('priority')}>
             <InputNumber style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="scope" label="Scope">
+          <Form.Item name="scope" label={t('scope')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="acceptance" label="Acceptance Criteria">
+          <Form.Item name="acceptance" label={t('acceptanceCriteria')}>
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item name="notes" label="Notes">
+          <Form.Item name="notes" label={t('notes')}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

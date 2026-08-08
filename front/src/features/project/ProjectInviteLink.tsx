@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Popconfirm, Spin, Typography, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PROJECT_INVITE_LINK, REGENERATE_PROJECT_INVITE_LINK } from '../../shared/api/queries';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 
@@ -15,13 +16,14 @@ const { Paragraph } = Typography;
  * drift apart.
  */
 export function ProjectInviteLink({ slug }: { slug: string }) {
+  const { t } = useTranslation('projects');
   const { data, loading, error, refetch } = useQuery<{ projectInviteLink: { code: string; url: string } }>(
     PROJECT_INVITE_LINK,
     { variables: { slug }, fetchPolicy: 'network-only' },
   );
   const [regenerate, { loading: regenerating }] = useMutation(REGENERATE_PROJECT_INVITE_LINK, {
     onCompleted: () => {
-      message.success('Invite link regenerated -- the old link no longer works');
+      message.success(t('inviteLinkRegenerated'));
       void refetch();
     },
     onError: (e) => message.error(e.message),
@@ -31,8 +33,7 @@ export function ProjectInviteLink({ slug }: { slug: string }) {
   return (
     <>
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-        Anyone who opens this link and signs in (or already has a Marrow account) joins this project. Any current
-        project member can share it. Regenerating invalidates the old link immediately.
+        {t('inviteLinkDescription')}
       </Paragraph>
       {loading && <Spin size="small" />}
       {error && <Alert type="error" message={error.message} showIcon />}
@@ -40,9 +41,9 @@ export function ProjectInviteLink({ slug }: { slug: string }) {
       <Popconfirm
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Regenerate invite link?"
-        description="The current link stops working immediately. Anyone who hasn't joined yet will need the new one."
-        okText="Regenerate"
+        title={t('regenerateInviteLinkConfirmTitle')}
+        description={t('regenerateInviteLinkDescription')}
+        okText={t('regenerate')}
         okButtonProps={{ danger: true, loading: regenerating }}
         onConfirm={() => {
           setConfirmOpen(false);
@@ -50,7 +51,7 @@ export function ProjectInviteLink({ slug }: { slug: string }) {
         }}
       >
         <Button size="small" loading={regenerating} style={{ marginTop: 8 }}>
-          Regenerate
+          {t('regenerate')}
         </Button>
       </Popconfirm>
     </>

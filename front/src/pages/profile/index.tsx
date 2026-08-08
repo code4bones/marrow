@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { type ReactNode, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
@@ -64,6 +65,7 @@ function PasswordConfirmModal({
   onCancel: () => void;
   onConfirm: (password: string) => Promise<void>;
 }) {
+  const { t } = useTranslation('profile');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -82,7 +84,7 @@ function PasswordConfirmModal({
       setPassword('');
       onCancel();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(err instanceof Error ? err.message : t('somethingWentWrong'));
     } finally {
       setSubmitting(false);
     }
@@ -105,7 +107,7 @@ function PasswordConfirmModal({
       )}
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Input.Password
-        placeholder="Current password"
+        placeholder={t('currentPassword')}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         onPressEnter={() => void handleOk()}
@@ -116,13 +118,14 @@ function PasswordConfirmModal({
 }
 
 function RecoveryCodesModal({ codes, onClose }: { codes: string[] | null; onClose: () => void }) {
+  const { t } = useTranslation('profile');
   return (
-    <Modal open={codes !== null} title="New recovery codes" onCancel={onClose} onOk={onClose} okText="Done" cancelButtonProps={{ style: { display: 'none' } }}>
+    <Modal open={codes !== null} title={t('newRecoveryCodes')} onCancel={onClose} onOk={onClose} okText={t('done')} cancelButtonProps={{ style: { display: 'none' } }}>
       <Alert
         type="warning"
         showIcon
-        message="Save these now"
-        description="Your old recovery codes no longer work. Each new code can be used once. They will not be shown again."
+        message={t('saveTheseNow')}
+        description={t('recoveryCodesModalDescription')}
         style={{ marginBottom: 16 }}
       />
       <div
@@ -181,6 +184,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * same shared state via <PersonalTokenControls>.
  */
 function usePersonalToken() {
+  const { t } = useTranslation('profile');
   const fetchPersonalToken = useAuthStore((s) => s.fetchPersonalToken);
   const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
 
@@ -198,7 +202,7 @@ function usePersonalToken() {
       setStatus({ exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null });
       setRevealedToken(result.token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not generate a personal token.');
+      setError(err instanceof Error ? err.message : t('couldNotGenerateToken'));
     } finally {
       setBusy(false);
     }
@@ -217,7 +221,7 @@ function usePersonalToken() {
         }
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load your personal token status.');
+        setError(err instanceof Error ? err.message : t('couldNotLoadTokenStatus'));
         setLoading(false);
       }
     })();
@@ -233,12 +237,13 @@ function usePersonalToken() {
 type PersonalTokenState = ReturnType<typeof usePersonalToken>;
 
 function PersonalTokenControls({ status, revealedToken, loading, busy, error, generate }: PersonalTokenState) {
+  const { t } = useTranslation('profile');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (loading) {
     return (
       <div style={{ marginBottom: 16 }}>
-        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Loading your personal token…</Text>
+        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>{t('loadingPersonalToken')}</Text>
       </div>
     );
   }
@@ -252,7 +257,7 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
 
       {stillGenerating && (
         <div style={{ marginBottom: 12 }}>
-          <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>Generating your personal token…</Text>
+          <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>{t('generatingPersonalToken')}</Text>
         </div>
       )}
 
@@ -261,8 +266,8 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
           <Alert
             type="warning"
             showIcon
-            message="Copy your token now"
-            description="This is the only time it will be shown. If you lose it, use Regenerate below to get a new one — the old one stops working immediately."
+            message={t('copyYourTokenNow')}
+            description={t('copyTokenDescription')}
             style={{ marginBottom: 12 }}
           />
           <CodeBlock code={revealedToken} />
@@ -271,8 +276,8 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
 
       {!revealedToken && status?.exists && (
         <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
-          Token ending in <Text code>…{status.tokenHint}</Text> · created <Timestamp value={status.createdAt} /> ·
-          last used <Timestamp value={status.lastUsedAt} /> · not shown again — use Regenerate for a new one.
+          {t('tokenEndingIn')} <Text code>…{status.tokenHint}</Text> · {t('created')} <Timestamp value={status.createdAt} /> ·
+          {' '}{t('lastUsed')} <Timestamp value={status.lastUsedAt} /> · {t('notShownAgainUseRegenerateOne')}
         </Text>
       )}
 
@@ -280,9 +285,9 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
         <Popconfirm
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
-          title="Regenerate personal token?"
-          description="Your current token stops working immediately. Anything using it (Claude Code, Codex, …) will need the new one."
-          okText="Regenerate"
+          title={t('regeneratePersonalTokenConfirmTitle')}
+          description={t('regeneratePersonalTokenDescription')}
+          okText={t('regenerate')}
           okButtonProps={{ danger: true, loading: busy }}
           onConfirm={() => {
             setConfirmOpen(false);
@@ -290,7 +295,7 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
           }}
         >
           <Button size="small" loading={busy && !stillGenerating}>
-            Regenerate
+            {t('regenerate')}
           </Button>
         </Popconfirm>
       )}
@@ -309,6 +314,7 @@ function PersonalTokenControls({ status, revealedToken, loading, busy, error, ge
  * no-real-token states render as a plain (non-copyable) Alert instead.
  */
 function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string | null; tokenStatus: PersonalTokenStatus | null }) {
+  const { t } = useTranslation('profile');
   if (personalToken) {
     return <CodeBlock code={`export MARROW_MCP_TOKEN="${personalToken}"`} />;
   }
@@ -320,15 +326,15 @@ function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string
         style={{ marginBottom: 12 }}
         message={
           <>
-            Your token (ending in <Text code>…{tokenStatus.tokenHint}</Text>) isn't shown again — click{' '}
-            <Text strong>Regenerate</Text> in "Your personal token" above to get a fresh one, then copy it from there.
+            {t('tokenNotShownAgainBefore')} <Text code>…{tokenStatus.tokenHint}</Text>{t('tokenNotShownAgainMiddle')}{' '}
+            <Text strong>{t('regenerate')}</Text> {t('tokenNotShownAgainAfter')}
           </>
         }
       />
     );
   }
   return (
-    <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Generating your token above, one moment…" />
+    <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('generatingTokenAboveMoment')} />
   );
 }
 
@@ -353,6 +359,7 @@ function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string
  * entirely in favor of a real per-user login at /oauth/authorize.
  */
 function ConnectSection() {
+  const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
@@ -403,17 +410,15 @@ function ConnectSection() {
         <>
           <Title level={5} style={{ marginTop: 0 }}>Claude Code (CLI)</Title>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Claude Code talks to Marrow over Streamable HTTP, using your own personal API token (
-            <Text code>MARROW_MCP_TOKEN</Text> below) — tied to your account, not a shared deployment secret. Also used
-            by Codex, on its own tab — regenerating here invalidates it there too, it's the same token.
+            {t('claudeCliIntro')}
           </Text>
           <PersonalTokenControls {...personalTokenState} />
-          <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
+          <Step n={1}>{t('setTokenInShellClaude')}</Step>
           <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
-          <Step n={2}>Register Marrow as an MCP server:</Step>
+          <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={claudeCodeCmd} />
           <Step n={3}>
-            Restart Claude Code, then ask it "What is Marrow, and how do I use it?" — it should call{' '}
+            {t('restartClaudeCodeAsk')}{' '}
             <Text code>gateway.about</Text>.
           </Step>
 
@@ -421,22 +426,20 @@ function ConnectSection() {
 
           <Title level={5}>Claude.ai (web)</Title>
           <Step n={1}>
-            In Claude.ai go to <Text strong>Settings → Connectors</Text> and choose{' '}
+            {t('inClaudeAiGoTo')} <Text strong>Settings → Connectors</Text> {t('andChoose')}{' '}
             <Text strong>Add custom connector</Text>.
           </Step>
-          <Step n={2}>Paste this as the connector URL:</Step>
+          <Step n={2}>{t('pasteAsConnectorUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
-          <Step n={3}>Click Connect — Claude opens Marrow's sign-in page in a new tab.</Step>
+          <Step n={3}>{t('clickConnectClaude')}</Step>
           <Step n={4}>
-            Log in with your own Marrow account (email + password, same as this profile) and approve access — this
-            is a real login, not a shared token, so Claude connects as <Text strong>you</Text> specifically.
+            {t('logInApproveAccessClaude')} <Text strong>{t('you')}</Text> {t('specifically')}
           </Step>
           <Step n={5}>
-            Back in the chat, ask Claude to check Marrow — it should call <Text code>gateway.status</Text>.
+            {t('backInChatAskClaude')} <Text code>gateway.status</Text>.
           </Step>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
-            If your setup also asks for a Client ID / Client Secret, create one below — Claude.ai's callback URL is
-            fixed, so it's filled in for you automatically.
+            {t('clientIdSecretClaude')}
           </Text>
           <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} />
         </>
@@ -449,16 +452,15 @@ function ConnectSection() {
         <>
           <Title level={5} style={{ marginTop: 0 }}>Codex (CLI)</Title>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code — regenerating
-            here invalidates it there too, it's the same token.
+            {t('codexCliIntro')}
           </Text>
           <PersonalTokenControls {...personalTokenState} />
-          <Step n={1}>Set the token in the shell that will run Codex:</Step>
+          <Step n={1}>{t('setTokenInShellCodex')}</Step>
           <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
-          <Step n={2}>Register Marrow as an MCP server:</Step>
+          <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={codexCmd} />
           <Step n={3}>
-            Restart Codex, then ask it to check Marrow — it should call <Text code>gateway.status</Text> and{' '}
+            {t('restartCodexAsk')} <Text code>gateway.status</Text> {t('and')}{' '}
             <Text code>gateway.version</Text>.
           </Step>
 
@@ -466,17 +468,15 @@ function ConnectSection() {
 
           <Title level={5}>ChatGPT (web)</Title>
           <Step n={1}>
-            In ChatGPT go to <Text strong>Settings → Connectors</Text> and choose to create/add a new connector.
+            {t('inChatGptGoTo')} <Text strong>Settings → Connectors</Text> {t('andChooseCreateAddNew')}
           </Step>
-          <Step n={2}>Paste this as the connector (MCP server) URL:</Step>
+          <Step n={2}>{t('pasteAsConnectorMcpUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
-          <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
-          <Step n={4}>Log in with your own Marrow account and approve access.</Step>
-          <Step n={5}>Ask ChatGPT to use the Marrow tools — it should be able to call them directly.</Step>
+          <Step n={3}>{t('clickConnectChatGpt')}</Step>
+          <Step n={4}>{t('logInApproveAccess')}</Step>
+          <Step n={5}>{t('askChatGptToUseTools')}</Step>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, margin: '8px 0 12px' }}>
-            If your setup also asks for a Client ID / Client Secret, create one below. ChatGPT shows its callback URL
-            on its own "Add connector" screen — it's different every time you create a connector, so copy it fresh
-            and paste it as the redirect URI.
+            {t('clientIdSecretChatGpt')}
           </Text>
           <OAuthClientPanel fixedLabel="ChatGPT" />
         </>
@@ -487,17 +487,16 @@ function ConnectSection() {
   return (
     <>
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 16 }}>
-        How to connect this Marrow instance to a coding agent or a web chat. The endpoint below (
-        <Text code>{mcpUrl}</Text>) is this deployment's real address — everything on this page, including the
-        web-connector Client ID/Secret, is real and copy-pasteable as-is.
+        {t('connectIntroBefore')} (
+        <Text code>{mcpUrl}</Text>) {t('connectIntroAfter')}
       </Paragraph>
 
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Web connectors: Claude.ai and ChatGPT only, for now"
-        description="Custom/remote MCP connectors are currently supported for Claude.ai and ChatGPT web chat. Other web chat hosts aren't wired up yet — use the CLI paths (Claude Code, Codex) for anything else."
+        message={t('webConnectorsLimitedTitle')}
+        description={t('webConnectorsLimitedDescription')}
       />
 
       <Card size="small">
@@ -511,7 +510,7 @@ function ConnectSection() {
         items={[
           {
             key: 'other',
-            label: <Text type="secondary" style={{ fontSize: 12.5 }}>Other / legacy credentials</Text>,
+            label: <Text type="secondary" style={{ fontSize: 12.5 }}>{t('otherLegacyCredentials')}</Text>,
             children: <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />,
           },
         ]}
@@ -520,7 +519,29 @@ function ConnectSection() {
   );
 }
 
+function LanguageSection() {
+  const { t, i18n } = useTranslation('profile');
+  return (
+    <Card title={t('language')} size="small" style={{ marginBottom: 16 }}>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
+        {t('languageDescription')}
+      </Text>
+      <Select
+        size="small"
+        value={i18n.language?.startsWith('ru') ? 'ru' : 'en'}
+        onChange={(value: string) => void i18n.changeLanguage(value)}
+        options={[
+          { value: 'en', label: 'English' },
+          { value: 'ru', label: 'Русский' },
+        ]}
+        style={{ width: 160 }}
+      />
+    </Card>
+  );
+}
+
 function AccountSection() {
+  const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
   const changePassword = useAuthStore((s) => s.changePassword);
   const [form] = Form.useForm<ChangePasswordValues>();
@@ -535,42 +556,42 @@ function AccountSection() {
     try {
       await changePassword(values.currentPassword, values.password);
       form.resetFields();
-      message.success('Password changed.');
+      message.success(t('passwordChanged'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not change password.');
+      setError(err instanceof Error ? err.message : t('couldNotChangePassword'));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Card title="Account" size="small" style={{ marginBottom: 16 }}>
+    <Card title={t('account')} size="small" style={{ marginBottom: 16 }}>
       <Descriptions size="small" column={1} style={{ marginBottom: 20 }}>
-        <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
-        <Descriptions.Item label="Role">
+        <Descriptions.Item label={t('email')}>{user.email}</Descriptions.Item>
+        <Descriptions.Item label={t('role')}>
           <Tag>{user.role}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="Status">
+        <Descriptions.Item label={t('status')}>
           <Tag color={user.status === 'active' ? 'green' : 'default'}>{user.status}</Tag>
         </Descriptions.Item>
       </Descriptions>
 
       <Text strong style={{ display: 'block', marginBottom: 12 }}>
-        Change password
+        {t('changePassword')}
       </Text>
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting} style={{ maxWidth: 360 }}>
         <Form.Item
           name="currentPassword"
-          label="Current password"
-          rules={[{ required: true, message: 'Current password is required' }]}
+          label={t('currentPassword')}
+          rules={[{ required: true, message: t('currentPasswordRequired') }]}
         >
           <Input.Password autoComplete="current-password" />
         </Form.Item>
         <PasswordFields />
         <Form.Item style={{ marginBottom: 0 }}>
           <Button type="primary" htmlType="submit" loading={submitting}>
-            Update password
+            {t('updatePassword')}
           </Button>
         </Form.Item>
       </Form>
@@ -579,6 +600,7 @@ function AccountSection() {
 }
 
 function TwoFactorSection() {
+  const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
   const enroll2fa = useAuthStore((s) => s.enroll2fa);
   const confirm2fa = useAuthStore((s) => s.confirm2fa);
@@ -601,22 +623,22 @@ function TwoFactorSection() {
       const result = await enroll2fa();
       setEnrolling({ otpauthUrl: result.otpauthUrl, secretBase32: result.secretBase32 });
     } catch (err) {
-      setEnrollError(err instanceof Error ? err.message : 'Could not start 2FA enrollment.');
+      setEnrollError(err instanceof Error ? err.message : t('couldNotStart2fa'));
     } finally {
       setStartingEnroll(false);
     }
   };
 
   return (
-    <Card title="Two-factor authentication" size="small" style={{ marginBottom: 16 }}>
+    <Card title={t('twoFactorAuthentication')} size="small" style={{ marginBottom: 16 }}>
       {!user.totpEnabled && !enrolling && (
         <>
           <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-            Two-factor authentication is not enabled on this account.
+            {t('twoFactorNotEnabled')}
           </Text>
           {enrollError && <Alert type="error" message={enrollError} style={{ marginBottom: 16 }} showIcon />}
           <Button type="primary" loading={startingEnroll} onClick={() => void startEnroll()}>
-            Enable 2FA
+            {t('enable2fa')}
           </Button>
         </>
       )}
@@ -626,10 +648,10 @@ function TwoFactorSection() {
           otpauthUrl={enrolling.otpauthUrl}
           secretBase32={enrolling.secretBase32}
           onConfirm={(code) => confirm2fa(code)}
-          finishLabel="Done"
+          finishLabel={t('done')}
           onFinish={() => {
             setEnrolling(null);
-            message.success('Two-factor authentication enabled.');
+            message.success(t('twoFactorEnabled'));
           }}
         />
       )}
@@ -637,12 +659,12 @@ function TwoFactorSection() {
       {user.totpEnabled && (
         <>
           <Tag color="green" style={{ marginBottom: 16 }}>
-            Enabled
+            {t('enabled')}
           </Tag>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={() => setRegenerateOpen(true)}>Regenerate recovery codes</Button>
+            <Button onClick={() => setRegenerateOpen(true)}>{t('regenerateRecoveryCodes')}</Button>
             <Button danger onClick={() => setDisableOpen(true)}>
-              Disable 2FA
+              {t('disable2fa')}
             </Button>
           </div>
         </>
@@ -650,22 +672,22 @@ function TwoFactorSection() {
 
       <PasswordConfirmModal
         open={disableOpen}
-        title="Disable 2FA"
-        description="Confirm your password to disable two-factor authentication on this account."
-        confirmLabel="Disable"
+        title={t('disable2fa')}
+        description={t('disable2faDescription')}
+        confirmLabel={t('disable')}
         danger
         onCancel={() => setDisableOpen(false)}
         onConfirm={async (password) => {
           await disable2fa(password);
-          message.success('Two-factor authentication disabled.');
+          message.success(t('twoFactorDisabled'));
         }}
       />
 
       <PasswordConfirmModal
         open={regenerateOpen}
-        title="Regenerate recovery codes"
-        description="Confirm your password to invalidate your old recovery codes and generate a new set."
-        confirmLabel="Regenerate"
+        title={t('regenerateRecoveryCodes')}
+        description={t('regenerateRecoveryCodesDescription')}
+        confirmLabel={t('regenerate')}
         onCancel={() => setRegenerateOpen(false)}
         onConfirm={async (password) => {
           const result = await regenerateRecoveryCodes(password);
@@ -686,10 +708,11 @@ interface CreateGitCredentialValues {
 
 /** Delete button for a single saved git credential, gated behind a Popconfirm — same lightweight destructive-action pattern as DeleteTaskButton. */
 function DeleteGitCredentialButton({ id, host, onDone }: { id: string; host: string; onDone: () => void }) {
+  const { t } = useTranslation('profile');
   const [open, setOpen] = useState(false);
   const [mutate, { loading }] = useMutation(DELETE_GIT_CREDENTIAL, {
     onCompleted: () => {
-      message.success(`Removed credential for ${host}`);
+      message.success(t('removedCredentialFor', { host }));
       setOpen(false);
       onDone();
     },
@@ -700,9 +723,9 @@ function DeleteGitCredentialButton({ id, host, onDone }: { id: string; host: str
     <Popconfirm
       open={open}
       onOpenChange={setOpen}
-      title={`Remove credential for ${host}?`}
-      description="The saved token is deleted immediately and can't be recovered. You can add a new one anytime."
-      okText="Delete"
+      title={t('removeCredentialConfirmTitle', { host })}
+      description={t('removeCredentialDescription')}
+      okText={t('delete')}
       okButtonProps={{ danger: true, loading }}
       onConfirm={() => mutate({ variables: { id } })}
     >
@@ -712,12 +735,13 @@ function DeleteGitCredentialButton({ id, host, onDone }: { id: string; host: str
 }
 
 const gitCredentialColumns = (
+  t: (key: string) => string,
   onDeleted: () => void,
 ): ColumnsType<GitCredential> => [
-  { title: 'Host', dataIndex: 'host', render: (v) => <Text code>{v}</Text> },
-  { title: 'Label', dataIndex: 'label' },
-  { title: 'Added', dataIndex: 'createdAt', width: 140, render: (v) => <Timestamp value={v} /> },
-  { title: 'Last used', dataIndex: 'lastUsedAt', width: 140, render: (v) => <Timestamp value={v} /> },
+  { title: t('host'), dataIndex: 'host', render: (v) => <Text code>{v}</Text> },
+  { title: t('label'), dataIndex: 'label' },
+  { title: t('added'), dataIndex: 'createdAt', width: 140, render: (v) => <Timestamp value={v} /> },
+  { title: t('lastUsedCol'), dataIndex: 'lastUsedAt', width: 140, render: (v) => <Timestamp value={v} /> },
   {
     title: '',
     key: 'actions',
@@ -732,6 +756,7 @@ const gitCredentialColumns = (
  * exercise `gitPipelineStatus`; it never triggers or cancels anything.
  */
 function PipelineStatusChecker({ hosts }: { hosts: GitCredential[] }) {
+  const { t } = useTranslation('profile');
   const [host, setHost] = useState<string | undefined>(undefined);
   const [project, setProject] = useState('');
   const [ref, setRef] = useState('');
@@ -744,30 +769,29 @@ function PipelineStatusChecker({ hosts }: { hosts: GitCredential[] }) {
   return (
     <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #303030' }}>
       <Text strong style={{ display: 'block', marginBottom: 4 }}>
-        Check pipeline status
+        {t('checkPipelineStatus')}
       </Text>
       <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-        Looks up the latest pipeline status for a project using the credential saved for that host. The token stays
-        on the server; only the structured result comes back here.
+        {t('pipelineStatusDescription')}
       </Text>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <Select
-          placeholder="Host"
+          placeholder={t('host')}
           style={{ width: 220 }}
           value={host}
           onChange={setHost}
           options={hosts.map((h) => ({ value: h.host, label: `${h.host} (${h.label})` }))}
-          notFoundContent="Add a git host below first"
+          notFoundContent={t('addGitHostBelowFirst')}
         />
-        <Input placeholder="Project (e.g. group/project)" value={project} onChange={(e) => setProject(e.target.value)} style={{ width: 220 }} />
-        <Input placeholder="Ref (optional, defaults to default branch)" value={ref} onChange={(e) => setRef(e.target.value)} style={{ width: 240 }} />
+        <Input placeholder={t('projectPlaceholder')} value={project} onChange={(e) => setProject(e.target.value)} style={{ width: 220 }} />
+        <Input placeholder={t('refPlaceholder')} value={ref} onChange={(e) => setRef(e.target.value)} style={{ width: 240 }} />
         <Button
           type="primary"
           loading={loading}
           disabled={!canRun}
           onClick={() => void run({ variables: { host, project: project.trim(), ref: ref.trim() || undefined } })}
         >
-          Check status
+          {t('checkStatus')}
         </Button>
       </div>
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} showIcon />}
@@ -777,13 +801,14 @@ function PipelineStatusChecker({ hosts }: { hosts: GitCredential[] }) {
 }
 
 function GitHostsSection() {
+  const { t } = useTranslation('profile');
   const { data, loading, error, refetch } = useQuery<{ gitCredentials: GitCredential[] }>(GET_GIT_CREDENTIALS);
   const [form] = Form.useForm<CreateGitCredentialValues>();
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [createCredential, { loading: creating }] = useMutation(CREATE_GIT_CREDENTIAL, {
     onCompleted: () => {
-      message.success('Git host added.');
+      message.success(t('gitHostAdded'));
       form.resetFields();
       setCreateError(null);
       void refetch();
@@ -801,11 +826,9 @@ function GitHostsSection() {
   const credentials = data?.gitCredentials ?? [];
 
   return (
-    <Card title="Git hosts" size="small" style={{ marginBottom: 16 }}>
+    <Card title={t('gitHosts')} size="small" style={{ marginBottom: 16 }}>
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-        Personal access tokens for GitLab (or similar) instances, used server-side to check pipeline/job status on
-        your behalf. Tokens are encrypted at rest and never shown again after you add them — the same one-time
-        principle as recovery codes and the 2FA secret.
+        {t('gitHostsDescription')}
       </Paragraph>
 
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 16 }} showIcon />}
@@ -815,29 +838,29 @@ function GitHostsSection() {
         size="small"
         loading={loading}
         dataSource={credentials}
-        columns={gitCredentialColumns(() => void refetch())}
+        columns={gitCredentialColumns(t, () => void refetch())}
         pagination={false}
         style={{ marginBottom: 20 }}
-        locale={{ emptyText: <Empty description="No git hosts added yet" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+        locale={{ emptyText: <Empty description={t('noGitHostsYet')} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
 
       <Text strong style={{ display: 'block', marginBottom: 12 }}>
-        Add a git host
+        {t('addAGitHost')}
       </Text>
       {createError && <Alert type="error" message={createError} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={creating} style={{ maxWidth: 360 }}>
-        <Form.Item name="host" label="Host" rules={[{ required: true, message: 'Host is required' }]}>
+        <Form.Item name="host" label={t('host')} rules={[{ required: true, message: t('hostRequired') }]}>
           <Input placeholder="gitlab.example.com" autoComplete="off" />
         </Form.Item>
-        <Form.Item name="label" label="Label" rules={[{ required: true, message: 'Label is required' }]}>
-          <Input placeholder="e.g. self-hosted runners box" autoComplete="off" />
+        <Form.Item name="label" label={t('label')} rules={[{ required: true, message: t('labelRequired') }]}>
+          <Input placeholder={t('gitHostLabelPlaceholder')} autoComplete="off" />
         </Form.Item>
-        <Form.Item name="token" label="Personal access token" rules={[{ required: true, message: 'Token is required' }]}>
+        <Form.Item name="token" label={t('personalAccessToken')} rules={[{ required: true, message: t('tokenRequired') }]}>
           <Input.Password placeholder="glpat-…" autoComplete="new-password" />
         </Form.Item>
         <Form.Item style={{ marginBottom: 0 }}>
           <Button type="primary" htmlType="submit" loading={creating}>
-            Add git host
+            {t('addGitHost')}
           </Button>
         </Form.Item>
       </Form>
@@ -848,15 +871,16 @@ function GitHostsSection() {
 }
 
 export function ProfilePage() {
+  const { t } = useTranslation('profile');
   const sections = [
-    { key: 'connect', label: 'Connect', children: <ConnectSection /> },
-    { key: 'account', label: 'Account', children: <AccountSection /> },
-    { key: 'security', label: 'Security', children: <TwoFactorSection /> },
-    { key: 'git', label: 'Git hosts', children: <GitHostsSection /> },
+    { key: 'connect', label: t('connect'), children: <ConnectSection /> },
+    { key: 'account', label: t('account'), children: <><AccountSection /><LanguageSection /></> },
+    { key: 'security', label: t('security'), children: <TwoFactorSection /> },
+    { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
   ];
 
   return (
-    <PageLayout title="Profile" subtitle="Account, security and access">
+    <PageLayout title={t('profile')} subtitle={t('profileSubtitle')}>
       <Tabs tabPosition="left" items={sections} style={{ minHeight: 480 }} />
     </PageLayout>
   );

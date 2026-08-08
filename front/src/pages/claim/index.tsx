@@ -1,5 +1,6 @@
 import { Alert, Button, Form, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
@@ -19,6 +20,7 @@ interface PasswordFormValues {
  * relayed by this same browser via verifyEmail() rather than a real email.
  */
 export function ClaimPage() {
+  const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
   const navigate = useNavigate();
@@ -36,7 +38,7 @@ export function ClaimPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const run = token ? claimContext(token) : Promise.reject(new Error('This link is missing a token.'));
+    const run = token ? claimContext(token) : Promise.reject(new Error(t('linkMissingToken')));
     run
       .then((result) => {
         if (cancelled) return;
@@ -45,7 +47,7 @@ export function ClaimPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setContextError(err instanceof Error ? err.message : 'This link is invalid or has expired.');
+        setContextError(err instanceof Error ? err.message : t('linkInvalidOrExpired'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -53,7 +55,7 @@ export function ClaimPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, claimContext]);
+  }, [token, claimContext, t]);
 
   const onFinish = async ({ password }: PasswordFormValues) => {
     setSubmitError(null);
@@ -71,12 +73,12 @@ export function ClaimPage() {
         state: {
           notice:
             purpose === 'invite'
-              ? 'Your account is ready. Sign in with your new password.'
-              : 'Your password has been reset. Sign in with your new password.',
+              ? t('accountReadyNotice')
+              : t('passwordResetNotice'),
         },
       });
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Could not set your password.');
+      setSubmitError(err instanceof Error ? err.message : t('couldNotSetPassword'));
     } finally {
       setSubmitting(false);
     }
@@ -94,11 +96,11 @@ export function ClaimPage() {
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
-          Link not valid
+          {t('linkNotValid')}
         </Title>
         <Alert type="error" message={contextError} style={{ marginBottom: 16 }} showIcon />
         <Text type="secondary" style={{ fontSize: 13 }}>
-          Ask whoever invited you for a new link, or <Link to="/login">go to sign in</Link>.
+          {t('askForNewLink')} <Link to="/login">{t('goToSignIn')}</Link>.
         </Text>
       </CenteredCard>
     );
@@ -107,17 +109,17 @@ export function ClaimPage() {
   return (
     <CenteredCard>
       <Title level={4} style={{ marginBottom: 4 }}>
-        {purpose === 'invite' ? 'Accept your invite' : 'Reset your password'}
+        {purpose === 'invite' ? t('acceptYourInvite') : t('resetYourPassword')}
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        {email ? `Setting a password for ${email}.` : 'Set a password to continue.'}
+        {email ? t('settingPasswordFor', { email }) : t('setPasswordToContinue')}
       </Text>
       {submitError && <Alert type="error" message={submitError} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
         <PasswordFields autoFocus />
         <Form.Item style={{ marginBottom: 0 }}>
           <Button type="primary" htmlType="submit" block loading={submitting}>
-            {purpose === 'invite' ? 'Accept invite' : 'Reset password'}
+            {purpose === 'invite' ? t('acceptInvite') : t('resetPassword')}
           </Button>
         </Form.Item>
       </Form>
