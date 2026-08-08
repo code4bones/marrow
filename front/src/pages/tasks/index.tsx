@@ -25,10 +25,21 @@ const STATUS_OPTIONS = [
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
+// T-MEMORY-051 follow-up: server-driven sort. Values are "<TaskSortField>:<SortDirection>"
+// GraphQL enum pairs, split apart before being sent as query variables.
+const SORT_OPTIONS = [
+  { label: 'Updated (newest)', value: 'UPDATED_AT:DESC' },
+  { label: 'Created (newest)', value: 'CREATED_AT:DESC' },
+  { label: 'Priority', value: 'PRIORITY:ASC' },
+];
+const DEFAULT_SORT = SORT_OPTIONS[0].value;
+
 export function TasksPage() {
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState('');
+  const [sort, setSort] = useState(DEFAULT_SORT);
   const { page, pageSize, offset, onChange } = usePage();
+  const [sortField, sortDirection] = sort.split(':');
 
   // Fetch all tasks (no status filter) for the flowchart
   const { data: allData } = useQuery<{ tasksPage: Paginated<Task> }>(GET_TASKS_PAGE, {
@@ -37,7 +48,7 @@ export function TasksPage() {
   });
 
   const { data, loading, error, refetch } = useQuery<{ tasksPage: Paginated<Task> }>(GET_TASKS_PAGE, {
-    variables: { project: slug, status: status || undefined, limit: pageSize, offset },
+    variables: { project: slug, status: status || undefined, sortField, sortDirection, limit: pageSize, offset },
     skip: !slug,
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
@@ -87,6 +98,13 @@ export function TasksPage() {
         onChange={(v) => { setStatus(v); onChange(1, pageSize); }}
         options={STATUS_OPTIONS}
         style={{ width: 150 }}
+        size="small"
+      />
+      <Select
+        value={sort}
+        onChange={(v) => { setSort(v); onChange(1, pageSize); }}
+        options={SORT_OPTIONS}
+        style={{ width: 160 }}
         size="small"
       />
       <CreateTaskDrawer projectSlug={slug} onDone={() => refetch()} />

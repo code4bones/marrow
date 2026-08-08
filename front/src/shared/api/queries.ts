@@ -23,10 +23,28 @@ export const GET_PROJECT_SUMMARY = gql`
   }
 `;
 
+// T-MEMORY-051 follow-up: sortField/sortDirection are optional -- omitting
+// them (undefined) falls through to the schema's own defaults (updated_at
+// desc), same as every other optional filter here.
 export const GET_TASKS_PAGE = gql`
-  query GetTasksPage($project: String!, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
-    tasksPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status priority milestone scope notes activeClaimCount updatedAt }
+  query GetTasksPage(
+    $project: String!
+    $status: String
+    $milestone: String
+    $sortField: TaskSortField
+    $sortDirection: SortDirection
+    $limit: Int!
+    $offset: Int!
+  ) {
+    tasksPage(
+      project: $project
+      status: $status
+      milestone: $milestone
+      sortField: $sortField
+      sortDirection: $sortDirection
+      pagination: { limit: $limit, offset: $offset }
+    ) {
+      items { id title status priority milestone scope notes activeClaimCount createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
