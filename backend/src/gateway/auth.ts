@@ -736,6 +736,67 @@ export function createAuthFacade(db: Knex) {
     return { token: rawToken, tokenHint, createdAt: now };
   }
 
+  // --- Per-user OAuth connector credentials (replaces the old static,
+  // shared PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) ---
+  // Mirrors personal_tokens exactly: one live credential row per user
+  // (owner_user_id UNIQUE), hash-only secret storage, a plaintext last-4
+  // hint for UI recognition, session-only management (no MCP tool or
+  // GraphQL mutation -- only the /auth/profile/oauth-client* REST routes
+  // below). The one difference from a personal token: client_id is NOT
+  // secret -- it identifies "this is a registered pmem connector app", the
+  // actual access boundary is still the real per-user login /oauth/
+  // authorize requires (D-MEMORY-027) -- so oauthClientStatus returns it in
+  // full (persistently displayable), unlike clientSecretHint.
+
+  async function oauthClientStatus(userId: string): Promise<{
+    exists: boolean;
+    clientId: string | null;
+    clientSecretHint: string | null;
+    createdAt: string | null;
+    lastUsedAt: string | null;
+  }> {
+    const row = await db("oauth_clients").where({ owner_user_id: userId }).first();
+    if (!row) {
+      return { exists: false, clientId: null, clientSecretHint: null, createdAt: null, lastUsedAt: null };
+    }
+    return {
+      exists: true,
+      clientId: row.client_id as string,
+      clientSecretHint: row.client_secret_hint as string,
+      createdAt: new Date(row.created_at as string).toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(row.last_used_at as string).toISOString() : null
+    };
+  }
+
+  /**
+   * Serves both first-time generation and explicit regenerate, same
+   * "replace, don't mutate, a secret row" convention as
+   * regeneratePersonalToken above -- issues a brand-new client_id too, not
+   * just a new secret, so a leaked/rotated credential can't be reused even
+   * by guessing the old client_id. The raw client_secret is returned
+   * exactly once, at the moment of this call (shown-once); client_id is not
+   * secret and remains readable afterward via oauthClientStatus.
+   */
+  async function regenerateOAuthClient(userId: string): Promise<{ clientId: string; clientSecret: string; createdAt: Date }> {
+    const now = new Date();
+    const clientId = newOpaqueToken();
+    const clientSecret = newOpaqueToken();
+    const clientSecretHint = clientSecret.slice(-4);
+    await db.transaction(async (trx) => {
+      await trx("oauth_clients").where({ owner_user_id: userId }).del();
+      await trx("oauth_clients").insert({
+        id: randomUUID(),
+        owner_user_id: userId,
+        client_id: clientId,
+        client_secret_hash: hashToken(clientSecret),
+        client_secret_hint: clientSecretHint,
+        created_at: now,
+        last_used_at: null
+      });
+    });
+    return { clientId, clientSecret, createdAt: now };
+  }
+
   /**
    * Resolves a personal-token bearer (`Authorization: Bearer <token>`) to the
    * owning user's identity -- same SessionIdentity shape identifyFromRequest
@@ -870,6 +931,8 @@ export function createAuthFacade(db: Knex) {
     consumeElevation,
     personalTokenStatus,
     regeneratePersonalToken,
+    oauthClientStatus,
+    regenerateOAuthClient,
     identifyPersonalToken,
     notificationsSeenAt,
     markNotificationsSeen,

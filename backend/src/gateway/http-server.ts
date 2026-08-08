@@ -1034,6 +1034,39 @@ async function handleAuthRoute(
     return true;
   }
 
+  // --- Per-user OAuth connector credentials (replaces the old static,
+  // shared PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) ---
+  // Session-only, same convention as the personal-token pair just above --
+  // no MCP tool or GraphQL mutation manages this. GET never creates a
+  // client (side-effect-free); the frontend's Connect section calls
+  // regenerate only on an explicit "Generate"/"Regenerate" click (no
+  // lazy-auto-generate on first visit, unlike personal tokens -- client_id/
+  // secret are for the web-connector OAuth flow, not needed just to view
+  // the profile page) -- see front/src/features/auth/OAuthClientPanel.
+
+  if (request.method === "GET" && requestPath === "/auth/profile/oauth-client") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.oauthClientStatus(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/profile/oauth-client/regenerate") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.regenerateOAuthClient(sessionAuth.userId);
+    send(200, {
+      ok: true,
+      data: { clientId: result.clientId, clientSecret: result.clientSecret, createdAt: result.createdAt.toISOString() }
+    });
+    return true;
+  }
+
   // --- Notifications unread state (T-MEMORY-051) ---
   // Session-only, same convention as the personal-token pair just above --
   // no MCP tool or GraphQL mutation manages this. GET never mutates
