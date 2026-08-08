@@ -381,6 +381,82 @@ try {
   assertPage(pages.linksPage.pageInfo, 1, 0, 1, "linksPage");
   console.log("ok - graphql paginated table queries");
 
+  // T-MEMORY-051 follow-up: tasksPage's server-driven sort. Isolate three
+  // fresh tasks by a unique milestone so pre-existing rows in this test
+  // project can't affect the ordering assertions below. `wait()` calls
+  // between writes keep their created_at/updated_at timestamps from tying at
+  // the same millisecond.
+  const sortMilestone = `graphql-sort-smoke-${unique}`;
+  const sortTaskA = await graphql<{ createTask: { id: string } }>(
+    `mutation CreateSortTaskA($project: String!, $milestone: String!) {
+      createTask(input: { project: $project, title: "GraphQL sort smoke task A", milestone: $milestone, priority: 30 }) { id }
+    }`,
+    { project: projectId, milestone: sortMilestone }
+  );
+  await wait(15);
+  const sortTaskB = await graphql<{ createTask: { id: string } }>(
+    `mutation CreateSortTaskB($project: String!, $milestone: String!) {
+      createTask(input: { project: $project, title: "GraphQL sort smoke task B", milestone: $milestone, priority: 10 }) { id }
+    }`,
+    { project: projectId, milestone: sortMilestone }
+  );
+  await wait(15);
+  const sortTaskC = await graphql<{ createTask: { id: string } }>(
+    `mutation CreateSortTaskC($project: String!, $milestone: String!) {
+      createTask(input: { project: $project, title: "GraphQL sort smoke task C", milestone: $milestone, priority: 20 }) { id }
+    }`,
+    { project: projectId, milestone: sortMilestone }
+  );
+  const sortTaskAId = sortTaskA.createTask.id;
+  const sortTaskBId = sortTaskB.createTask.id;
+  const sortTaskCId = sortTaskC.createTask.id;
+
+  // Touch A, then B, then C (in that order) so C ends up most-recently
+  // updated -- the default (no sortField/sortDirection args) sort must
+  // return them updated_at desc: C, B, A.
+  await graphql<{ updateTaskStatus: { id: string } }>(
+    `mutation TouchSortTaskA($id: ID!) { updateTaskStatus(id: $id, status: "doing", note: "sort smoke touch A") { id } }`,
+    { id: sortTaskAId }
+  );
+  await wait(15);
+  await graphql<{ updateTaskStatus: { id: string } }>(
+    `mutation TouchSortTaskB($id: ID!) { updateTaskStatus(id: $id, status: "doing", note: "sort smoke touch B") { id } }`,
+    { id: sortTaskBId }
+  );
+  await wait(15);
+  await graphql<{ updateTaskStatus: { id: string } }>(
+    `mutation TouchSortTaskC($id: ID!) { updateTaskStatus(id: $id, status: "doing", note: "sort smoke touch C") { id } }`,
+    { id: sortTaskCId }
+  );
+
+  const defaultSort = await graphql<{ tasksPage: { items: Array<{ id: string }> } }>(
+    `query DefaultSort($project: String!, $milestone: String!) {
+      tasksPage(project: $project, milestone: $milestone, pagination: { limit: 10, offset: 0 }) {
+        items { id }
+      }
+    }`,
+    { project: projectId, milestone: sortMilestone }
+  );
+  assert(
+    defaultSort.tasksPage.items.map((t) => t.id).join(",") === [sortTaskCId, sortTaskBId, sortTaskAId].join(","),
+    "GraphQL tasksPage with no sort args did not default to updated_at desc order."
+  );
+  console.log("ok - graphql tasksPage defaults to updated_at desc");
+
+  const explicitSort = await graphql<{ tasksPage: { items: Array<{ id: string }> } }>(
+    `query ExplicitSort($project: String!, $milestone: String!) {
+      tasksPage(project: $project, milestone: $milestone, sortField: CREATED_AT, sortDirection: ASC, pagination: { limit: 10, offset: 0 }) {
+        items { id }
+      }
+    }`,
+    { project: projectId, milestone: sortMilestone }
+  );
+  assert(
+    explicitSort.tasksPage.items.map((t) => t.id).join(",") === [sortTaskAId, sortTaskBId, sortTaskCId].join(","),
+    "GraphQL tasksPage sortField: CREATED_AT, sortDirection: ASC did not return creation order."
+  );
+  console.log("ok - graphql tasksPage explicit sortField/sortDirection");
+
   const updated = await graphql<{
     updateTaskStatus: { id: string; status: string };
     updateArtifactMetadata: { id: string; title: string; tags: string[] };
@@ -605,6 +681,11 @@ try {
   await db("gateway_clients").where({ id: clientId }).del();
   await started.stop();
   await service.close();
+}
+
+/** T-MEMORY-051 follow-up: spaces out writes in the tasksPage sort smoke block so their timestamps don't tie at the same millisecond. */
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
