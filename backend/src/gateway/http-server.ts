@@ -325,7 +325,7 @@ async function handleRequest(
     // it 302s straight to Marrow's own frontend (same origin, root path) so
     // the frontend's login/consent screen can run there instead.
     if (options.oauth && request.method === "GET" && requestPath === "/oauth/authorize") {
-      const result = options.oauth.authorizeRedirectUrl(requestUrl);
+      const result = await options.oauth.authorizeRedirectUrl(requestUrl);
       if (!result.ok) {
         send(400, fail(new AppError("VALIDATION_ERROR", result.error)));
         return;
@@ -366,7 +366,7 @@ async function handleRequest(
           params.set(key, value);
         }
       }
-      const result = options.oauth.authorizeWithSession(params, sessionAuth.userId);
+      const result = await options.oauth.authorizeWithSession(params, sessionAuth.userId);
       if (!result.ok) {
         send(400, fail(new AppError("VALIDATION_ERROR", result.error)), logFields);
         return;
@@ -377,7 +377,7 @@ async function handleRequest(
 
     if (options.oauth && request.method === "POST" && requestPath === "/oauth/token") {
       const form = await readForm(request);
-      const result = options.oauth.token(form, request);
+      const result = await options.oauth.token(form, request);
       send(result.status, result.body, {
         requestBody: formLogBody(form),
         oauthGrantType: form.get("grant_type") ?? undefined,

@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const host = process.env.BIND ?? "127.0.0.1";
   const port = Number(process.env.PORT ?? 8765);
   const token = process.env.MCP_TOKEN;
-  const oauth = createOAuthFacadeFromEnv();
+  const oauth = createOAuthFacadeFromEnv(process.env, db);
   const auth = createAuthFacade(db);
 
   // T-MEMORY-029 / D-MEMORY-007: migrate the shared static MCP_TOKEN into an

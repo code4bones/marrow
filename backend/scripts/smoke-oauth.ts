@@ -61,7 +61,7 @@ const oauth = createOAuthFacadeFromEnv({
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300",
   PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM: smokePrivateKeyPem,
   PROJECT_MEMORY_OAUTH_KEY_ID: smokeKeyId
-});
+}, db);
 
 assert(oauth, "OAuth facade was not created.");
 

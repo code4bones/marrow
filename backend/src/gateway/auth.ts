@@ -969,7 +969,8 @@ function newOpaqueToken(): string {
   return base64url(randomBytes(32));
 }
 
-function hashToken(token: string): string {
+/** Exported for oauth.ts's per-user OAuth client credential verification (same sha256-hex-hash convention as personal_tokens/sessions/tokens above). */
+export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 

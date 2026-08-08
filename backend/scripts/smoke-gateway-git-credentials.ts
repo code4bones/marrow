@@ -118,7 +118,7 @@ const oauth = createOAuthFacadeFromEnv({
   PROJECT_MEMORY_OAUTH_CLIENT_SECRET: oauthClientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300"
-});
+}, db);
 assert(oauth, "OAuth facade was not created.");
 
 const started = await startGatewayServer(service, {

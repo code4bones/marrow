@@ -11,6 +11,8 @@ import {
   type KeyObject
 } from "node:crypto";
 import type { IncomingMessage } from "node:http";
+import type { Knex } from "knex";
+import { hashToken } from "./auth.js";
 
 export type OAuthAuthResult =
   | { ok: true; clientId: string; scopes: string[]; subject: string }
@@ -57,8 +59,6 @@ type OAuthConfig = {
   issuer: string;
   audience: string;
   resourceUrls: string[];
-  clientId?: string;
-  clientSecret?: string;
   authCodeTtlSeconds: number;
   allowedRedirectUris: string[];
   scopes: string[];
@@ -77,7 +77,7 @@ const authorizeRequiredParams = [
   "code_challenge_method"
 ];
 
-export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): OAuthFacade | undefined {
+export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv, db: Knex): OAuthFacade | undefined {
   // The magic-token gate (PROJECT_MEMORY_MAGIC_TOKEN/_HASH) that used to
   // both enable this facade AND gate /oauth/authorize is gone -- OAuth
   // connectors now authenticate through Marrow's own login (see
@@ -94,23 +94,29 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
   const publicUrl = trimTrailingSlash(env.PROJECT_MEMORY_PUBLIC_URL);
   const privateKey = privateKeyFromEnv(env.PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM);
   const audience = trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_AUDIENCE ?? publicUrl);
-  return createOAuthFacade({
-    publicUrl,
-    issuer: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_ISSUER ?? publicUrl),
-    audience,
-    resourceUrls: uniqueStrings([audience, joinUrlPath(publicUrl, "mcp"), ...listEnv(env.PROJECT_MEMORY_OAUTH_RESOURCES)]),
-    clientId: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_ID),
-    clientSecret: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET),
-    authCodeTtlSeconds: positiveInteger(env.PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS, 300),
-    allowedRedirectUris: listEnv(env.PROJECT_MEMORY_ALLOWED_REDIRECT_URIS),
-    scopes: listEnv(env.PROJECT_MEMORY_OAUTH_SCOPES, defaultScopes),
-    privateKey,
-    publicKey: createPublicKey(privateKey),
-    keyId: env.PROJECT_MEMORY_OAUTH_KEY_ID ?? "pmem-oauth"
-  });
+  return createOAuthFacade(
+    {
+      publicUrl,
+      issuer: trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_ISSUER ?? publicUrl),
+      audience,
+      resourceUrls: uniqueStrings([audience, joinUrlPath(publicUrl, "mcp"), ...listEnv(env.PROJECT_MEMORY_OAUTH_RESOURCES)]),
+      authCodeTtlSeconds: positiveInteger(env.PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS, 300),
+      allowedRedirectUris: listEnv(env.PROJECT_MEMORY_ALLOWED_REDIRECT_URIS),
+      scopes: listEnv(env.PROJECT_MEMORY_OAUTH_SCOPES, defaultScopes),
+      privateKey,
+      publicKey: createPublicKey(privateKey),
+      keyId: env.PROJECT_MEMORY_OAUTH_KEY_ID ?? "pmem-oauth"
+    },
+    db
+  );
 }
 
-export function createOAuthFacade(config: OAuthConfig) {
+// Per-user OAuth connector credentials (replaces the old static, shared
+// PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair): `db` is threaded through
+// exactly like createAuthFacade(db) in auth.ts, so validateAuthorizeParams/
+// authenticateOAuthClient below can look client_id/client_secret up in the
+// oauth_clients table instead of comparing against a single static pair.
+export function createOAuthFacade(config: OAuthConfig, db: Knex) {
   const codes = new Map<string, OAuthCodeRecord>();
 
   return {
@@ -132,7 +138,7 @@ export function createOAuthFacade(config: OAuthConfig) {
           response_types_supported: ["code"],
           grant_types_supported: ["authorization_code"],
           code_challenge_methods_supported: ["S256"],
-          token_endpoint_auth_methods_supported: tokenEndpointAuthMethods(config),
+          token_endpoint_auth_methods_supported: tokenEndpointAuthMethods(),
           scopes_supported: config.scopes
         };
       },
@@ -158,8 +164,8 @@ export function createOAuthFacade(config: OAuthConfig) {
     // query string intact, so the frontend's login/consent UI can run.
     // Real session-cookie authorization happens in authorizeWithSession
     // below, once the frontend has a pmem_session to present.
-    authorizeRedirectUrl(url: URL): OAuthAuthorizeRedirectResult {
-      const validation = validateAuthorizeParams(url.searchParams, config);
+    async authorizeRedirectUrl(url: URL): Promise<OAuthAuthorizeRedirectResult> {
+      const validation = await validateAuthorizeParams(url.searchParams, config, db);
       if (!validation.ok) {
         return { ok: false, error: validation.error };
       }
@@ -172,8 +178,8 @@ export function createOAuthFacade(config: OAuthConfig) {
     // http-server.ts has already confirmed a valid pmem_session and resolved
     // its owning user -- this never re-authenticates a human itself (no
     // password/TOTP here), it only mints the code and freezes ownerUserId.
-    authorizeWithSession(params: URLSearchParams, ownerUserId: string): OAuthAuthorizeSessionResult {
-      const validation = validateAuthorizeParams(params, config);
+    async authorizeWithSession(params: URLSearchParams, ownerUserId: string): Promise<OAuthAuthorizeSessionResult> {
+      const validation = await validateAuthorizeParams(params, config, db);
       if (!validation.ok) {
         return { ok: false, error: validation.error };
       }
@@ -198,12 +204,12 @@ export function createOAuthFacade(config: OAuthConfig) {
       redirect.searchParams.set("state", validation.params.state);
       return { ok: true, redirectUri: redirect.toString() };
     },
-    token(form: URLSearchParams, request?: IncomingMessage): OAuthTokenResponse {
+    async token(form: URLSearchParams, request?: IncomingMessage): Promise<OAuthTokenResponse> {
       if (form.get("grant_type") !== "authorization_code") {
         return oauthTokenError("unsupported_grant_type", "Only authorization_code is supported.");
       }
 
-      const clientAuth = authenticateOAuthClient(form, request, config);
+      const clientAuth = await authenticateOAuthClient(form, request, config, db);
       if (!clientAuth.ok) {
         return oauthTokenError("invalid_client", clientAuth.error, 401);
       }
@@ -251,10 +257,17 @@ export function createOAuthFacade(config: OAuthConfig) {
   };
 }
 
-function validateAuthorizeParams(
+// Existence-only check (no secret involved) -- matches the shape this had
+// when it compared against a single static config.clientId: knowing a
+// registered client_id alone was never the access boundary, only the login
+// step at /oauth/authorize itself is (D-MEMORY-027, unchanged by this
+// task). Now DB-backed instead of comparing against one static value, since
+// every approved user has their own client_id in oauth_clients.
+async function validateAuthorizeParams(
   params: URLSearchParams,
-  config: OAuthConfig
-):
+  config: OAuthConfig,
+  db: Knex
+): Promise<
   | {
       ok: true;
       params: {
@@ -266,7 +279,8 @@ function validateAuthorizeParams(
         state: string;
       };
     }
-  | { ok: false; error: string } {
+  | { ok: false; error: string }
+> {
   for (const name of authorizeRequiredParams) {
     if (!params.get(name)) {
       return { ok: false, error: `Missing ${name}.` };
@@ -279,7 +293,8 @@ function validateAuthorizeParams(
     return { ok: false, error: "code_challenge_method must be S256." };
   }
   const clientId = params.get("client_id") ?? "";
-  if (config.clientId && clientId !== config.clientId) {
+  const clientRow = await db("oauth_clients").where({ client_id: clientId }).first();
+  if (!clientRow) {
     return { ok: false, error: "client_id is not allowed." };
   }
 
@@ -312,15 +327,20 @@ function validateAuthorizeParams(
   };
 }
 
-function tokenEndpointAuthMethods(config: OAuthConfig): string[] {
-  return config.clientSecret ? ["client_secret_post", "client_secret_basic"] : ["none"];
+// Unconditional now: every per-user oauth_clients row always has a secret
+// (unlike the old static config.clientSecret, which was optional and could
+// leave this deployment on ["none"]), so client_secret_post/basic are
+// always the advertised methods.
+function tokenEndpointAuthMethods(): string[] {
+  return ["client_secret_post", "client_secret_basic"];
 }
 
-function authenticateOAuthClient(
+async function authenticateOAuthClient(
   form: URLSearchParams,
   request: IncomingMessage | undefined,
-  config: OAuthConfig
-): { ok: true; clientId: string } | { ok: false; error: string } {
+  config: OAuthConfig,
+  db: Knex
+): Promise<{ ok: true; clientId: string } | { ok: false; error: string }> {
   const basic = basicClientCredentials(request);
   const formClientId = form.get("client_id") ?? "";
   const clientId = basic?.clientId ?? formClientId;
@@ -331,18 +351,37 @@ function authenticateOAuthClient(
   if (basic && formClientId && formClientId !== basic.clientId) {
     return { ok: false, error: "Conflicting client_id values." };
   }
-  if (config.clientId && clientId !== config.clientId) {
-    return { ok: false, error: "Unknown client." };
-  }
 
-  if (!config.clientSecret) {
-    return { ok: true, clientId };
-  }
-
+  // Every per-user OAuth client always has a secret (unlike the old
+  // optional static config.clientSecret) -- fail closed on a missing one
+  // rather than falling back to an unauthenticated "client_id alone is
+  // enough" path.
   const clientSecret = basic?.clientSecret ?? form.get("client_secret") ?? "";
-  if (!clientSecret || !safeEqual(clientSecret, config.clientSecret)) {
+  if (!clientSecret) {
+    return { ok: false, error: "Missing client_secret." };
+  }
+
+  // Same "put the hash directly in the WHERE clause" convention as
+  // identifyPersonalToken (auth.ts) -- a straight hash-equality lookup, not
+  // an application-level timing-safe compare, matching how every other
+  // hash-only secret in this codebase (personal_tokens, sessions, tokens)
+  // is verified.
+  const row = await db("oauth_clients")
+    .where({ client_id: clientId, client_secret_hash: hashToken(clientSecret) })
+    .first();
+  if (!row) {
     return { ok: false, error: "Invalid client credentials." };
   }
+
+  // Best-effort activity timestamp, same fire-and-forget convention as
+  // identifyPersonalToken's last_used_at stamp (auth.ts) -- a failed update
+  // must not fail the token exchange itself.
+  db("oauth_clients")
+    .where({ id: row.id })
+    .update({ last_used_at: new Date() })
+    .catch(() => {
+      // Best-effort; ignored.
+    });
 
   return { ok: true, clientId };
 }
@@ -560,11 +599,6 @@ function trimTrailingSlash(value: string): string {
 function positiveInteger(value: string | undefined, defaultValue: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
-}
-
-function optionalEnv(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function listEnv(value: string | undefined, fallback: string[] = []): string[] {
