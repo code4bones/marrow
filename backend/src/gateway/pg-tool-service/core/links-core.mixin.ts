@@ -16,6 +16,7 @@ type ProjectsCoreInstance = InstanceType<ReturnType<typeof ProjectsCoreMixin<Con
 
 export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(Base: TBase) {
   return class extends Base {
+
   protected async createLink(input: Row, context: NormalizedGatewayRequestContext) {
     await this.assertRecordExists(String(input.fromId));
     await this.assertRecordExists(String(input.toId));
@@ -206,3 +207,8 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
 
   };
 }
+
+// Convenience instance type for Tier 2 mixins that need everything through
+// Tier 1 (Base + ProjectsCore + LinksCore) -- avoids re-deriving this
+// InstanceType<ReturnType<...>> chain in every dependent file.
+export type Tier1Instance = InstanceType<ReturnType<typeof LinksCoreMixin<Constructor<ProjectsCoreInstance>>>>;
