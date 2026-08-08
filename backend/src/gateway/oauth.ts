@@ -21,10 +21,22 @@ export type OAuthTokenResponse =
   | { status: 400; body: Record<string, unknown> }
   | { status: 401; body: Record<string, unknown> };
 
-export type OAuthAuthorizeResult =
-  | { status: 302; location: string }
-  | { status: 400; html: string };
+export type OAuthAuthorizeRedirectResult =
+  | { ok: true; location: string }
+  | { ok: false; error: string };
 
+export type OAuthAuthorizeSessionResult =
+  | { ok: true; redirectUri: string }
+  | { ok: false; error: string };
+
+// SSO real-login authorize flow (replaces the old shared magic-token gate):
+// `ownerUserId` is the Marrow user who was actually logged in (via
+// pmem_session) when the authorization code was minted -- frozen here so
+// the token exchange can stamp it as the JWT's `sub`. Deliberately NOT
+// freezing a role/scope claim alongside it: the granted tier is resolved
+// fresh from `users` on every subsequent request (http-server.ts's
+// resolveScopeTier), so a role change or account disable takes effect
+// immediately instead of only at the next OAuth login.
 type OAuthCodeRecord = {
   clientId: string;
   redirectUri: string;
@@ -32,14 +44,10 @@ type OAuthCodeRecord = {
   codeChallengeMethod: "S256";
   resource: string;
   scopes: string[];
+  ownerUserId: string;
   expiresAt: number;
   usedAt: number | null;
   createdAt: number;
-};
-
-type OAuthRateLimitRecord = {
-  count: number;
-  resetAt: number;
 };
 
 export type OAuthFacade = ReturnType<typeof createOAuthFacade>;
@@ -51,8 +59,6 @@ type OAuthConfig = {
   resourceUrls: string[];
   clientId?: string;
   clientSecret?: string;
-  magicToken?: string;
-  magicTokenHash?: string;
   authCodeTtlSeconds: number;
   allowedRedirectUris: string[];
   scopes: string[];
@@ -62,14 +68,6 @@ type OAuthConfig = {
 };
 
 const defaultScopes = ["memory:read", "memory:write"];
-// Recognized scope vocabulary (T-MEMORY-029 / D-MEMORY-007), for
-// forward-compatibility and clear error messages if a client ever asks for
-// it -- but per decision 2, OAuth connectors (Claude Code, ChatGPT) never
-// get this scope, permanently, regardless of the underlying user or what a
-// token claims. Never part of defaultScopes and always filtered out of the
-// granted set in requestedScopes() below, even if an operator misconfigures
-// PROJECT_MEMORY_OAUTH_SCOPES to include it.
-const ADMIN_SCOPE = "memory:admin";
 const authorizeRequiredParams = [
   "response_type",
   "client_id",
@@ -80,15 +78,20 @@ const authorizeRequiredParams = [
 ];
 
 export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): OAuthFacade | undefined {
-  if (!env.PROJECT_MEMORY_MAGIC_TOKEN && !env.PROJECT_MEMORY_MAGIC_TOKEN_HASH) {
+  // The magic-token gate (PROJECT_MEMORY_MAGIC_TOKEN/_HASH) that used to
+  // both enable this facade AND gate /oauth/authorize is gone -- OAuth
+  // connectors now authenticate through Marrow's own login (see
+  // authorizeWithSession below). PROJECT_MEMORY_PUBLIC_URL is the
+  // OAuth-facade-specific setting (issuer/audience/JWKS base, and now also
+  // the frontend redirect target's origin), so its presence is the new
+  // explicit opt-in -- deliberately NOT falling back to GW_ENDPOINT here,
+  // so a deployment that only sets GW_ENDPOINT for client mode doesn't
+  // silently turn OAuth on.
+  if (!env.PROJECT_MEMORY_PUBLIC_URL) {
     return undefined;
   }
 
-  const publicUrl = trimTrailingSlash(env.PROJECT_MEMORY_PUBLIC_URL ?? env.GW_ENDPOINT ?? "");
-  if (!publicUrl) {
-    throw new Error("PROJECT_MEMORY_PUBLIC_URL is required when OAuth facade is enabled.");
-  }
-
+  const publicUrl = trimTrailingSlash(env.PROJECT_MEMORY_PUBLIC_URL);
   const privateKey = privateKeyFromEnv(env.PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM);
   const audience = trimTrailingSlash(env.PROJECT_MEMORY_OAUTH_AUDIENCE ?? publicUrl);
   return createOAuthFacade({
@@ -98,8 +101,6 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
     resourceUrls: uniqueStrings([audience, joinUrlPath(publicUrl, "mcp"), ...listEnv(env.PROJECT_MEMORY_OAUTH_RESOURCES)]),
     clientId: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_ID),
     clientSecret: optionalEnv(env.PROJECT_MEMORY_OAUTH_CLIENT_SECRET),
-    magicToken: env.PROJECT_MEMORY_MAGIC_TOKEN,
-    magicTokenHash: env.PROJECT_MEMORY_MAGIC_TOKEN_HASH,
     authCodeTtlSeconds: positiveInteger(env.PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS, 300),
     allowedRedirectUris: listEnv(env.PROJECT_MEMORY_ALLOWED_REDIRECT_URIS),
     scopes: listEnv(env.PROJECT_MEMORY_OAUTH_SCOPES, defaultScopes),
@@ -111,7 +112,6 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv = process.env): 
 
 export function createOAuthFacade(config: OAuthConfig) {
   const codes = new Map<string, OAuthCodeRecord>();
-  const failedAttempts = new Map<string, OAuthRateLimitRecord>();
 
   return {
     metadata: {
@@ -151,38 +151,31 @@ export function createOAuthFacade(config: OAuthConfig) {
     resourceFromMetadataPath(suffix: string) {
       return resourceFromMetadataPath(config, suffix);
     },
-    authorizeForm(url: URL) {
+    // GET /oauth/authorize (http-server.ts): validates the same way the old
+    // magic-token form did, but on success 302s the user's browser to
+    // Marrow's own frontend (same origin as `publicUrl`, root path instead
+    // of the API prefix -- see frontendOrigin() below) with the original
+    // query string intact, so the frontend's login/consent UI can run.
+    // Real session-cookie authorization happens in authorizeWithSession
+    // below, once the frontend has a pmem_session to present.
+    authorizeRedirectUrl(url: URL): OAuthAuthorizeRedirectResult {
       const validation = validateAuthorizeParams(url.searchParams, config);
       if (!validation.ok) {
-        return {
-          status: 400,
-          html: htmlPage("OAuth Error", `<p>${escapeHtml(validation.error)}</p>`)
-        };
+        return { ok: false, error: validation.error };
       }
-
-      return {
-        status: 200,
-        html: htmlPage(
-          "Authorize Project Memory",
-          `<form method="post" action="">
-  ${hiddenInputs(url.searchParams)}
-  <label>Magic token <input name="magic_token" type="password" autocomplete="current-password" autofocus /></label>
-  <button type="submit">Authorize</button>
-</form>`
-        )
-      };
+      const frontend = new URL("/oauth/authorize", frontendOrigin(config));
+      frontend.search = url.searchParams.toString();
+      return { ok: true, location: frontend.toString() };
     },
-    authorize(form: URLSearchParams, clientIp: string): OAuthAuthorizeResult {
-      const validation = validateAuthorizeParams(form, config);
+    // POST /oauth/authorize (http-server.ts): the new session-cookie-backed
+    // replacement for the old magic-token POST. Called only after
+    // http-server.ts has already confirmed a valid pmem_session and resolved
+    // its owning user -- this never re-authenticates a human itself (no
+    // password/TOTP here), it only mints the code and freezes ownerUserId.
+    authorizeWithSession(params: URLSearchParams, ownerUserId: string): OAuthAuthorizeSessionResult {
+      const validation = validateAuthorizeParams(params, config);
       if (!validation.ok) {
-        return { status: 400, html: htmlPage("OAuth Error", `<p>${escapeHtml(validation.error)}</p>`) };
-      }
-      if (isRateLimited(failedAttempts, clientIp)) {
-        return { status: 400, html: htmlPage("OAuth Error", "<p>Invalid token</p>") };
-      }
-      if (!verifyMagicToken(form.get("magic_token") ?? "", config)) {
-        recordFailedAttempt(failedAttempts, clientIp);
-        return { status: 400, html: htmlPage("OAuth Error", "<p>Invalid token</p>") };
+        return { ok: false, error: validation.error };
       }
 
       const code = randomToken(32);
@@ -193,6 +186,7 @@ export function createOAuthFacade(config: OAuthConfig) {
         codeChallengeMethod: "S256",
         resource: validation.params.resource,
         scopes: validation.params.scopes,
+        ownerUserId,
         expiresAt: Date.now() + config.authCodeTtlSeconds * 1000,
         usedAt: null,
         createdAt: Date.now()
@@ -202,7 +196,7 @@ export function createOAuthFacade(config: OAuthConfig) {
       const redirect = new URL(validation.params.redirectUri);
       redirect.searchParams.set("code", code);
       redirect.searchParams.set("state", validation.params.state);
-      return { status: 302, location: redirect.toString() };
+      return { ok: true, redirectUri: redirect.toString() };
     },
     token(form: URLSearchParams, request?: IncomingMessage): OAuthTokenResponse {
       if (form.get("grant_type") !== "authorization_code") {
@@ -307,7 +301,13 @@ function validateAuthorizeParams(
       codeChallenge: params.get("code_challenge") ?? "",
       resource,
       state: params.get("state") ?? "",
-      scopes: requestedScopes(params.get("scope"), config.scopes)
+      // PMem is an internal gateway: successful OAuth means access to
+      // whatever this gateway supports (config.scopes), independent of what
+      // the client actually requested via `scope=` -- not renegotiated or
+      // frozen here. The real authorization decision now happens fresh on
+      // every call (http-server.ts's role-derived resolveScopeTier), not
+      // from this granted-at-authorize-time claim.
+      scopes: config.scopes
     }
   };
 }
@@ -366,16 +366,27 @@ function basicClientCredentials(
   };
 }
 
+// 30 days, matching the pmem_session cookie's own TTL (auth.ts's
+// SESSION_TTL_MS) -- an OAuth connector's access token should not outlive
+// the browser session that authorized it by much more than that.
+const ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 function issueJwt(config: OAuthConfig, record: OAuthCodeRecord): string {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: "RS256", typ: "JWT", kid: config.keyId });
   const payload = base64urlJson({
     iss: config.issuer,
     aud: record.resource,
-    sub: "project-memory-user",
+    // Real identity (T-MEMORY-0xx SSO): the Marrow user who was logged in
+    // via pmem_session when this code was minted (see authorizeWithSession
+    // above), not the old hardcoded "project-memory-user" literal. Scope
+    // tier is resolved fresh from this user's CURRENT role on every call,
+    // never cached in the token.
+    sub: record.ownerUserId,
     client_id: record.clientId,
     scope: record.scopes.join(" "),
     iat: now,
+    exp: now + ACCESS_TOKEN_TTL_SECONDS,
     jti: randomUUID()
   });
   const signingInput = `${header}.${payload}`;
@@ -413,6 +424,12 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
   if (typeof payload.nbf === "number" && payload.nbf > now) {
     return { ok: false, reason: "not_before" };
   }
+  // Every OAuth access token now carries a real exp claim (30-day TTL, see
+  // issueJwt) -- a token minted before this task had none at all, so a
+  // missing exp is treated as expired (fail closed) rather than eternal.
+  if (typeof payload.exp !== "number" || payload.exp <= now) {
+    return { ok: false, reason: "expired" };
+  }
 
   const scopes = typeof payload.scope === "string" ? payload.scope.split(/\s+/).filter(Boolean) : [];
   if (!requiredScopes.every((scope) => scopes.includes(scope))) {
@@ -423,24 +440,8 @@ function verifyJwt(config: OAuthConfig, token: string, requiredScopes: string[])
     ok: true,
     clientId: typeof payload.client_id === "string" ? payload.client_id : "oauth",
     scopes,
-    subject: typeof payload.sub === "string" ? payload.sub : "project-memory-user"
+    subject: typeof payload.sub === "string" ? payload.sub : ""
   };
-}
-
-function requestedScopes(scope: string | null, supportedScopes: string[]): string[] {
-  // PMem is an internal gateway: successful OAuth means access to the full configured scope set.
-  // Some hosts initially request only memory:read and do not retry escalation before write tools.
-  // memory:admin is filtered out unconditionally here (decision 2) -- OAuth issuance stays capped
-  // at read+write even if PROJECT_MEMORY_OAUTH_SCOPES was misconfigured to include it.
-  const grantableScopes = supportedScopes.filter((item) => item !== ADMIN_SCOPE);
-  if (scope) {
-    const requested = scope.split(/\s+/).filter(Boolean);
-    const unsupported = requested.filter((item) => !grantableScopes.includes(item));
-    if (unsupported.length === requested.length) {
-      return grantableScopes;
-    }
-  }
-  return grantableScopes;
 }
 
 function verifyPkceS256(verifier: string, expectedChallenge: string): boolean {
@@ -449,21 +450,6 @@ function verifyPkceS256(verifier: string, expectedChallenge: string): boolean {
   }
   const actual = base64url(createHash("sha256").update(verifier).digest());
   return safeEqual(actual, expectedChallenge);
-}
-
-function verifyMagicToken(input: string, config: OAuthConfig): boolean {
-  if (!input) {
-    return false;
-  }
-  if (config.magicToken && safeEqual(input, config.magicToken)) {
-    return true;
-  }
-  if (config.magicTokenHash) {
-    const expectedHash = config.magicTokenHash.replace(/^sha256:/, "");
-    const actualHash = createHash("sha256").update(input).digest("hex");
-    return safeEqual(actualHash, expectedHash);
-  }
-  return false;
 }
 
 function privateKeyFromEnv(value: string | undefined): KeyObject {
@@ -500,21 +486,16 @@ function isAllowedRedirectUri(value: string, allowlist: string[]): boolean {
   }
 }
 
-function isRateLimited(records: Map<string, OAuthRateLimitRecord>, key: string): boolean {
-  const record = records.get(key);
-  if (!record || record.resetAt <= Date.now()) {
-    return false;
-  }
-  return record.count >= 10;
-}
-
-function recordFailedAttempt(records: Map<string, OAuthRateLimitRecord>, key: string): void {
-  const current = records.get(key);
-  if (!current || current.resetAt <= Date.now()) {
-    records.set(key, { count: 1, resetAt: Date.now() + 10 * 60 * 1000 });
-    return;
-  }
-  records.set(key, { ...current, count: current.count + 1 });
+// The frontend is always served from the same origin as this gateway's own
+// publicUrl, just at the root path instead of the API prefix (e.g.
+// https://marrow.example.com/api -> https://marrow.example.com/ -- see
+// front/deploy/nginx/marrow-ui.locations.conf and
+// backend/deploy/nginx/marrow.example.conf, which proxy the two from the
+// same nginx server{} block). No separate "frontend public URL" env var
+// exists or is needed -- the origin is all this needs, and it's already
+// derivable from the OAuth-facade-specific PROJECT_MEMORY_PUBLIC_URL.
+function frontendOrigin(config: OAuthConfig): string {
+  return new URL(config.publicUrl).origin;
 }
 
 function pruneCodes(codes: Map<string, OAuthCodeRecord>): void {
@@ -534,46 +515,6 @@ function oauthTokenError(error: string, description: string, status: 400 | 401 =
       error_description: description
     }
   };
-}
-
-function htmlPage(title: string, body: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; }
-    form { display: grid; gap: 1rem; }
-    label { display: grid; gap: .5rem; }
-    input { font: inherit; padding: .6rem .7rem; }
-    button { font: inherit; padding: .6rem .9rem; width: fit-content; }
-  </style>
-</head>
-<body>
-  <h1>${escapeHtml(title)}</h1>
-  ${body}
-</body>
-</html>`;
-}
-
-function hiddenInputs(params: URLSearchParams): string {
-  const names = [...authorizeRequiredParams, "scope", "resource"];
-  return names
-    .map((name) => {
-      const value = params.get(name);
-      return value === null ? "" : `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`;
-    })
-    .join("\n  ");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function safeEqual(a: string, b: string): boolean {

@@ -99,6 +99,20 @@ type ScopeTier = "read" | "write" | "admin";
 // memory:admin claim that OAuth tokens are never issued (D-MEMORY-017).
 const ELEVATION_HEADER = "x-project-memory-elevation";
 
+// The OAuth authorize params the frontend's POST /oauth/authorize round-trips
+// to oauth.ts's authorizeWithSession -- same set validateAuthorizeParams
+// (oauth.ts) checks, plus the two optional ones (scope, resource).
+const OAUTH_AUTHORIZE_PARAM_NAMES = [
+  "response_type",
+  "client_id",
+  "redirect_uri",
+  "scope",
+  "state",
+  "code_challenge",
+  "code_challenge_method",
+  "resource"
+] as const;
+
 function scopesForTier(tier: ScopeTier): string[] {
   if (tier === "admin") {
     return [READ_SCOPE, WRITE_SCOPE, ADMIN_SCOPE];
@@ -299,31 +313,59 @@ async function handleRequest(
       return;
     }
 
+    // SSO authorize flow (replaces the old shared-magic-token gate): GET is
+    // the top-level browser navigation an OAuth client (Claude Code,
+    // ChatGPT) redirects the user to -- it never renders UI itself anymore,
+    // it 302s straight to Marrow's own frontend (same origin, root path) so
+    // the frontend's login/consent screen can run there instead.
     if (options.oauth && request.method === "GET" && requestPath === "/oauth/authorize") {
-      const result = options.oauth.authorizeForm(requestUrl);
-      sendHtml(response, result.status, result.html, requestId);
-      logRequest(options, request, result.status, Date.now() - startedAt, requestId, context);
+      const result = options.oauth.authorizeRedirectUrl(requestUrl);
+      if (!result.ok) {
+        send(400, fail(new AppError("VALIDATION_ERROR", result.error)));
+        return;
+      }
+      response.writeHead(302, {
+        location: result.location,
+        "x-request-id": requestId
+      });
+      response.end();
+      logRequest(options, request, 302, Date.now() - startedAt, requestId, context);
       return;
     }
 
+    // POST is called by the frontend itself (fetch with credentials:
+    // 'include', not a browser form submit) once it has confirmed a
+    // pmem_session -- either an existing cookie, or one just established via
+    // the frontend's own login/TOTP screens. No magic token anywhere in this
+    // path; a valid session is the only thing that can mint a code, and the
+    // code is stamped with that session's real userId.
     if (options.oauth && request.method === "POST" && requestPath === "/oauth/authorize") {
-      const form = await readForm(request);
+      const body = (await readJson(request)) as Record<string, unknown>;
       const logFields = {
-        requestBody: formLogBody(form),
-        oauthClientId: form.get("client_id") ?? undefined
+        requestBody: sanitizeLogBody(body),
+        oauthClientId: typeof body.client_id === "string" ? body.client_id : undefined
       };
-      const result = options.oauth.authorize(form, clientIp(request));
-      if (result.status === 302) {
-        response.writeHead(302, {
-          location: result.location,
-          "x-request-id": requestId
-        });
-        response.end();
-        logRequest(options, request, 302, Date.now() - startedAt, requestId, context, logFields);
-      } else {
-        sendHtml(response, result.status, result.html, requestId);
-        logRequest(options, request, result.status, Date.now() - startedAt, requestId, context, logFields);
+      if (!sessionAuth) {
+        send(
+          401,
+          fail(new AppError("UNAUTHORIZED", "A Marrow session is required to authorize this OAuth client.")),
+          logFields
+        );
+        return;
       }
+      const params = new URLSearchParams();
+      for (const key of OAUTH_AUTHORIZE_PARAM_NAMES) {
+        const value = body[key];
+        if (typeof value === "string") {
+          params.set(key, value);
+        }
+      }
+      const result = options.oauth.authorizeWithSession(params, sessionAuth.userId);
+      if (!result.ok) {
+        send(400, fail(new AppError("VALIDATION_ERROR", result.error)), logFields);
+        return;
+      }
+      send(200, { ok: true, data: { redirectUri: result.redirectUri } }, logFields);
       return;
     }
 
@@ -1444,15 +1486,6 @@ function sendJson(response: ServerResponse, status: number, body: unknown, reque
   response.end(payload);
 }
 
-function sendHtml(response: ServerResponse, status: number, body: string, requestId: string): void {
-  response.writeHead(status, {
-    "content-type": "text/html; charset=utf-8",
-    "x-request-id": requestId,
-    "content-length": Buffer.byteLength(body)
-  });
-  response.end(body);
-}
-
 type AuthFailure = Extract<AuthorizationState, { ok: false }>;
 
 // Two genuinely different failures, kept visibly distinct end to end (REST,
@@ -1604,7 +1637,7 @@ function redactSensitiveLogText(value: string): string {
 }
 
 function isSensitiveFormKey(key: string): boolean {
-  return ["code", "code_verifier", "client_secret", "magic_token", "password"].includes(key.toLowerCase());
+  return ["code", "code_verifier", "client_secret", "password"].includes(key.toLowerCase());
 }
 
 function isSensitiveKey(key: string): boolean {
