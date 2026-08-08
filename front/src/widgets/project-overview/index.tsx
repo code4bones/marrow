@@ -9,6 +9,7 @@ import {
 import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { ShareProjectButton } from '../../features/project/ShareProjectButton';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -169,9 +170,12 @@ export function ProjectOverview({ slug }: { slug: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Fixed header */}
       <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
-        <Typography.Title level={4} style={{ marginBottom: 4 }}>
-          {s.project.title}
-        </Typography.Title>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <Typography.Title level={4} style={{ marginBottom: 4 }}>
+            {s.project.title}
+          </Typography.Title>
+          <ShareProjectButton slug={slug} />
+        </div>
         {s.project.description && (
           <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
             {s.project.description}

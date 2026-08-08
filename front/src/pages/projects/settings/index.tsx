@@ -1,20 +1,15 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Form, Input, Popconfirm, Spin, Typography, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Card, Form, Input, Spin, Typography, message } from 'antd';
+import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DeleteProjectButton } from '../../../features/project/DeleteProjectButton';
-import {
-  GET_PROJECT_SETTINGS,
-  PROJECT_INVITE_LINK,
-  REGENERATE_PROJECT_INVITE_LINK,
-  UPDATE_PROJECT,
-} from '../../../shared/api/queries';
+import { ProjectInviteLink } from '../../../features/project/ProjectInviteLink';
+import { GET_PROJECT_SETTINGS, UPDATE_PROJECT } from '../../../shared/api/queries';
 import { useWorkspaceStore } from '../../../shared/model/workspace.store';
 import type { Project } from '../../../shared/model/types';
-import { CodeBlock } from '../../../shared/ui/CodeBlock';
 import { PageLayout } from '../../../shared/ui/PageLayout';
 
-const { Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 interface RenameFormValues {
   title: string;
@@ -62,52 +57,10 @@ function RenameSection({ slug }: { slug: string }) {
   );
 }
 
-/**
- * Reusable, per-project invite link -- get-or-create on mount (same lazy
- * generation as PersonalTokenPanel in pages/profile), "Copy link" via the
- * same copyable CodeBlock every token/secret display already uses, and
- * "Regenerate" behind a Popconfirm mirroring PersonalTokenPanel's own
- * regenerate confirm (front/src/pages/profile/index.tsx).
- */
 function InviteSection({ slug }: { slug: string }) {
-  const { data, loading, error, refetch } = useQuery<{ projectInviteLink: { code: string; url: string } }>(
-    PROJECT_INVITE_LINK,
-    { variables: { slug }, fetchPolicy: 'network-only' },
-  );
-  const [regenerate, { loading: regenerating }] = useMutation(REGENERATE_PROJECT_INVITE_LINK, {
-    onCompleted: () => {
-      message.success('Invite link regenerated -- the old link no longer works');
-      void refetch();
-    },
-    onError: (e) => message.error(e.message),
-  });
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
   return (
     <Card title="Invite" size="small" style={{ marginBottom: 16 }}>
-      <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-        Anyone who opens this link and signs in (or already has a Marrow account) joins this project. Any current
-        project member can share it. Regenerating invalidates the old link immediately.
-      </Paragraph>
-      {loading && <Spin size="small" />}
-      {error && <Alert type="error" message={error.message} showIcon />}
-      {data?.projectInviteLink && <CodeBlock code={data.projectInviteLink.url} />}
-      <Popconfirm
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title="Regenerate invite link?"
-        description="The current link stops working immediately. Anyone who hasn't joined yet will need the new one."
-        okText="Regenerate"
-        okButtonProps={{ danger: true, loading: regenerating }}
-        onConfirm={() => {
-          setConfirmOpen(false);
-          void regenerate({ variables: { slug } });
-        }}
-      >
-        <Button size="small" loading={regenerating}>
-          Regenerate
-        </Button>
-      </Popconfirm>
+      <ProjectInviteLink slug={slug} />
     </Card>
   );
 }
