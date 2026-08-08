@@ -57,6 +57,25 @@ export function taskClaimOut(row: Row) {
 }
 
 
+// T-MEMORY-051 follow-up: tasksPage's TaskSortField/SortDirection GraphQL
+// enums map to real columns here. The GraphQL schema already restricts
+// input.sortField/sortDirection to these enum values (or undefined), so the
+// fallbacks below are defensive, not a validation layer.
+const taskSortColumns: Record<string, string> = {
+  UPDATED_AT: "updated_at",
+  CREATED_AT: "created_at",
+  PRIORITY: "priority"
+};
+
+export function taskSortColumn(value: unknown): string {
+  return taskSortColumns[String(value ?? "UPDATED_AT")] ?? "updated_at";
+}
+
+export function taskSortDirection(value: unknown): "asc" | "desc" {
+  return String(value ?? "DESC").toUpperCase() === "ASC" ? "asc" : "desc";
+}
+
+
 export function taskClaimEffectiveStatus(row: Row): string {
   const status = String(row.status);
   if (status === "active" && new Date(String(row.lease_expires_at)).getTime() <= Date.now()) {

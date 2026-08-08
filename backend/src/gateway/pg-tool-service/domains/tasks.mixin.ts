@@ -13,7 +13,9 @@ import {
   taskClaimRole,
   taskNoteDefaultRelation,
   taskNoteTypeTitle,
-  taskOut
+  taskOut,
+  taskSortColumn,
+  taskSortDirection
 } from "../formatters/tasks.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
@@ -72,7 +74,17 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     if (input.milestone) {
       base.andWhere("milestone", String(input.milestone));
     }
-    return this.pageRows(base, input, (query) => this.taskSelectWithActiveClaimCount(query).orderBy("priority").orderBy("created_at"), taskOut);
+    // T-MEMORY-051 follow-up: server-driven sort (default updated_at desc).
+    // Trailing `id` tiebreaker keeps offset pagination stable when many rows
+    // share the same sort-column value.
+    const sortColumn = taskSortColumn(input.sortField);
+    const sortDirection = taskSortDirection(input.sortDirection);
+    return this.pageRows(
+      base,
+      input,
+      (query) => this.taskSelectWithActiveClaimCount(query).orderBy(sortColumn, sortDirection).orderBy("id"),
+      taskOut
+    );
   }
 
   protected async getTask(id: string) {
