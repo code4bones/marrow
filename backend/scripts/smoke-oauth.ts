@@ -20,7 +20,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { createOAuthFacadeFromEnv } from "../src/gateway/oauth.js";
-import { createAuthFacade, hashPassword } from "../src/gateway/auth.js";
+import { createAuthFacade, hashPassword, hashToken } from "../src/gateway/auth.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
 import { createPgKnex } from "../src/shared/pg/knex.js";
 
@@ -50,13 +50,15 @@ const smokeKeyId = `oauth-smoke-key-${unique}`;
 const { privateKey: smokePrivateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const smokePrivateKeyPem = smokePrivateKey.export({ type: "pkcs8", format: "pem" }).toString();
 
+// PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET are gone -- oauth.ts no longer
+// reads them at all. clientId/clientSecret below are instead seeded as a
+// real oauth_clients row (owned by the admin user seeded just below),
+// exactly the way a real user would self-generate one from their profile.
 const oauth = createOAuthFacadeFromEnv({
   ...process.env,
   PROJECT_MEMORY_PUBLIC_URL: publicUrl,
   PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
   PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
-  PROJECT_MEMORY_OAUTH_CLIENT_ID: clientId,
-  PROJECT_MEMORY_OAUTH_CLIENT_SECRET: clientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300",
   PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM: smokePrivateKeyPem,
@@ -110,6 +112,25 @@ try {
     updated_at: now
   });
   console.log("ok - admin and member accounts seeded");
+
+  // Per-user OAuth connector credential (replaces the old static,
+  // PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) -- owned by the admin user
+  // seeded above, same as any real user would self-generate one from their
+  // own profile page. Ownership of the credential is independent of WHO
+  // logs in through it: both the admin and member sessions below complete
+  // /oauth/authorize using this same client_id/secret pair, exactly as the
+  // design intends (the app credential and the logged-in identity are two
+  // separate things -- see oauth.ts's authenticateOAuthClient).
+  await db("oauth_clients").insert({
+    id: randomUUID(),
+    owner_user_id: adminUserId,
+    client_id: clientId,
+    client_secret_hash: hashToken(clientSecret),
+    client_secret_hint: clientSecret.slice(-4),
+    created_at: now,
+    last_used_at: null
+  });
+  console.log("ok - oauth_clients row seeded for the admin user (replaces the old static client env vars)");
 
   // --- Metadata endpoints (unaffected by the SSO change) -----------------
   const protectedResource = await getJson(`${started.url}/.well-known/oauth-protected-resource`);
@@ -427,6 +448,7 @@ try {
     await db("projects").where({ id: projectIdForAdminDelete }).del();
   }
   if (adminUserId) {
+    await db("oauth_clients").where({ owner_user_id: adminUserId }).del();
     await db("sessions").where({ user_id: adminUserId }).del();
     await db("users").where({ id: adminUserId }).del();
   }

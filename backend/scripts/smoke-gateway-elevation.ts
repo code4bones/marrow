@@ -14,7 +14,7 @@
 // is unchanged; elevation is an additional narrow door, not a replacement).
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { startGatewayServer } from "../src/gateway/http-server.js";
-import { createAuthFacade, hashPassword } from "../src/gateway/auth.js";
+import { createAuthFacade, hashPassword, hashToken } from "../src/gateway/auth.js";
 import { base32Decode, base32Encode, encryptSecret, generateTotpSecret } from "../src/gateway/totp.js";
 import { createOAuthFacadeFromEnv } from "../src/gateway/oauth.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
@@ -40,13 +40,15 @@ const oauthClientId = `elevation-smoke-oauth-client-${unique}`;
 const oauthClientSecret = `elevation-smoke-oauth-secret-${unique}`;
 const pmemClientId = `elevation-smoke-agent-${unique}`;
 
+// PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET are gone -- oauth.ts no longer
+// reads them at all. oauthClientId/oauthClientSecret below are instead
+// seeded as a real oauth_clients row (owned by the admin user seeded just
+// below) once that user exists, same as scripts/smoke-oauth.ts.
 const oauth = createOAuthFacadeFromEnv({
   ...process.env,
   PROJECT_MEMORY_PUBLIC_URL: publicUrl,
   PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
   PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
-  PROJECT_MEMORY_OAUTH_CLIENT_ID: oauthClientId,
-  PROJECT_MEMORY_OAUTH_CLIENT_SECRET: oauthClientSecret,
   PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
   PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300"
 }, db);
@@ -106,6 +108,22 @@ try {
     updated_at: now
   });
   console.log("ok - admin (2FA-enrolled) and member (2FA-enrolled) accounts seeded");
+
+  // Per-user OAuth connector credential (replaces the old static,
+  // PROJECT_MEMORY_OAUTH_CLIENT_ID/_SECRET pair) -- owned by the admin user
+  // seeded above; mintOAuthAccessToken below authorizes with it using the
+  // MEMBER's session, exactly as the design intends (the app credential and
+  // the logged-in identity are independent).
+  await db("oauth_clients").insert({
+    id: randomUUID(),
+    owner_user_id: adminUserId,
+    client_id: oauthClientId,
+    client_secret_hash: hashToken(oauthClientSecret),
+    client_secret_hint: oauthClientSecret.slice(-4),
+    created_at: now,
+    last_used_at: null
+  });
+  console.log("ok - oauth_clients row seeded for the admin user (replaces the old static client env vars)");
 
   // Seed a project + three memory items via the static admin-tier token --
   // one per admin-tier OAuth call below (delete is destructive, each probe
@@ -260,6 +278,7 @@ try {
     await db("projects").where({ id: projectId }).del();
   }
   if (adminUserId) {
+    await db("oauth_clients").where({ owner_user_id: adminUserId }).del();
     await db("admin_elevations").where({ user_id: adminUserId }).del();
     await db("sessions").where({ user_id: adminUserId }).del();
     await db("users").where({ id: adminUserId }).del();
