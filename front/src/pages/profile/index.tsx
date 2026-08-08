@@ -165,20 +165,22 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * TotpEnrollWizard): the plaintext token is only ever visible in the
  * response right after generate/regenerate, never recoverable from the
  * status endpoint afterward. Generation is lazy — if the status check on
- * mount reports no token yet, this component generates one automatically
- * (still an explicit POST, not a side effect of the status GET) so a
+ * mount reports no token yet, this hook generates one automatically (still
+ * an explicit POST, not a side effect of the status GET) so a
  * freshly-approved user sees a working token the first time they open this
  * page, without asking an admin — see docs/AUTH.md's "Personal API tokens"
- * section for why this is lazy-on-first-visit rather than
- * generated at admin-approval time.
+ * section for why this is lazy-on-first-visit rather than generated at
+ * admin-approval time.
+ *
+ * Pulled out of the panel component (was `PersonalTokenPanel`) so the ONE
+ * token this hook manages can be displayed/regenerated from TWO places at
+ * once (the Claude tab's CLI section and the Codex tab's CLI section,
+ * grouped by service like everything else on this page) without triggering
+ * two independent fetch-and-lazy-generate races — there is exactly one
+ * fetch effect, called once from ConnectSection, and both tabs render the
+ * same shared state via <PersonalTokenControls>.
  */
-function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
-  onTokenChange: (token: string | null) => void;
-  /** Fires on every status load/refresh — lets ConnectSection build a useful
-   * placeholder ("click Regenerate, yours ending in …XXXX isn't shown
-   * again") even when it never received the plaintext this page load. */
-  onStatusChange: (status: PersonalTokenStatus | null) => void;
-}) {
+function usePersonalToken() {
   const fetchPersonalToken = useAuthStore((s) => s.fetchPersonalToken);
   const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
 
@@ -187,18 +189,14 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const generate = async () => {
     setError(null);
     setBusy(true);
     try {
       const result = await regeneratePersonalToken();
-      const nextStatus = { exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null };
-      setStatus(nextStatus);
-      onStatusChange(nextStatus);
+      setStatus({ exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null });
       setRevealedToken(result.token);
-      onTokenChange(result.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not generate a personal token.');
     } finally {
@@ -213,7 +211,6 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
         const result = await fetchPersonalToken();
         if (cancelled) return;
         setStatus(result);
-        onStatusChange(result);
         setLoading(false);
         if (!result.exists) {
           await generate();
@@ -229,6 +226,14 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  return { status, revealedToken, loading, busy, error, generate };
+}
+
+type PersonalTokenState = ReturnType<typeof usePersonalToken>;
+
+function PersonalTokenControls({ status, revealedToken, loading, busy, error, generate }: PersonalTokenState) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (loading) {
     return (
@@ -351,8 +356,8 @@ function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
-  const [personalToken, setPersonalToken] = useState<string | null>(null);
-  const [tokenStatus, setTokenStatus] = useState<PersonalTokenStatus | null>(null);
+  const personalTokenState = usePersonalToken();
+  const { status: tokenStatus, revealedToken: personalToken } = personalTokenState;
 
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
@@ -399,9 +404,10 @@ function ConnectSection() {
           <Title level={5} style={{ marginTop: 0 }}>Claude Code (CLI)</Title>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             Claude Code talks to Marrow over Streamable HTTP, using your own personal API token (
-            <Text code>MARROW_MCP_TOKEN</Text> below) — see "Your personal token" above. It's tied to your account, not
-            a shared deployment secret.
+            <Text code>MARROW_MCP_TOKEN</Text> below) — tied to your account, not a shared deployment secret. Also used
+            by Codex, on its own tab — regenerating here invalidates it there too, it's the same token.
           </Text>
+          <PersonalTokenControls {...personalTokenState} />
           <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
           <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>Register Marrow as an MCP server:</Step>
@@ -443,8 +449,10 @@ function ConnectSection() {
         <>
           <Title level={5} style={{ marginTop: 0 }}>Codex (CLI)</Title>
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
-            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code.
+            Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code — regenerating
+            here invalidates it there too, it's the same token.
           </Text>
+          <PersonalTokenControls {...personalTokenState} />
           <Step n={1}>Set the token in the shell that will run Codex:</Step>
           <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>Register Marrow as an MCP server:</Step>
@@ -483,14 +491,6 @@ function ConnectSection() {
         <Text code>{mcpUrl}</Text>) is this deployment's real address — everything on this page, including the
         web-connector Client ID/Secret, is real and copy-pasteable as-is.
       </Paragraph>
-
-      <Card title="Personal API token" size="small" style={{ marginBottom: 16 }}>
-        <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-          Used by Claude Code / Codex below (<Text code>MARROW_MCP_TOKEN</Text>) — tied to your account and role, not
-          a shared deployment secret. Shown once when generated; regenerate any time to invalidate the old one.
-        </Paragraph>
-        <PersonalTokenPanel onTokenChange={setPersonalToken} onStatusChange={setTokenStatus} />
-      </Card>
 
       <Alert
         type="info"
