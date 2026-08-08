@@ -1034,6 +1034,32 @@ async function handleAuthRoute(
     return true;
   }
 
+  // --- Notifications unread state (T-MEMORY-051) ---
+  // Session-only, same convention as the personal-token pair just above --
+  // no MCP tool or GraphQL mutation manages this. GET never mutates
+  // (side-effect-free); the frontend's notifications page calls the POST
+  // once on mount to mark everything seen -- see front/src/pages/notifications.
+
+  if (request.method === "GET" && requestPath === "/auth/profile/notifications") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.notificationsSeenAt(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/profile/notifications-seen") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.markNotificationsSeen(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
   // --- Second login step for totp_enabled accounts (T-MEMORY-028) ---
   // Rate-limited the same way as /auth/login, but keyed by userId (there's
   // no email in this body) alongside client IP.

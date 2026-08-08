@@ -788,6 +788,26 @@ export function createAuthFacade(db: Knex) {
     };
   }
 
+  // --- Notifications unread state (T-MEMORY-051) ---
+  // Server-side, per-account, same "survives across devices" convention as
+  // personal_tokens/totp_enabled above (a session-cookie or browser-local
+  // flag would not survive a device switch). `notifications_seen_at` is
+  // `null` until the user's first visit to the notifications page, so every
+  // existing event counts as unread on that first visit -- no backfill.
+  // Session-only, same "/auth/profile/*" REST convention as the rest of
+  // this profile surface -- no GraphQL mutation for this.
+
+  async function notificationsSeenAt(userId: string): Promise<{ seenAt: string | null }> {
+    const row = await db("users").where({ id: userId }).select("notifications_seen_at").first();
+    return { seenAt: row?.notifications_seen_at ? new Date(row.notifications_seen_at as string).toISOString() : null };
+  }
+
+  async function markNotificationsSeen(userId: string): Promise<{ seenAt: string | null }> {
+    const now = new Date();
+    await db("users").where({ id: userId }).update({ notifications_seen_at: now });
+    return { seenAt: now.toISOString() };
+  }
+
   // --- OAuth SSO identity resolution (real per-user login for OAuth
   // connectors, replacing the old shared-magic-token gate) ---
   // Resolves an OAuth access token's `sub` claim (a users.id, frozen onto
@@ -851,6 +871,8 @@ export function createAuthFacade(db: Knex) {
     personalTokenStatus,
     regeneratePersonalToken,
     identifyPersonalToken,
+    notificationsSeenAt,
+    markNotificationsSeen,
     identifyOAuthOwner
   };
 }
