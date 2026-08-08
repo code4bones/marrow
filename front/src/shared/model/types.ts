@@ -29,6 +29,7 @@ export interface ProjectCounts {
   decisions: number;
   artifacts: number;
   events: number;
+  links: number;
 }
 
 export interface Task {

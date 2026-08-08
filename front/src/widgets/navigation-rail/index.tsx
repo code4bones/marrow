@@ -14,11 +14,12 @@ import {
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Avatar, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
+import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { GET_GATEWAY_VERSION } from '../../shared/api/queries';
+import { GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import type { ProjectCounts, ProjectSummary } from '../../shared/model/types';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 
@@ -43,16 +44,34 @@ function VersionLine() {
   );
 }
 
-const PROJECT_SECTIONS: ItemType[] = [
-  { key: 'overview',   icon: <HomeOutlined />,        label: 'Overview' },
-  { key: 'tasks',      icon: <AuditOutlined />,       label: 'Tasks' },
-  { key: 'decisions',  icon: <PartitionOutlined />,   label: 'Decisions' },
-  { key: 'faults',     icon: <BugOutlined />,         label: 'Faults' },
-  { key: 'artifacts',  icon: <DatabaseOutlined />,    label: 'Artifacts' },
-  { key: 'events',     icon: <ThunderboltOutlined />, label: 'Events' },
-  { key: 'memory',     icon: <InboxOutlined />,       label: 'Memory' },
-  { key: 'links',      icon: <LinkOutlined />,        label: 'Links' },
-];
+function sectionLabel(text: string, count?: number): React.ReactNode {
+  if (count == null) return text;
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+      {text}
+      <Badge
+        count={count}
+        overflowCount={999}
+        showZero
+        color={count > 0 ? '#177ddc' : 'rgba(255,255,255,0.15)'}
+        style={{ boxShadow: 'none' }}
+      />
+    </span>
+  );
+}
+
+function buildProjectSections(counts?: ProjectCounts): ItemType[] {
+  return [
+    { key: 'overview',   icon: <HomeOutlined />,        label: 'Overview' },
+    { key: 'tasks',      icon: <AuditOutlined />,       label: sectionLabel('Tasks', counts?.tasks) },
+    { key: 'decisions',  icon: <PartitionOutlined />,   label: sectionLabel('Decisions', counts?.decisions) },
+    { key: 'faults',     icon: <BugOutlined />,         label: 'Faults' },
+    { key: 'artifacts',  icon: <DatabaseOutlined />,    label: sectionLabel('Artifacts', counts?.artifacts) },
+    { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel('Events', counts?.events) },
+    { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel('Memory', counts?.items) },
+    { key: 'links',      icon: <LinkOutlined />,        label: sectionLabel('Links', counts?.links) },
+  ];
+}
 
 const GLOBAL_ITEMS: ItemType[] = [
   { key: 'common', icon: <ApartmentOutlined />, label: 'Common' },
@@ -81,6 +100,13 @@ export function NavigationRail() {
   const logout = useAuthStore((s) => s.logout);
   const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+
+  const { data: summaryData } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {
+    variables: { project: selectedSlug },
+    skip: !selectedSlug,
+    fetchPolicy: 'cache-first',
+  });
+  const projectSections = buildProjectSections(summaryData?.projectSummary?.counts);
 
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'profile') { navigate('/profile'); return; }
@@ -165,7 +191,7 @@ export function NavigationRail() {
               theme="dark"
               mode="inline"
               selectedKeys={[selectedKey]}
-              items={PROJECT_SECTIONS}
+              items={projectSections}
               style={{ borderRight: 0, flex: 0 }}
               onClick={({ key }) => handleMenuClick(key)}
             />
