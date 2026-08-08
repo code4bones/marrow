@@ -595,6 +595,36 @@ try {
   );
   console.log("ok - gateway_clients.owner_user_id is attributed to the real Marrow user behind an OAuth-sourced request");
 
+  // --- Real web-connector shape: NO explicit client_id at all --------------
+  // Claude.ai/ChatGPT never send x-project-memory-client-id or ?client_id=
+  // (the login step itself identifies the caller -- see urlFor()'s comment
+  // in front/src/pages/profile/index.tsx). Every OTHER call in this smoke
+  // script goes through oauthHeaders(), which always sets that header, so
+  // none of them exercised this path -- the actual bug (reported live: an
+  // AI agent's own generated observation, I-MEMORY-053) shipped unnoticed.
+  // A bare bearer with no client_id header must still resolve to a stable,
+  // real-identity clientId (user:<id>), not a fresh anonymous:<requestId>
+  // on every call.
+  const bareOAuthHeaders = (bearer: string): Record<string, string> => ({ authorization: `Bearer ${bearer}` });
+  await callTool("event.record", { project: null, type: "oauth-smoke.bare-probe-1" }, bareOAuthHeaders(adminAccessToken));
+  const eventsAfterFirstBareCall = await db("events").where({ type: "oauth-smoke.bare-probe-1" }).orderBy("created_at", "desc").first();
+  assert(eventsAfterFirstBareCall, "event.record over a bare OAuth bearer (no client_id) did not record an event.");
+  assert(
+    typeof eventsAfterFirstBareCall!.created_by === "string" && eventsAfterFirstBareCall!.created_by.startsWith("user:"),
+    `A bare OAuth request's event should attribute to a real user:<id>, not anonymous. Got created_by: ${JSON.stringify(eventsAfterFirstBareCall!.created_by)}`
+  );
+  const bareClientId = eventsAfterFirstBareCall!.created_by as string;
+  assert(bareClientId === `user:${adminUserId}`, `Expected bare OAuth clientId to be user:${adminUserId}. Got: ${bareClientId}`);
+  console.log("ok - a bare OAuth request (no explicit client_id, matching a real Claude.ai/ChatGPT connector) attributes events to user:<id>, not anonymous");
+
+  await callTool("event.record", { project: null, type: "oauth-smoke.bare-probe-2" }, bareOAuthHeaders(adminAccessToken));
+  const bareClientRows = await db("gateway_clients").where({ id: bareClientId });
+  assert(
+    bareClientRows.length === 1,
+    `A second bare OAuth call from the same user should reuse the same gateway_clients row (upsert), not create another. Rows for ${bareClientId}: ${bareClientRows.length}`
+  );
+  console.log("ok - a second bare OAuth request from the same user reuses the same gateway_clients row instead of creating a new anonymous one");
+
   // --- Fail closed on ambiguous/invalid identity ---------------------------
   const staleSubjectToken = signSmokeJwt({
     sub: "project-memory-user", // the old hardcoded literal -- never a real users.id

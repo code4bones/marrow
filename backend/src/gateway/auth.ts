@@ -1011,15 +1011,19 @@ export function createAuthFacade(db: Knex) {
   // (never a real users.id) -- both cases are handled identically by the
   // caller (http-server.ts's isAuthorizedForScopes), which fails closed
   // (401) rather than silently downgrading to write scope.
-  async function identifyOAuthOwner(userId: string): Promise<{ userId: string; role: string } | null> {
+  async function identifyOAuthOwner(userId: string): Promise<{ userId: string; role: string; email: string } | null> {
     if (!userId) {
       return null;
     }
-    const row = await db("users").where({ id: userId }).andWhere("status", "active").select("id", "role").first();
+    const row = await db("users")
+      .where({ id: userId })
+      .andWhere("status", "active")
+      .select("id", "role", "email")
+      .first();
     if (!row) {
       return null;
     }
-    return { userId: row.id as string, role: row.role as string };
+    return { userId: row.id as string, role: row.role as string, email: row.email as string };
   }
 
   async function activeToken(rawToken: string, allowedPurposes: string[]): Promise<Record<string, unknown>> {

@@ -1463,19 +1463,45 @@ function requestContext(
   // a request somehow carries both (cookie is the primary browser auth
   // mechanism; a bearer header alongside it is incidental).
   const identity = sessionAuth ?? personalTokenAuth;
+  // An OAuth web-connector request deliberately never carries client_id/
+  // client_label query params (see urlFor()'s comment in profile/index.tsx
+  // -- the login step itself identifies the caller) -- previously that
+  // meant identity was null AND explicitClientId was null for every such
+  // request, falling all the way through to a fresh anonymous:<requestId>
+  // on every single call: event.record's credentialId showed "anonymous"
+  // instead of the real user, and gateway_clients grew one row per request
+  // instead of one stable row per connection. oauthOwner now closes that
+  // gap the same way session/personal-token identity already does.
   const clientId =
     explicitClientId ??
-    (identity ? `user:${identity.userId}` : isStaticTokenAuth ? staticTokenClientId : `anonymous:${requestId}`);
+    (identity
+      ? `user:${identity.userId}`
+      : oauthOwner
+        ? `user:${oauthOwner.userId}`
+        : isStaticTokenAuth
+          ? staticTokenClientId
+          : `anonymous:${requestId}`);
   const clientLabel =
     headerString(request, "x-project-memory-client-label") ??
     queryString(requestUrl, "client_label") ??
-    (identity ? identity.email : explicitClientId ? clientId : isStaticTokenAuth ? "static-token" : "anonymous");
+    (identity
+      ? identity.email
+      : oauthOwner
+        ? oauthOwner.email
+        : explicitClientId
+          ? clientId
+          : isStaticTokenAuth
+            ? "static-token"
+            : "anonymous");
   return {
     clientId,
     clientLabel,
     metadata: {
-      anonymous: explicitClientId ? false : !identity && !isStaticTokenAuth,
-      kind: headerString(request, "x-project-memory-client-kind") ?? queryString(requestUrl, "client_kind") ?? "http",
+      anonymous: explicitClientId ? false : !identity && !oauthOwner && !isStaticTokenAuth,
+      kind:
+        headerString(request, "x-project-memory-client-kind") ??
+        queryString(requestUrl, "client_kind") ??
+        (oauthOwner ? "oauth" : "http"),
       userAgent: headerString(request, "user-agent")
     },
     // T-MEMORY-052: falls back to the resolved OAuth owner when there's no
@@ -1558,8 +1584,12 @@ function isAuthorized(
 
 // A Marrow user's identity as resolved from an OAuth bearer's `sub` claim
 // (auth.ts's identifyOAuthOwner), fresh on every request -- never cached in
-// the token itself, see resolveOAuthOwner below.
-type OAuthOwner = { userId: string; role: string };
+// the token itself, see resolveOAuthOwner below. `clientId` is the JWT's
+// own `client_id` claim (the specific oauth_clients row/connector app used
+// to obtain this token, from oauth.ts's OAuthAuthResult) -- kept here so
+// requestContext() can attribute the request to a stable identity instead
+// of falling through to a fresh anonymous:<requestId> on every single call.
+type OAuthOwner = { userId: string; role: string; email: string; clientId: string };
 
 // Scope tier granted by a request that already passed isAuthorized(). Static
 // token and no-token ("none") are fixed ceilings; a session's tier is
@@ -1699,7 +1729,11 @@ async function resolveOAuthOwner(options: GatewayServerOptions, request: Incomin
   if (!baseAuth.ok) {
     return null;
   }
-  return options.auth.identifyOAuthOwner(baseAuth.subject);
+  const owner = await options.auth.identifyOAuthOwner(baseAuth.subject);
+  if (!owner) {
+    return null;
+  }
+  return { ...owner, clientId: baseAuth.clientId };
 }
 
 function defaultOAuthScopes(): string[] {
