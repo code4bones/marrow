@@ -37,6 +37,20 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     };
 
     await this.db("projects").insert(row);
+    // Without this, a role=member creator is immediately locked out of their
+    // own new project: applyProjectMembershipFilter/assertProjectMember only
+    // ever consult project_members, and until now the only way a row landed
+    // there was claiming an invite link (claimProjectInviteLink below) --
+    // creating a project was never one of them. Admin callers don't need
+    // this (they bypass the membership filter entirely) but it's harmless
+    // and consistent to record it for them too.
+    if (context.sessionUserId) {
+      await this.db("project_members").insert({
+        project_id: id,
+        user_id: context.sessionUserId,
+        created_at: now
+      });
+    }
     await this.recordEventForProject(id, {
       type: "project.created",
       title: `Project created: ${row.title}`,
