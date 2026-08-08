@@ -89,6 +89,13 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (input.description !== undefined) {
       patch.description = stringOrNull(input.description);
     }
+    if (typeof input.slug === "string" && input.slug !== project.slug) {
+      const clash = await this.db("projects").where({ slug: input.slug }).whereNot({ id: project.id }).first();
+      if (clash) {
+        throw new AppError("VALIDATION_ERROR", `Project slug "${input.slug}" is already in use.`);
+      }
+      patch.slug = input.slug;
+    }
     const [row] = await this.db("projects").where({ id: project.id }).update(patch).returning("*");
     return projectOut(row);
   }
