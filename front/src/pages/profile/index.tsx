@@ -336,13 +336,13 @@ function ConnectSection() {
       : 'export MARROW_MCP_TOKEN="<generating your token above, one moment…>"';
 
   const claudeCodeCmd = [
-    'claude mcp add --transport http project-memory \\',
+    'claude mcp add --transport http marrow \\',
     `  "${urlFor('claude-code')}" \\`,
     '  --header "Authorization: Bearer $MARROW_MCP_TOKEN"',
   ].join('\n');
 
   const codexCmd = [
-    'codex mcp add project-memory \\',
+    'codex mcp add marrow \\',
     `  --url "${urlFor('codex')}" \\`,
     '  --bearer-token-env-var MARROW_MCP_TOKEN',
   ].join('\n');
@@ -371,7 +371,7 @@ function ConnectSection() {
           <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={claudeCodeCmd} />
           <Step n={3}>
-            Restart Claude Code, then ask it "What is project-memory / pmem, and how do I use it?" — it should call{' '}
+            Restart Claude Code, then ask it "What is Marrow, and how do I use it?" — it should call{' '}
             <Text code>gateway.about</Text>.
           </Step>
         </>
@@ -390,7 +390,7 @@ function ConnectSection() {
           <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={codexCmd} />
           <Step n={3}>
-            Restart Codex, then ask it to check pmem — it should call <Text code>gateway.status</Text> and{' '}
+            Restart Codex, then ask it to check Marrow — it should call <Text code>gateway.status</Text> and{' '}
             <Text code>gateway.version</Text>.
           </Step>
         </>
@@ -413,7 +413,7 @@ function ConnectSection() {
             is a real login, not a shared token, so Claude connects as <Text strong>you</Text> specifically.
           </Step>
           <Step n={5}>
-            Back in the chat, ask Claude to check pmem — it should call <Text code>gateway.status</Text>.
+            Back in the chat, ask Claude to check Marrow — it should call <Text code>gateway.status</Text>.
           </Step>
         </>
       ),
@@ -430,7 +430,7 @@ function ConnectSection() {
           <CodeBlock code={webConnectorUrl} />
           <Step n={3}>Click Connect — ChatGPT opens Marrow's sign-in page.</Step>
           <Step n={4}>Log in with your own Marrow account and approve access.</Step>
-          <Step n={5}>Ask ChatGPT to use the project-memory tools — it should be able to call Marrow tools directly.</Step>
+          <Step n={5}>Ask ChatGPT to use the Marrow tools — it should be able to call them directly.</Step>
         </>
       ),
     },

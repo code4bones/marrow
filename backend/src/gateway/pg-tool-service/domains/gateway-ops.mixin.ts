@@ -26,10 +26,10 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
   return class extends Base {
   protected gatewayAbout() {
     return {
-      name: "Project Memory",
-      shortName: "pmem",
+      name: "Marrow",
+      shortName: "marrow",
       summary:
-        "Project Memory is a shared MCP memory gateway for coding agents. It keeps project knowledge, common reusable rules, tasks, decisions, events, links, and preflight context in one PostgreSQL-backed place so multiple developers and agents can collaborate without losing context.",
+        "Marrow is a shared MCP memory gateway for coding agents. It keeps project knowledge, common reusable rules, tasks, decisions, events, links, and preflight context in one PostgreSQL-backed place so multiple developers and agents can collaborate without losing context.",
       useCases: [
         "Find reusable project and common knowledge before starting work.",
         "Run preflight on a task to collect scope, decisions, related memory, and known failed attempts.",
@@ -46,7 +46,7 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
           tool: "gateway.manuals",
           input: { audience: "conventions", includeContent: true },
           reason:
-            "Load collaboration conventions when ChatGPT, Codex, or other agents share context through pmem."
+            "Load collaboration conventions when ChatGPT, Codex, or other agents share context through Marrow."
         },
         {
           tool: "gateway.status",
@@ -122,7 +122,7 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
         }))
       },
       recommendedAgentFlow: [
-        "Call gateway.about if the agent has not used pmem before.",
+        "Call gateway.about if the agent has not used Marrow before.",
         "Call gateway.manuals(audience=\"onboarding\", includeContent=true) for the first-run tool chain.",
         "Call gateway.manuals with includeContent=true when the developer or agent needs the full bundled Markdown manuals.",
         "Call gateway.status to confirm shared gateway mode.",
@@ -136,7 +136,7 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
       tokenDiscipline: {
-        rule: "Use PMem as a lazy index first, not as a document dump.",
+        rule: "Use Marrow as a lazy index first, not as a document dump.",
         workflow: "compact first -> select exact record/artifact -> read full content only by id/path -> compact after heavy reads",
         avoid: [
           "broad artifact.list calls with high limits",
@@ -195,8 +195,8 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
   protected async gatewayVersion() {
     const packageMetadata = await readPackageMetadata();
     return {
-      name: "Project Memory",
-      shortName: "pmem",
+      name: "Marrow",
+      shortName: "marrow",
       packageName: packageMetadata.name,
       packageVersion: packageMetadata.version,
       mode: "gateway",

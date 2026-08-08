@@ -80,28 +80,28 @@ export function shortText(value: string | null, maxLength: number): string | nul
 
 export function connectionSnippets() {
   const baseUrl = "https://<gateway-host>/api";
-  const mcpUrl = `${baseUrl}/mcp?client_id=\${PMEM_CLIENT_ID}&client_label=\${PMEM_CLIENT_LABEL}&client_kind=<client-kind>`;
+  const mcpUrl = `${baseUrl}/mcp?client_id=\${MARROW_CLIENT_ID}&client_label=\${MARROW_CLIENT_LABEL}&client_kind=<client-kind>`;
   return [
     {
       client: "codex",
       transport: "streamable-http",
       config: {
-        serverName: "project-memory",
+        serverName: "marrow",
         url: mcpUrl,
         headers: {
-          Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+          Authorization: "Bearer ${MARROW_MCP_TOKEN}"
         }
       },
       notes: [
-        "Set PMEM_CLIENT_ID to a stable developer/agent id such as USER@HOSTNAME.",
-        "Set PMEM_CLIENT_LABEL to a readable label.",
-        "Set PMEM_MCP_TOKEN to the gateway bearer token."
+        "Set MARROW_CLIENT_ID to a stable developer/agent id such as USER@HOSTNAME.",
+        "Set MARROW_CLIENT_LABEL to a readable label.",
+        "Set MARROW_MCP_TOKEN to the gateway bearer token."
       ]
     },
     {
       client: "claude",
       transport: "streamable-http",
-      cli: "claude mcp add --transport http project-memory \"https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=claude-code\" --header \"Authorization: Bearer ${PMEM_MCP_TOKEN}\""
+      cli: "claude mcp add --transport http marrow \"https://<gateway-host>/api/mcp?client_id=${MARROW_CLIENT_ID}&client_label=${MARROW_CLIENT_LABEL}&client_kind=claude-code\" --header \"Authorization: Bearer ${MARROW_MCP_TOKEN}\""
     },
     {
       client: "codewhale",
@@ -109,10 +109,10 @@ export function connectionSnippets() {
       configPath: ".deepseek/mcp.json",
       config: {
         mcpServers: {
-          "project-memory": {
-            url: "https://<gateway-host>/api/mcp?client_id=${PMEM_CLIENT_ID}&client_label=${PMEM_CLIENT_LABEL}&client_kind=codewhale",
+          marrow: {
+            url: "https://<gateway-host>/api/mcp?client_id=${MARROW_CLIENT_ID}&client_label=${MARROW_CLIENT_LABEL}&client_kind=codewhale",
             headers: {
-              Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+              Authorization: "Bearer ${MARROW_MCP_TOKEN}"
             }
           }
         }
@@ -124,7 +124,7 @@ export function connectionSnippets() {
       transport: "streamable-http",
       url: mcpUrl,
       headers: {
-        Authorization: "Bearer ${PMEM_MCP_TOKEN}"
+        Authorization: "Bearer ${MARROW_MCP_TOKEN}"
       }
     }
   ];
