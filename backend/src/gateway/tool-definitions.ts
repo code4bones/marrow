@@ -685,7 +685,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.connector_info",
     description:
-      "Return this deployment's OAuth connector setup info (MCP URL, OAuth client id/secret) so any logged-in user can self-serve connecting their own Claude/ChatGPT connector, without an operator reading .env for them. Unlike gateway.diagnostics, this intentionally includes a real secret value (the OAuth client secret) -- see gatewayConnectorInfo()'s own comment for why that's safe here.",
+      "Return this deployment's MCP connector URL. OAuth connector credentials (client id/secret) are per-user and self-generated from each user's own profile page, not returned here -- oauthClientId/oauthClientSecret are always null.",
     schema: emptySchema
   },
   {
