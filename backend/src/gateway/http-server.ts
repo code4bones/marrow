@@ -461,6 +461,23 @@ async function handleRequest(
       return;
     }
 
+    // i18n bundle lookup: unauthenticated, same "no scope/session gate at
+    // all" shape as GET /project-invites/:code above -- the frontend needs
+    // its UI copy (nav labels, etc.) before a session exists, and
+    // i18next-http-backend on the frontend fetches this directly on boot.
+    // Deliberately sends the raw {key: value} bundle as the response body,
+    // NOT wrapped in this file's usual {ok,data} envelope -- that's a
+    // one-off exception: i18next-http-backend expects the bundle object
+    // itself at the top level, not nested under `data`.
+    const i18nBundleMatch = requestPath.match(/^\/i18n\/([^/]+)\/([^/]+)$/);
+    if (request.method === "GET" && i18nBundleMatch) {
+      const locale = decodeURIComponent(i18nBundleMatch[1]!);
+      const namespace = decodeURIComponent(i18nBundleMatch[2]!);
+      const bundle = await service.i18nBundle(locale, namespace);
+      send(200, bundle);
+      return;
+    }
+
     const auth = isAuthorized(options, request, sessionAuth, personalTokenAuth);
     if (!auth.ok) {
       sendUnauthorized(response, requestId, auth);

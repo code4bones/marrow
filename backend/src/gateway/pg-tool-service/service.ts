@@ -16,6 +16,7 @@ import { GraphMixin } from "./domains/graph.mixin.js";
 import { GatewayOpsMixin } from "./domains/gateway-ops.mixin.js";
 import { TasksMixin } from "./domains/tasks.mixin.js";
 import { HandoffsMixin } from "./domains/handoffs.mixin.js";
+import { I18nMixin } from "./domains/i18n.mixin.js";
 import { PreflightContextMixin } from "./aggregates/preflight-context.mixin.js";
 import { ProjectSummaryMixin } from "./aggregates/project-summary.mixin.js";
 import { normalizeContext } from "./formatters/common.js";
@@ -35,17 +36,19 @@ import type { GatewayRequestContext, Row } from "./types.js";
 const ComposedService = ProjectSummaryMixin(
   PreflightContextMixin(
     HandoffsMixin(
-      TasksMixin(
-        GatewayOpsMixin(
-          GraphMixin(
-            GitCredentialsMixin(
-              ClientsMixin(
-                EventsMixin(
-                  DecisionsMixin(
-                    ArtifactsMixin(
-                      MemoryMixin(
-                        LinksCoreMixin(
-                          ProjectsCoreMixin(BaseService)
+      I18nMixin(
+        TasksMixin(
+          GatewayOpsMixin(
+            GraphMixin(
+              GitCredentialsMixin(
+                ClientsMixin(
+                  EventsMixin(
+                    DecisionsMixin(
+                      ArtifactsMixin(
+                        MemoryMixin(
+                          LinksCoreMixin(
+                            ProjectsCoreMixin(BaseService)
+                          )
                         )
                       )
                     )
@@ -326,6 +329,11 @@ export class PgToolService extends ComposedService {
   async projectInviteContext(code: string): Promise<{ projectTitle: string; projectSlug: string }> {
     return this.resolveProjectInviteContext(code);
   }
+
+  // i18nBundle (from I18nMixin) is already public and self-contained, so
+  // GET /i18n/:locale/:namespace in http-server.ts calls it directly --
+  // same "unauthenticated, bypasses call()'s scope/session machinery
+  // entirely" reasoning as projectInviteContext above.
 
   async artifactDownload(id: string): Promise<ArtifactDownload> {
     const row = await this.artifactRowById(id);

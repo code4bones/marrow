@@ -18,12 +18,14 @@ import {
   UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
+import { Avatar, Badge, Button, Divider, Dropdown, Menu, Select, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_GATEWAY_VERSION, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import i18next from '../../shared/i18n';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { MarrowMark } from '../../shared/ui/MarrowMark';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -75,23 +77,25 @@ function sectionLabel(text: string, count?: number): React.ReactNode {
   );
 }
 
-function buildProjectSections(counts?: ProjectCounts): ItemType[] {
+function buildProjectSections(t: (key: string) => string, counts?: ProjectCounts): ItemType[] {
   return [
-    { key: 'overview',   icon: <HomeOutlined />,        label: 'Overview' },
-    { key: 'tasks',      icon: <AuditOutlined />,       label: sectionLabel('Tasks', counts?.tasks) },
-    { key: 'decisions',  icon: <PartitionOutlined />,   label: sectionLabel('Decisions', counts?.decisions) },
-    { key: 'faults',     icon: <BugOutlined />,         label: 'Faults' },
-    { key: 'artifacts',  icon: <DatabaseOutlined />,    label: sectionLabel('Artifacts', counts?.artifacts) },
-    { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel('Events', counts?.events) },
-    { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel('Memory', counts?.items) },
-    { key: 'links',      icon: <LinkOutlined />,        label: sectionLabel('Links', counts?.links) },
-    { key: 'settings',   icon: <SettingOutlined />,     label: 'Settings' },
+    { key: 'overview',   icon: <HomeOutlined />,        label: t('overview') },
+    { key: 'tasks',      icon: <AuditOutlined />,       label: sectionLabel(t('tasks'), counts?.tasks) },
+    { key: 'decisions',  icon: <PartitionOutlined />,   label: sectionLabel(t('decisions'), counts?.decisions) },
+    { key: 'faults',     icon: <BugOutlined />,         label: t('faults') },
+    { key: 'artifacts',  icon: <DatabaseOutlined />,    label: sectionLabel(t('artifacts'), counts?.artifacts) },
+    { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel(t('events'), counts?.events) },
+    { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel(t('memory'), counts?.items) },
+    { key: 'links',      icon: <LinkOutlined />,        label: sectionLabel(t('links'), counts?.links) },
+    { key: 'settings',   icon: <SettingOutlined />,     label: t('settings') },
   ];
 }
 
-const GLOBAL_ITEMS: ItemType[] = [
-  { key: 'common', icon: <ApartmentOutlined />, label: 'Common' },
-];
+function buildGlobalItems(t: (key: string) => string): ItemType[] {
+  return [
+    { key: 'common', icon: <ApartmentOutlined />, label: t('common') },
+  ];
+}
 
 function getSelectedKey(pathname: string): string {
   const segs = pathname.split('/').filter(Boolean);
@@ -103,18 +107,19 @@ function getSelectedKey(pathname: string): string {
   return segs[0] ?? '';
 }
 
-function buildAccountMenuItems(isAdmin: boolean, pendingApprovals: number): MenuProps['items'] {
+function buildAccountMenuItems(t: (key: string) => string, isAdmin: boolean, pendingApprovals: number): MenuProps['items'] {
   return [
-    { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
-    { key: 'notifications', icon: <BellOutlined />, label: 'Notifications' },
-    ...(isAdmin ? [{ key: 'approvals', icon: <UserAddOutlined />, label: sectionLabel('Approvals', pendingApprovals) }] : []),
-    ...(isAdmin ? [{ key: 'users', icon: <TeamOutlined />, label: 'Users' }] : []),
+    { key: 'profile', icon: <UserOutlined />, label: t('profile') },
+    { key: 'notifications', icon: <BellOutlined />, label: t('notifications') },
+    ...(isAdmin ? [{ key: 'approvals', icon: <UserAddOutlined />, label: sectionLabel(t('approvals'), pendingApprovals) }] : []),
+    ...(isAdmin ? [{ key: 'users', icon: <TeamOutlined />, label: t('users') }] : []),
     { type: 'divider' as const },
-    { key: 'logout', icon: <LogoutOutlined />, danger: true, label: 'Logout' },
+    { key: 'logout', icon: <LogoutOutlined />, danger: true, label: t('logout') },
   ];
 }
 
 export function NavigationRail() {
+  const { t, i18n } = useTranslation('nav');
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
@@ -165,7 +170,7 @@ export function NavigationRail() {
     useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.eventsVersion),
     refetchSummary,
   );
-  const projectSections = buildProjectSections(summaryData?.projectSummary?.counts);
+  const projectSections = buildProjectSections(t, summaryData?.projectSummary?.counts);
 
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'profile') { navigate('/profile'); return; }
@@ -200,6 +205,17 @@ export function NavigationRail() {
           </Typography.Text>
         </div>
         <VersionLine />
+        <Select
+          size="small"
+          value={i18n.language?.startsWith('ru') ? 'ru' : 'en'}
+          onChange={(value: string) => void i18next.changeLanguage(value)}
+          options={[
+            { value: 'en', label: 'EN' },
+            { value: 'ru', label: 'RU' },
+          ]}
+          style={{ width: 56, marginTop: 6 }}
+          variant="borderless"
+        />
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -214,7 +230,7 @@ export function NavigationRail() {
                 onClick={handleBack}
                 style={{ width: '100%', textAlign: 'left', color: 'rgba(255,255,255,0.35)', fontSize: 12 }}
               >
-                Projects
+                {t('projects')}
               </Button>
             </div>
 
@@ -268,7 +284,7 @@ export function NavigationRail() {
               theme="dark"
               mode="inline"
               selectedKeys={[selectedKey]}
-              items={GLOBAL_ITEMS}
+              items={buildGlobalItems(t)}
               style={{ borderRight: 0 }}
               onClick={({ key }) => handleMenuClick(key)}
             />
@@ -281,8 +297,8 @@ export function NavigationRail() {
               mode="inline"
               selectedKeys={[selectedKey]}
               items={[
-                { key: 'projects', icon: <FolderOpenOutlined />, label: 'Projects' },
-                ...GLOBAL_ITEMS,
+                { key: 'projects', icon: <FolderOpenOutlined />, label: t('projects') },
+                ...buildGlobalItems(t),
               ]}
               style={{ borderRight: 0 }}
               onClick={({ key }) => handleMenuClick(key)}
@@ -296,7 +312,7 @@ export function NavigationRail() {
         <Dropdown
           trigger={['click']}
           placement="top"
-          menu={{ items: buildAccountMenuItems(isAdmin, pendingApprovals), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
+          menu={{ items: buildAccountMenuItems(t, isAdmin, pendingApprovals), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
         >
           <div
             style={{
