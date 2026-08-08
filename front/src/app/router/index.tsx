@@ -14,7 +14,9 @@ import { LoginPage } from '../../pages/login';
 import { MemoryPage } from '../../pages/memory';
 import { OAuthAuthorizePage } from '../../pages/oauth-authorize';
 import { ProfilePage } from '../../pages/profile';
+import { ProjectInvitePage } from '../../pages/project-invite';
 import { ProjectsPage } from '../../pages/projects';
+import { ProjectSettingsPage } from '../../pages/projects/settings';
 import { RegisterPage } from '../../pages/register';
 import { TasksPage } from '../../pages/tasks';
 import { AppShell } from '../AppShell';
@@ -54,6 +56,7 @@ export function AppRouter() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/claim" element={<ClaimPage />} />
       <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
+      <Route path="/invite/:code" element={<ProjectInvitePage />} />
       <Route
         path="/"
         element={
@@ -76,6 +79,7 @@ export function AppRouter() {
         <Route path="projects/:slug/events"     element={<EventsPage />} />
         <Route path="projects/:slug/memory"     element={<MemoryPage />} />
         <Route path="projects/:slug/links"      element={<LinksPage />} />
+        <Route path="projects/:slug/settings"   element={<ProjectSettingsPage />} />
 
         {/* Global */}
         <Route path="common"  element={<CommonPage />} />

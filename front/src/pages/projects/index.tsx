@@ -3,7 +3,6 @@ import { Alert, List, Skeleton, Typography } from 'antd';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
-import { DeleteProjectButton } from '../../features/project/DeleteProjectButton';
 import { GET_PROJECTS } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { Project } from '../../shared/model/types';
@@ -24,12 +23,6 @@ export function ProjectsPage() {
 
   const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS);
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
-
-  const handleProjectDeleted = () => {
-    setSelectedProject(null);
-    navigate('/projects');
-    refetch();
-  };
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -81,12 +74,7 @@ export function ProjectsPage() {
       {/* Right: project content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {slug ? (
-          <>
-            <ProjectOverview slug={slug} />
-            <div style={{ padding: '8px 16px', borderTop: '1px solid #303030', flexShrink: 0 }}>
-              <DeleteProjectButton slug={slug} onDone={handleProjectDeleted} />
-            </div>
-          </>
+          <ProjectOverview slug={slug} />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography.Text type="secondary">Select a project</Typography.Text>

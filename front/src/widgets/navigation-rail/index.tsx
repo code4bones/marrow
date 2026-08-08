@@ -11,6 +11,7 @@ import {
   LinkOutlined,
   LogoutOutlined,
   PartitionOutlined,
+  SettingOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -70,6 +71,7 @@ function buildProjectSections(counts?: ProjectCounts): ItemType[] {
     { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel('Events', counts?.events) },
     { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel('Memory', counts?.items) },
     { key: 'links',      icon: <LinkOutlined />,        label: sectionLabel('Links', counts?.links) },
+    { key: 'settings',   icon: <SettingOutlined />,     label: 'Settings' },
   ];
 }
 

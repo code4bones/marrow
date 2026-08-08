@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Input, Modal, Typography, message } from 'antd';
 import { useState } from 'react';
@@ -14,12 +14,27 @@ export function DeleteProjectButton({ slug, onDone }: Props) {
   const [typed, setTyped] = useState('');
   const [cascade, setCascade] = useState(false);
   const [reason, setReason] = useState('');
+  const client = useApolloClient();
 
   const [mutate, { loading }] = useMutation(DELETE_PROJECT, {
-    onCompleted: () => {
+    onCompleted: (result) => {
       message.success(`Project "${slug}" deleted`);
       setOpen(false);
       setTyped('');
+      // Now called from the project settings page (a different route than
+      // the project list), so unlike the old inline placement, the list's
+      // own GET_PROJECTS query isn't necessarily mounted right now to just
+      // refetch() -- evict the deleted Project from the normalized cache so
+      // it's already gone by the time the caller navigates back to
+      // /projects (Apollo automatically drops the now-dangling reference
+      // from any cached `projects` array field, no manual cache.modify
+      // needed -- see the Apollo Client cache.evict docs).
+      const deletedId = (result as { deleteProject?: { deletedProject?: { id?: string } } } | null | undefined)
+        ?.deleteProject?.deletedProject?.id;
+      if (deletedId) {
+        client.cache.evict({ id: client.cache.identify({ __typename: 'Project', id: deletedId }) });
+        client.cache.gc();
+      }
       onDone?.();
     },
     onError: (e) => message.error(e.message),

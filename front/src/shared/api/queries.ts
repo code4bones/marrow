@@ -140,6 +140,39 @@ export const DELETE_PROJECT = gql`
   }
 `;
 
+export const UPDATE_PROJECT = gql`
+  mutation UpdateProject($slug: String!, $title: String, $description: String) {
+    updateProject(slug: $slug, title: $title, description: $description) {
+      id slug title description status updatedAt
+    }
+  }
+`;
+
+// Project sharing: reusable, per-project invite link. get-or-create on the
+// query (lazily creates the link on first visit to the settings page, same
+// as PersonalTokenPanel's lazy generation on first profile visit);
+// regenerate is its own mutation, replacing the code in place.
+export const PROJECT_INVITE_LINK = gql`
+  query ProjectInviteLink($slug: String!) {
+    projectInviteLink(slug: $slug) { code url }
+  }
+`;
+
+export const REGENERATE_PROJECT_INVITE_LINK = gql`
+  mutation RegenerateProjectInviteLink($slug: String!) {
+    regenerateProjectInviteLink(slug: $slug) { code url }
+  }
+`;
+
+export const CLAIM_PROJECT_INVITE_LINK = gql`
+  mutation ClaimProjectInviteLink($code: String!) {
+    claimProjectInviteLink(code: $code) {
+      project { id slug title }
+      joined
+    }
+  }
+`;
+
 export const GET_RECORD = gql`
   query GetRecord($id: ID!) {
     record(id: $id) {
@@ -270,6 +303,12 @@ export const GET_DECISIONS = gql`
 export const GET_PROJECT = gql`
   query GetProject($slug: String!) {
     project(slug: $slug) { id slug title status }
+  }
+`;
+
+export const GET_PROJECT_SETTINGS = gql`
+  query GetProjectSettings($slug: String!) {
+    project(slug: $slug) { id slug title description status updatedAt }
   }
 `;
 
