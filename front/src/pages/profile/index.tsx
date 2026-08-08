@@ -311,6 +311,40 @@ function PersonalTokenPanel({ onTokenChange, onStatusChange }: {
  * shared magic-token gate entirely in favor of a real per-user login at
  * /oauth/authorize.
  */
+/**
+ * Renders "Set the token in the shell" as a real, copy-pasteable command
+ * ONLY when a real token is actually in hand. A CodeBlock's copy icon makes
+ * whatever's inside it look like a runnable command -- rendering the old
+ * "<your token isn't shown again, click Regenerate...>" placeholder text
+ * inside one invited exactly the mistake it warned about: a user copying
+ * that literal placeholder into their shell as if it were the real export.
+ * Reported live: a freshly-approved developer did exactly this. Now the
+ * no-real-token states render as a plain (non-copyable) Alert instead.
+ */
+function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string | null; tokenStatus: PersonalTokenStatus | null }) {
+  if (personalToken) {
+    return <CodeBlock code={`export MARROW_MCP_TOKEN="${personalToken}"`} />;
+  }
+  if (tokenStatus?.exists) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={
+          <>
+            Your token (ending in <Text code>…{tokenStatus.tokenHint}</Text>) isn't shown again — click{' '}
+            <Text strong>Regenerate</Text> in "Your personal token" above to get a fresh one, then copy it from there.
+          </>
+        }
+      />
+    );
+  }
+  return (
+    <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Generating your token above, one moment…" />
+  );
+}
+
 function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
@@ -321,19 +355,6 @@ function ConnectSection() {
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
-
-  // personalToken is only ever non-null in the instant right after Generate/
-  // Regenerate (shown-once, never re-fetchable) — on every OTHER visit
-  // (including any visit after the very first) it's null even though a
-  // real, working token exists server-side. Falling back to a static
-  // "click Generate/Regenerate" placeholder in that case was misleading for
-  // anyone who already has a token (the vast majority of visits) — this now
-  // reads the live status (tokenHint included) to say the accurate thing.
-  const exportTokenCmd = personalToken
-    ? `export MARROW_MCP_TOKEN="${personalToken}"`
-    : tokenStatus?.exists
-      ? `export MARROW_MCP_TOKEN="<your token isn't shown again — click Regenerate above to get a fresh one (currently ends in …${tokenStatus.tokenHint})>"`
-      : 'export MARROW_MCP_TOKEN="<generating your token above, one moment…>"';
 
   const claudeCodeCmd = [
     'claude mcp add --transport http marrow \\',
@@ -367,7 +388,7 @@ function ConnectSection() {
             a shared deployment secret.
           </Text>
           <Step n={1}>Set the token in the shell that will run Claude Code:</Step>
-          <CodeBlock code={exportTokenCmd} />
+          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={claudeCodeCmd} />
           <Step n={3}>
@@ -386,7 +407,7 @@ function ConnectSection() {
             Codex uses the same Streamable HTTP endpoint and the same personal API token as Claude Code.
           </Text>
           <Step n={1}>Set the token in the shell that will run Codex:</Step>
-          <CodeBlock code={exportTokenCmd} />
+          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>Register Marrow as an MCP server:</Step>
           <CodeBlock code={codexCmd} />
           <Step n={3}>
