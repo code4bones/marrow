@@ -51,13 +51,13 @@ export function CreateLinkModal({ projectSlug, onDone }: Props) {
       >
         <Form form={form} layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
           <Form.Item name="fromId" label={t('fromId')} rules={[{ required: true }]}>
-            <Input placeholder="T-PMEM-001" style={{ fontFamily: 'monospace' }} />
+            <Input placeholder="T-MARROW-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
           <Form.Item name="relation" label={t('relation')} rules={[{ required: true }]}>
             <Input placeholder="blocks, documents, related_to…" />
           </Form.Item>
           <Form.Item name="toId" label={t('toId')} rules={[{ required: true }]}>
-            <Input placeholder="D-PMEM-001" style={{ fontFamily: 'monospace' }} />
+            <Input placeholder="D-MARROW-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
         </Form>
       </Modal>

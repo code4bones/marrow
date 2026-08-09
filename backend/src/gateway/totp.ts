@@ -59,7 +59,7 @@ export function base32Decode(str: string): Buffer {
   return Buffer.from(bytes);
 }
 
-export function buildOtpauthUrl(secretBase32: string, email: string, issuer = "PMem"): string {
+export function buildOtpauthUrl(secretBase32: string, email: string, issuer = "Marrow"): string {
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(email)}`;
   const params = new URLSearchParams({
     secret: secretBase32,

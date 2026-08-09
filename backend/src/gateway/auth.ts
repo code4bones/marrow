@@ -26,7 +26,7 @@ const scrypt = promisify(scryptCallback) as (
   keylen: number
 ) => Promise<Buffer>;
 
-export const SESSION_COOKIE_NAME = "pmem_session";
+export const SESSION_COOKIE_NAME = "marrow_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;

@@ -69,7 +69,7 @@ export const manualSpecs = [
     id: "developer",
     audience: "developer",
     aliases: ["user", "manual"],
-    title: "Project Memory MCP Developer Manual",
+    title: "Marrow Developer Manual",
     description: "Purpose, setup, safe usage, artifact workflows, guardrails, and gateway operations.",
     path: "docs/DEVELOPER_MANUAL.md"
   },
@@ -77,25 +77,25 @@ export const manualSpecs = [
     id: "onboarding",
     audience: "onboarding",
     aliases: ["start", "first-run", "quickstart"],
-    title: "Project Memory MCP Agent Onboarding",
-    description: "First-run tool chain for agents connecting to a shared pmem gateway.",
+    title: "Marrow Agent Onboarding",
+    description: "First-run tool chain for agents connecting to a shared Marrow gateway.",
     path: "docs/AGENT_ONBOARDING.md"
   },
   {
     id: "agent",
     audience: "agent",
     aliases: ["workflow"],
-    title: "Project Memory MCP Agent Guide",
-    description: "Operational rules for agents: when to use pmem, tool chains, preflight, artifacts, and clarification triggers.",
+    title: "Marrow Agent Guide",
+    description: "Operational rules for agents: when to use Marrow, tool chains, preflight, artifacts, and clarification triggers.",
     path: "docs/AGENT_GUIDE.md"
   },
   {
     id: "conventions",
     audience: "conventions",
     aliases: ["collaboration"],
-    title: "Project Memory MCP Collaboration Conventions",
+    title: "Marrow Collaboration Conventions",
     description:
-      "Shared storage-surface mapping and collaboration rules for ChatGPT, Codex, and other agents using pmem together.",
+      "Shared storage-surface mapping and collaboration rules for ChatGPT, Codex, and other agents using Marrow together.",
     path: "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md"
   }
 ] as const;

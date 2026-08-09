@@ -61,7 +61,7 @@ export function RecordEventModal({ projectSlug, onDone }: Props) {
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item name="relatedId" label={t('relatedId')}>
-            <Input placeholder="T-PMEM-001" style={{ fontFamily: 'monospace' }} />
+            <Input placeholder="T-MARROW-001" style={{ fontFamily: 'monospace' }} />
           </Form.Item>
         </Form>
       </Modal>

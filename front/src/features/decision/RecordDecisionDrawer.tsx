@@ -94,7 +94,7 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
             </Form.Item>
           ) : (
             <Form.Item name="supersedesId" label={t('supersedesId')}>
-              <Input placeholder="D-PMEM-001" style={{ fontFamily: 'monospace' }} />
+              <Input placeholder="D-MARROW-001" style={{ fontFamily: 'monospace' }} />
             </Form.Item>
           )}
           <Form.Item name="tags" label={t('tagsCommaSeparated')}>

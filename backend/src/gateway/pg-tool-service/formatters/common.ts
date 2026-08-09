@@ -35,7 +35,7 @@ export function compactSearchRecord(record: Row) {
 // response is getting large without re-explaining the whole strategy.
 export function tokenEfficiencyBase(overrides: Row = {}): Row {
   const full: Row = {
-    rule: "Use PMem as a lazy index first: compact first, select exact records, then read full content only by id/path.",
+    rule: "Use Marrow as a lazy index first: compact first, select exact records, then read full content only by id/path.",
     severity: "info",
     strategy: "compact-first",
     fullBodiesIncluded: false,

@@ -105,7 +105,7 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv, db: Knex): OAut
       scopes: listEnv(env.PROJECT_MEMORY_OAUTH_SCOPES, defaultScopes),
       privateKey,
       publicKey: createPublicKey(privateKey),
-      keyId: env.PROJECT_MEMORY_OAUTH_KEY_ID ?? "pmem-oauth"
+      keyId: env.PROJECT_MEMORY_OAUTH_KEY_ID ?? "marrow-oauth"
     },
     db
   );

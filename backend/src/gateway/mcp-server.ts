@@ -15,7 +15,7 @@ export function createGatewayMcpServer(service: PgToolService, context: GatewayR
     server.registerTool(
       transportName,
       {
-        description: useClaudeSafeNames ? `${spec.description} Canonical pmem tool: ${spec.name}.` : spec.description,
+        description: useClaudeSafeNames ? `${spec.description} Canonical marrow tool: ${spec.name}.` : spec.description,
         inputSchema: spec.schema.shape,
         outputSchema: spec.outputSchema ?? defaultGatewayOutputSchema
       },

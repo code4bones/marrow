@@ -702,13 +702,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.about",
     description:
-      "Explain what Project Memory (pmem) is, how agents should use it, and which first tools to call after connecting.",
+      "Explain what Marrow is, how agents should use it, and which first tools to call after connecting.",
     schema: emptySchema
   },
   {
     name: "gateway.version",
     description:
-      "Return package version, storage mode, tool count, and gateway runtime identity. Use this to confirm which pmem build is connected.",
+      "Return package version, storage mode, tool count, and gateway runtime identity. Use this to confirm which Marrow build is connected.",
     schema: emptySchema
   },
   {
