@@ -111,12 +111,6 @@ export function LoginPage() {
 
   return (
     <CenteredCard>
-      <Title level={4} style={{ marginBottom: 4 }}>
-        Marrow
-      </Title>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        {t('signInWithYourAccount')}
-      </Text>
       {notice && !error && <Alert type="success" message={notice} style={{ marginBottom: 16 }} showIcon />}
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       <Button
