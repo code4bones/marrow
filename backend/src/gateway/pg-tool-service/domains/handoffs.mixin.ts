@@ -68,7 +68,7 @@ export function HandoffsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
       context
     );
     if (input.includeContent === true) {
-      const fullRows = await Promise.all(rows.map((row) => this.getMemory(String(row.id))));
+      const fullRows = await Promise.all(rows.map((row) => this.getMemory(String(row.id), context)));
       return fullRows.map((row) => handoffOut(row as Row, true));
     }
     return rows.map((row) => handoffOut(row as Row, false));

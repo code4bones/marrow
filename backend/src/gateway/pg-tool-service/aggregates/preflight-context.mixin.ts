@@ -36,7 +36,7 @@ type PreflightContextBase = ArtifactsInstance & DecisionsInstance & EventsInstan
 export function PreflightContextMixin<TBase extends Constructor<PreflightContextBase>>(Base: TBase) {
   return class extends Base {
   protected async preflight(input: Row, context?: NormalizedGatewayRequestContext) {
-    const task = await this.getTask(String(input.taskId));
+    const task = await this.getTask(String(input.taskId), context);
     const project = await this.getProject({ id: task.projectId }, context);
     const query = [task.title, task.scope, task.acceptance].filter(Boolean).join(" ") || "task";
     const faultQuery = String(task.title || query);

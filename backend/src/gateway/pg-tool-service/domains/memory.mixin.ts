@@ -55,6 +55,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         item: await this.createMemory(input, context)
       };
     }
+    if (existing.project_id) {
+      await this.assertProjectMember(String(existing.project_id), context);
+    }
 
     const patch = {
       title: String(input.title),
@@ -172,10 +175,18 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     return linkOut(row);
   }
 
-  protected async getMemory(id: string) {
+  // T-MEMORY-057 (IDOR): ids are sequential/predictable, so a role=member
+  // fetching by id (not through resolveProject/search, which are already
+  // membership-safe) must be checked against the fetched row's own
+  // project_id, mirroring assertProjectMember's PROJECT_NOT_FOUND convention
+  // for a non-member -- don't-leak-existence, same as everywhere else.
+  protected async getMemory(id: string, context?: NormalizedGatewayRequestContext) {
     const row = await this.db("items").where({ id }).first();
     if (!row) {
       throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
+    }
+    if (row.project_id) {
+      await this.assertProjectMember(String(row.project_id), context);
     }
     return itemOut(row);
   }
@@ -320,6 +331,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     if (!current) {
       throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
     }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
 
     const patch = {
       title: typeof input.title === "string" ? input.title : current.title,
@@ -346,6 +360,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     const current = await this.db("items").where({ id }).first();
     if (!current) {
       throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
+    }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
     }
     if (String(current.status) === "archived") {
       return {

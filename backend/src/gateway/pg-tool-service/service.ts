@@ -147,7 +147,7 @@ export class PgToolService extends ComposedService {
         case "failed_attempt.record":
           return ok("Failed attempt recorded.", await this.recordFailedAttempt(parsed, requestContext));
         case "memory.get":
-          return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id)) });
+          return ok("Memory item loaded.", { item: await this.getMemory(String(parsed.id), requestContext) });
         case "memory.search":
           return ok("Memory searched.", { results: await this.searchMemory(parsed, requestContext) });
         case "memory.update":
@@ -204,7 +204,7 @@ export class PgToolService extends ComposedService {
         case "task.list":
           return ok("Tasks listed.", { tasks: await this.listTasks(parsed, requestContext) });
         case "task.get":
-          return ok("Task loaded.", { task: await this.getTask(String(parsed.id)) });
+          return ok("Task loaded.", { task: await this.getTask(String(parsed.id), requestContext) });
         case "task.delete":
           return ok("Task deleted.", await this.deleteTask(parsed, requestContext));
         case "task.claim":
@@ -216,7 +216,7 @@ export class PgToolService extends ComposedService {
         case "task.release":
           return ok("Task claim released.", await this.releaseTaskClaim(parsed, requestContext));
         case "task.claims":
-          return ok("Task claims loaded.", { claims: await this.listTaskClaims(parsed) });
+          return ok("Task claims loaded.", { claims: await this.listTaskClaims(parsed, requestContext) });
         case "task.complete":
           return ok("Task completed.", await this.completeTask(parsed, requestContext));
         case "task.add_note":
@@ -236,7 +236,7 @@ export class PgToolService extends ComposedService {
         case "decision.list":
           return ok("Decisions listed.", { decisions: await this.listDecisions(parsed, requestContext) });
         case "decision.get":
-          return ok("Decision loaded.", { decision: await this.getDecision(String(parsed.id)) });
+          return ok("Decision loaded.", { decision: await this.getDecision(String(parsed.id), requestContext) });
         case "event.record":
           return ok("Event recorded.", { event: await this.recordEvent(parsed, requestContext) });
         case "event.list":
@@ -317,10 +317,21 @@ export class PgToolService extends ComposedService {
     }
   }
 
+  // T-MEMORY-057 (IDOR): recordLookup itself can't call assertProjectMember
+  // (it lives on BaseService, below ProjectsCoreMixin in the composition
+  // chain -- see service.ts's ComposedService), so the check happens here
+  // instead, the one place every record(id) GraphQL lookup (the DetailDrawer's
+  // sole data source, for every record kind) actually flows through. Record
+  // ids are sequential/predictable, so without this a role=member could read
+  // full details of any record in any project just by guessing an id.
   async graphqlRecord(id: string, context: GatewayRequestContext = {}): Promise<Row> {
     const requestContext = normalizeContext(context);
     await this.touchClient(requestContext, { cleanupAnonymous: true });
-    return this.recordLookup(String(id));
+    const record = await this.recordLookup(String(id));
+    if (record.projectId) {
+      await this.assertProjectMember(String(record.projectId), requestContext);
+    }
+    return record;
   }
 
   async graphqlProjectGraph(input: unknown, context: GatewayRequestContext = {}): Promise<Row> {

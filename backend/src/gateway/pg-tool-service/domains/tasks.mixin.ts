@@ -87,11 +87,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     );
   }
 
-  protected async getTask(id: string) {
+  // T-MEMORY-057 (IDOR): task ids are sequential/predictable too.
+  protected async getTask(id: string, context?: NormalizedGatewayRequestContext) {
     const row = await this.taskSelectWithActiveClaimCount(this.db("tasks")).where({ id }).first();
     if (!row) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
+    await this.assertProjectMember(String(row.project_id), context);
     return taskOut(row);
   }
 
@@ -135,6 +137,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
+    await this.assertProjectMember(String(current.project_id), context);
     if (String(input.status) === "done") {
       return (await this.completeTask(
         {
@@ -170,7 +173,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
 
   protected async claimTask(input: Row, context: NormalizedGatewayRequestContext) {
     const taskId = String(input.taskId);
-    const task = await this.taskRow(taskId);
+    const task = await this.taskRow(taskId, context);
     if (["done", "cancelled"].includes(String(task.status))) {
       throw new AppError("VALIDATION_ERROR", `Task ${taskId} cannot be claimed because it is ${String(task.status)}.`, {
         taskId,
@@ -220,13 +223,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }, context);
     return {
       claim: taskClaimOut(row),
-      task: await this.getTask(taskId),
+      task: await this.getTask(taskId, context),
       event
     };
   }
 
   protected async heartbeatTaskClaim(input: Row, context: NormalizedGatewayRequestContext) {
-    const claim = await this.activeTaskClaim(String(input.claimId));
+    const claim = await this.activeTaskClaim(String(input.claimId), context);
     const now = nowIso();
     const [row] = await this.db("task_claims")
       .where({ id: claim.id })
@@ -258,7 +261,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     eventTitle: string,
     context: NormalizedGatewayRequestContext
   ) {
-    const claim = await this.activeTaskClaim(String(input.claimId));
+    const claim = await this.activeTaskClaim(String(input.claimId), context);
     const now = nowIso();
     const [row] = await this.db("task_claims")
       .where({ id: claim.id })
@@ -271,7 +274,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(claim.version ?? 1) + 1
       })
       .returning("*");
-    const task = await this.getTask(String(row.task_id));
+    const task = await this.getTask(String(row.task_id), context);
     const event = await this.recordEventForProject(String(row.project_id), {
       type: eventType,
       title: `${eventTitle}: ${String(row.id)}`,
@@ -285,9 +288,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     };
   }
 
-  protected async listTaskClaims(input: Row) {
+  protected async listTaskClaims(input: Row, context?: NormalizedGatewayRequestContext) {
     const taskId = String(input.taskId);
-    await this.assertTaskExists(taskId);
+    await this.assertTaskExists(taskId, context);
     await this.expireTaskClaims(taskId);
     let query = this.db("task_claims").select("*").where({ task_id: taskId });
     if (input.includeInactive !== true) {
@@ -301,7 +304,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
 
   protected async completeTask(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
-    const current = await this.taskRow(id);
+    const current = await this.taskRow(id, context);
     let completedClaim: Row | null = null;
 
     if (input.claimId) {
@@ -368,14 +371,14 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       related_id: id
     }, context);
     return {
-      task: await this.getTask(id),
+      task: await this.getTask(id, context),
       completedClaim,
       event
     };
   }
 
   protected async addTaskNote(input: Row, context: NormalizedGatewayRequestContext) {
-    const task = await this.getTask(String(input.taskId));
+    const task = await this.getTask(String(input.taskId), context);
     const type = typeof input.type === "string" ? input.type : "coordination_note";
     const item = await this.createMemory({
       project: task.projectId,
@@ -399,30 +402,37 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return { item, link, event };
   }
 
-  protected async assertTaskExists(id: string): Promise<void> {
-    await this.taskRow(id);
+  protected async assertTaskExists(id: string, context?: NormalizedGatewayRequestContext): Promise<void> {
+    await this.taskRow(id, context);
   }
 
-  protected async taskRow(id: string): Promise<Row> {
+  // T-MEMORY-057 (IDOR): shared low-level fetch behind task.claim/complete
+  // and (via assertTaskExists) task.claims -- task/claim ids are
+  // sequential/predictable, same as every other record kind.
+  protected async taskRow(id: string, context?: NormalizedGatewayRequestContext): Promise<Row> {
     const row = await this.db("tasks").where({ id }).first();
     if (!row) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
+    await this.assertProjectMember(String(row.project_id), context);
     return row;
   }
 
-  protected async taskClaimRow(id: string): Promise<Row> {
+  protected async taskClaimRow(id: string, context?: NormalizedGatewayRequestContext): Promise<Row> {
     const row = await this.db("task_claims").where({ id }).first();
     if (!row) {
       throw new AppError("TASK_CLAIM_NOT_FOUND", `Task claim ${id} does not exist.`, { id });
     }
+    if (row.project_id) {
+      await this.assertProjectMember(String(row.project_id), context);
+    }
     return row;
   }
 
-  protected async activeTaskClaim(id: string): Promise<Row> {
-    const row = await this.taskClaimRow(id);
+  protected async activeTaskClaim(id: string, context?: NormalizedGatewayRequestContext): Promise<Row> {
+    const row = await this.taskClaimRow(id, context);
     await this.expireTaskClaims(String(row.task_id));
-    const current = await this.taskClaimRow(id);
+    const current = await this.taskClaimRow(id, context);
     if (String(current.status) !== "active" || new Date(String(current.lease_expires_at)).getTime() <= Date.now()) {
       throw new AppError("TASK_CLAIM_NOT_ACTIVE", `Task claim ${id} is not active.`, {
         id,

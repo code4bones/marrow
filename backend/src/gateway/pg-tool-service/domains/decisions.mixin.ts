@@ -49,6 +49,9 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         id: input.supersedesId
       });
     }
+    if (oldRow.project_id) {
+      await this.assertProjectMember(String(oldRow.project_id), context);
+    }
 
     const projectId = await this.resolveDecisionProjectId(input, oldRow, context);
     if (projectId !== stringOrNull(oldRow.project_id)) {
@@ -185,10 +188,15 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     );
   }
 
-  protected async getDecision(id: string) {
+  // T-MEMORY-057 (IDOR): see memory.mixin.ts's getMemory for the same
+  // rationale -- decision ids are sequential/predictable too.
+  protected async getDecision(id: string, context?: NormalizedGatewayRequestContext) {
     const row = await this.db("decisions").where({ id }).first();
     if (!row) {
       throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (row.project_id) {
+      await this.assertProjectMember(String(row.project_id), context);
     }
     return decisionOut(row);
   }
@@ -198,6 +206,9 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     const current = await this.db("decisions").where({ id }).first();
     if (!current) {
       throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
     }
     if (String(current.status) === "archived") {
       return {

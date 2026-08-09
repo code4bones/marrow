@@ -329,7 +329,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async getArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
-    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
     if (input.includeContent === true) {
       const maxBytes = Number(input.maxBytes ?? 1024 * 1024);
@@ -351,7 +351,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async peekArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
-    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
     const contentType = String(row.content_type);
     const artifactPath = String(row.path);
@@ -395,7 +395,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async readTextArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
-    const row = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
     const contentType = String(row.content_type);
     const artifactPath = String(row.path);
@@ -446,7 +446,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async updateArtifactMetadata(input: Row, context: NormalizedGatewayRequestContext) {
-    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const current = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const [row] = await this.db("artifacts")
       .where({ id: String(current.id) })
       .update({
@@ -473,7 +473,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async archiveArtifact(input: Row, context: NormalizedGatewayRequestContext) {
-    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const current = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     if (String(current.status) === "archived") {
       return {
         action: "already_archived",
@@ -511,7 +511,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   }
 
   protected async deleteArtifact(input: Row, context: NormalizedGatewayRequestContext) {
-    const current = input.id ? await this.artifactRowById(String(input.id)) : await this.artifactRowByPath(input, context);
+    const current = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const id = String(current.id);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
@@ -532,10 +532,16 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     };
   }
 
-  protected async artifactRowById(id: string): Promise<Row> {
+  // T-MEMORY-057 (IDOR): artifact ids are sequential/predictable too;
+  // artifactRowByPath is already safe (goes through resolveProject ->
+  // getProject -> assertProjectMember), only the by-id path was not.
+  protected async artifactRowById(id: string, context?: NormalizedGatewayRequestContext): Promise<Row> {
     const row = await this.db("artifacts").where({ id }).first();
     if (!row) {
       throw new AppError("ARTIFACT_NOT_FOUND", `Artifact ${id} does not exist.`, { id });
+    }
+    if (row.project_id) {
+      await this.assertProjectMember(String(row.project_id), context);
     }
     return row;
   }
