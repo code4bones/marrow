@@ -12,6 +12,7 @@ import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
+import { Markdown } from '../../shared/ui/Markdown';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
@@ -86,9 +87,9 @@ function TaskBody({ r }: { r: Task }) {
       <Field label={t('status')}><StatusBadge status={r.status} /></Field>
       {r.priority != null && <Field label={t('priority')}><Text>{r.priority}</Text></Field>}
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
-      {r.scope && <Field label={t('scope')}><Paragraph style={{ margin: 0 }}>{r.scope}</Paragraph></Field>}
-      {r.acceptance && <Field label={t('acceptanceCriteria')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.acceptance}</Paragraph></Field>}
-      {r.notes && <Field label={t('notes')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.notes}</Paragraph></Field>}
+      {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
+      {r.acceptance && <Field label={t('acceptanceCriteria')}><Markdown>{r.acceptance}</Markdown></Field>}
+      {r.notes && <Field label={t('notes')}><Markdown>{r.notes}</Markdown></Field>}
       <StringFiles items={r.allowedFiles} label={t('allowedFiles')} />
       <StringFiles items={r.forbiddenFiles} label={t('forbiddenFiles')} />
       {r.dependsOn.length > 0 && (
@@ -112,10 +113,10 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
     <>
       <Field label={t('status')}><StatusBadge status={r.status} /></Field>
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
-      {r.context && <Field label={t('context')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.context}</Paragraph></Field>}
-      {r.decision && <Field label={t('decision')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.decision}</Paragraph></Field>}
-      {r.rationale && <Field label={t('rationale')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.rationale}</Paragraph></Field>}
-      {r.consequences && <Field label={t('consequences')}><Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{r.consequences}</Paragraph></Field>}
+      {r.context && <Field label={t('context')}><Markdown>{r.context}</Markdown></Field>}
+      {r.decision && <Field label={t('decision')}><Markdown>{r.decision}</Markdown></Field>}
+      {r.rationale && <Field label={t('rationale')}><Markdown>{r.rationale}</Markdown></Field>}
+      {r.consequences && <Field label={t('consequences')}><Markdown>{r.consequences}</Markdown></Field>}
       {r.supersedesId && <Field label={t('supersedes')}><RecordLink id={r.supersedesId} /></Field>}
       <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
       <CreateConnectedDecisionButton currentId={r.id} projectId={projectId} />
@@ -151,14 +152,9 @@ function MemoryBody({ r }: { r: MemoryRecord }) {
       {r.excerpt && <Field label={t('excerpt')}><Text type="secondary" style={{ fontSize: 12 }}>{r.excerpt}</Text></Field>}
       {r.body && (
         <Field label={t('body')}>
-          <pre style={{
-            background: 'rgba(255,255,255,0.04)', border: '1px solid #303030',
-            borderRadius: 4, padding: 12, fontSize: 12,
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            maxHeight: 480, overflowY: 'auto', margin: 0,
-          }}>
-            {r.body}
-          </pre>
+          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+            <Markdown>{r.body}</Markdown>
+          </div>
         </Field>
       )}
       <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
