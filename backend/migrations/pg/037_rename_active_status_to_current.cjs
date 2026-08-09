@@ -17,10 +17,28 @@
 // -- accepted explicitly by the owner in exchange for correctness over a
 // pure UI-label fix.
 exports.up = async function up(knex) {
+  // Constraints must allow "current" before any row is updated to it --
+  // the old constraints only allow "active", so updating data first fails.
+  await knex.schema.raw("alter table decisions drop constraint if exists decisions_status_check");
+  await knex.schema.raw(
+    "alter table decisions add constraint decisions_status_check check (status in ('draft', 'active', 'current', 'superseded', 'rejected', 'archived'))"
+  );
+
+  await knex.schema.raw("alter table items drop constraint if exists items_status_check");
+  await knex.schema.raw(
+    "alter table items add constraint items_status_check check (status in ('active', 'current', 'draft', 'archived', 'superseded', 'rejected', 'open', 'answered'))"
+  );
+
+  await knex.schema.raw("alter table artifacts drop constraint if exists artifacts_status_check");
+  await knex.schema.raw(
+    "alter table artifacts add constraint artifacts_status_check check (status in ('active', 'current', 'archived'))"
+  );
+
   await knex("decisions").where({ status: "active" }).update({ status: "current" });
   await knex("items").where({ status: "active" }).update({ status: "current" });
   await knex("artifacts").where({ status: "active" }).update({ status: "current" });
 
+  // Tighten the constraints now that no row uses "active" anymore.
   await knex.schema.raw("alter table decisions drop constraint if exists decisions_status_check");
   await knex.schema.raw(
     "alter table decisions add constraint decisions_status_check check (status in ('draft', 'current', 'superseded', 'rejected', 'archived'))"
@@ -36,6 +54,28 @@ exports.up = async function up(knex) {
 };
 
 exports.down = async function down(knex) {
+  // Same ordering constraint in reverse: widen the check first so both
+  // "current" (existing rows) and "active" (target rows) validate while
+  // the data update runs.
+  await knex.schema.raw("alter table artifacts drop constraint if exists artifacts_status_check");
+  await knex.schema.raw(
+    "alter table artifacts add constraint artifacts_status_check check (status in ('active', 'current', 'archived'))"
+  );
+
+  await knex.schema.raw("alter table items drop constraint if exists items_status_check");
+  await knex.schema.raw(
+    "alter table items add constraint items_status_check check (status in ('active', 'current', 'draft', 'archived', 'superseded', 'rejected', 'open', 'answered'))"
+  );
+
+  await knex.schema.raw("alter table decisions drop constraint if exists decisions_status_check");
+  await knex.schema.raw(
+    "alter table decisions add constraint decisions_status_check check (status in ('draft', 'active', 'current', 'superseded', 'rejected', 'archived'))"
+  );
+
+  await knex("artifacts").where({ status: "current" }).update({ status: "active" });
+  await knex("items").where({ status: "current" }).update({ status: "active" });
+  await knex("decisions").where({ status: "current" }).update({ status: "active" });
+
   await knex.schema.raw("alter table artifacts drop constraint if exists artifacts_status_check");
   await knex.schema.raw("alter table artifacts add constraint artifacts_status_check check (status in ('active', 'archived'))");
 
@@ -48,8 +88,4 @@ exports.down = async function down(knex) {
   await knex.schema.raw(
     "alter table decisions add constraint decisions_status_check check (status in ('draft', 'active', 'superseded', 'rejected', 'archived'))"
   );
-
-  await knex("artifacts").where({ status: "current" }).update({ status: "active" });
-  await knex("items").where({ status: "current" }).update({ status: "active" });
-  await knex("decisions").where({ status: "current" }).update({ status: "active" });
 };
