@@ -29,13 +29,14 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           .marrow-acronym-letter { color: #202020; }
         }
 
-        /* Looping "train pulling out of the station" intro: MARROW starts
-           centered and alone, slides/fades left, and in doing so reveals the
-           backronym text (left-to-right, via a synchronized clip-path wipe
-           driven by the same keyframe timeline) in the space it vacates.
+        /* Looping "exhaust trail" intro on the backronym line only (the
+           [logo] MARROW title above stays static). "MARROW" starts centered
+           alone, drives off to the left, and its motion synchronously wipes
+           open the "Ain't RAM — Recall Outlives Workers" backronym in the
+           space it vacates -- like exhaust left behind a departing car.
            Once revealed, the tagline fades in below; everything holds, then
-           fades out together and the cycle repeats. All three animations
-           share the same 7.5s duration and 0 delay so they stay in lockstep. */
+           fades out together and the cycle repeats. All animations share the
+           same 7.5s duration and 0 delay so they stay in lockstep. */
         .marrow-anim-root {
           display: flex;
           flex-direction: column;
@@ -47,17 +48,14 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           position: relative;
           display: flex;
           align-items: center;
-          height: 52px;
+          height: 20px;
         }
-        .marrow-train {
+        .marrow-car {
           position: absolute;
           top: 50%;
           left: 50%;
-          display: flex;
-          align-items: center;
-          gap: 14px;
           white-space: nowrap;
-          animation: marrow-train-move 7.5s ease-in-out infinite;
+          animation: marrow-car-move 7.5s ease-in-out infinite;
         }
         .marrow-reveal {
           display: inline-block;
@@ -69,7 +67,7 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           animation: marrow-tagline-fade 7.5s ease-in-out infinite;
         }
 
-        @keyframes marrow-train-move {
+        @keyframes marrow-car-move {
           0%, 11% { transform: translate(-50%, -50%); opacity: 1; }
           25%, 100% { transform: translate(-200%, -50%); opacity: 0; }
         }
@@ -87,29 +85,37 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .marrow-anim-root, .marrow-train, .marrow-reveal, .marrow-tagline {
+          .marrow-anim-root, .marrow-car, .marrow-reveal, .marrow-tagline {
             animation: none;
           }
           .marrow-row { flex-direction: column; height: auto; gap: 6px; }
-          .marrow-train { position: static; transform: none; opacity: 1; }
+          .marrow-car { position: static; transform: none; opacity: 1; }
           .marrow-reveal { clip-path: none; }
           .marrow-tagline { opacity: 0.75; }
         }
       `}</style>
-      <div className="marrow-anim-root">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <MarrowMark size={48} className="marrow-brand-mark" />
+        <Typography.Text strong className="marrow-brand-text" style={{ fontSize: 28, letterSpacing: 1 }}>
+          MARROW
+        </Typography.Text>
+      </div>
+      {/* T-MEMORY-061 / I-MEMORY-058..060: canonical two-line slogan. The EN
+          backronym is a name (like Bash or YACC) -- never translated, one
+          Latin line for every language. Acronym letters (A-R-R-O-W) are
+          weight/color-accented, never underlined -- underline reads as a
+          link in this UI. The subtitle (auth.tagline) is a semantic
+          counterpart, not a literal translation of the backronym -- see
+          I-MEMORY-059 for the wording of both locales. Only render the
+          subtitle when non-empty, so a locale without one doesn't leave a
+          blank line -- it's always mounted for the lifetime of the
+          component (never toggled mid-cycle), so it reserves its layout
+          space up front and the animation never shifts the form below. */}
+      <div className="marrow-anim-root" style={{ maxWidth: 340 }}>
         <div className="marrow-row">
-          <div className="marrow-train">
-            <MarrowMark size={48} className="marrow-brand-mark" />
-            <Typography.Text strong className="marrow-brand-text" style={{ fontSize: 28, letterSpacing: 1 }}>
-              MARROW
-            </Typography.Text>
-          </div>
-          {/* T-MEMORY-061 / I-MEMORY-058..060: the EN backronym is a name
-              (like Bash or YACC) -- never translated, one Latin line for
-              every language. Acronym letters (A-R-R-O-W) are weight/color-
-              accented, never underlined -- underline reads as a link in this
-              UI. "MARROW" itself isn't repeated here: the animated brand
-              lockup above plays that role as it "pulls" this line into view. */}
+          <Typography.Text type="secondary" className="marrow-car" style={{ fontSize: 13, fontWeight: 700 }}>
+            MARROW
+          </Typography.Text>
           <Typography.Text type="secondary" className="marrow-reveal" style={{ fontSize: 13 }}>
             <span className="marrow-acronym-letter">A</span>in&apos;t <span className="marrow-acronym-letter">R</span>AM
             {' — '}
@@ -117,17 +123,11 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
             <span className="marrow-acronym-letter">W</span>orkers
           </Typography.Text>
         </div>
-        {/* The subtitle (auth.tagline) is a semantic counterpart, not a
-            literal translation of the backronym -- see I-MEMORY-059 for the
-            wording of both locales. Only render when non-empty, so a locale
-            without one doesn't leave a blank line -- it's always mounted
-            (never conditionally added mid-cycle), so it reserves its layout
-            space up front and the animation never shifts the form below. */}
         {tagline && (
           <Typography.Text
             type="secondary"
             className="marrow-tagline"
-            style={{ fontSize: 12, display: 'block', textAlign: 'center', maxWidth: 340 }}
+            style={{ fontSize: 12, display: 'block', textAlign: 'center' }}
           >
             {tagline}
           </Typography.Text>
