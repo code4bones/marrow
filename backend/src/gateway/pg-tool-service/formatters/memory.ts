@@ -54,12 +54,20 @@ export function compactMemoryRecord(record: Row) {
 }
 
 // Handoffs are always a single known type in a section already scoped to one
-// project by the surrounding response -- projectId/type only repeat context
-// the caller already has, on every single record.
+// project by the surrounding response -- projectId is dropped as redundant
+// context the caller already has. `type` stays (hardcoded, not read off the
+// record) rather than being dropped too: GraphQL's MemoryRecord.type is
+// declared non-null and shared with other union members' own `type` fields
+// (e.g. Event.type) in the same query (GET_RECORD's inline fragments) --
+// making it nullable here to accommodate an omitted field broke that query
+// with a "conflicting types String/String!" validation error. A handoff
+// selected through listRecentItemsByType("handoff", ...) is always
+// literally type="handoff", so hardcoding it is accurate, not a guess.
 export function compactHandoffRecord(record: Row) {
   const full = compactMemoryRecord(record);
   return {
     id: full.id,
+    type: "handoff",
     title: full.title,
     status: full.status,
     excerpt: full.excerpt,

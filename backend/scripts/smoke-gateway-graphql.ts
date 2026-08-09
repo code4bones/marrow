@@ -295,9 +295,15 @@ try {
         record {
           __typename
           ... on Task { id title scope }
-          ... on MemoryRecord { id title scope }
+          # T-MEMORY-063 regression: MemoryRecord.type and Event.type must
+          # stay the same nullability (both String!) -- the front's real
+          # GET_RECORD query selects the type field on both in the same
+          # document, and GraphQL validates that at parse time regardless
+          # of which concrete type this record actually resolves to, so
+          # this alone is enough to catch a reintroduced mismatch.
+          ... on MemoryRecord { id title scope type }
           ... on Artifact { id title scope }
-          ... on Event { id title }
+          ... on Event { id title type }
         }
       }
       artifactRecord: record(id: $artifactId) {

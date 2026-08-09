@@ -586,14 +586,17 @@ const typeDefs = `#graphql
   }
 
   # T-MEMORY-063: ProjectSummary.handoffs/ContextPack.handoffs source from
-  # compactHandoffRecord, which drops projectId/type as redundant within a
-  # section already scoped to one project and one record kind -- type is
-  # nullable here for that reason (full memory records always populate it).
+  # compactHandoffRecord, which drops projectId as redundant within a
+  # section already scoped to one project. type stays non-null and
+  # hardcoded to "handoff" there (never omitted) -- this field is shared
+  # with Event.type (also String!) in GET_RECORD's inline-fragment union
+  # selection, and GraphQL requires the same field name to resolve to the
+  # same nullability everywhere it's used in one query document.
   type MemoryRecord {
     id: ID!
     projectId: String
     scope: String
-    type: String
+    type: String!
     title: String
     body: String
     excerpt: String
