@@ -8,13 +8,16 @@
 // session-cookie-backed /oauth/authorize (GET redirects to the frontend
 // origin, POST mints a code from a pmem_session), the JWT's real sub/exp
 // claims, an admin-role user's OAuth token reaching an admin-tier tool
-// (project.delete) directly with no elevation header, a member-role user's
+// (memory.delete) directly with no elevation header, a member-role user's
 // OAuth token still getting INSUFFICIENT_SCOPE on the same tool, a stale/
 // tampered/expired bearer being rejected outright (401, not silently
 // downgraded), and gateway_clients.owner_user_id being attributed to the
 // real OAuth-connected user -- plus the still-relevant protocol-level
 // coverage from before this task (metadata endpoints, PKCE, one-time-use
-// code, client auth methods, redirect_uri/resource handling).
+// code, client auth methods, redirect_uri/resource handling). Also covers
+// project.delete's own per-project owner gating (a member-role OAuth token
+// is denied UNAUTHORIZED on a project it doesn't own; an admin-role OAuth
+// token succeeds regardless of ownership, same as any other admin action).
 import { createHash, createPrivateKey, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -529,7 +532,19 @@ try {
   );
   projectIdForAdminDelete = projectB.project.id;
 
-  const memberDelete = await callTool("project.delete", { id: projectIdForMemberDenial }, oauthHeaders(memberAccessToken));
+  // project.delete moved from access:"admin" to access:"write" (the
+  // per-project owner concept: ownership, not a blanket admin-tier gate,
+  // now decides who may delete -- see assertProjectOwnerOrAdmin in
+  // projects-core.mixin.ts), so it's no longer a generic admin-tier probe.
+  // memory.delete stays access:"admin" unconditionally, so it's used here
+  // instead to prove the actual point of this section: a member-role OAuth
+  // token is still denied on a genuinely admin-tier tool, no elevation
+  // involved. Common-scope (project: null) so this is unaffected by any
+  // project-membership/ownership logic either.
+  const memoryForMemberDenial = expectData<{ item: { id: string } }>(
+    unwrap(await callTool("memory.create", { common: true, type: "note", title: "OAuth Smoke Member Denial", body: "probe" }, staticHeaders()))
+  );
+  const memberDelete = await callTool("memory.delete", { id: memoryForMemberDenial.item.id }, oauthHeaders(memberAccessToken));
   assert(
     memberDelete.status === 403,
     `A member-role user's OAuth token must still be denied on an admin-tier tool. Status: ${memberDelete.status}`
@@ -538,9 +553,10 @@ try {
     readNestedString(memberDelete.json, ["error", "code"]) === "INSUFFICIENT_SCOPE",
     `Member OAuth admin-tier denial should be INSUFFICIENT_SCOPE. Body: ${JSON.stringify(memberDelete.json)}`
   );
-  const projectAStillThere = await db("projects").where({ id: projectIdForMemberDenial }).first();
-  assert(projectAStillThere, "Project must survive a denied member-OAuth project.delete attempt.");
-  console.log("ok - a member-role user's OAuth token gets INSUFFICIENT_SCOPE on an admin-tier tool (project.delete), no elevation involved");
+  const memoryStillThere = await db("items").where({ id: memoryForMemberDenial.item.id }).first();
+  assert(memoryStillThere, "Memory item must survive a denied member-OAuth memory.delete attempt.");
+  await callTool("memory.delete", { id: memoryForMemberDenial.item.id }, staticHeaders());
+  console.log("ok - a member-role user's OAuth token gets INSUFFICIENT_SCOPE on an admin-tier tool (memory.delete), no elevation involved");
 
   // --- T-MEMORY-052: project-membership filtering must treat an OAuth
   // connector's real identity the same as that user's session/personal
@@ -548,6 +564,22 @@ try {
   // was never populated for OAuth, so a role=member caller's project.list
   // saw every project system-wide instead of just their own memberships.
   await db("project_members").insert({ project_id: projectIdForMemberDenial, user_id: memberUserId, created_at: new Date() });
+
+  // project.delete itself, now owner-or-admin gated rather than a blanket
+  // admin-tier tool: a member-role OAuth token, even as an actual member of
+  // the project (just added above), still can't delete it since it isn't
+  // the owner (owner_user_id is NULL here -- created via the static token,
+  // no session identity -- so only a real system admin can).
+  const memberProjectDelete = await callTool("project.delete", { id: projectIdForMemberDenial }, oauthHeaders(memberAccessToken));
+  assert(memberProjectDelete.status === 200, `project.delete by a non-owner member should be a normal 200 tool response. Status: ${memberProjectDelete.status}`);
+  assert(
+    readNestedString(memberProjectDelete.json, ["error", "code"]) === "UNAUTHORIZED",
+    `project.delete by a non-owner, non-admin OAuth token should fail with UNAUTHORIZED. Body: ${JSON.stringify(memberProjectDelete.json)}`
+  );
+  const projectAStillThere = await db("projects").where({ id: projectIdForMemberDenial }).first();
+  assert(projectAStillThere, "Project must survive a denied member-OAuth project.delete attempt.");
+  console.log("ok - a member-role user's OAuth token gets UNAUTHORIZED on project.delete for a project it doesn't own");
+
   const memberProjectList = await callTool("project.list", {}, oauthHeaders(memberAccessToken));
   const memberVisibleIds = (readNestedArray(memberProjectList.json, ["data", "projects"]) as Array<Record<string, unknown>>).map(
     (project) => project.id

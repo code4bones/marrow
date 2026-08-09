@@ -114,7 +114,10 @@ const projectDeleteSchema = projectLookupSchema.extend({
 });
 const updateProjectSchema = projectLookupSchema.extend({
   title: z.string().min(1).optional(),
-  description: z.string().optional()
+  description: z.string().optional(),
+  // Ownership reassignment escape hatch (e.g. the owner left) -- only ever
+  // honored when the caller is a system admin; silently ignored otherwise.
+  ownerUserId: z.string().optional()
 });
 const projectInviteClaimSchema = z.object({
   code: z.string().min(1)
@@ -752,14 +755,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.update",
     description:
-      "Rename a shared project (title/description). Any current project member (or admin) can rename -- there is no separate per-project owner concept.",
+      "Rename a shared project (title/description). Only this project's owner or a system admin can rename -- ownerUserId may also be set, but only takes effect for an admin caller (ownership reassignment).",
     schema: updateProjectSchema,
     access: "write"
   },
   {
     name: "project.invite_link_get",
     description:
-      "Get this project's reusable invite link, lazily creating it on first request. Any current project member (or admin) can share it -- opening the link and joining adds the project to whoever opens it.",
+      "Get this project's reusable invite link, lazily creating it on first request. Only this project's owner or a system admin can share it -- opening the link and joining adds the project to whoever opens it.",
     schema: projectLookupSchema,
     outputSchema: output(z.object({ code: z.string(), url: z.string() })),
     access: "write"
@@ -767,7 +770,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.invite_link_regenerate",
     description:
-      "Replace this project's invite link with a new code, invalidating the old one immediately (like regenerating a Slack workspace invite link, not a single-use token).",
+      "Replace this project's invite link with a new code, invalidating the old one immediately (like regenerating a Slack workspace invite link, not a single-use token). Only this project's owner or a system admin can do this.",
     schema: projectLookupSchema,
     outputSchema: output(z.object({ code: z.string(), url: z.string() })),
     access: "write"
@@ -783,10 +786,10 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.delete",
     description:
-      "Hard-delete a shared project by id or slug. Refuses non-empty projects unless cascade=true. Use only after an explicit user request.",
+      "Hard-delete a shared project by id or slug. Refuses non-empty projects unless cascade=true. Use only after an explicit user request. Only this project's owner or a system admin can delete it.",
     schema: projectDeleteSchema,
     outputSchema: output(z.object({ deletedProject: looseRecordSchema, cascade: z.boolean(), counts: deleteCountsSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "project.resolve",

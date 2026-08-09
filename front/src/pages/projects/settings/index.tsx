@@ -1,11 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Form, Input, Spin, Typography, message } from 'antd';
+import { Alert, Button, Card, Form, Input, Spin, Tag, Typography, message } from 'antd';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DeleteProjectButton } from '../../../features/project/DeleteProjectButton';
 import { ProjectInviteLink } from '../../../features/project/ProjectInviteLink';
 import { GET_PROJECT_SETTINGS, UPDATE_PROJECT } from '../../../shared/api/queries';
+import { useAuthStore } from '../../../shared/model/auth.store';
 import { useWorkspaceStore } from '../../../shared/model/workspace.store';
 import type { Project } from '../../../shared/model/types';
 import { PageLayout } from '../../../shared/ui/PageLayout';
@@ -17,8 +18,8 @@ interface RenameFormValues {
   description: string;
 }
 
-/** Title/description form -- any current project member (or admin) can rename, no separate owner concept. */
-function RenameSection({ slug }: { slug: string }) {
+/** Title/description form -- only this project's owner or a system admin can rename. */
+function RenameSection({ slug, canManage }: { slug: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
   const { data, loading, error } = useQuery<{ project: Project }>(GET_PROJECT_SETTINGS, { variables: { slug } });
   const [form] = Form.useForm<RenameFormValues>();
@@ -43,24 +44,27 @@ function RenameSection({ slug }: { slug: string }) {
       {loading && <Spin size="small" />}
       {error && <Alert type="error" message={error.message} showIcon />}
       {data?.project && (
-        <Form form={form} layout="vertical" size="small" disabled={saving}>
+        <Form form={form} layout="vertical" size="small" disabled={saving || !canManage}>
           <Form.Item name="title" label={t('title')} rules={[{ required: true, message: t('titleRequired') }]}>
             <Input />
           </Form.Item>
           <Form.Item name="description" label={t('description')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Button type="primary" size="small" onClick={submit} loading={saving}>
-            {t('save')}
-          </Button>
+          {canManage && (
+            <Button type="primary" size="small" onClick={submit} loading={saving}>
+              {t('save')}
+            </Button>
+          )}
         </Form>
       )}
     </Card>
   );
 }
 
-function InviteSection({ slug }: { slug: string }) {
+function InviteSection({ slug, canManage }: { slug: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
+  if (!canManage) return null;
   return (
     <Card title={t('invite')} size="small" style={{ marginBottom: 16 }}>
       <ProjectInviteLink slug={slug} />
@@ -68,10 +72,11 @@ function InviteSection({ slug }: { slug: string }) {
   );
 }
 
-function DangerZoneSection({ slug }: { slug: string }) {
+function DangerZoneSection({ slug, canManage }: { slug: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+  if (!canManage) return null;
 
   return (
     <Card title={t('dangerZone')} size="small" style={{ borderColor: '#a61d24' }}>
@@ -92,6 +97,8 @@ function DangerZoneSection({ slug }: { slug: string }) {
 export function ProjectSettingsPage() {
   const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
+  const user = useAuthStore((s) => s.user);
+  const { data } = useQuery<{ project: Project }>(GET_PROJECT_SETTINGS, { variables: { slug }, skip: !slug });
 
   if (!slug) {
     return (
@@ -101,11 +108,18 @@ export function ProjectSettingsPage() {
     );
   }
 
+  const isOwner = Boolean(user && data?.project && data.project.ownerUserId === user.id);
+  const canManage = Boolean(user?.role === 'admin' || isOwner);
+
   return (
-    <PageLayout title={t('settings')} subtitle={slug}>
-      <RenameSection slug={slug} />
-      <InviteSection slug={slug} />
-      <DangerZoneSection slug={slug} />
+    <PageLayout
+      title={t('settings')}
+      subtitle={slug}
+      headerExtra={isOwner ? <Tag color="blue">{t('youAreOwner')}</Tag> : undefined}
+    >
+      <RenameSection slug={slug} canManage={canManage} />
+      <InviteSection slug={slug} canManage={canManage} />
+      <DangerZoneSection slug={slug} canManage={canManage} />
     </PageLayout>
   );
 }

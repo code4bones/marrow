@@ -31,6 +31,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       description: stringOrNull(input.description),
       status: "active",
       root_path: stringOrNull(input.rootPath),
+      owner_user_id: context.sessionUserId ?? null,
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -88,14 +89,18 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return projectOut(row);
   }
 
-  // Any current project member (or an admin, which always bypasses the
-  // membership gate) can rename -- no separate per-project "owner" concept
-  // exists or is introduced here, per the owner's explicit decision. Reuses
-  // getProject()'s existing membership gate rather than duplicating it, so
-  // a role=member session with no project_members row gets the exact same
-  // PROJECT_NOT_FOUND every other project tool already gives it.
+  // Only the project's owner or a system admin can rename/re-slug it --
+  // reuses getProject()'s existing membership gate rather than duplicating
+  // it, so a role=member session with no project_members row still gets
+  // the same PROJECT_NOT_FOUND every other project tool already gives it,
+  // then assertProjectOwnerOrAdmin adds the ownership check on top.
+  // ownerUserId is a separate, admin-only reassignment escape hatch (e.g.
+  // the owner left) -- silently ignored for any non-admin caller rather
+  // than rejected, so an owner's own rename request never fails just for
+  // harmlessly round-tripping a field it didn't mean to change.
   protected async updateProject(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
     const patch: Row = { updated_at: nowIso(), updated_by: context.clientId };
     if (typeof input.title === "string") {
       patch.title = input.title;
@@ -109,6 +114,9 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
         throw new AppError("VALIDATION_ERROR", `Project slug "${input.slug}" is already in use.`);
       }
       patch.slug = input.slug;
+    }
+    if (typeof input.ownerUserId === "string" && context.sessionRole === "admin") {
+      patch.owner_user_id = input.ownerUserId;
     }
     const [row] = await this.db("projects").where({ id: project.id }).update(patch).returning("*");
     return projectOut(row);
@@ -133,6 +141,24 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (!(await this.isMemberOfProject(projectId, context.sessionUserId))) {
       throw new AppError("PROJECT_NOT_FOUND", "Project does not exist.");
     }
+  }
+
+  // Gate for the actions that are now owner-exclusive (delete/rename/
+  // invite management): mirrors assertProjectMember's exact bypass rule
+  // immediately above -- role=admin and every identity-less credential
+  // (static token, anonymous, OAuth-service) bypass entirely, only a real
+  // role=member human is actually checked. A member who isn't this
+  // project's owner gets UNAUTHORIZED, distinct from the PROJECT_NOT_FOUND
+  // a non-member gets -- they can see the project (assertProjectMember
+  // already passed), they just can't manage it.
+  protected async assertProjectOwnerOrAdmin(project: Row, context?: NormalizedGatewayRequestContext): Promise<void> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return;
+    }
+    if (project.ownerUserId === context.sessionUserId) {
+      return;
+    }
+    throw new AppError("UNAUTHORIZED", "Only the project owner or a system admin can do this.");
   }
 
   // Shared single-row membership query, used by both assertProjectMember
@@ -177,8 +203,9 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.isMemberOfProject(projectId, session.userId);
   }
 
-  protected async deleteProject(input: Row) {
-    const project = await this.getProject(input);
+  protected async deleteProject(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.getProject(input, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
     const counts = await this.projectDeleteCounts(project.id);
     const dependentRows = counts.tasks + counts.items + counts.decisions + counts.links + counts.events + counts.artifacts;
     const cascade = input.cascade === true;
@@ -220,11 +247,12 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // project (unique on project_id, migrations/pg/014), get-or-create
   // semantics -- the first request for a project's link lazily creates it,
   // same "lazy generation on first visit" precedent as personal API tokens
-  // (T-MEMORY-047). Same membership gate as updateProject above (reused via
-  // getProject, not duplicated): any current member (or admin) can invite
-  // others, per the owner's explicit decision.
+  // (T-MEMORY-047). Same gate as updateProject above (reused via
+  // getProject + assertProjectOwnerOrAdmin, not duplicated): only the
+  // project's owner or a system admin manages the invite link.
   protected async getOrCreateProjectInviteLink(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
     const existing = await this.db("project_invite_links").where({ project_id: project.id }).first();
     const row = existing ?? (await this.createProjectInviteLinkRow(project.id, context));
     return projectInviteLinkOut(row);
@@ -236,6 +264,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // immediately (claimProjectInviteLink looks it up by exact match).
   protected async regenerateProjectInviteLink(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
     const code = randomInviteCode();
     const updatedRows = await this.db("project_invite_links")
       .where({ project_id: project.id })

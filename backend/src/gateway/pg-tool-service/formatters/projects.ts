@@ -21,6 +21,7 @@ export function projectOut(row: Row) {
     description: stringOrNull(row.description),
     status: String(row.status),
     rootPath: stringOrNull(row.root_path),
+    ownerUserId: stringOrNull(row.owner_user_id),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };

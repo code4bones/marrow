@@ -18,6 +18,7 @@ export interface Project {
   description: string | null;
   status: string;
   rootPath: string | null;
+  ownerUserId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }

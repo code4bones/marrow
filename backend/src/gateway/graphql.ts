@@ -20,8 +20,11 @@ type Row = Record<string, unknown>;
 // gateway.client_forget / gateway.client_prune are also admin-tier tools but
 // have no GraphQL mutation counterpart -- the Mutation type below has no
 // forgetClient/pruneClients field, so there is nothing to list for them.
+// deleteProject is deliberately NOT here (as of the per-project owner
+// concept, project.delete moved to access:"write" -- the fine-grained
+// owner-or-admin check now lives inside deleteProject itself, same as
+// updateProject/regenerateProjectInviteLink below it).
 export const ADMIN_GRAPHQL_MUTATION_NAMES = [
-  "deleteProject",
   "deleteMemory",
   "deleteTask",
   "deleteDecision",
@@ -223,7 +226,7 @@ const typeDefs = `#graphql
 
   type Mutation {
     createProject(input: CreateProjectInput!): Project!
-    updateProject(id: ID, slug: String, title: String, description: String): Project!
+    updateProject(id: ID, slug: String, title: String, description: String, ownerUserId: String): Project!
     regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
     claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
@@ -465,6 +468,7 @@ const typeDefs = `#graphql
     description: String
     status: String!
     rootPath: String
+    ownerUserId: String
     createdAt: String
     updatedAt: String
   }

@@ -333,7 +333,7 @@ export const GET_PROJECT = gql`
 
 export const GET_PROJECT_SETTINGS = gql`
   query GetProjectSettings($slug: String!) {
-    project(slug: $slug) { id slug title description status updatedAt }
+    project(slug: $slug) { id slug title description status ownerUserId updatedAt }
   }
 `;
 

@@ -11,13 +11,19 @@
 // unauthenticated lookup or claim), claim adds membership idempotently
 // (claiming twice doesn't error or duplicate the project_members row),
 // claiming with an unknown/stale code fails cleanly, the unauthenticated
-// GET /project-invites/:code lookup works with zero auth headers, a
-// newly-invited role=member can then successfully call project.update to
-// rename the project (proving the flat-membership model end to end),
-// project.delete still requires system admin scope regardless of the
-// caller's project membership, session-required enforcement for
-// project.invite_claim (static token has no real identity to join as), and
-// the GraphQL mutations/query mirror the MCP tool behavior.
+// GET /project-invites/:code lookup works with zero auth headers,
+// session-required enforcement for project.invite_claim (static token has
+// no real identity to join as), and the GraphQL mutations/query mirror the
+// MCP tool behavior.
+//
+// Also covers the per-project owner concept: a role=member who joins via
+// invite is NOT the project's owner and gets UNAUTHORIZED from
+// project.update/invite_link_regenerate/project.delete (both over the MCP
+// tool call and over GraphQL), while a role=member who CREATED a project
+// (and is therefore its owner) can do all three without ever needing
+// system-admin scope -- proving ownership, not membership or role, is what
+// gates these actions now. A system admin can still do all three
+// regardless of ownership, unchanged from before.
 import { randomUUID } from "node:crypto";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { createAuthFacade, hashPassword } from "../src/gateway/auth.js";
@@ -48,6 +54,7 @@ let adminUserId: string | undefined;
 let memberAUserId: string | undefined;
 let memberBUserId: string | undefined;
 let projectId: string | undefined;
+let projectBId: string | undefined;
 
 try {
   const now = new Date();
@@ -163,28 +170,50 @@ try {
   assert(Number(membershipCount?.count ?? 0) === 1, "Re-claiming must not duplicate the project_members row.");
   console.log("ok - re-claiming an already-joined project is a friendly no-op: joined:false, no duplicate row, no error");
 
-  // --- Flat membership proven end to end: member A can now rename ----------
-  const renamed = expectData<{ project: { id: string; title: string } }>(
-    unwrap(await callTool("project.update", { id: projectId, title: "Invites Smoke Project (renamed by invited member)" }, sessionHeaders(memberACookie)))
+  // --- A joined-via-invite member is NOT the owner: update/delete/regenerate
+  // all reject with UNAUTHORIZED (the project survives the admin created it,
+  // owner_user_id is the admin's, not memberA's) --------------------------
+  const memberRenameAttempt = await callTool(
+    "project.update",
+    { id: projectId, title: "Should not apply" },
+    sessionHeaders(memberACookie)
   );
-  assert(renamed.project.title === "Invites Smoke Project (renamed by invited member)", "project.update should apply the new title.");
-  console.log("ok - a newly-invited role=member can call project.update to rename the project (flat membership, no owner concept)");
-
-  // --- project.delete still requires system admin scope regardless --------
-  const memberDeleteAttempt = await callTool("project.delete", { id: projectId }, sessionHeaders(memberACookie));
-  assert(memberDeleteAttempt.status === 403, `A joined-via-invite member attempting project.delete should get HTTP 403, got ${memberDeleteAttempt.status}`);
-  const memberDeleteBody = memberDeleteAttempt.json as { error?: { code?: string } };
+  const memberRenameBody = memberRenameAttempt.json as ToolResponse<unknown>;
   assert(
-    memberDeleteBody.error?.code === "INSUFFICIENT_SCOPE",
-    `project.delete by an invited member should fail with INSUFFICIENT_SCOPE, got: ${JSON.stringify(memberDeleteBody)}`
+    memberRenameBody.ok === false && memberRenameBody.error.code === "UNAUTHORIZED",
+    `project.update by a non-owner member should fail with UNAUTHORIZED, got: ${JSON.stringify(memberRenameBody)}`
+  );
+  console.log("ok - a joined-via-invite member who is not the project's owner gets UNAUTHORIZED from project.update");
+
+  const memberRegenerateAttempt = await callTool("project.invite_link_regenerate", { id: projectId }, sessionHeaders(memberACookie));
+  const memberRegenerateBody = memberRegenerateAttempt.json as ToolResponse<unknown>;
+  assert(
+    memberRegenerateBody.ok === false && memberRegenerateBody.error.code === "UNAUTHORIZED",
+    `project.invite_link_regenerate by a non-owner member should fail with UNAUTHORIZED, got: ${JSON.stringify(memberRegenerateBody)}`
+  );
+  console.log("ok - a joined-via-invite member who is not the project's owner gets UNAUTHORIZED from project.invite_link_regenerate");
+
+  const memberDeleteAttempt = await callTool("project.delete", { id: projectId }, sessionHeaders(memberACookie));
+  assert(memberDeleteAttempt.status === 200, `project.delete by a non-owner member should still be a normal 200 tool response, got HTTP ${memberDeleteAttempt.status}`);
+  const memberDeleteBody = memberDeleteAttempt.json as ToolResponse<unknown>;
+  assert(
+    memberDeleteBody.ok === false && memberDeleteBody.error.code === "UNAUTHORIZED",
+    `project.delete by a non-owner member should fail with UNAUTHORIZED, got: ${JSON.stringify(memberDeleteBody)}`
   );
   const stillExists = await db("projects").where({ id: projectId }).first();
-  assert(stillExists, "Project must survive a denied delete attempt by a non-admin member.");
-  console.log("ok - project.delete still requires system-admin scope regardless of project membership -- a member who joined via invite still cannot delete");
+  assert(stillExists, "Project must survive a denied delete attempt by a non-owner member.");
+  console.log("ok - project.delete rejects a joined-via-invite member who is not the project's owner (UNAUTHORIZED, not just a coarse scope check)");
+
+  // --- The project's actual owner (admin, who created it) can do all three -
+  const renamed = expectData<{ project: { id: string; title: string } }>(
+    unwrap(await callTool("project.update", { id: projectId, title: "Invites Smoke Project (renamed by owner)" }, sessionHeaders(adminCookie)))
+  );
+  assert(renamed.project.title === "Invites Smoke Project (renamed by owner)", "project.update should apply the new title.");
+  console.log("ok - the project's owner (here, the admin who created it) can rename it");
 
   // --- Regenerate: old code stops resolving, new code works ----------------
   const regenerated = expectData<{ code: string; url: string }>(
-    unwrap(await callTool("project.invite_link_regenerate", { id: projectId }, sessionHeaders(memberACookie)))
+    unwrap(await callTool("project.invite_link_regenerate", { id: projectId }, sessionHeaders(adminCookie)))
   );
   assert(regenerated.code !== firstLink.code, "Regenerate should produce a different code.");
   const staleContextResponse = await fetch(`${started.url}/project-invites/${firstLink.code}`);
@@ -218,39 +247,74 @@ try {
   assert(memberBMembership, "Member B should now be a project member via the regenerated code.");
   console.log("ok - the regenerated code works: member B successfully joins with it");
 
-  // --- GraphQL: updateProject / projectInviteLink / regenerateProjectInviteLink / claimProjectInviteLink
+  // --- GraphQL, exercised on a SECOND project that member B creates (and
+  // therefore owns) itself -- proves ownership, not admin scope, is what
+  // GraphQL's updateProject/projectInviteLink/regenerateProjectInviteLink/
+  // deleteProject mutations honor too, not just the MCP tool-call path
+  // above. Member A then joins as a non-owner member and gets rejected the
+  // same way over GraphQL.
+  const projectB = expectData<{ project: { id: string } }>(
+    unwrap(await callTool("project.create", { slug: `project-invites-smoke-b-${unique}`, title: "Invites Smoke Project B" }, sessionHeaders(memberBCookie)))
+  );
+  projectBId = projectB.project.id;
+  console.log("ok - member B (role=member) created project B and is therefore its owner");
+
   const graphqlRenamed = await graphql<{ updateProject: { id: string; title: string } }>(
     `mutation Rename($id: ID!, $title: String!) { updateProject(id: $id, title: $title) { id title } }`,
-    { id: projectId, title: "Invites Smoke Project (renamed via GraphQL)" },
-    memberACookie
+    { id: projectBId, title: "Invites Smoke Project B (renamed via GraphQL)" },
+    memberBCookie
   );
-  assert(graphqlRenamed.updateProject.title === "Invites Smoke Project (renamed via GraphQL)", "GraphQL updateProject did not apply the new title.");
-  console.log("ok - GraphQL updateProject mutation works for an invited member");
+  assert(graphqlRenamed.updateProject.title === "Invites Smoke Project B (renamed via GraphQL)", "GraphQL updateProject did not apply the new title.");
+  console.log("ok - GraphQL updateProject mutation works for the project's owner (role=member, no admin scope needed)");
 
   const graphqlLink = await graphql<{ projectInviteLink: { code: string; url: string } }>(
     `query Link($id: ID!) { projectInviteLink(id: $id) { code url } }`,
-    { id: projectId },
-    memberACookie
+    { id: projectBId },
+    memberBCookie
   );
-  assert(graphqlLink.projectInviteLink.code === regenerated.code, "GraphQL projectInviteLink should return the current (regenerated) code, not stale data.");
-  console.log("ok - GraphQL projectInviteLink query returns the current invite link");
+  assert(graphqlLink.projectInviteLink.code.length > 0, "GraphQL projectInviteLink should return a non-empty code.");
+  console.log("ok - GraphQL projectInviteLink query returns a link for the project's owner");
 
   const graphqlRegenerated = await graphql<{ regenerateProjectInviteLink: { code: string; url: string } }>(
     `mutation Regen($id: ID!) { regenerateProjectInviteLink(id: $id) { code url } }`,
-    { id: projectId },
-    memberACookie
+    { id: projectBId },
+    memberBCookie
   );
-  assert(graphqlRegenerated.regenerateProjectInviteLink.code !== regenerated.code, "GraphQL regenerateProjectInviteLink should produce a new code.");
-  console.log("ok - GraphQL regenerateProjectInviteLink mutation issues a fresh code");
+  assert(graphqlRegenerated.regenerateProjectInviteLink.code !== graphqlLink.projectInviteLink.code, "GraphQL regenerateProjectInviteLink should produce a new code.");
+  console.log("ok - GraphQL regenerateProjectInviteLink mutation issues a fresh code for the project's owner");
 
   const graphqlClaim = await graphql<{ claimProjectInviteLink: { project: { id: string }; joined: boolean } }>(
     `mutation Claim($code: String!) { claimProjectInviteLink(code: $code) { project { id } joined } }`,
     { code: graphqlRegenerated.regenerateProjectInviteLink.code },
+    memberACookie
+  );
+  assert(graphqlClaim.claimProjectInviteLink.joined === true, "Member A's first claim on project B should report joined:true.");
+  assert(graphqlClaim.claimProjectInviteLink.project.id === projectBId, "GraphQL claimProjectInviteLink returned the wrong project.");
+  console.log("ok - GraphQL claimProjectInviteLink mutation lets member A join project B, still not its owner");
+
+  const graphqlMemberRenameAttempt = await fetch(`${started.url}${normalizedApiEndpoint() ?? ""}/graphql`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: memberACookie },
+    body: JSON.stringify({
+      query: `mutation Rename($id: ID!, $title: String!) { updateProject(id: $id, title: $title) { id title } }`,
+      variables: { id: projectBId, title: "Should not apply" }
+    })
+  });
+  const graphqlMemberRenameBody = (await graphqlMemberRenameAttempt.json()) as { errors?: Array<{ message: string }> };
+  assert(
+    graphqlMemberRenameBody.errors?.some((e) => /UNAUTHORIZED|owner/i.test(e.message)),
+    `GraphQL updateProject by a non-owner member should error, got: ${JSON.stringify(graphqlMemberRenameBody)}`
+  );
+  console.log("ok - GraphQL updateProject rejects a non-owner member on project B, same as the MCP tool call");
+
+  const graphqlDeleted = await graphql<{ deleteProject: { deletedProject: { id: string } } }>(
+    `mutation Delete($id: ID!, $cascade: Boolean) { deleteProject(id: $id, cascade: $cascade) { deletedProject { id } } }`,
+    { id: projectBId, cascade: true },
     memberBCookie
   );
-  assert(graphqlClaim.claimProjectInviteLink.joined === false, "Member B is already a member, so GraphQL claim should report joined:false.");
-  assert(graphqlClaim.claimProjectInviteLink.project.id === projectId, "GraphQL claimProjectInviteLink returned the wrong project.");
-  console.log("ok - GraphQL claimProjectInviteLink mutation mirrors the MCP tool's idempotent-claim behavior");
+  assert(graphqlDeleted.deleteProject.deletedProject.id === projectBId, "GraphQL deleteProject returned the wrong project.");
+  console.log("ok - GraphQL deleteProject lets the project's owner (role=member, no admin scope) delete their own project");
+  projectBId = undefined;
 
   console.log(`Gateway project-invites smoke test passed using ${started.url}`);
 } finally {
@@ -259,6 +323,12 @@ try {
     await db("project_members").where({ project_id: projectId }).del();
     await db("project_invite_links").where({ project_id: projectId }).del();
     await db("projects").where({ id: projectId }).del();
+  }
+  if (projectBId) {
+    await db("events").where({ project_id: projectBId }).del();
+    await db("project_members").where({ project_id: projectBId }).del();
+    await db("project_invite_links").where({ project_id: projectBId }).del();
+    await db("projects").where({ id: projectBId }).del();
   }
   if (adminUserId) {
     await db("sessions").where({ user_id: adminUserId }).del();

@@ -126,7 +126,7 @@ export class PgToolService extends ComposedService {
         case "project.invite_claim":
           return ok("Project joined.", await this.claimProjectInviteLink(parsed, requestContext));
         case "project.delete":
-          return ok("Project deleted.", await this.deleteProject(parsed));
+          return ok("Project deleted.", await this.deleteProject(parsed, requestContext));
         case "project.resolve":
           return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed, requestContext));
         case "project.summary":
