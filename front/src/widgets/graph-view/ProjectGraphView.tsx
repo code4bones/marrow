@@ -6,7 +6,7 @@ import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
 import { GraphTree } from './GraphTree';
-import { ROOT_KIND_OPTIONS, type RootKind } from './rootKind';
+import { rootKindOptions, type RootKind } from './rootKind';
 
 type ViewMode = 'timeline' | 'tree';
 
@@ -84,7 +84,7 @@ export function ProjectGraphView({ slug }: Props) {
                 <Select
                   value={rootKind}
                   onChange={setRootKind}
-                  options={[...ROOT_KIND_OPTIONS]}
+                  options={rootKindOptions(t)}
                   size="small"
                   style={{ width: 110 }}
                 />

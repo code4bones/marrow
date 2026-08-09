@@ -2,26 +2,45 @@
 // RemarkPanel.tsx) so react-refresh/only-export-components stays happy —
 // DecisionTimeline.tsx keeps exporting only its component, ProjectGraphView
 // needs these to build the "Root:" dropdown in its own header (D-MEMORY-024).
+//
+// I-MEMORY-audit: labels/hints here used to be plain hardcoded English
+// (ROOT_KIND_LABEL/ROOT_KIND_OPTIONS/ROOT_KIND_EMPTY_HINT constants), so
+// every consumer — the "Root:" <Select>, DecisionTimeline's column header,
+// and its empty-state copy — rendered "Decisions"/"Tasks"/"Memory"/
+// "Artifacts" verbatim even in the Russian UI. Converted to functions that
+// take the caller's own `t` so these read from the translations table like
+// everything else. The plural kind words reuse the exact strings already
+// seeded for the nav rail's own section labels (nav:tasks/decisions/memory/
+// artifacts) rather than duplicating a second translated copy of the same
+// four words under a different namespace.
 
-export const ROOT_KIND_OPTIONS = [
-  { label: 'Decisions', value: 'DECISION' },
-  { label: 'Tasks', value: 'TASK' },
-  { label: 'Memory', value: 'MEMORY' },
-  { label: 'Artifacts', value: 'ARTIFACT' },
-] as const;
+export const ROOT_KIND_VALUES = ['DECISION', 'TASK', 'MEMORY', 'ARTIFACT'] as const;
 
-export type RootKind = (typeof ROOT_KIND_OPTIONS)[number]['value'];
+export type RootKind = (typeof ROOT_KIND_VALUES)[number];
 
-export const ROOT_KIND_LABEL: Record<RootKind, string> = {
-  DECISION: 'Decisions',
-  TASK: 'Tasks',
-  MEMORY: 'Memory',
-  ARTIFACT: 'Artifacts',
-};
+type TFunc = (key: string, options?: Record<string, unknown>) => string;
 
-export const ROOT_KIND_EMPTY_HINT: Record<RootKind, string> = {
-  DECISION: 'The timeline fills in as decision.record / decision.supersede are used',
-  TASK: 'The timeline fills in as task.create is used',
-  MEMORY: 'The timeline fills in as memory.create / memory.upsert are used',
-  ARTIFACT: 'The timeline fills in as artifact.put is used',
-};
+export function rootKindLabel(t: TFunc, kind: RootKind): string {
+  switch (kind) {
+    case 'DECISION': return t('decisions', { ns: 'nav' });
+    case 'TASK': return t('tasks', { ns: 'nav' });
+    case 'MEMORY': return t('memory', { ns: 'nav' });
+    case 'ARTIFACT': return t('artifacts', { ns: 'nav' });
+  }
+}
+
+export function rootKindOptions(t: TFunc): { label: string; value: RootKind }[] {
+  return ROOT_KIND_VALUES.map((value) => ({ value, label: rootKindLabel(t, value) }));
+}
+
+// Empty-state hint shown under the baseline ribbon when no records of this
+// kind exist yet — DecisionTimeline is the sole consumer, so these live in
+// the 'decisions' namespace it already loads.
+export function rootKindEmptyHint(t: TFunc, kind: RootKind): string {
+  switch (kind) {
+    case 'DECISION': return t('rootKindEmptyHintDecision', { ns: 'decisions' });
+    case 'TASK': return t('rootKindEmptyHintTask', { ns: 'decisions' });
+    case 'MEMORY': return t('rootKindEmptyHintMemory', { ns: 'decisions' });
+    case 'ARTIFACT': return t('rootKindEmptyHintArtifact', { ns: 'decisions' });
+  }
+}

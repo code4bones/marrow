@@ -236,7 +236,7 @@ export function NavigationRail() {
                 type="secondary"
                 style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 3 }}
               >
-                Project
+                {t('project')}
               </Typography.Text>
               <Typography.Text
                 strong

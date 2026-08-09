@@ -14,7 +14,7 @@ import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTi
 import { apolloClient } from '../../shared/api/apollo';
 import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
-import { ROOT_KIND_EMPTY_HINT, ROOT_KIND_LABEL, type RootKind } from './rootKind';
+import { rootKindEmptyHint, rootKindLabel, type RootKind } from './rootKind';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -547,7 +547,12 @@ function dayKey(iso: string | null | undefined): string | null {
 function formatDayLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '?';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  // Matches shared/ui/Timestamp.tsx's convention: dates always render in
+  // ru-RU formatting regardless of UI language (not translation-key driven,
+  // a deliberate app-wide choice) -- this was previously hardcoded to
+  // 'en-GB', so a Russian-language session still saw English month
+  // abbreviations ("09 Aug 2026") in these sticky day headers.
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 const STICKY_DAY_STYLE: CSSProperties = {
@@ -646,13 +651,14 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
   onSelectRoot: (id: string) => void;
   rootKind: RootKind;
 } & ColumnCommonProps) {
+  const { t } = useTranslation('decisions');
   const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle } = common;
 
   return (
     <div style={COLUMN_OUTER_STYLE}>
       <div style={COLUMN_TITLE_STYLE}>
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-          {ROOT_KIND_LABEL[rootKind]}
+          {rootKindLabel(t, rootKind)}
         </Typography.Text>
         <RootSearch nodes={allNodes} onSelect={onSelectRoot} />
       </div>
@@ -1097,9 +1103,9 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   if (baselineNodes.length === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Typography.Text type="secondary">{t('noKindRecordedYet', { kind: ROOT_KIND_LABEL[rootKind].toLowerCase() })}</Typography.Text>
+        <Typography.Text type="secondary">{t('noKindRecordedYet', { kind: rootKindLabel(t, rootKind).toLowerCase() })}</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          {ROOT_KIND_EMPTY_HINT[rootKind]}
+          {rootKindEmptyHint(t, rootKind)}
         </Typography.Text>
       </div>
     );
@@ -1204,7 +1210,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
               </>
             )}
             <Typography.Text type="secondary" style={{ fontSize: 10, marginTop: 4 }}>
-              {t('legendSummary', { count: baselineNodes.length, kind: ROOT_KIND_LABEL[rootKind].toLowerCase() })}
+              {t('legendSummary', { count: baselineNodes.length, kind: rootKindLabel(t, rootKind).toLowerCase() })}
             </Typography.Text>
           </div>
         )}
