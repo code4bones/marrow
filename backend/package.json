@@ -46,6 +46,7 @@
     "smoke:gateway:personal-tokens": "node dist/scripts/smoke-gateway-personal-tokens.js",
     "smoke:gateway:notifications": "node dist/scripts/smoke-gateway-notifications.js",
     "smoke:gateway:requests": "node dist/scripts/smoke-gateway-requests.js",
+    "smoke:gateway:github-oauth": "node dist/scripts/smoke-gateway-github-oauth.js",
     "smoke:gateway:graphql": "node dist/scripts/smoke-gateway-graphql.js",
     "smoke:gateway:mcp-http": "node dist/scripts/smoke-gateway-mcp-http.js",
     "smoke:oauth": "node dist/scripts/smoke-oauth.js",

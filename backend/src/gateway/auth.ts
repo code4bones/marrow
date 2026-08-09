@@ -31,6 +31,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const PENDING_REGISTRATION_TTL_MS = 30 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const RECOVERY_CODE_COUNT = 10;
 // T-MEMORY-041 / D-MEMORY-019: how long a step-up elevation grant is good
 // for if it's minted but never redeemed. Deliberately short -- this is a
@@ -486,6 +487,7 @@ export function createAuthFacade(db: Knex) {
       id: randomUUID(),
       email: normalized,
       password_hash: passwordHash,
+      provider: "password",
       totp_secret_enc: encryptSecret(secretBase32),
       token_hash: hashToken(rawToken),
       created_at: now,
@@ -493,6 +495,60 @@ export function createAuthFacade(db: Knex) {
     });
 
     return { token: rawToken, otpauthUrl: buildOtpauthUrl(secretBase32, normalized), secretBase32 };
+  }
+
+  // Same pending-registration -> TOTP-confirm -> pending_approval gate as
+  // register() above, minus a password -- the owner's explicit call (option
+  // 2): a GitHub-authenticated signup still has to prove it controls a TOTP
+  // device and still waits for admin approval, same as everyone else.
+  async function registerViaGithub(
+    email: string,
+    githubId: string,
+    githubLogin: string
+  ): Promise<{ token: string; otpauthUrl: string; secretBase32: string }> {
+    const normalized = normalizeEmail(email);
+    const now = new Date();
+    await db("pending_registrations").where({ email: normalized }).andWhere("expires_at", "<", now).del();
+
+    const existingUser = await db("users").where({ email: normalized }).first();
+    if (existingUser) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `An account with email ${normalized} already exists. Sign in normally and link GitHub from your profile instead.`
+      );
+    }
+    const existingPending = await db("pending_registrations").where({ email: normalized }).first();
+    if (existingPending) {
+      throw new AppError("VALIDATION_ERROR", `A registration for email ${normalized} is already pending.`);
+    }
+
+    const secretBase32 = base32Encode(generateTotpSecret());
+    const rawToken = newOpaqueToken();
+    await db("pending_registrations").insert({
+      id: randomUUID(),
+      email: normalized,
+      password_hash: null,
+      provider: "github",
+      github_id: githubId,
+      github_login: githubLogin,
+      totp_secret_enc: encryptSecret(secretBase32),
+      token_hash: hashToken(rawToken),
+      created_at: now,
+      expires_at: new Date(now.getTime() + PENDING_REGISTRATION_TTL_MS)
+    });
+
+    return { token: rawToken, otpauthUrl: buildOtpauthUrl(secretBase32, normalized), secretBase32 };
+  }
+
+  async function pendingRegistrationContext(
+    rawToken: string
+  ): Promise<{ email: string; otpauthUrl: string; secretBase32: string }> {
+    const row = await db("pending_registrations").where({ token_hash: hashToken(rawToken) }).first();
+    if (!row || new Date(row.expires_at) < new Date()) {
+      throw new AppError("VALIDATION_ERROR", "This link is invalid or has expired.");
+    }
+    const secretBase32 = decryptSecret(row.totp_secret_enc);
+    return { email: row.email, otpauthUrl: buildOtpauthUrl(secretBase32, row.email), secretBase32 };
   }
 
   async function registerConfirm(rawToken: string, code: string): Promise<{ email: string; recoveryCodes: string[] }> {
@@ -526,10 +582,117 @@ export function createAuthFacade(db: Knex) {
         created_at: now,
         updated_at: now
       });
+      if (row.provider === "github") {
+        await trx("github_identities").insert({
+          id: randomUUID(),
+          user_id: userId,
+          github_id: row.github_id,
+          github_login: row.github_login,
+          created_at: now
+        });
+      }
       await trx("pending_registrations").where({ id: row.id }).del();
     });
 
     return { email: row.email as string, recoveryCodes };
+  }
+
+  // --- GitHub sign-in/link (option 2, owner-approved) -----------------------
+
+  async function mintOAuthState(intent: "login" | "link", userId: string | null): Promise<string> {
+    const rawToken = newOpaqueToken();
+    const now = new Date();
+    await db("oauth_login_states").insert({
+      id: randomUUID(),
+      token_hash: hashToken(rawToken),
+      intent,
+      user_id: userId,
+      created_at: now,
+      expires_at: new Date(now.getTime() + OAUTH_STATE_TTL_MS)
+    });
+    return rawToken;
+  }
+
+  async function consumeOAuthState(rawToken: string): Promise<{ intent: "login" | "link"; userId: string | null }> {
+    const now = new Date();
+    const row = await db("oauth_login_states").where({ token_hash: hashToken(rawToken) }).first();
+    if (row) {
+      await db("oauth_login_states").where({ id: row.id }).del();
+    }
+    if (!row || new Date(row.expires_at) < now) {
+      throw new AppError("VALIDATION_ERROR", "This sign-in attempt has expired or is invalid. Please try again.");
+    }
+    return { intent: row.intent as "login" | "link", userId: row.user_id ? String(row.user_id) : null };
+  }
+
+  // Only ever logs in an account that was already explicitly linked
+  // (github_identities) -- a bare email match is deliberately NOT enough,
+  // so nobody can sign into an existing Marrow account just by controlling
+  // a GitHub account with the same email address.
+  async function loginViaGithub(githubId: string, meta: RequestMeta): Promise<LoginResult | { status: "not_linked" }> {
+    const identity = await db("github_identities").where({ github_id: githubId }).first();
+    if (!identity) {
+      return { status: "not_linked" };
+    }
+    const user = await db("users").where({ id: identity.user_id }).first();
+    if (!user) {
+      return { status: "not_linked" };
+    }
+    if (user.status === "pending_approval") {
+      throw new AppError("UNAUTHORIZED", "Your account is waiting for admin approval.");
+    }
+    if (user.status !== "active") {
+      throw new AppError("UNAUTHORIZED", "This account has been disabled.");
+    }
+    if (user.totp_enabled) {
+      return { status: "pending_totp", userId: user.id };
+    }
+    const rawSessionToken = await issueSession(user.id, meta);
+    return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
+  }
+
+  async function linkGithubIdentity(userId: string, githubId: string, githubLogin: string): Promise<void> {
+    const existing = await db("github_identities").where({ github_id: githubId }).first();
+    if (existing) {
+      if (existing.user_id === userId) {
+        await db("github_identities").where({ user_id: userId }).update({ github_login: githubLogin });
+        return;
+      }
+      throw new AppError("VALIDATION_ERROR", "This GitHub account is already linked to a different Marrow account.");
+    }
+    const ownAlready = await db("github_identities").where({ user_id: userId }).first();
+    if (ownAlready) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Your account is already linked to a different GitHub account. Unlink it first."
+      );
+    }
+    await db("github_identities").insert({
+      id: randomUUID(),
+      user_id: userId,
+      github_id: githubId,
+      github_login: githubLogin,
+      created_at: new Date()
+    });
+  }
+
+  async function unlinkGithubIdentity(userId: string): Promise<void> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user) {
+      throw new AppError("VALIDATION_ERROR", "User not found.");
+    }
+    if (!user.password_hash) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "GitHub is currently your only way to sign in -- set a password before unlinking it."
+      );
+    }
+    await db("github_identities").where({ user_id: userId }).del();
+  }
+
+  async function githubLinkStatus(userId: string): Promise<{ linked: boolean; githubLogin: string | null }> {
+    const row = await db("github_identities").where({ user_id: userId }).first();
+    return { linked: Boolean(row), githubLogin: row ? String(row.github_login) : null };
   }
 
   async function listPendingApprovals(): Promise<{ id: string; email: string; createdAt: Date }[]> {
@@ -1073,7 +1236,15 @@ export function createAuthFacade(db: Knex) {
     identifyPersonalToken,
     notificationsSeenAt,
     markNotificationsSeen,
-    identifyOAuthOwner
+    identifyOAuthOwner,
+    registerViaGithub,
+    pendingRegistrationContext,
+    mintOAuthState,
+    consumeOAuthState,
+    loginViaGithub,
+    linkGithubIdentity,
+    unlinkGithubIdentity,
+    githubLinkStatus
   };
 }
 

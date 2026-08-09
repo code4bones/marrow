@@ -21,6 +21,7 @@ import {
   type SessionIdentity
 } from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
+import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import {
   ADMIN_GRAPHQL_MUTATION_NAMES,
   createGatewayGraphqlServer,
@@ -1266,6 +1267,120 @@ async function handleAuthRoute(
     const result = await auth.registerConfirm(body.token, body.code);
     await service.recordSystemEvent("user.registration_pending", `Awaiting approval: ${result.email}`);
     send(200, { ok: true, data: result });
+    return true;
+  }
+
+  // Lets RegisterPage skip straight to the TOTP-enroll step for a
+  // GitHub-originated pending registration (registerViaGithub below) --
+  // otpauthUrl/secretBase32 travel in the response body, not the redirect
+  // URL, so the TOTP secret never ends up in browser history/referrers.
+  if (request.method === "GET" && requestPath === "/auth/register/pending") {
+    const token = queryString(requestUrl, "token");
+    if (!token) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "token is required.")));
+      return true;
+    }
+    const result = await auth.pendingRegistrationContext(token);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  // --- GitHub OAuth (D-MEMORY-...: option 2 -- see auth.ts's registerViaGithub/loginViaGithub) ---
+
+  if (request.method === "GET" && requestPath === "/auth/github/start") {
+    const intentParam = queryString(requestUrl, "intent");
+    const intent = intentParam === "link" ? "link" : "login";
+    if (intent === "link" && !sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "A session is required to link a GitHub account.")));
+      return true;
+    }
+    const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null);
+    const redirectUri = `${requestUrl.origin}/auth/github/callback`;
+    response.writeHead(302, { location: githubAuthorizeUrl(state, redirectUri) });
+    response.end();
+    return true;
+  }
+
+  if (request.method === "GET" && requestPath === "/auth/github/callback") {
+    const redirectTo = (path: string) => {
+      response.writeHead(302, { location: path });
+      response.end();
+    };
+
+    const code = queryString(requestUrl, "code");
+    const state = queryString(requestUrl, "state");
+    if (!code || !state) {
+      redirectTo(`/login?error=${encodeURIComponent("GitHub sign-in was cancelled or is missing parameters.")}`);
+      return true;
+    }
+
+    let intent: "login" | "link";
+    let linkUserId: string | null;
+    try {
+      ({ intent, userId: linkUserId } = await auth.consumeOAuthState(state));
+    } catch (error) {
+      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
+      return true;
+    }
+
+    let githubUser: { githubId: string; login: string; email: string };
+    try {
+      githubUser = await resolveGithubUser(code, `${requestUrl.origin}/auth/github/callback`);
+    } catch (error) {
+      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
+      return true;
+    }
+
+    if (intent === "link") {
+      try {
+        await auth.linkGithubIdentity(linkUserId!, githubUser.githubId, githubUser.login);
+        redirectTo("/profile?githubLinked=1");
+      } catch (error) {
+        redirectTo(`/profile?githubError=${encodeURIComponent(error instanceof Error ? error.message : "Could not link GitHub.")}`);
+      }
+      return true;
+    }
+
+    try {
+      const result = await auth.loginViaGithub(githubUser.githubId, {
+        userAgent: headerString(request, "user-agent"),
+        ip: clientIp(request)
+      });
+      if (result.status === "not_linked") {
+        const pendingResult = await auth.registerViaGithub(githubUser.email, githubUser.githubId, githubUser.login);
+        redirectTo(`/register?githubToken=${encodeURIComponent(pendingResult.token)}`);
+        return true;
+      }
+      if (result.status === "pending_totp") {
+        redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
+        return true;
+      }
+      response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
+      redirectTo("/projects");
+      return true;
+    } catch (error) {
+      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
+      return true;
+    }
+  }
+
+  if (request.method === "GET" && requestPath === "/auth/profile/github") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "A session is required.")));
+      return true;
+    }
+    const result = await auth.githubLinkStatus(sessionAuth.userId);
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
+  if (request.method === "POST" && requestPath === "/auth/profile/github/unlink") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "A session is required.")));
+      return true;
+    }
+    await auth.unlinkGithubIdentity(sessionAuth.userId);
+    send(200, { ok: true, data: { linked: false } });
     return true;
   }
 
