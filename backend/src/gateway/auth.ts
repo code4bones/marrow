@@ -599,7 +599,7 @@ export function createAuthFacade(db: Knex) {
 
   // --- GitHub sign-in/link (option 2, owner-approved) -----------------------
 
-  async function mintOAuthState(intent: "login" | "link", userId: string | null): Promise<string> {
+  async function mintOAuthState(intent: "login" | "link", userId: string | null, returnTo: string | null = null): Promise<string> {
     const rawToken = newOpaqueToken();
     const now = new Date();
     await db("oauth_login_states").insert({
@@ -607,13 +607,16 @@ export function createAuthFacade(db: Knex) {
       token_hash: hashToken(rawToken),
       intent,
       user_id: userId,
+      return_to: returnTo,
       created_at: now,
       expires_at: new Date(now.getTime() + OAUTH_STATE_TTL_MS)
     });
     return rawToken;
   }
 
-  async function consumeOAuthState(rawToken: string): Promise<{ intent: "login" | "link"; userId: string | null }> {
+  async function consumeOAuthState(
+    rawToken: string
+  ): Promise<{ intent: "login" | "link"; userId: string | null; returnTo: string | null }> {
     const now = new Date();
     const row = await db("oauth_login_states").where({ token_hash: hashToken(rawToken) }).first();
     if (row) {
@@ -622,7 +625,11 @@ export function createAuthFacade(db: Knex) {
     if (!row || new Date(row.expires_at) < now) {
       throw new AppError("VALIDATION_ERROR", "This sign-in attempt has expired or is invalid. Please try again.");
     }
-    return { intent: row.intent as "login" | "link", userId: row.user_id ? String(row.user_id) : null };
+    return {
+      intent: row.intent as "login" | "link",
+      userId: row.user_id ? String(row.user_id) : null,
+      returnTo: row.return_to ? String(row.return_to) : null
+    };
   }
 
   // Only ever logs in an account that was already explicitly linked
@@ -1127,6 +1134,25 @@ export function createAuthFacade(db: Knex) {
   }
 
   /**
+   * Updates only the redirect_uri on an existing credential, leaving
+   * client_id/secret untouched -- lets a connector whose callback URL was
+   * wrong or never captured (e.g. a credential created before per-connector
+   * redirect_uri tracking existed) be fixed in place, without forcing the
+   * user to delete it and re-paste a brand-new client_id/secret pair into
+   * the connector's own setup screen.
+   */
+  async function updateOAuthClientRedirectUri(
+    userId: string,
+    id: string,
+    redirectUri: string
+  ): Promise<OAuthClientRow> {
+    await requireOwnedOAuthClient(userId, id);
+    await db("oauth_clients").where({ id }).update({ redirect_uri: redirectUri });
+    const row = await db("oauth_clients").where({ id }).first();
+    return toOAuthClientRow(row as Record<string, unknown>);
+  }
+
+  /**
    * Resolves a personal-token bearer (`Authorization: Bearer <token>`) to the
    * owning user's identity -- same SessionIdentity shape identifyFromRequest
    * returns for a session cookie, so http-server.ts's scope-tier resolution
@@ -1272,6 +1298,7 @@ export function createAuthFacade(db: Knex) {
     oauthClientPublicInfo,
     createOAuthClient,
     regenerateOAuthClient,
+    updateOAuthClientRedirectUri,
     deleteOAuthClient,
     identifyPersonalToken,
     notificationsSeenAt,

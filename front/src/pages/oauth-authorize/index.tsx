@@ -1,7 +1,8 @@
-import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
+import { Alert, Button, Divider, Form, Input, Spin, Typography } from 'antd';
+import { GithubOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
 import { API_BASE_URL } from '../../shared/config/env';
@@ -46,6 +47,7 @@ const OAUTH_PARAM_NAMES = [
  */
 export function OAuthAuthorizePage() {
   const { t } = useTranslation('auth');
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const status = useAuthStore((s) => s.status);
   const bootstrapNeeded = useAuthStore((s) => s.bootstrapNeeded);
@@ -134,6 +136,14 @@ export function OAuthAuthorizePage() {
       }
     };
 
+    // returnTo brings the user straight back to this exact consent screen
+    // (client_id/redirect_uri/code_challenge/state and all) after the
+    // GitHub round trip -- safeGithubReturnTo on the backend only ever
+    // accepts a /oauth-authorize path back, never an arbitrary redirect.
+    const githubStartUrl = `${API_BASE_URL}/auth/oauth/github/start?intent=login&returnTo=${encodeURIComponent(
+      `${location.pathname}${location.search}`
+    )}`;
+
     return (
       <CenteredCard>
         <Title level={4} style={{ marginBottom: 4 }}>
@@ -143,6 +153,10 @@ export function OAuthAuthorizePage() {
           {t('wantsToConnect', { client: displayName })}
         </Text>
         {loginError && <Alert type="error" message={loginError} style={{ marginBottom: 16 }} showIcon />}
+        <Button icon={<GithubOutlined />} block href={githubStartUrl} style={{ marginBottom: 8 }}>
+          {t('signInWithGithub')}
+        </Button>
+        <Divider style={{ margin: '8px 0 16px' }}>{t('orDivider')}</Divider>
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
           <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
             <Input type="email" autoComplete="username" autoFocus />

@@ -149,6 +149,8 @@ interface AuthState {
   createOAuthClient: (label: string, redirectUri: string) => Promise<OAuthClientSecretResult>;
   /** Rotates client_id AND client_secret for one specific credential (by id), invalidating only that credential's previous pair — every other credential keeps working unchanged. clientSecret is returned exactly once (shown-once); clientId is not secret and stays visible via fetchOAuthClients afterward. */
   regenerateOAuthClient: (id: string) => Promise<OAuthClientSecretResult>;
+  /** Fixes a credential's redirect_uri in place, leaving its clientId/secret untouched — for a connector whose callback was wrong or never captured at creation time. */
+  updateOAuthClientRedirectUri: (id: string, redirectUri: string) => Promise<OAuthClient>;
   /** Permanently removes one credential; every other credential is unaffected. */
   deleteOAuthClient: (id: string) => Promise<void>;
 
@@ -200,6 +202,21 @@ async function deleteRequest(path: string, fallbackError: string): Promise<void>
   if (!response.ok || responseBody.ok === false) {
     throw new Error(responseBody.error?.message ?? fallbackError);
   }
+}
+
+/** PATCH helper, same shape as postJson — used only by updateOAuthClientRedirectUri (the first endpoint in this store to need one). */
+async function patchJson<T>(path: string, body: unknown, fallbackError: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  const responseBody = await readJson(response);
+  if (!response.ok || responseBody.ok === false) {
+    throw new Error(responseBody.error?.message ?? fallbackError);
+  }
+  return responseBody.data as T;
 }
 
 function requireUser(data: { status: string; user?: AuthUser }): AuthUser | null {
@@ -437,6 +454,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     ),
 
   deleteOAuthClient: (id) => deleteRequest(`/auth/profile/oauth-clients/${id}`, 'Could not delete this OAuth connector credential.'),
+
+  updateOAuthClientRedirectUri: (id, redirectUri) =>
+    patchJson<OAuthClient>(`/auth/profile/oauth-clients/${id}`, { redirectUri }, 'Could not update this credential’s redirect URI.'),
 
   fetchNotificationsSeenAt: async () => {
     const response = await fetch(`${API_BASE_URL}/auth/profile/notifications`, { credentials: 'include' });

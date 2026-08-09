@@ -1,5 +1,5 @@
 import { Alert, Button, Empty, Input, Popconfirm, Spin, Typography } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
@@ -56,6 +56,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
   const createOAuthClient = useAuthStore((s) => s.createOAuthClient);
   const regenerateOAuthClient = useAuthStore((s) => s.regenerateOAuthClient);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
+  const updateOAuthClientRedirectUri = useAuthStore((s) => s.updateOAuthClientRedirectUri);
 
   const [allClients, setAllClients] = useState<OAuthClient[] | null>(null);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
@@ -68,6 +69,11 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
   const [newRedirectUri, setNewRedirectUri] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRedirectUri, setEditRedirectUri] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -138,6 +144,31 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       setError(err instanceof Error ? err.message : t('couldNotRegenerateCredential'));
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const startEditRedirectUri = (client: OAuthClient) => {
+    setEditError(null);
+    setEditingId(client.id);
+    setEditRedirectUri(client.redirectUri ?? '');
+  };
+
+  const cancelEditRedirectUri = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const saveEditRedirectUri = async (id: string) => {
+    setEditError(null);
+    setEditSaving(true);
+    try {
+      await updateOAuthClientRedirectUri(id, editRedirectUri.trim());
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : t('couldNotUpdateRedirectUri'));
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -229,9 +260,45 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
               </>
             )}
 
-            {client.redirectUri && (
+            {editingId === client.id ? (
+              <div style={{ marginBottom: 12 }}>
+                {editError && <Alert type="error" message={editError} style={{ marginBottom: 8 }} showIcon />}
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
+                  {t('redirectUriLabel')}
+                </Text>
+                <Input
+                  placeholder="https://…/callback"
+                  value={editRedirectUri}
+                  onChange={(e) => setEditRedirectUri(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={editSaving}
+                    disabled={!editRedirectUri.trim()}
+                    onClick={() => void saveEditRedirectUri(client.id)}
+                  >
+                    {t('save')}
+                  </Button>
+                  <Button size="small" disabled={editSaving} onClick={cancelEditRedirectUri}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </div>
+            ) : (
               <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
-                {t('redirectUriLabel')} <Text code>{client.redirectUri}</Text>
+                {t('redirectUriLabel')}{' '}
+                {client.redirectUri ? <Text code>{client.redirectUri}</Text> : <Text type="warning">{t('redirectUriNotSet')}</Text>}{' '}
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<EditOutlined />}
+                  title={t('editRedirectUri')}
+                  disabled={busyId !== null && busyId !== client.id}
+                  onClick={() => startEditRedirectUri(client)}
+                />
               </Text>
             )}
 

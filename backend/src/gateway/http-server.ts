@@ -1172,6 +1172,27 @@ async function handleAuthRoute(
     return true;
   }
 
+  // Fixes a credential's redirect_uri in place (client_id/secret untouched)
+  // -- lets a connector whose callback was wrong or never captured (e.g. a
+  // legacy credential from before per-connector redirect_uri tracking) be
+  // repaired without forcing the user to delete it and re-paste a brand-new
+  // client_id/secret into the connector's own setup screen.
+  if (request.method === "PATCH" && oauthClientMatch) {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const [, id] = oauthClientMatch;
+    const body = (await readJson(request)) as { redirectUri?: unknown };
+    if (typeof body.redirectUri !== "string" || !body.redirectUri.trim()) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "redirectUri is required.")));
+      return true;
+    }
+    const result = await auth.updateOAuthClientRedirectUri(sessionAuth.userId, id, body.redirectUri.trim());
+    send(200, { ok: true, data: result });
+    return true;
+  }
+
   // --- Notifications unread state (T-MEMORY-051) ---
   // Session-only, same convention as the personal-token pair just above --
   // no MCP tool or GraphQL mutation manages this. GET never mutates
@@ -1359,6 +1380,15 @@ async function handleAuthRoute(
     return `${publicUrl}/auth/oauth/github/callback`;
   }
 
+  // Only ever a same-origin relative path into the SPA's own
+  // /oauth-authorize route -- rejects absolute URLs, protocol-relative
+  // ("//evil.com") paths, and anything else, so an attacker can't use
+  // returnTo to redirect a victim's post-GitHub-login session anywhere but
+  // back into this app's own consent screen.
+  function safeGithubReturnTo(value: string | null | undefined): string | null {
+    return value && value.startsWith("/oauth-authorize?") ? value : null;
+  }
+
   if (request.method === "GET" && requestPath === "/auth/oauth/github/start") {
     const intentParam = queryString(requestUrl, "intent");
     const intent = intentParam === "link" ? "link" : "login";
@@ -1367,8 +1397,15 @@ async function handleAuthRoute(
       return true;
     }
     const redirectUri = githubRedirectUri();
-    const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null);
-    logGithubOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri });
+    // returnTo lets /oauth-authorize (the SSO landing page for MCP
+    // connectors like Claude.ai) offer "Sign in with GitHub" without losing
+    // its client_id/redirect_uri/code_challenge/state query params across
+    // the GitHub round trip -- safeGithubReturnTo restricts it to that one
+    // page (never an arbitrary path/host) so this can't become an
+    // open-redirect primitive.
+    const returnTo = intent === "login" ? safeGithubReturnTo(queryString(requestUrl, "returnTo")) : null;
+    const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo);
+    logGithubOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri, returnTo });
     response.writeHead(302, { location: githubAuthorizeUrl(state, redirectUri) });
     response.end();
     return true;
@@ -1390,8 +1427,9 @@ async function handleAuthRoute(
 
     let intent: "login" | "link";
     let linkUserId: string | null;
+    let returnTo: string | null;
     try {
-      ({ intent, userId: linkUserId } = await auth.consumeOAuthState(state));
+      ({ intent, userId: linkUserId, returnTo } = await auth.consumeOAuthState(state));
     } catch (error) {
       logGithubOauth("callback", { outcome: "invalid_state", error: error instanceof Error ? error.message : String(error) });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
@@ -1447,9 +1485,9 @@ async function handleAuthRoute(
         redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
         return true;
       }
-      logGithubOauth("callback", { intent, outcome: "session", githubId: githubUser.githubId, userId: result.user.id });
+      logGithubOauth("callback", { intent, outcome: "session", githubId: githubUser.githubId, userId: result.user.id, returnTo });
       response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
-      redirectTo("/projects");
+      redirectTo(safeGithubReturnTo(returnTo) ?? "/projects");
       return true;
     } catch (error) {
       logGithubOauth("callback", {
