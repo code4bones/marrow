@@ -9,6 +9,7 @@ import {
 import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ShareProjectButton } from '../../features/project/ShareProjectButton';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
@@ -51,6 +52,29 @@ function StatTitle({ label, newCount }: { label: string; newCount: number }) {
         </Tooltip>
       )}
     </span>
+  );
+}
+
+/** Makes a stat card act like a link into that section (tasks/decisions/memory/...), keyboard-accessible. */
+function ClickableStat({ to, children }: { to: string; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const activate = () => navigate(to);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activate();
+        }
+      }}
+      className="project-overview-stat"
+      style={{ cursor: 'pointer', borderRadius: 6, padding: 4, margin: -4 }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -203,58 +227,73 @@ export function ProjectOverview({ slug }: { slug: string }) {
             {s.project.description}
           </Typography.Text>
         )}
+        <style>{`.project-overview-stat:hover { background: rgba(255, 255, 255, 0.06); }`}</style>
         <Row gutter={24}>
           <Col>
-            <Statistic
-              // Badge intentionally omitted here (kept on "All tasks" below
-              // instead): newTaskCount counts ALL task-related activity,
-              // completions included, which pulls this exact number in the
-              // opposite direction of "open" -- pairing it with this stat
-              // specifically read as if N tasks had just become open.
-              title={<StatTitle label={t('openTasks')} newCount={0} />}
-              value={counts.openTasks}
-              prefix={<CalendarOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
+            <ClickableStat to={`/projects/${slug}/tasks`}>
+              <Statistic
+                // Badge intentionally omitted here (kept on "All tasks" below
+                // instead): newTaskCount counts ALL task-related activity,
+                // completions included, which pulls this exact number in the
+                // opposite direction of "open" -- pairing it with this stat
+                // specifically read as if N tasks had just become open.
+                title={<StatTitle label={t('openTasksStat')} newCount={0} />}
+                value={counts.openTasks}
+                prefix={<CalendarOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+            </ClickableStat>
           </Col>
           <Col>
-            <Statistic title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
+            <ClickableStat to={`/projects/${slug}/tasks`}>
+              <Statistic title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
+            </ClickableStat>
           </Col>
           <Col>
-            <Statistic
-              title={<StatTitle label={t('decisions')} newCount={newDecisionCount} />}
-              value={counts.decisions}
-              prefix={<ApartmentOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
+            <ClickableStat to={`/projects/${slug}/decisions`}>
+              <Statistic
+                title={<StatTitle label={t('decisions')} newCount={newDecisionCount} />}
+                value={counts.decisions}
+                prefix={<ApartmentOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+            </ClickableStat>
           </Col>
           <Col>
-            <Statistic
-              title={<StatTitle label={t('artifacts')} newCount={newArtifactCount} />}
-              value={counts.artifacts}
-              prefix={<DatabaseOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
+            <ClickableStat to={`/projects/${slug}/artifacts`}>
+              <Statistic
+                title={<StatTitle label={t('artifacts')} newCount={newArtifactCount} />}
+                value={counts.artifacts}
+                prefix={<DatabaseOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+            </ClickableStat>
           </Col>
           <Col>
-            <Statistic
-              title={<StatTitle label={t('events')} newCount={newEventCount} />}
-              value={counts.events}
-              prefix={<ThunderboltOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
+            <ClickableStat to={`/projects/${slug}/events`}>
+              <Statistic
+                title={<StatTitle label={t('events')} newCount={newEventCount} />}
+                value={counts.events}
+                prefix={<ThunderboltOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+            </ClickableStat>
           </Col>
           <Col>
-            <Statistic title={<StatTitle label={t('memory')} newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
+            <ClickableStat to={`/projects/${slug}/memory`}>
+              <Statistic title={<StatTitle label={t('memory')} newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
+            </ClickableStat>
           </Col>
           {counts.openTasks > 0 && (
             <Col>
-              <Statistic
-                title={t('faults')}
-                value={0}
-                prefix={<BugOutlined />}
-                valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
-              />
+              <ClickableStat to={`/projects/${slug}/faults`}>
+                <Statistic
+                  title={t('faults')}
+                  value={0}
+                  prefix={<BugOutlined />}
+                  valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
+                />
+              </ClickableStat>
             </Col>
           )}
         </Row>

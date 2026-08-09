@@ -10,13 +10,10 @@ import { rootKindOptions, type RootKind } from './rootKind';
 
 type ViewMode = 'timeline' | 'tree';
 
-function depthOptions(t: (key: string) => string) {
-  return [
-    { label: t('depth1'), value: 1 },
-    { label: t('depth2'), value: 2 },
-    { label: t('depth3'), value: 3 },
-  ];
-}
+// Owner request: no user-facing depth control -- always request the
+// backend's actual maximum (graph.mixin.ts's projectGraph clamps depth to
+// [1, 5] via boundedInteger) rather than the old UI-imposed cap of 3.
+const MAX_LINK_DEPTH = 5;
 
 interface Props {
   slug: string;
@@ -31,7 +28,7 @@ interface Props {
 export function ProjectGraphView({ slug }: Props) {
   const { t } = useTranslation('projects');
   const [view, setView] = useState<ViewMode>('timeline');
-  const [depth, setDepth] = useState(2);
+  const depth = MAX_LINK_DEPTH;
   // D-MEMORY-024: what the baseline ribbon lists — decisions by default
   // (D-MEMORY-014's original quiet default), switchable to any kind.
   // Timeline-only -- GraphTree's root is always the project itself, so this
@@ -97,14 +94,6 @@ export function ProjectGraphView({ slug }: Props) {
               )}
             </>
           )}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('linkDepth')}</Typography.Text>
-          <Select
-            value={depth}
-            onChange={setDepth}
-            options={depthOptions(t)}
-            size="small"
-            style={{ width: 100 }}
-          />
           {graph && (
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
               {t('nodesAndEdges', { nodes: nodes.length, edges: edges.length })}
