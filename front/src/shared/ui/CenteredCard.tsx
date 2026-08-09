@@ -53,10 +53,13 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
            columns, not width) so it doesn't need a guessed pixel width and
            never affects line height -- only horizontal growth happens, so the
            form below never shifts vertically. All 7 suffixes plus the tagline
-           and the group fade share one 8s timeline (0 delay, same duration)
-           so they stay in lockstep forever: hold compact -> cascade-bloom
-           left to right -> hold expanded (tagline fades in, then out) ->
-           snap back to "MARROW" -> hold -> fade out together -> pause -> loop. */
+           share one 8s timeline (0 delay, same duration) so they stay in
+           lockstep forever: hold compact -> cascade-bloom left to right ->
+           hold expanded (tagline fades in, then out) -> snap back to
+           "MARROW" -> hold -> loop straight back into the next bloom. No
+           fade-to-invisible step: the collapsed state at the end of one lap
+           (100%) is pixel-identical to the collapsed state at the start of
+           the next (0%), so the loop point is seamless without one. */
         .marrow-line { white-space: nowrap; }
         .marrow-grow {
           display: inline-grid;
@@ -80,7 +83,6 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           flex-direction: column;
           align-items: center;
           gap: 8px;
-          animation: marrow-group-cycle 8s ease-in-out infinite;
         }
 
         @keyframes marrow-grow-m    { 0%, 6%  { grid-template-columns: 0fr; } 10%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
@@ -96,13 +98,7 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           40%, 55% { opacity: 0.75; }
           60%, 100% { opacity: 0; }
         }
-        @keyframes marrow-group-cycle {
-          0%, 85% { opacity: 1; }
-          92%, 100% { opacity: 0; }
-        }
-
         @media (prefers-reduced-motion: reduce) {
-          .marrow-anim-root { animation: none; }
           .marrow-grow { grid-template-columns: 1fr; animation: none; }
           .marrow-tagline { opacity: 0.75; animation: none; }
         }
