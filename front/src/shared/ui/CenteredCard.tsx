@@ -1,4 +1,4 @@
-import { Card, Typography } from 'antd';
+import { Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { MarrowMark } from './MarrowMark';
 
@@ -30,7 +30,7 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           MARROW
         </Typography.Text>
       </div>
-      <Card style={{ width }}>{children}</Card>
+      <div style={{ width }}>{children}</div>
     </div>
   );
 }

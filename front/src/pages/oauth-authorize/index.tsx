@@ -1,5 +1,5 @@
 import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
@@ -61,6 +61,30 @@ export function OAuthAuthorizePage() {
   const clientId = searchParams.get('client_id') ?? '';
   const redirectUri = searchParams.get('redirect_uri') ?? '';
 
+  // T-MEMORY-059 (whitebox pentest finding #4): show a recognizable app name
+  // + the redirect host the code will actually be sent to, not the raw
+  // opaque client_id -- informed consent needs something a human can
+  // recognize. Public/unauthenticated endpoint, safe to call before login.
+  const [clientInfo, setClientInfo] = useState<{ label: string | null; redirectUri: string | null } | null>(null);
+  useEffect(() => {
+    if (!clientId) {
+      return;
+    }
+    fetch(`${API_BASE_URL}/oauth/client_info?client_id=${encodeURIComponent(clientId)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { data?: { label: string | null; redirectUri: string | null } } | null) => setClientInfo(body?.data ?? null))
+      .catch(() => setClientInfo(null));
+  }, [clientId]);
+
+  const redirectHost = (() => {
+    try {
+      return new URL(clientInfo?.redirectUri || redirectUri).host;
+    } catch {
+      return null;
+    }
+  })();
+  const displayName = clientInfo?.label || redirectHost || clientId || t('anApplication');
+
   const oauthParams = (): Record<string, string> => {
     const params: Record<string, string> = {};
     for (const name of OAUTH_PARAM_NAMES) {
@@ -116,7 +140,7 @@ export function OAuthAuthorizePage() {
           {t('signInToMarrow')}
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          {t('wantsToConnect', { client: clientId || t('anApplication') })}
+          {t('wantsToConnect', { client: displayName })}
         </Text>
         {loginError && <Alert type="error" message={loginError} style={{ marginBottom: 16 }} showIcon />}
         <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
@@ -175,11 +199,16 @@ export function OAuthAuthorizePage() {
   return (
     <CenteredCard width={440}>
       <Title level={4} style={{ marginBottom: 4 }}>
-        {t('authorizeApplication', { client: clientId || t('application') })}
+        {t('authorizeApplication', { client: displayName })}
       </Title>
-      <Paragraph type="secondary" style={{ marginBottom: 24 }}>
-        {t('marrowWantsToLet')} <strong>{clientId || t('thisApplication')}</strong> {t('accessYourAccount', { email: user?.email, role: user?.role })}
+      <Paragraph type="secondary" style={{ marginBottom: 4 }}>
+        {t('marrowWantsToLet')} <strong>{displayName}</strong> {t('accessYourAccount', { email: user?.email, role: user?.role })}
       </Paragraph>
+      {redirectHost && (
+        <Paragraph type="secondary" style={{ marginBottom: 24, fontSize: 12.5 }}>
+          {t('redirectsTo', { host: redirectHost })}
+        </Paragraph>
+      )}
       {decisionError && <Alert type="error" message={decisionError} style={{ marginBottom: 16 }} showIcon />}
       <div style={{ display: 'flex', gap: 12 }}>
         <Button type="primary" block loading={deciding} onClick={onApprove}>
