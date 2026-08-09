@@ -7,6 +7,7 @@ import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
 import { API_BASE_URL } from '../../shared/config/env';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
+import { LanguagePicker } from '../../shared/ui/LanguagePicker';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
@@ -105,6 +106,7 @@ export function LoginPage() {
             </Button>
           </Form.Item>
         </Form>
+        <LanguagePicker />
       </CenteredCard>
     );
   }
@@ -138,6 +140,7 @@ export function LoginPage() {
       <Text type="secondary" style={{ fontSize: 13 }}>
         {t('dontHaveAccount')} <Link to="/register">{t('register')}</Link>
       </Text>
+      <LanguagePicker />
     </CenteredCard>
   );
 }

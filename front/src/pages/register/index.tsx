@@ -1,10 +1,11 @@
-import { Alert, Button, Form, Input, Select, Spin, Typography } from 'antd';
+import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
+import { LanguagePicker } from '../../shared/ui/LanguagePicker';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
@@ -19,27 +20,6 @@ interface EnrollState {
   token: string;
   otpauthUrl: string;
   secretBase32: string;
-}
-
-// Nobody's signed in yet at this point, so the profile page's language
-// setting (LanguageSection) isn't reachable -- a first-time visitor who
-// doesn't read English needs a way to switch before they can even read the
-// form.
-function LanguagePicker() {
-  const { i18n } = useTranslation();
-  return (
-    <Select
-      size="small"
-      variant="borderless"
-      value={i18n.language?.startsWith('ru') ? 'ru' : 'en'}
-      onChange={(value: string) => void i18n.changeLanguage(value)}
-      options={[
-        { value: 'en', label: 'English' },
-        { value: 'ru', label: 'Русский' },
-      ]}
-      style={{ width: 100 }}
-    />
-  );
 }
 
 export function RegisterPage() {
@@ -141,9 +121,7 @@ export function RegisterPage() {
       <Text type="secondary" style={{ fontSize: 13 }}>
         {t('alreadyHaveAccount')} <Link to="/login">{t('signIn')}</Link>
       </Text>
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-        <LanguagePicker />
-      </div>
+      <LanguagePicker />
     </CenteredCard>
   );
 }
