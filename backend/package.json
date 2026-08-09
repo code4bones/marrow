@@ -1,6 +1,6 @@
 {
   "name": "@deadragdoll/marrow-back",
-  "version": "1.49.1",
+  "version": "1.49.2",
   "description": "Local-first MCP server for project-oriented agent memory.",
   "type": "module",
   "main": "dist/src/index.js",
