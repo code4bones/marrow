@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Card, Popconfirm, Select, Table, Tag, message } from 'antd';
+import { Alert, Card, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ export function UsersPage() {
   const fetchUsers = useAuthStore((s) => s.fetchUsers);
   const setUserRole = useAuthStore((s) => s.setUserRole);
   const setUserStatus = useAuthStore((s) => s.setUserStatus);
+  const deleteUser = useAuthStore((s) => s.deleteUser);
 
   const [users, setUsers] = useState<AccountUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +65,19 @@ export function UsersPage() {
     }
   };
 
+  const removeUser = async (id: string) => {
+    setActingId(id);
+    try {
+      await deleteUser(id);
+      message.success(t('userDeleted'));
+      load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : t('couldNotDeleteUser'));
+    } finally {
+      setActingId(null);
+    }
+  };
+
   const columns: ColumnsType<AccountUser> = [
     { title: t('email'), dataIndex: 'email' },
     {
@@ -94,15 +108,25 @@ export function UsersPage() {
     {
       title: '',
       key: 'actions',
-      width: 140,
+      width: 200,
       render: (_, row) =>
         row.id === currentUser?.id ? null : (
-          <Popconfirm
-            title={row.status === 'active' ? t('disableAccountConfirm') : t('enableAccountConfirm')}
-            onConfirm={() => void changeStatus(row.id, row.status === 'active' ? 'disabled' : 'active')}
-          >
-            <a>{row.status === 'active' ? t('disable') : t('enable')}</a>
-          </Popconfirm>
+          <Space size="middle">
+            <Popconfirm
+              title={row.status === 'active' ? t('disableAccountConfirm') : t('enableAccountConfirm')}
+              onConfirm={() => void changeStatus(row.id, row.status === 'active' ? 'disabled' : 'active')}
+            >
+              <a>{row.status === 'active' ? t('disable') : t('enable')}</a>
+            </Popconfirm>
+            <Popconfirm
+              title={t('deleteAccountConfirm')}
+              description={t('deleteAccountWarning')}
+              okButtonProps={{ danger: true, loading: actingId === row.id }}
+              onConfirm={() => void removeUser(row.id)}
+            >
+              <a style={{ color: '#ff4d4f' }}>{t('delete')}</a>
+            </Popconfirm>
+          </Space>
         ),
     },
   ];

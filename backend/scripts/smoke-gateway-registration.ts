@@ -301,6 +301,95 @@ try {
   );
   console.log("ok - auth login after reject gives the disabled message");
 
+  // --- admin users management: list/role/status/delete ---
+
+  const usersList = await fetch(`${started.url}/auth/admin/users`, { headers: { cookie: adminCookie! } });
+  assert(usersList.status === 200, `GET /auth/admin/users failed. Status: ${usersList.status}`);
+  const usersListBody = (await usersList.json()) as { data: { users?: Array<{ id: string }> } | Array<{ id: string }> };
+  const usersListRows = Array.isArray(usersListBody.data) ? usersListBody.data : (usersListBody.data.users ?? []);
+  assert(usersListRows.some((row) => row.id === rejectedUserId), "GET /auth/admin/users did not include the disabled account.");
+  console.log("ok - GET /auth/admin/users lists active+disabled accounts");
+
+  const roleChange = await fetch(`${started.url}/auth/admin/users/${rejectedUserId}/role`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: adminCookie! },
+    body: JSON.stringify({ role: "admin" })
+  });
+  assert(roleChange.status === 200, `POST .../role failed. Status: ${roleChange.status}`);
+  const roleChangedRow = await db("users").where({ id: rejectedUserId }).first();
+  assert(roleChangedRow.role === "admin", "role change did not persist.");
+  const roleChangeBack = await fetch(`${started.url}/auth/admin/users/${rejectedUserId}/role`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: adminCookie! },
+    body: JSON.stringify({ role: "member" })
+  });
+  assert(roleChangeBack.status === 200, `POST .../role (revert) failed. Status: ${roleChangeBack.status}`);
+  console.log("ok - POST /auth/admin/users/:id/role changes a target user's role");
+
+  // A temporary member with a real session, used to prove (a) a non-admin
+  // session can't delete a user, and (b) deleting a user cascades away their
+  // own dependent rows (sessions here) via the FK ON DELETE CASCADE already
+  // declared on every users.id reference -- not something deleteUser itself
+  // has to clean up by hand.
+  const tempMemberId = randomUUID();
+  const tempMemberEmail = `gateway-registration-smoke-temp-${unique}@example.test`;
+  const tempMemberPassword = "smoke-temp-member-password-1";
+  await db("users").insert({
+    id: tempMemberId,
+    email: tempMemberEmail,
+    password_hash: await hashPassword(tempMemberPassword),
+    email_verified_at: new Date(),
+    totp_enabled: false,
+    role: "member",
+    status: "active",
+    created_at: new Date(),
+    updated_at: new Date()
+  });
+  const tempMemberLogin = await fetch(`${started.url}/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: tempMemberEmail, password: tempMemberPassword })
+  });
+  assert(tempMemberLogin.status === 200, `Temp member login failed. Status: ${tempMemberLogin.status}`);
+  const tempMemberCookie = sessionCookieFrom(tempMemberLogin);
+  assert(tempMemberCookie, "Temp member login did not set a session cookie.");
+  const sessionsBeforeDelete = await db("sessions").where({ user_id: tempMemberId }).select("id");
+  assert(sessionsBeforeDelete.length > 0, "Temp member login should have created a sessions row.");
+
+  const deleteByNonAdmin = await fetch(`${started.url}/auth/admin/users/${rejectedUserId}`, {
+    method: "DELETE",
+    headers: { cookie: tempMemberCookie! }
+  });
+  assert(deleteByNonAdmin.status === 401, `DELETE by a non-admin session was not rejected. Status: ${deleteByNonAdmin.status}`);
+  console.log("ok - DELETE /auth/admin/users/:id requires an admin session");
+
+  const deleteSelf = await fetch(`${started.url}/auth/admin/users/${adminUserId}`, {
+    method: "DELETE",
+    headers: { cookie: adminCookie! }
+  });
+  assert(deleteSelf.status !== 200, "Admin should not be able to delete their own account through this endpoint.");
+  const adminStillThere = await db("users").where({ id: adminUserId }).first();
+  assert(adminStillThere, "Admin row should not have been deleted by the self-delete attempt.");
+  console.log("ok - DELETE /auth/admin/users/:id refuses self-delete");
+
+  const deleteTempMember = await fetch(`${started.url}/auth/admin/users/${tempMemberId}`, {
+    method: "DELETE",
+    headers: { cookie: adminCookie! }
+  });
+  assert(deleteTempMember.status === 200, `DELETE /auth/admin/users/:id failed. Status: ${deleteTempMember.status}`);
+  const tempMemberAfterDelete = await db("users").where({ id: tempMemberId }).first();
+  assert(!tempMemberAfterDelete, "Deleted user's row should no longer exist.");
+  const sessionsAfterDelete = await db("sessions").where({ user_id: tempMemberId }).select("id");
+  assert(sessionsAfterDelete.length === 0, "Deleting a user should cascade-delete their sessions (ON DELETE CASCADE).");
+  console.log("ok - DELETE /auth/admin/users/:id deletes the account and cascades its sessions");
+
+  const deleteUnknown = await fetch(`${started.url}/auth/admin/users/${randomUUID()}`, {
+    method: "DELETE",
+    headers: { cookie: adminCookie! }
+  });
+  assert(deleteUnknown.status === 404, `Deleting an unknown user id should 404. Status: ${deleteUnknown.status}`);
+  console.log("ok - DELETE /auth/admin/users/:id 404s cleanly for an unknown id");
+
   // --- expired register token ---
 
   const expiredRegister = await fetch(`${started.url}/auth/register`, {

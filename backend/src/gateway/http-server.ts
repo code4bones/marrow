@@ -1532,6 +1532,19 @@ async function handleAuthRoute(
     return true;
   }
 
+  const deleteUserMatch = requestPath.match(/^\/auth\/admin\/users\/([^/]+)$/);
+  if (request.method === "DELETE" && deleteUserMatch) {
+    if (!sessionAuth || sessionAuth.role !== "admin") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to delete a user.")));
+      return true;
+    }
+    const [, targetUserId] = deleteUserMatch;
+    const deleted = await auth.deleteUser(sessionAuth.userId, targetUserId);
+    await service.recordSystemEvent("user.deleted", `User deleted: ${deleted.email}`, targetUserId);
+    send(200, { ok: true, data: { id: targetUserId, email: deleted.email } });
+    return true;
+  }
+
   return false;
 }
 

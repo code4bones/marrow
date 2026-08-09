@@ -769,6 +769,23 @@ export function createAuthFacade(db: Knex) {
     await db("users").where({ id: targetUserId }).update({ status, updated_at: new Date() });
   }
 
+  // Hard delete. Unlike setUserStatus (disable), this is unconditional --
+  // always runs the self/last-admin guard, never skips it based on current
+  // state. Every FK to users.id (sessions, tokens, github_identities,
+  // oauth_login_states, project_members, admin_elevations, git_credentials,
+  // personal/oauth-client owner_user_id) is already declared ON DELETE
+  // CASCADE or SET NULL in its own migration, so this one DELETE cleans up
+  // everywhere without needing to touch those tables here.
+  async function deleteUser(actingUserId: string, targetUserId: string): Promise<{ email: string }> {
+    const target = await db("users").where({ id: targetUserId }).first();
+    if (!target) {
+      throw new AppError("NOT_FOUND", "User not found.");
+    }
+    await assertNotSelfOrLastAdmin(actingUserId, targetUserId, target.role);
+    await db("users").where({ id: targetUserId }).del();
+    return { email: target.email };
+  }
+
   // "Bootstrapped" means a usable admin exists — role=admin AND a password
   // actually set. A CLI-created (`pm3m admin create`) admin row with
   // password_hash still null does NOT count: that account can't log in yet,
@@ -1239,6 +1256,7 @@ export function createAuthFacade(db: Knex) {
     listUsers,
     setUserRole,
     setUserStatus,
+    deleteUser,
     requestElevation,
     consumeElevation,
     personalTokenStatus,

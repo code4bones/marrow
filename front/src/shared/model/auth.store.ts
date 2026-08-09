@@ -164,6 +164,7 @@ interface AuthState {
   fetchUsers: () => Promise<AccountUser[]>;
   setUserRole: (id: string, role: 'admin' | 'member') => Promise<void>;
   setUserStatus: (id: string, status: 'active' | 'disabled') => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
 }
 
 async function readJson(response: Response): Promise<{ ok: boolean; data?: unknown; error?: { message?: string } }> {
@@ -494,5 +495,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setUserStatus: async (id, status) => {
     await postJson(`/auth/admin/users/${id}/status`, { status }, 'Could not change this user’s status.');
+  },
+
+  deleteUser: async (id) => {
+    await deleteRequest(`/auth/admin/users/${id}`, 'Could not delete this user.');
   },
 }));
