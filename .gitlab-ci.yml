@@ -30,7 +30,7 @@ stages:
 
 variables:
   BACKEND_IMAGE_TAG: "$BACKEND_CONTAINER_NAME-build:$CI_PIPELINE_ID"
-  FRONT_IMAGE_TAG: "pmemui-build:$CI_PIPELINE_ID"
+  FRONT_IMAGE_TAG: "marrow-front-build:$CI_PIPELINE_ID"
 
 # --- backend/ (project-memory-mcp / pm3m gateway) ---
 
