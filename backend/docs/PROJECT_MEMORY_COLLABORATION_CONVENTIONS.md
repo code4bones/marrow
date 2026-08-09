@@ -112,6 +112,17 @@ Good examples:
 
 Do not use decisions for temporary notes.
 
+Corrections/clarifications to something already recorded in a task's own
+`scope`/`acceptance` -- e.g. superseding a canon, wording, or requirement
+the task was originally scoped against -- belong in a `decision`, not in a
+task note. A decision is found independently of any task's status; a note
+attached to a task that later closes is easy to miss (`task.get` alone
+does not show note bodies, and nobody re-reads a closed task's notes
+unprompted). Record the decision, then optionally add one short task note
+linking to it -- do not rely on the note alone to carry the correction.
+(I-MEMORY-065: exactly this pattern -- three notes correcting a task's
+tagline canon sat on the task itself and were still unseen at close.)
+
 ### `task.*`
 
 Use for executable agent work.
