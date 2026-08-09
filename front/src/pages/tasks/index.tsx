@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Badge, Select, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { CreateTaskDrawer } from '../../features/task/CreateTaskDrawer';
@@ -13,6 +13,7 @@ import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
+import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { Paginated, Task } from '../../shared/model/types';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -62,6 +63,14 @@ export function TasksPage() {
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
+  // Owner's expectation: opening this section clears its own "new since
+  // last viewed" badge on Project Overview, without a separate mark-as-read
+  // step. Marked on every mount (including slug changes when switching
+  // projects), not debounced -- markSeen is a cheap local-store write.
+  const markSeen = useSectionSeenStore((s) => s.markSeen);
+  useEffect(() => {
+    if (slug) markSeen(slug, 'tasks');
+  }, [slug, markSeen]);
 
   if (!slug) {
     return (

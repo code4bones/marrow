@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { DeleteEventButton } from '../../features/event/DeleteEventButton';
@@ -9,6 +10,7 @@ import { GET_EVENTS_PAGE } from '../../shared/api/queries';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
+import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { Event, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -23,6 +25,10 @@ export function EventsPage() {
     variables: { project: slug, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetch);
+  const markSeen = useSectionSeenStore((s) => s.markSeen);
+  useEffect(() => {
+    if (slug) markSeen(slug, 'events');
+  }, [slug, markSeen]);
 
   const pageInfo = data?.eventsPage.pageInfo;
 

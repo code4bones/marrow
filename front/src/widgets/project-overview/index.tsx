@@ -17,6 +17,7 @@ import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { PREFIX_MAP, useRealtimeStore, type VersionKey } from '../../shared/model/realtime.store';
+import { useSectionSeenStore, type SectionKey } from '../../shared/model/sectionSeen.store';
 import type { Artifact, Decision, Event, Paginated, ProjectSummary, Task } from '../../shared/model/types';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -172,6 +173,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
   // than folding into the summary query above) since it needs its own
   // window of raw events to bucket by type prefix, not the summary's counts.
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
+  const getSeenAt = useSectionSeenStore((st) => st.getSeenAt);
   const { data: newEventsData, refetch: refetchNewEvents } = useQuery<{ eventsPage: Paginated<Event> }>(
     GET_EVENTS_PAGE,
     { variables: { project: slug, limit: NEW_BADGE_WINDOW_SIZE, offset: 0 } },
@@ -196,21 +198,34 @@ export function ProjectOverview({ slug }: { slug: string }) {
   const s = data!.projectSummary;
   const { counts } = s;
 
+  // Owner's expectation: opening a section (Tasks, Decisions, ...) clears
+  // that section's own badge here, not a global "mark everything as read"
+  // action. Each badge now reads its own (project, section) last-visited
+  // timestamp from sectionSeen.store (set by that section's list page on
+  // mount) instead of one shared notificationsSeenAt -- falling back to
+  // notificationsSeenAt only when the section has never been visited under
+  // this newer mechanism, so existing usage doesn't see every badge as
+  // freshly "new" the moment this ships.
+  const seenAtFor = (section: SectionKey) => getSeenAt(slug, section) ?? notificationsSeenAt;
+
   // T-MEMORY-051 follow-up: bucket the fetched window of recent events by
-  // type prefix (reusing realtime.store's own PREFIX_MAP categorization) and
-  // count how many of each landed after notificationsSeenAt.
-  const newEvents = (newEventsData?.eventsPage.items ?? []).filter((event) => isNewSince(event.createdAt, notificationsSeenAt));
-  const newCategoryCounts = newEvents.reduce<Partial<Record<VersionKey, number>>>((acc, event) => {
+  // type prefix (reusing realtime.store's own PREFIX_MAP categorization),
+  // then count how many in each bucket are newer than THAT bucket's own
+  // seen-at.
+  const allRecentEvents = newEventsData?.eventsPage.items ?? [];
+  const eventsByCategory = allRecentEvents.reduce<Partial<Record<VersionKey, Event[]>>>((acc, event) => {
     const category = categorizeEvent(event.type);
-    if (category) acc[category] = (acc[category] ?? 0) + 1;
+    if (category) (acc[category] ??= []).push(event);
     return acc;
   }, {});
-  const newTaskCount = newCategoryCounts.tasksVersion ?? 0;
-  const newDecisionCount = newCategoryCounts.decisionsVersion ?? 0;
-  const newArtifactCount = newCategoryCounts.artifactsVersion ?? 0;
-  const newMemoryCount = newCategoryCounts.memoryVersion ?? 0;
-  // Every fetched row is itself an event, so the Events stat just counts however many of them are new.
-  const newEventCount = newEvents.length;
+  const countNewSince = (events: Event[] | undefined, seenAt: string | null) =>
+    (events ?? []).filter((event) => isNewSince(event.createdAt, seenAt)).length;
+  const newTaskCount = countNewSince(eventsByCategory.tasksVersion, seenAtFor('tasks'));
+  const newDecisionCount = countNewSince(eventsByCategory.decisionsVersion, seenAtFor('decisions'));
+  const newArtifactCount = countNewSince(eventsByCategory.artifactsVersion, seenAtFor('artifacts'));
+  const newMemoryCount = countNewSince(eventsByCategory.memoryVersion, seenAtFor('memory'));
+  // Every fetched row is itself an event, so the Events stat just counts however many of them are new for that section.
+  const newEventCount = countNewSince(allRecentEvents, seenAtFor('events'));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

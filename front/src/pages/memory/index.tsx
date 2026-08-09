@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Checkbox, Select, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { ArchiveMemoryButton } from '../../features/memory/ArchiveMemoryButton';
@@ -13,6 +13,7 @@ import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
+import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { MemoryRecord, Paginated } from '../../shared/model/types';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -43,6 +44,10 @@ export function MemoryPage() {
     variables: { project: slug, type: type || undefined, includeCommon, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.memoryVersion), refetch);
+  const markSeen = useSectionSeenStore((s) => s.markSeen);
+  useEffect(() => {
+    if (slug) markSeen(slug, 'memory');
+  }, [slug, markSeen]);
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   const pageInfo = data?.memoryItemsPage.pageInfo;

@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
@@ -13,6 +14,7 @@ import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
+import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { Artifact, Paginated } from '../../shared/model/types';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -37,6 +39,10 @@ export function ArtifactsPage() {
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.artifactsVersion), refetch);
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
+  const markSeen = useSectionSeenStore((s) => s.markSeen);
+  useEffect(() => {
+    if (slug) markSeen(slug, 'artifacts');
+  }, [slug, markSeen]);
 
   const pageInfo = data?.artifactsPage.pageInfo;
 
