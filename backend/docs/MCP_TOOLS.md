@@ -2453,6 +2453,148 @@ Output:
 }
 ```
 
+## Request/Reply tools
+
+Cross-project Q&A: one project asks another a question and gets an answer
+back, without either agent leaving Marrow. Built on the existing memory/link
+graph (requests and replies are `type="request"`/`type="reply"` memory
+items, no dedicated table) -- deliberately no ACL, since `project`/
+`fromProject` are just which project asked/was asked, not a permission
+boundary. A human is expected to drive both sides ("ask project back this",
+then later "check project back for replies") -- these tools don't push
+anything, they're polled.
+
+### `request.create`
+
+Ask another project a question.
+
+Input:
+
+```json
+{
+  "project": "back",
+  "fromProject": "front",
+  "question": "What is your new schema?"
+}
+```
+
+`fromProject` defaults to the caller's current project if omitted. `project`
+and `fromProject` (after resolving slugs/ids) must be different projects.
+
+Output:
+
+```json
+{
+  "request": {
+    "id": "I-BACK-042",
+    "fromProjectId": "P-FRONT",
+    "toProjectId": "P-BACK",
+    "question": "What is your new schema?",
+    "status": "open",
+    "createdAt": "2026-08-09T09:00:00.000Z",
+    "updatedAt": "2026-08-09T09:00:00.000Z"
+  },
+  "link": { "relation": "asked_by", "fromId": "I-BACK-042", "toId": "P-FRONT" },
+  "event": { "type": "request.created", "relatedId": "I-BACK-042" }
+}
+```
+
+---
+
+### `request.list`
+
+List requests addressed to a project. Use this to check "does anyone have a
+question for me?".
+
+Input:
+
+```json
+{
+  "project": "back",
+  "status": "open"
+}
+```
+
+`status` is one of `open`, `answered`, `archived` (archived = closed without
+a reply, via the existing generic `memory.archive` tool -- there's no
+separate close verb). Omit `status` to list every request regardless of
+state.
+
+Output:
+
+```json
+{
+  "requests": [
+    { "id": "I-BACK-042", "fromProjectId": "P-FRONT", "toProjectId": "P-BACK", "question": "...", "status": "open" }
+  ]
+}
+```
+
+---
+
+### `request.get`
+
+Get a request plus its full reply thread, as a nested tree -- replies can
+nest under other replies (LiveJournal-comment-style), not just under the
+request itself.
+
+Input:
+
+```json
+{ "id": "I-BACK-042" }
+```
+
+Output:
+
+```json
+{
+  "request": { "id": "I-BACK-042", "status": "answered", "question": "..." },
+  "replies": [
+    {
+      "reply": { "id": "I-BACK-043", "requestId": "I-BACK-042", "parentId": "I-BACK-042", "body": "Here is the schema..." },
+      "children": [
+        {
+          "reply": { "id": "I-FRONT-011", "requestId": "I-BACK-042", "parentId": "I-BACK-043", "body": "Thanks, follow-up: ..." },
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### `reply.create`
+
+Reply to a request, or to another reply in the same thread.
+
+Input:
+
+```json
+{
+  "requestId": "I-BACK-042",
+  "parentId": "I-BACK-043",
+  "project": "front",
+  "body": "Thanks, follow-up: does that include the indexes?"
+}
+```
+
+Omit `parentId` for a direct reply to the request root. `project` (who's
+answering) defaults to the caller's current project. The first reply to an
+`open` request flips its status to `answered` automatically.
+
+Output:
+
+```json
+{
+  "reply": { "id": "I-FRONT-011", "requestId": "I-BACK-042", "parentId": "I-BACK-043", "body": "..." },
+  "link": { "relation": "replies", "fromId": "I-FRONT-011", "toId": "I-BACK-043" },
+  "request": { "id": "I-BACK-042", "status": "answered" },
+  "event": { "type": "reply.created", "relatedId": "I-FRONT-011" }
+}
+```
+
 ## Preflight tool
 
 ### `preflight`

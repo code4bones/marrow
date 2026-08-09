@@ -376,6 +376,36 @@ const handoffSearchSchema = z.object({
   limit: z.number().int().min(1).max(50).optional()
 });
 
+// Cross-project Q&A (T-MEMORY-055-ish): one project asks another a question
+// through shared memory instead of a side channel. Deliberately no ACL --
+// fromProject/project are just which project filed/was asked the question,
+// not a permission boundary (single-account, common visibility per the
+// owner's design call).
+const requestCreateSchema = z.object({
+  project: z.string().min(1),
+  fromProject: z.string().min(1).optional(),
+  question: z.string().min(1)
+});
+// "closed" isn't a third status -- an unwanted/resolved-without-a-reply
+// request is archived via the existing generic memory.archive tool, same as
+// any other memory item, rather than inventing a bespoke close verb.
+const requestListSchema = z.object({
+  project: z.string().nullable().optional(),
+  status: z.enum(["open", "answered", "archived"]).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+});
+const requestGetSchema = z.object({
+  id: z.string().min(1)
+});
+const replyCreateSchema = z.object({
+  requestId: z.string().min(1),
+  // Omit for a direct reply to the request (the thread root); set to another
+  // reply's id to nest under it, LiveJournal-comment-style.
+  parentId: z.string().min(1).optional(),
+  project: z.string().nullable().optional(),
+  body: z.string().min(1)
+});
+
 // T-MEMORY-044: git host credentials (GitLab PATs today) + a read-only
 // pipeline-status proxy. All four tools require a browser session
 // (context.sessionUserId) regardless of scope tier -- see the
@@ -1145,6 +1175,32 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "handoff.search",
     description: "Search handoff records by query and return compact continuation summaries by default.",
     schema: handoffSearchSchema
+  },
+  {
+    name: "request.create",
+    description:
+      "Ask another project a question. Files it as an open request under the target project (`project`) with a link back to the asking project (`fromProject`, defaults to the caller's current project).",
+    schema: requestCreateSchema,
+    access: "write"
+  },
+  {
+    name: "request.list",
+    description:
+      "List requests addressed to a project (defaults to open ones). Use this to check whether another project has asked something.",
+    schema: requestListSchema
+  },
+  {
+    name: "request.get",
+    description:
+      "Get a request by id together with its full reply thread as a nested tree (replies can nest under other replies, not just the request).",
+    schema: requestGetSchema
+  },
+  {
+    name: "reply.create",
+    description:
+      "Reply to a request, or to another reply within the same thread (set parentId). The first reply flips an open request to answered.",
+    schema: replyCreateSchema,
+    access: "write"
   },
   {
     name: "git.credential_create",

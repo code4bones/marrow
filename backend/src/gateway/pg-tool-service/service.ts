@@ -16,6 +16,7 @@ import { GraphMixin } from "./domains/graph.mixin.js";
 import { GatewayOpsMixin } from "./domains/gateway-ops.mixin.js";
 import { TasksMixin } from "./domains/tasks.mixin.js";
 import { HandoffsMixin } from "./domains/handoffs.mixin.js";
+import { RequestsMixin } from "./domains/requests.mixin.js";
 import { I18nMixin } from "./domains/i18n.mixin.js";
 import { PreflightContextMixin } from "./aggregates/preflight-context.mixin.js";
 import { ProjectSummaryMixin } from "./aggregates/project-summary.mixin.js";
@@ -35,19 +36,21 @@ import type { GatewayRequestContext, Row } from "./types.js";
 
 const ComposedService = ProjectSummaryMixin(
   PreflightContextMixin(
-    HandoffsMixin(
-      I18nMixin(
-        TasksMixin(
-          GatewayOpsMixin(
-            GraphMixin(
-              GitCredentialsMixin(
-                ClientsMixin(
-                  EventsMixin(
-                    DecisionsMixin(
-                      ArtifactsMixin(
-                        MemoryMixin(
-                          LinksCoreMixin(
-                            ProjectsCoreMixin(BaseService)
+    RequestsMixin(
+      HandoffsMixin(
+        I18nMixin(
+          TasksMixin(
+            GatewayOpsMixin(
+              GraphMixin(
+                GitCredentialsMixin(
+                  ClientsMixin(
+                    EventsMixin(
+                      DecisionsMixin(
+                        ArtifactsMixin(
+                          MemoryMixin(
+                            LinksCoreMixin(
+                              ProjectsCoreMixin(BaseService)
+                            )
                           )
                         )
                       )
@@ -260,6 +263,14 @@ export class PgToolService extends ComposedService {
           return ok("Latest handoffs loaded.", { handoffs: await this.latestHandoffs(parsed, requestContext) });
         case "handoff.search":
           return ok("Handoffs searched.", { handoffs: await this.searchHandoffs(parsed, requestContext) });
+        case "request.create":
+          return ok("Request created.", await this.createRequest(parsed, requestContext));
+        case "request.list":
+          return ok("Requests listed.", { requests: await this.listRequests(parsed, requestContext) });
+        case "request.get":
+          return ok("Request loaded.", await this.getRequest(String(parsed.id)));
+        case "reply.create":
+          return ok("Reply created.", await this.createReply(parsed, requestContext));
         case "git.credential_create":
           return ok("Git credential stored.", await this.createGitCredential(parsed, requestContext));
         case "git.credential_list":
