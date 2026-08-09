@@ -1,4 +1,5 @@
 import { preferredArtifactReadTool } from "./artifacts.js";
+import { capNextCalls } from "./common.js";
 import type { Row } from "../types.js";
 
 export function mustReadPointers(faults: Row[]) {
@@ -46,7 +47,7 @@ export function contextPackNextCalls(input: { decisions: Row[]; faults: Row[]; a
       reason: "Use full preflight when allowed/forbidden scope or complete context is needed."
     });
   }
-  return calls;
+  return capNextCalls(calls);
 }
 
 

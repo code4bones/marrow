@@ -1,4 +1,5 @@
 import { preferredArtifactReadTool } from "./artifacts.js";
+import { capNextCalls } from "./common.js";
 import type { Row } from "../types.js";
 
 export function projectSummaryNextCalls(input: {
@@ -53,7 +54,7 @@ export function projectSummaryNextCalls(input: {
       reason: "Read full decision if the compact card affects the task."
     });
   }
-  return calls;
+  return capNextCalls(calls);
 }
 
 

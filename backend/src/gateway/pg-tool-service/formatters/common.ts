@@ -23,13 +23,18 @@ export function compactSearchRecord(record: Row) {
     type: String(record.type),
     title: String(record.title),
     status: String(record.status),
-    excerpt: shortText(String(record.excerpt ?? record.body ?? ""), 360),
+    excerpt: shortText(String(record.excerpt ?? record.body ?? ""), 140),
     tags: stringArray(record.tags)
   };
 }
 
-export function tokenEfficiencyBase(overrides: Row = {}) {
-  return {
+// T-MEMORY-063: warnings/preferredNextTools/strategy/etc. repeat verbatim on
+// every single tool response regardless of whether anything is actually
+// wrong -- only worth the bytes when severity escalates past "info". The
+// plain-info case still carries rule + estimatedChars, enough to notice a
+// response is getting large without re-explaining the whole strategy.
+export function tokenEfficiencyBase(overrides: Row = {}): Row {
+  const full: Row = {
     rule: "Use PMem as a lazy index first: compact first, select exact records, then read full content only by id/path.",
     severity: "info",
     strategy: "compact-first",
@@ -39,6 +44,14 @@ export function tokenEfficiencyBase(overrides: Row = {}) {
     preferredNextTools: ["context.pack", "project.summary", "artifact.search", "artifact.peek"],
     compactAfterThis: false,
     ...overrides
+  };
+  if (full.severity !== "info") {
+    return full;
+  }
+  return {
+    rule: full.rule,
+    severity: full.severity,
+    ...(full.estimatedChars !== undefined ? { estimatedChars: full.estimatedChars } : {})
   };
 }
 
@@ -53,6 +66,17 @@ export function compactContextEfficiencyHints(tool: string, estimatedChars?: num
     preferredNextTools: ["memory.get", "artifact.peek", "artifact.read_text", "preflight"],
     sourceTool: tool
   });
+}
+
+// T-MEMORY-063: project.summary/context.pack were building 10-12+ nextCalls
+// (a few per section), each carrying a full input object and a reason
+// string -- capped to the 4 most relevant, reason dropped since the tool
+// name plus gateway.manuals already explains what the call does.
+export function capNextCalls<T extends { tool: string; input: Row; reason?: string }>(
+  calls: T[],
+  limit = 4
+): Array<{ tool: string; input: Row }> {
+  return calls.slice(0, limit).map((call) => ({ tool: call.tool, input: call.input }));
 }
 
 export function defaultTokenBudget(mode: string, profile = "general"): number {

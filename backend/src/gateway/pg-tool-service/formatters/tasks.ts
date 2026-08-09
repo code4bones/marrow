@@ -2,16 +2,24 @@ import { taskClaimRoles, defaultTaskClaimLeaseSeconds } from "../types.js";
 import { boundedInteger, shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
+// T-MEMORY-063: a compact card answers "open this or not", not "what does it
+// say" -- acceptance criteria belong to task.get/preflight (read when
+// actually working the task), not to a card used only to pick one. Empty
+// allowedFiles/forbiddenFiles/dependsOn are omitted rather than serialized
+// as `[]` on every open task.
 export function compactTask(task: Row) {
+  const allowedFiles = stringArray(task.allowedFiles);
+  const forbiddenFiles = stringArray(task.forbiddenFiles);
+  const dependsOn = stringArray(task.dependsOn);
   return {
     id: String(task.id),
     title: String(task.title),
     status: String(task.status),
-    scope: shortText(stringOrNull(task.scope), 360),
-    acceptance: shortText(stringOrNull(task.acceptance), 360),
-    allowedFiles: stringArray(task.allowedFiles),
-    forbiddenFiles: stringArray(task.forbiddenFiles),
-    dependsOn: stringArray(task.dependsOn)
+    priority: Number(task.priority ?? 100),
+    scopeExcerpt: shortText(stringOrNull(task.scope), 140),
+    ...(allowedFiles.length > 0 ? { allowedFiles } : {}),
+    ...(forbiddenFiles.length > 0 ? { forbiddenFiles } : {}),
+    ...(dependsOn.length > 0 ? { dependsOn } : {})
   };
 }
 

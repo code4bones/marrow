@@ -38,6 +38,8 @@ export function searchOut(row: Row) {
   };
 }
 
+// T-MEMORY-063: a compact card is for picking a record, not reading it --
+// 140 chars of context is enough, the rest lives behind memory.get.
 export function compactMemoryRecord(record: Row) {
   return {
     id: String(record.id),
@@ -45,9 +47,24 @@ export function compactMemoryRecord(record: Row) {
     type: String(record.type),
     title: String(record.title),
     status: String(record.status),
-    excerpt: shortText(String(record.body ?? ""), 500),
+    excerpt: shortText(String(record.body ?? ""), 140),
     tags: stringArray(record.tags),
     updatedAt: stringOrNull(record.updatedAt)
+  };
+}
+
+// Handoffs are always a single known type in a section already scoped to one
+// project by the surrounding response -- projectId/type only repeat context
+// the caller already has, on every single record.
+export function compactHandoffRecord(record: Row) {
+  const full = compactMemoryRecord(record);
+  return {
+    id: full.id,
+    title: full.title,
+    status: full.status,
+    excerpt: full.excerpt,
+    tags: full.tags,
+    updatedAt: full.updatedAt
   };
 }
 

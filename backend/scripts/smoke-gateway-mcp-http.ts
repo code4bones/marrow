@@ -375,6 +375,24 @@ try {
     ),
     "project.summary did not return compact nextCalls."
   );
+  // T-MEMORY-063 regression: project.summary's compact cards ballooned to
+  // 29k chars on a live project (mostly full acceptance/rationale/artifact
+  // metadata repeated per record, plus a 12-item nextCalls list) -- guard
+  // against both regressing back.
+  assert(
+    readNestedArray(projectSummaryResult.structuredContent, ["data", "nextCalls"]).length <= 4,
+    "project.summary nextCalls should be capped at 4."
+  );
+  readNestedNumber(projectSummaryResult.structuredContent, ["data", "budget", "estimatedChars"]);
+  const projectSummaryJson = JSON.stringify(projectSummaryResult.structuredContent);
+  assert(
+    !projectSummaryJson.includes("\"acceptance\"") &&
+      !projectSummaryJson.includes("\"rationale\"") &&
+      !projectSummaryJson.includes("\"consequences\"") &&
+      !projectSummaryJson.includes("\"downloadPath\"") &&
+      !projectSummaryJson.includes("\"sizeBytes\""),
+    "project.summary compact cards should not carry by-id-only fields (acceptance/rationale/consequences/downloadPath/sizeBytes)."
+  );
 
   const secondProjectResult = await secondClient.callTool({
     name: "project.create",
@@ -960,8 +978,10 @@ try {
   );
   assert(JSON.stringify(contextPackResult.structuredContent).includes("contentBase64") === false, "context.pack returned base64 content.");
   assert(
-    readNestedString(contextPackResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
-      "compact-cards-and-next-calls",
+    // T-MEMORY-063: at severity=info, tokenEfficiencyBase trims down to
+    // rule/severity(/estimatedChars) -- strategy only reappears once
+    // severity escalates past info, so rule is the stable presence check.
+    readNestedString(contextPackResult.structuredContent, ["data", "efficiencyHints", "rule"]).length > 0,
     "context.pack did not return token efficiency hints."
   );
   const contextPackArtifacts = readNestedArray(contextPackResult.structuredContent, ["data", "artifacts"]).map((item) =>
@@ -1001,8 +1021,7 @@ try {
   const artifactPeek = readNestedRecord(artifactPeekResult.structuredContent, ["data", "artifact"]);
   assert(!("contentBase64" in artifactPeek), "artifact.peek returned base64 content.");
   assert(
-    readNestedString(artifactPeekResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
-      "bounded-preview-no-base64",
+    readNestedString(artifactPeekResult.structuredContent, ["data", "efficiencyHints", "rule"]).length > 0,
     "artifact.peek did not return token efficiency hints."
   );
   assert(
@@ -1048,8 +1067,7 @@ try {
     "artifact.read_text textInfo did not mark base64 as excluded."
   );
   assert(
-    readNestedString(artifactReadTextResult.structuredContent, ["data", "efficiencyHints", "strategy"]) ===
-      "bounded-text-no-base64",
+    readNestedString(artifactReadTextResult.structuredContent, ["data", "efficiencyHints", "rule"]).length > 0,
     "artifact.read_text did not return token efficiency hints."
   );
 

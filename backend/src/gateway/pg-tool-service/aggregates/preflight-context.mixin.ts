@@ -9,7 +9,7 @@ import {
 import { artifactOut, compactArtifactRecord } from "../formatters/artifacts.js";
 import { compactDecisionRecord, decisionOut } from "../formatters/decisions.js";
 import { compactEventRecord, eventOut } from "../formatters/events.js";
-import { compactMemoryRecord, itemOut } from "../formatters/memory.js";
+import { compactHandoffRecord, compactMemoryRecord, itemOut } from "../formatters/memory.js";
 import { compactProject, projectOut } from "../formatters/projects.js";
 import { compactTask, taskOut } from "../formatters/tasks.js";
 import { changedSinceNextCalls, contextPackLimits, contextPackNextCalls, mustReadPointers } from "../formatters/preflight.js";
@@ -55,6 +55,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
         id: task.id,
         title: task.title,
         status: task.status,
+        priority: task.priority,
         scope: task.scope,
         acceptance: task.acceptance,
         allowedFiles: task.allowedFiles,
@@ -201,7 +202,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       task: task ? compactTask(task) : null,
       query,
       mustRead: mustReadPointers((source.knownFaults ?? []) as Row[]),
-      handoffs: handoffs.map(compactMemoryRecord),
+      handoffs: handoffs.map(compactHandoffRecord),
       decisions: ((source.relevantDecisions ?? []) as Row[]).map(compactDecisionRecord),
       knownFaults: ((source.knownFaults ?? []) as Row[]).map(compactSearchRecord),
       memory: ((source.relatedItems ?? []) as Row[]).map(compactSearchRecord),
@@ -249,7 +250,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
     const changes = {
       tasks: tasks.map(compactTask),
       memory: memory.map(compactMemoryRecord),
-      handoffs: handoffs.map(compactMemoryRecord),
+      handoffs: handoffs.map(compactHandoffRecord),
       decisions: decisions.map(compactDecisionRecord),
       artifacts: artifacts.map(compactArtifactRecord),
       events: events.map(compactEventRecord)

@@ -2,7 +2,7 @@ import { compactContextEfficiencyHints, compactSearchRecord } from "../formatter
 import { compactArtifactRecord } from "../formatters/artifacts.js";
 import { compactDecisionRecord } from "../formatters/decisions.js";
 import { compactEventRecord } from "../formatters/events.js";
-import { compactMemoryRecord } from "../formatters/memory.js";
+import { compactHandoffRecord } from "../formatters/memory.js";
 import { compactProject } from "../formatters/projects.js";
 import { compactTask, taskOut } from "../formatters/tasks.js";
 import { projectSummaryLimits, projectSummaryNextCalls } from "../formatters/project-summary.js";
@@ -95,7 +95,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       includeCommon,
       counts,
       openTasks: openTasks.map(compactTask),
-      handoffs: handoffs.map(compactMemoryRecord),
+      handoffs: handoffs.map(compactHandoffRecord),
       decisions: decisions.map(compactDecisionRecord),
       knownFaults: knownFaults.map(compactSearchRecord),
       artifacts: artifacts.map(compactArtifactRecord),

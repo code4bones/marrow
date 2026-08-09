@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import path from "node:path";
 import { AppError } from "../../../shared/errors.js";
-import { dateStringOrNull, shortText, stringArray, stringOrNull, tokenEfficiencyBase } from "./common.js";
+import { dateStringOrNull, stringArray, stringOrNull, tokenEfficiencyBase } from "./common.js";
 import type { Row } from "../types.js";
 
 export interface ArtifactDownload {
@@ -41,19 +41,15 @@ export function artifactSearchOut(row: Row) {
 }
 
 
+// T-MEMORY-063: none of sha256/downloadPath/preferredNextTool/contentType/
+// sizeBytes help decide whether to open an artifact -- only id/path/title/
+// tags do. Full metadata is still available via artifact.get/peek.
 export function compactArtifactRecord(record: Row) {
-  const preferredNextTool = preferredArtifactReadTool(record);
   return {
     id: String(record.id),
-    scope: String(record.scope ?? (record.projectId ? "project" : "common")),
     path: String(record.path),
     title: String(record.title),
-    description: shortText(stringOrNull(record.description), 220),
-    contentType: String(record.contentType),
-    sizeBytes: Number(record.sizeBytes ?? 0),
-    tags: stringArray(record.tags),
-    downloadPath: String(record.downloadPath),
-    preferredNextTool
+    tags: stringArray(record.tags)
   };
 }
 

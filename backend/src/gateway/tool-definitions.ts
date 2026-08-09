@@ -435,15 +435,18 @@ const errorSchema = z.object({
   message: z.string(),
   details: looseRecordSchema.optional()
 });
+// T-MEMORY-063: tokenEfficiencyBase only carries the full field set when
+// severity escalates past "info" -- the common info case is just
+// rule/severity/estimatedChars, so everything else is optional here.
 const efficiencyHintsSchema = z
   .object({
     rule: z.string(),
     severity: z.enum(["info", "warn"]),
-    strategy: z.string(),
-    fullBodiesIncluded: z.boolean(),
-    base64Included: z.boolean(),
+    strategy: z.string().optional(),
+    fullBodiesIncluded: z.boolean().optional(),
+    base64Included: z.boolean().optional(),
     estimatedChars: z.number().optional(),
-    warnings: z.array(z.string()),
+    warnings: z.array(z.string()).optional(),
     preferredNextTools: z.array(z.string()).optional(),
     compactAfterThis: z.boolean().optional()
   })
@@ -582,22 +585,21 @@ const nextCallSchema = z
   .object({
     tool: z.string(),
     input: looseRecordSchema,
-    reason: z.string()
+    // T-MEMORY-063: project.summary/context.pack's nextCalls no longer carry
+    // a reason (capped + trimmed for token efficiency) -- other nextCalls
+    // builders (hygiene_report, changed_since) still do.
+    reason: z.string().optional()
   })
   .catchall(z.unknown());
+// T-MEMORY-063: a compact artifact card is for deciding whether to open it,
+// not for reading it -- id/path/title/tags is enough; everything else lives
+// behind artifact.get/peek/read_text.
 const compactArtifactSchema = z
   .object({
     id: z.string(),
-    scope: z.string(),
     path: z.string(),
     title: z.string(),
-    description: z.string().nullable(),
-    status: z.enum(["active", "archived"]).optional(),
-    contentType: z.string(),
-    sizeBytes: z.number(),
-    tags: z.array(z.string()),
-    downloadPath: z.string(),
-    preferredNextTool: z.string()
+    tags: z.array(z.string())
   })
   .catchall(z.unknown());
 const artifactListItemSchema = z.union([artifactSchema, compactArtifactSchema]);

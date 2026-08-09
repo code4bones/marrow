@@ -1,15 +1,16 @@
 import { shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
+// T-MEMORY-063: a compact card is for picking a decision, not reading it --
+// rationale/consequences are full-body fields, only available via
+// decision.get from here on.
 export function compactDecisionRecord(record: Row) {
   return {
     id: String(record.id),
     projectId: stringOrNull(record.projectId),
     title: String(record.title),
     status: String(record.status),
-    decision: shortText(String(record.decision ?? ""), 360),
-    rationale: shortText(stringOrNull(record.rationale), 260),
-    consequences: shortText(stringOrNull(record.consequences), 260),
+    decisionExcerpt: shortText(String(record.decision ?? ""), 140),
     tags: stringArray(record.tags)
   };
 }
