@@ -1,5 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Marrow">
   <title>Marrow</title>
+  <style>
+    /* Standalone favicons get no page CSS context, so currentColor always
+       resolved to black -- invisible on a dark browser tab bar. Mirrors
+       brand-icons/README.md's dark-drawn-for-light-bg / white-for-dark-bg
+       raster convention, done responsively instead of via separate files. */
+    .badge { fill: #16161A; }
+    @media (prefers-color-scheme: dark) {
+      .badge { fill: #F5F5F5; }
+    }
+  </style>
   <mask id="m">
     <rect width="256" height="256" fill="black"/>
     <circle cx="128" cy="128" r="124" fill="white"/>
@@ -12,5 +22,5 @@
     <circle cx="88" cy="48" r="21" fill="black"/>
     <circle cx="168" cy="48" r="21" fill="black"/>
   </mask>
-  <rect width="256" height="256" fill="currentColor" mask="url(#m)"/>
+  <rect width="256" height="256" class="badge" mask="url(#m)"/>
 </svg>
