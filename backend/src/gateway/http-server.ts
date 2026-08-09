@@ -1368,6 +1368,7 @@ async function handleAuthRoute(
     }
     const redirectUri = githubRedirectUri();
     const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null);
+    logGithubOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri });
     response.writeHead(302, { location: githubAuthorizeUrl(state, redirectUri) });
     response.end();
     return true;
@@ -1382,6 +1383,7 @@ async function handleAuthRoute(
     const code = queryString(requestUrl, "code");
     const state = queryString(requestUrl, "state");
     if (!code || !state) {
+      logGithubOauth("callback", { outcome: "missing_code_or_state", hasCode: Boolean(code), hasState: Boolean(state) });
       redirectTo(`/login?error=${encodeURIComponent("GitHub sign-in was cancelled or is missing parameters.")}`);
       return true;
     }
@@ -1391,6 +1393,7 @@ async function handleAuthRoute(
     try {
       ({ intent, userId: linkUserId } = await auth.consumeOAuthState(state));
     } catch (error) {
+      logGithubOauth("callback", { outcome: "invalid_state", error: error instanceof Error ? error.message : String(error) });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
       return true;
     }
@@ -1399,6 +1402,7 @@ async function handleAuthRoute(
     try {
       githubUser = await resolveGithubUser(code, githubRedirectUri());
     } catch (error) {
+      logGithubOauth("callback", { intent, outcome: "resolve_github_user_failed", error: error instanceof Error ? error.message : String(error) });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
       return true;
     }
@@ -1406,8 +1410,16 @@ async function handleAuthRoute(
     if (intent === "link") {
       try {
         await auth.linkGithubIdentity(linkUserId!, githubUser.githubId, githubUser.login);
+        logGithubOauth("callback", { intent, outcome: "linked", githubId: githubUser.githubId, linkUserId });
         redirectTo("/profile?githubLinked=1");
       } catch (error) {
+        logGithubOauth("callback", {
+          intent,
+          outcome: "link_failed",
+          githubId: githubUser.githubId,
+          linkUserId,
+          error: error instanceof Error ? error.message : String(error)
+        });
         redirectTo(`/profile?githubError=${encodeURIComponent(error instanceof Error ? error.message : "Could not link GitHub.")}`);
       }
       return true;
@@ -1419,18 +1431,33 @@ async function handleAuthRoute(
         ip: clientIp(request)
       });
       if (result.status === "not_linked") {
+        logGithubOauth("callback", {
+          intent,
+          outcome: "not_linked_registering",
+          githubId: githubUser.githubId,
+          githubLogin: githubUser.login,
+          githubEmail: githubUser.email
+        });
         const pendingResult = await auth.registerViaGithub(githubUser.email, githubUser.githubId, githubUser.login);
         redirectTo(`/register?githubToken=${encodeURIComponent(pendingResult.token)}`);
         return true;
       }
       if (result.status === "pending_totp") {
+        logGithubOauth("callback", { intent, outcome: "pending_totp", githubId: githubUser.githubId, userId: result.userId });
         redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
         return true;
       }
+      logGithubOauth("callback", { intent, outcome: "session", githubId: githubUser.githubId, userId: result.user.id });
       response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
       redirectTo("/projects");
       return true;
     } catch (error) {
+      logGithubOauth("callback", {
+        intent,
+        outcome: "login_failed",
+        githubId: githubUser.githubId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
       return true;
     }
@@ -1730,6 +1757,18 @@ function requestContext(
 
 function parseRequestUrl(request: IncomingMessage): URL {
   return new URL(request.url ?? "/", "http://gateway.local");
+}
+
+// /auth/oauth/github/start and /callback respond via raw response.writeHead
+// redirects, never through the send() closure that ties JSON responses to
+// logRequest() -- so without this, these two routes produce zero log
+// output, and a failed sign-in/link attempt is undebuggable after the fact
+// (found this the hard way debugging a live report of GitHub login
+// failing with no server-side trace of what happened). console.log keeps
+// this independent of handleAuthRoute's signature (no options/logger
+// threaded through) and still lands in `docker logs` like everything else.
+function logGithubOauth(step: "start" | "callback", fields: Record<string, unknown>): void {
+  console.log(JSON.stringify({ time: new Date().toISOString(), scope: "github-oauth", step, ...fields }));
 }
 
 function queryString(url: URL, name: string): string | undefined {
