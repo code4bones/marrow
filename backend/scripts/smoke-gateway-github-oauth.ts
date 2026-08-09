@@ -63,9 +63,14 @@ try {
 try {
   await auth.approveUser(githubUserId!);
   const afterApproval = await auth.loginViaGithub(`gh-${unique}-1`, {});
-  assert(afterApproval.status === "pending_totp", `Expected pending_totp after approval (totp_enabled=true), got ${afterApproval.status}`);
-  assert((afterApproval as { userId: string }).userId === githubUserId, "pending_totp userId mismatch.");
-  console.log("ok - loginViaGithub returns pending_totp for an approved, totp-enabled account (GitHub replaces the password step only, not the TOTP step)");
+  // Owner's call: GitHub login never re-prompts TOTP, even though
+  // totp_enabled=true -- the one-time proof-of-device at register time
+  // plus admin approval is enough. Password login for the same account is
+  // unaffected and still gates on TOTP every time (see smoke-gateway-
+  // registration.ts).
+  assert(afterApproval.status === "session", `Expected an immediate session for an approved GitHub login (no TOTP re-prompt), got ${afterApproval.status}`);
+  assert((afterApproval as { user: { id: string } }).user.id === githubUserId, "session userId mismatch.");
+  console.log("ok - loginViaGithub issues a session directly for an approved account, without re-prompting TOTP");
 
   const notLinked = await auth.loginViaGithub(`gh-${unique}-does-not-exist`, {});
   assert(notLinked.status === "not_linked", "An unrecognized github_id should return not_linked, not throw.");

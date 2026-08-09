@@ -629,6 +629,16 @@ export function createAuthFacade(db: Knex) {
   // (github_identities) -- a bare email match is deliberately NOT enough,
   // so nobody can sign into an existing Marrow account just by controlling
   // a GitHub account with the same email address.
+  //
+  // Deliberately does NOT re-prompt TOTP here, unlike password login --
+  // owner's call: the TOTP step at registerConfirm/registerViaGithub time
+  // already proved control of a device once (its secret/recovery codes
+  // stay on file for account recovery), and admin approval already vetted
+  // this specific identity. Re-checking a second factor on every GitHub
+  // login after that is friction with no real benefit: GitHub's own
+  // authentication (plus whatever 2FA that account itself has) is already
+  // the thing being trusted here. Password login is unaffected -- it still
+  // requires TOTP on every sign-in when enabled.
   async function loginViaGithub(githubId: string, meta: RequestMeta): Promise<LoginResult | { status: "not_linked" }> {
     const identity = await db("github_identities").where({ github_id: githubId }).first();
     if (!identity) {
@@ -643,9 +653,6 @@ export function createAuthFacade(db: Knex) {
     }
     if (user.status !== "active") {
       throw new AppError("UNAUTHORIZED", "This account has been disabled.");
-    }
-    if (user.totp_enabled) {
-      return { status: "pending_totp", userId: user.id };
     }
     const rawSessionToken = await issueSession(user.id, meta);
     return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
