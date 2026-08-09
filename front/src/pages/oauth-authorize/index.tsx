@@ -48,17 +48,33 @@ const OAUTH_PARAM_NAMES = [
 export function OAuthAuthorizePage() {
   const { t } = useTranslation('auth');
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const status = useAuthStore((s) => s.status);
   const bootstrapNeeded = useAuthStore((s) => s.bootstrapNeeded);
   const pendingTotpUserId = useAuthStore((s) => s.pendingTotpUserId);
   const user = useAuthStore((s) => s.user);
   const login = useAuthStore((s) => s.login);
   const [form] = Form.useForm<CredentialsFormValues>();
-  const [loginError, setLoginError] = useState<string | null>(null);
+  // Seeded from ?error= when the GitHub round trip (started from this same
+  // page's "Sign in with GitHub" button below) comes back with a failure --
+  // e.g. this email already has a password account. githubErrorRedirect
+  // (backend) sends the user right back here instead of to the unrelated
+  // /login page, so the connector's client_id/redirect_uri/state survive
+  // and they can just sign in with a password below and continue.
+  const [loginError, setLoginError] = useState<string | null>(searchParams.get('error'));
   const [submitting, setSubmitting] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
+
+  useEffect(() => {
+    if (!searchParams.get('error')) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('error');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clientId = searchParams.get('client_id') ?? '';
   const redirectUri = searchParams.get('redirect_uri') ?? '';

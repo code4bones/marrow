@@ -1389,6 +1389,19 @@ async function handleAuthRoute(
     return value && value.startsWith("/oauth-authorize?") ? value : null;
   }
 
+  // A failure partway through GitHub login (wrong email already registered,
+  // GitHub API hiccup, ...) used to always land on the unrelated /login
+  // page, silently abandoning whatever MCP connector (Claude.ai, ChatGPT)
+  // the user was in the middle of authorizing -- appending &error= onto the
+  // validated returnTo instead means they land back on that exact consent
+  // screen (client_id/redirect_uri/state intact) with the message shown
+  // in place, able to just sign in with a password and continue.
+  function githubErrorRedirect(returnTo: string | null | undefined, message: string): string {
+    const safeReturnTo = safeGithubReturnTo(returnTo);
+    const encoded = encodeURIComponent(message);
+    return safeReturnTo ? `${safeReturnTo}&error=${encoded}` : `/login?error=${encoded}`;
+  }
+
   if (request.method === "GET" && requestPath === "/auth/oauth/github/start") {
     const intentParam = queryString(requestUrl, "intent");
     const intent = intentParam === "link" ? "link" : "login";
@@ -1441,7 +1454,7 @@ async function handleAuthRoute(
       githubUser = await resolveGithubUser(code, githubRedirectUri());
     } catch (error) {
       logGithubOauth("callback", { intent, outcome: "resolve_github_user_failed", error: error instanceof Error ? error.message : String(error) });
-      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
+      redirectTo(githubErrorRedirect(returnTo, error instanceof Error ? error.message : "GitHub sign-in failed."));
       return true;
     }
 
@@ -1496,7 +1509,7 @@ async function handleAuthRoute(
         githubId: githubUser.githubId,
         error: error instanceof Error ? error.message : String(error)
       });
-      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
+      redirectTo(githubErrorRedirect(returnTo, error instanceof Error ? error.message : "GitHub sign-in failed."));
       return true;
     }
   }
