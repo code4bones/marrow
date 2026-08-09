@@ -340,6 +340,25 @@ async function handleRequest(
       return;
     }
 
+    // T-MEMORY-059: unauthenticated by design -- client_id is already
+    // visible in this page's own URL to anyone looking at the consent
+    // screen, and label/redirect_uri carry no secret. Lets the consent
+    // screen show a recognizable app name instead of the raw client_id.
+    if (options.oauth && options.auth && request.method === "GET" && requestPath === "/oauth/client_info") {
+      const clientId = queryString(requestUrl, "client_id");
+      if (!clientId) {
+        send(400, fail(new AppError("VALIDATION_ERROR", "client_id is required.")));
+        return;
+      }
+      const info = await options.auth.oauthClientPublicInfo(clientId);
+      if (!info) {
+        send(404, fail(new AppError("NOT_FOUND", "Unknown client_id.")));
+        return;
+      }
+      send(200, { ok: true, data: info });
+      return;
+    }
+
     // POST is called by the frontend itself (fetch with credentials:
     // 'include', not a browser form submit) once it has confirmed a
     // pmem_session -- either an existing cookie, or one just established via

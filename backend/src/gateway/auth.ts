@@ -1004,6 +1004,20 @@ export function createAuthFacade(db: Knex) {
     return rows.map(toOAuthClientRow);
   }
 
+  // T-MEMORY-059 (whitebox pentest finding #4, I-MEMORY-055): the consent
+  // screen showed the raw opaque client_id instead of a human-recognizable
+  // app name, undermining informed consent. Public/unauthenticated by
+  // design -- client_id is already visible in the page's own URL to anyone
+  // looking at this screen, and label/redirect_uri carry no secret (never
+  // the client_secret or its hash).
+  async function oauthClientPublicInfo(clientId: string): Promise<{ label: string | null; redirectUri: string | null } | null> {
+    const row = await db("oauth_clients").where({ client_id: clientId }).first();
+    if (!row) {
+      return null;
+    }
+    return { label: (row.label as string | null) ?? null, redirectUri: (row.redirect_uri as string | null) ?? null };
+  }
+
   /**
    * Always inserts a brand-new row -- unlike the old regenerateOAuthClient,
    * this never deletes any of the user's other credentials, which is the
@@ -1230,6 +1244,7 @@ export function createAuthFacade(db: Knex) {
     personalTokenStatus,
     regeneratePersonalToken,
     listOAuthClients,
+    oauthClientPublicInfo,
     createOAuthClient,
     regenerateOAuthClient,
     deleteOAuthClient,

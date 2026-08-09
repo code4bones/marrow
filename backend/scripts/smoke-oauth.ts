@@ -142,6 +142,10 @@ try {
     client_id: clientId,
     client_secret_hash: hashToken(clientSecret),
     client_secret_hint: clientSecret.slice(-4),
+    // T-MEMORY-059: redirect_uri is now the mandatory per-client gate (no
+    // more global-allowlist fallback), so a seeded row without one could
+    // never complete /oauth/authorize.
+    redirect_uri: redirectUri,
     created_at: now,
     last_used_at: null
   });

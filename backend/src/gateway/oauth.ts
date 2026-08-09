@@ -298,8 +298,23 @@ async function validateAuthorizeParams(
     return { ok: false, error: "client_id is not allowed." };
   }
 
+  // T-MEMORY-059 (whitebox pentest finding #3, I-MEMORY-055): this used to
+  // accept redirect_uri if it was EITHER in the (possibly empty)
+  // PROJECT_MEMORY_ALLOWED_REDIRECT_URIS allowlist OR equal to this
+  // client's own registered value -- with an empty allowlist (the default;
+  // isAllowedRedirectUri's fallback for that case admits ANY https URL),
+  // that OR meant the client's own registration was never actually
+  // enforced. An earlier attempt at this fix ANDed a deployment-wide
+  // allowlist on top of the per-client check -- wrong, since each of a
+  // user's several oauth_clients rows legitimately has its own distinct
+  // redirect_uri (see auth.ts's per-connector credentials), and a single
+  // global allowlist can never hold all of them at once without becoming
+  // the very any-URL escape hatch this fix removes. The client's own
+  // registered redirect_uri (exact match, mandatory -- no fallback of any
+  // kind) is now the entire check; PROJECT_MEMORY_ALLOWED_REDIRECT_URIS is
+  // no longer consulted here at all.
   const redirectUri = params.get("redirect_uri") ?? "";
-  if (!isAllowedRedirectUri(redirectUri, config.allowedRedirectUris) && redirectUri !== clientRow.redirect_uri) {
+  if (!clientRow.redirect_uri || redirectUri !== clientRow.redirect_uri) {
     return { ok: false, error: "redirect_uri is not allowed." };
   }
 
@@ -511,18 +526,6 @@ function bearerToken(request: IncomingMessage): string | undefined {
   const header = request.headers.authorization?.trim();
   const match = header?.match(/^Bearer\s+(.+)$/i);
   return match?.[1];
-}
-
-function isAllowedRedirectUri(value: string, allowlist: string[]): boolean {
-  if (allowlist.length > 0) {
-    return allowlist.includes(value);
-  }
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
-  } catch {
-    return false;
-  }
 }
 
 // The frontend is always served from the same origin as this gateway's own
