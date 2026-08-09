@@ -235,6 +235,59 @@ try {
   assert(expectData<{ deletedTask: { id: string } }>(deleteTask).deletedTask.id === temporaryTaskId, "task.delete returned wrong task.");
   console.log("ok - task.delete");
 
+  // I-MEMORY-065 regression: task.get surfaces linked notes, and
+  // task.complete warns when there's no claim/evidence/reason trail.
+  const noteTask = await callGateway("task.create", {
+    project: state.projectId,
+    title: "Gateway smoke task.get noteIds task",
+    scope: "Verify task.get returns noteIds/noteCount and task.complete warns without a trail.",
+    priority: 99
+  });
+  const noteTaskId = expectData<{ task: { id: string } }>(noteTask).task.id;
+
+  const taskBeforeNote = await callGateway("task.get", { id: noteTaskId });
+  assert(
+    expectData<{ task: { noteIds: string[]; noteCount: number } }>(taskBeforeNote).task.noteCount === 0,
+    "task.get should report noteCount 0 for a task with no linked notes yet."
+  );
+
+  const addedNote = await callGateway("task.add_note", {
+    taskId: noteTaskId,
+    type: "coordination_note",
+    body: "Smoke note for task.get noteIds/noteCount regression."
+  });
+  const addedNoteId = expectData<{ item: { id: string } }>(addedNote).item.id;
+
+  const taskAfterNote = await callGateway("task.get", { id: noteTaskId });
+  const taskAfterNoteData = expectData<{ task: { noteIds: string[]; noteCount: number } }>(taskAfterNote).task;
+  assert(taskAfterNoteData.noteCount === 1, "task.get should report noteCount 1 after task.add_note.");
+  assert(taskAfterNoteData.noteIds.includes(addedNoteId), "task.get noteIds should include the newly added note's id.");
+  console.log("ok - task.get reports noteIds/noteCount (I-MEMORY-065 regression)");
+
+  const completeWithoutTrail = await callGateway("task.complete", { id: noteTaskId });
+  assert(
+    typeof expectData<{ warning?: string }>(completeWithoutTrail).warning === "string",
+    "task.complete without a claim/evidence/reason should return a warning."
+  );
+  console.log("ok - task.complete warns when completed with no claim, evidence, or reason (I-MEMORY-065 regression)");
+
+  const evidencedTask = await callGateway("task.create", {
+    project: state.projectId,
+    title: "Gateway smoke task.complete evidence task",
+    scope: "Verify task.complete does not warn when acceptanceEvidence is provided.",
+    priority: 99
+  });
+  const evidencedTaskId = expectData<{ task: { id: string } }>(evidencedTask).task.id;
+  const completeWithEvidence = await callGateway("task.complete", {
+    id: evidencedTaskId,
+    acceptanceEvidence: "Verified manually via smoke test."
+  });
+  assert(
+    expectData<{ warning?: string }>(completeWithEvidence).warning === undefined,
+    "task.complete with acceptanceEvidence should not return a warning."
+  );
+  console.log("ok - task.complete does not warn when acceptanceEvidence is provided");
+
   const search = await callGateway("memory.search", {
     query: "PostgreSQL full text smoke",
     project: state.projectId,
