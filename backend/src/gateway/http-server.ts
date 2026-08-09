@@ -1291,18 +1291,32 @@ async function handleAuthRoute(
   // needs the actual public origin -- requestUrl is parsed against a
   // hardcoded dummy base (parseRequestUrl below), never a real one, and the
   // raw incoming request is plain HTTP from nginx's own proxy_pass, not
-  // what the browser/GitHub see. PROJECT_MEMORY_PUBLIC_URL (this
+  // what the browser/GitHub see. GITHUB_OAUTH_CALLBACK, if set, is used
+  // verbatim -- the exact string registered on GitHub's side, no derivation
+  // to get wrong. Falls back to PROJECT_MEMORY_PUBLIC_URL (this
   // deployment's real address, same var the profile page's Connect section
-  // uses) plus the /api prefix (API_ENDPOINT) nginx expects is the only
-  // reliable source. Must be byte-identical between the /start authorize
-  // request and the /callback token exchange (OAuth requires an exact
-  // redirect_uri match).
+  // and oauth.ts's OAuth facade already use) + this path -- note that var
+  // already INCLUDES the /api prefix in prod (see oauth.ts's
+  // createOAuthFacadeFromEnv, which joins paths directly onto it with no
+  // separate prefix), so don't also append API_ENDPOINT there, or the
+  // redirect_uri ends up with /api/api/ and GitHub rejects it outright
+  // (caught live: exactly that happened, immediately before
+  // GITHUB_OAUTH_CALLBACK was introduced as the unambiguous override). Must
+  // be byte-identical between the /start authorize request and the
+  // /callback token exchange (OAuth requires an exact redirect_uri match).
   function githubRedirectUri(): string {
+    const explicit = process.env.GITHUB_OAUTH_CALLBACK?.trim();
+    if (explicit) {
+      return explicit;
+    }
     const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL?.trim().replace(/\/+$/, "");
     if (!publicUrl) {
-      throw new AppError("VALIDATION_ERROR", "PROJECT_MEMORY_PUBLIC_URL must be set to enable GitHub sign-in.");
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "GITHUB_OAUTH_CALLBACK or PROJECT_MEMORY_PUBLIC_URL must be set to enable GitHub sign-in."
+      );
     }
-    return `${publicUrl}${normalizedApiEndpoint() ?? ""}/auth/oauth/github/callback`;
+    return `${publicUrl}/auth/oauth/github/callback`;
   }
 
   if (request.method === "GET" && requestPath === "/auth/oauth/github/start") {
