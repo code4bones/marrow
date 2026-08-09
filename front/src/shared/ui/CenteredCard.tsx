@@ -18,7 +18,7 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
     >
       <style>{`
         .marrow-brand-mark { color: #FF8C00; }
-        .marrow-brand-text { color: #33FF33; }
+        .marrow-brand-text { color: #D97706; }
         @media (prefers-color-scheme: light) {
           .marrow-brand-mark { color: #202020; }
           .marrow-brand-text { color: #505050; }
