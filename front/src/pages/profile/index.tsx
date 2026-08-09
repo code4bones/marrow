@@ -797,7 +797,7 @@ function GithubSection() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Text type="secondary">{t('githubNotConnected')}</Text>
-          <Button icon={<GithubOutlined />} href={`${API_BASE_URL}/auth/github/start?intent=link`}>
+          <Button icon={<GithubOutlined />} href={`${API_BASE_URL}/auth/oauth/github/start?intent=link`}>
             {t('connectGithub')}
           </Button>
         </div>

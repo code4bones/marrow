@@ -35,7 +35,7 @@ export function RegisterPage() {
   const githubToken = searchParams.get('githubToken');
   const [loadingGithubContext, setLoadingGithubContext] = useState(Boolean(githubToken));
 
-  // GitHub sign-in for a brand-new email lands here (GET /auth/github/callback
+  // GitHub sign-in for a brand-new email lands here (GET /auth/oauth/github/callback
   // -> registerViaGithub -> redirect with ?githubToken=...) -- skip straight
   // to the same TOTP-enroll step a password registration reaches after
   // submitting the form, just without ever seeing that form.

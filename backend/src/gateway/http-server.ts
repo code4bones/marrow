@@ -1302,10 +1302,10 @@ async function handleAuthRoute(
     if (!publicUrl) {
       throw new AppError("VALIDATION_ERROR", "PROJECT_MEMORY_PUBLIC_URL must be set to enable GitHub sign-in.");
     }
-    return `${publicUrl}${normalizedApiEndpoint() ?? ""}/auth/github/callback`;
+    return `${publicUrl}${normalizedApiEndpoint() ?? ""}/auth/oauth/github/callback`;
   }
 
-  if (request.method === "GET" && requestPath === "/auth/github/start") {
+  if (request.method === "GET" && requestPath === "/auth/oauth/github/start") {
     const intentParam = queryString(requestUrl, "intent");
     const intent = intentParam === "link" ? "link" : "login";
     if (intent === "link" && !sessionAuth) {
@@ -1319,7 +1319,7 @@ async function handleAuthRoute(
     return true;
   }
 
-  if (request.method === "GET" && requestPath === "/auth/github/callback") {
+  if (request.method === "GET" && requestPath === "/auth/oauth/github/callback") {
     const redirectTo = (path: string) => {
       response.writeHead(302, { location: path });
       response.end();

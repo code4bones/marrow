@@ -33,7 +33,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(searchParams.get('error'));
   const [submitting, setSubmitting] = useState(false);
 
-  // Landed here from GET /auth/github/callback, which can't set React
+  // Landed here from GET /auth/oauth/github/callback, which can't set React
   // Router state (it's a full page navigation, not an SPA one) -- carries
   // its outcome as query params instead.
   useEffect(() => {
@@ -122,7 +122,7 @@ export function LoginPage() {
       <Button
         icon={<GithubOutlined />}
         block
-        href={`${API_BASE_URL}/auth/github/start?intent=login`}
+        href={`${API_BASE_URL}/auth/oauth/github/start?intent=login`}
         style={{ marginBottom: 8 }}
       >
         {t('signInWithGithub')}
