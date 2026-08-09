@@ -1287,6 +1287,24 @@ async function handleAuthRoute(
 
   // --- GitHub OAuth (D-MEMORY-...: option 2 -- see auth.ts's registerViaGithub/loginViaGithub) ---
 
+  // GitHub's redirect is a real internet round-trip through nginx, so this
+  // needs the actual public origin -- requestUrl is parsed against a
+  // hardcoded dummy base (parseRequestUrl below), never a real one, and the
+  // raw incoming request is plain HTTP from nginx's own proxy_pass, not
+  // what the browser/GitHub see. PROJECT_MEMORY_PUBLIC_URL (this
+  // deployment's real address, same var the profile page's Connect section
+  // uses) plus the /api prefix (API_ENDPOINT) nginx expects is the only
+  // reliable source. Must be byte-identical between the /start authorize
+  // request and the /callback token exchange (OAuth requires an exact
+  // redirect_uri match).
+  function githubRedirectUri(): string {
+    const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL?.trim().replace(/\/+$/, "");
+    if (!publicUrl) {
+      throw new AppError("VALIDATION_ERROR", "PROJECT_MEMORY_PUBLIC_URL must be set to enable GitHub sign-in.");
+    }
+    return `${publicUrl}${normalizedApiEndpoint() ?? ""}/auth/github/callback`;
+  }
+
   if (request.method === "GET" && requestPath === "/auth/github/start") {
     const intentParam = queryString(requestUrl, "intent");
     const intent = intentParam === "link" ? "link" : "login";
@@ -1294,8 +1312,8 @@ async function handleAuthRoute(
       send(401, fail(new AppError("UNAUTHORIZED", "A session is required to link a GitHub account.")));
       return true;
     }
+    const redirectUri = githubRedirectUri();
     const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null);
-    const redirectUri = `${requestUrl.origin}/auth/github/callback`;
     response.writeHead(302, { location: githubAuthorizeUrl(state, redirectUri) });
     response.end();
     return true;
@@ -1325,7 +1343,7 @@ async function handleAuthRoute(
 
     let githubUser: { githubId: string; login: string; email: string };
     try {
-      githubUser = await resolveGithubUser(code, `${requestUrl.origin}/auth/github/callback`);
+      githubUser = await resolveGithubUser(code, githubRedirectUri());
     } catch (error) {
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
       return true;
