@@ -120,6 +120,8 @@ try {
       project: { id: string };
       counts: { tasks: number; artifacts: number };
       openTasks: Array<{ id: string; title: string }>;
+      artifacts: Array<{ id: string; contentType: string | null; sizeBytes: number | null }>;
+      handoffs: Array<{ id: string; type: string | null }>;
     };
   }>(
     `query Smoke($project: String!, $path: String!) {
@@ -134,6 +136,8 @@ try {
         project { id }
         counts { tasks artifacts }
         openTasks { id title }
+        artifacts { id contentType sizeBytes }
+        handoffs { id type }
       }
     }`,
     { project: projectId, path: "docs/graphql-smoke.md" }
@@ -145,6 +149,11 @@ try {
   assert(data.artifactText.textInfo.base64Included === false, "GraphQL artifactText included base64.");
   assert(data.projectSummary.counts.tasks >= 1, "GraphQL projectSummary did not report task count.");
   assert(data.projectSummary.counts.artifacts >= 1, "GraphQL projectSummary did not report artifact count.");
+  // T-MEMORY-063 regression: projectSummary.artifacts/handoffs are backed by
+  // the trimmed compact formatters (no contentType/sizeBytes/type) -- this
+  // must not throw a GraphQL non-nullable-field error just because those
+  // fields were selected, the way PMemUI's own Project Overview query does.
+  assert(Array.isArray(data.projectSummary.artifacts), "GraphQL projectSummary.artifacts (with contentType/sizeBytes selected) should not throw.");
   console.log("ok - graphql project explorer queries");
 
   const claimTaskCreated = await graphql<{ createTask: { id: string; status: string; activeClaimCount: number } }>(

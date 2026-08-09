@@ -585,11 +585,15 @@ const typeDefs = `#graphql
     title: String!
   }
 
+  # T-MEMORY-063: ProjectSummary.handoffs/ContextPack.handoffs source from
+  # compactHandoffRecord, which drops projectId/type as redundant within a
+  # section already scoped to one project and one record kind -- type is
+  # nullable here for that reason (full memory records always populate it).
   type MemoryRecord {
     id: ID!
     projectId: String
     scope: String
-    type: String!
+    type: String
     title: String
     body: String
     excerpt: String
@@ -620,6 +624,10 @@ const typeDefs = `#graphql
     event: Event!
   }
 
+  # T-MEMORY-063: ProjectSummary.openTasks/ContextPack.task source from
+  # compactTask, which omits allowedFiles/forbiddenFiles/dependsOn entirely
+  # when empty rather than serializing an empty array -- nullable here for
+  # that reason (task.get/tasksPage's full taskOut always populates them).
   type Task {
     id: ID!
     projectId: String
@@ -629,9 +637,9 @@ const typeDefs = `#graphql
     priority: Int
     scope: String
     acceptance: String
-    allowedFiles: [String!]!
-    forbiddenFiles: [String!]!
-    dependsOn: [String!]!
+    allowedFiles: [String!]
+    forbiddenFiles: [String!]
+    dependsOn: [String!]
     notes: String
     activeClaimCount: Int!
     createdAt: String
@@ -751,19 +759,24 @@ const typeDefs = `#graphql
     pageInfo: PageInfo!
   }
 
+  # T-MEMORY-063: this type also serves ProjectSummary.artifacts and
+  # ContextPack.artifacts, whose compactArtifactRecord source now only
+  # provides id/path/title/tags -- scope/contentType/sizeBytes/downloadPath
+  # are nullable here for that reason (they're still always present when
+  # this type backs the full artifactSearch/artifactSearchPage queries).
   type ArtifactSearchResult {
     id: ID!
     projectId: String
-    scope: String!
+    scope: String
     path: String!
     title: String!
     description: String
     status: String
-    contentType: String!
-    sizeBytes: Int!
+    contentType: String
+    sizeBytes: Int
     sha256: String
     tags: [String!]!
-    downloadPath: String!
+    downloadPath: String
     archivedAt: String
     archivedBy: String
     archiveReason: String
