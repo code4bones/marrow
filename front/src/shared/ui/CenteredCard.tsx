@@ -34,15 +34,17 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           MARROW
         </Typography.Text>
       </div>
-      {/* T-MEMORY-061 / I-MEMORY-058: canonical two-line slogan, always
-          together and in this order. The EN backronym is a name (like Bash
-          or YACC) -- never translated/localized, one Latin line for every
-          language. Acronym letters (A-R-R-O-W, spelling the rest of MARROW)
-          are weight/color-accented, never underlined -- underline reads as
-          a link in this UI. Only the subtitle beneath it is localized, and
-          it's a semantic counterpart to the joke, not a literal translation
-          (see I-MEMORY-058 -- machine-translating the EN line reads as a
-          product recall of employees). */}
+      {/* T-MEMORY-061 / I-MEMORY-058..060: canonical two-line slogan. The EN
+          backronym is a name (like Bash or YACC) -- never translated, one
+          Latin line for every language. Acronym letters (A-R-R-O-W) are
+          weight/color-accented, never underlined -- underline reads as a
+          link in this UI. The subtitle (auth.tagline) is a semantic
+          counterpart, not a literal translation of the backronym -- see
+          I-MEMORY-059 for the final ru wording and I-MEMORY-060 for why the
+          en value is empty here specifically: the EN backronym line already
+          says the same thing right above it, so an EN subtitle would repeat
+          the joke twice in a row. Only render the subtitle when non-empty,
+          so the empty en value doesn't leave a blank line under the mark. */}
       <div style={{ textAlign: 'center', maxWidth: 340 }}>
         <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block' }}>
           MARROW <span className="marrow-acronym-letter">A</span>in&apos;t <span className="marrow-acronym-letter">R</span>AM
@@ -50,9 +52,11 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           <span className="marrow-acronym-letter">R</span>ecall <span className="marrow-acronym-letter">O</span>utlives{' '}
           <span className="marrow-acronym-letter">W</span>orkers
         </Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', opacity: 0.75 }}>
-          {t('tagline')}
-        </Typography.Text>
+        {t('tagline') && (
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', opacity: 0.75 }}>
+            {t('tagline')}
+          </Typography.Text>
+        )}
       </div>
       <div style={{ width }}>{children}</div>
     </div>
