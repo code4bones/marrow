@@ -1380,13 +1380,15 @@ async function handleAuthRoute(
     return `${publicUrl}/auth/oauth/github/callback`;
   }
 
-  // Only ever a same-origin relative path into the SPA's own
-  // /oauth-authorize route -- rejects absolute URLs, protocol-relative
+  // Only ever a same-origin relative path into the SPA's own /oauth/authorize
+  // route (front/src/app/router/index.tsx -- the page component and its
+  // directory are named "oauth-authorize", but the actual registered route
+  // is "/oauth/authorize") -- rejects absolute URLs, protocol-relative
   // ("//evil.com") paths, and anything else, so an attacker can't use
   // returnTo to redirect a victim's post-GitHub-login session anywhere but
   // back into this app's own consent screen.
   function safeGithubReturnTo(value: string | null | undefined): string | null {
-    return value && value.startsWith("/oauth-authorize?") ? value : null;
+    return value && value.startsWith("/oauth/authorize?") ? value : null;
   }
 
   // A failure partway through GitHub login (wrong email already registered,

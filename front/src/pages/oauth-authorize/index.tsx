@@ -155,7 +155,9 @@ export function OAuthAuthorizePage() {
     // returnTo brings the user straight back to this exact consent screen
     // (client_id/redirect_uri/code_challenge/state and all) after the
     // GitHub round trip -- safeGithubReturnTo on the backend only ever
-    // accepts a /oauth-authorize path back, never an arbitrary redirect.
+    // accepts a /oauth/authorize path back (this page's real route --
+    // location.pathname below, not the "oauth-authorize" directory name),
+    // never an arbitrary redirect.
     const githubStartUrl = `${API_BASE_URL}/auth/oauth/github/start?intent=login&returnTo=${encodeURIComponent(
       `${location.pathname}${location.search}`
     )}`;
