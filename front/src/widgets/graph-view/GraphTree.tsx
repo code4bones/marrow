@@ -3,6 +3,7 @@ import type { DataNode } from 'antd/es/tree';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ENTITY_COLOR } from '../../shared/lib/entityId';
+import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { STATUS_COLORS } from '../../shared/ui/statusColors';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode } from '../../shared/model/types';
@@ -28,6 +29,7 @@ interface BuiltNode {
   kind: string;
   title: string;
   status: string | null;
+  createdAt: string | null;
   children: BuiltNode[];
 }
 
@@ -55,7 +57,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
   const neighborsOf = (id: string): GraphNode[] =>
     (adjacency.get(id) ?? []).map((nid) => byId.get(nid)!).sort(compareByCreatedThenId);
 
-  const root: BuiltNode = { id: project.id, kind: 'PROJECT', title: project.title, status: null, children: [] };
+  const root: BuiltNode = { id: project.id, kind: 'PROJECT', title: project.title, status: null, createdAt: null, children: [] };
   const builtById = new Map<string, BuiltNode>();
   const visited = new Set<string>();
 
@@ -63,7 +65,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
   for (const seed of order) {
     if (visited.has(seed.id)) continue;
     visited.add(seed.id);
-    const seedBuilt: BuiltNode = { id: seed.id, kind: seed.kind, title: seed.title, status: seed.status, children: [] };
+    const seedBuilt: BuiltNode = { id: seed.id, kind: seed.kind, title: seed.title, status: seed.status, createdAt: seed.createdAt, children: [] };
     builtById.set(seed.id, seedBuilt);
     root.children.push(seedBuilt);
 
@@ -74,7 +76,9 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
       for (const neighbor of neighborsOf(currentId)) {
         if (visited.has(neighbor.id)) continue;
         visited.add(neighbor.id);
-        const neighborBuilt: BuiltNode = { id: neighbor.id, kind: neighbor.kind, title: neighbor.title, status: neighbor.status, children: [] };
+        const neighborBuilt: BuiltNode = {
+          id: neighbor.id, kind: neighbor.kind, title: neighbor.title, status: neighbor.status, createdAt: neighbor.createdAt, children: []
+        };
         builtById.set(neighbor.id, neighborBuilt);
         currentBuilt.children.push(neighborBuilt);
         queue.push(neighbor.id);
@@ -90,6 +94,7 @@ function kindDotColor(kind: string): string {
 }
 
 function TreeRowTitle({ node }: { node: BuiltNode }) {
+  const stamp = formatGraphTimestamp(node.createdAt);
   return (
     <Tooltip title={`${node.kind} · ${node.id}`} placement="right" mouseEnterDelay={0.4}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
@@ -106,6 +111,11 @@ function TreeRowTitle({ node }: { node: BuiltNode }) {
           <Tag color={STATUS_COLORS[node.status] ?? 'default'} style={{ fontSize: 10, lineHeight: '14px', margin: 0, flexShrink: 0 }}>
             {node.status}
           </Tag>
+        )}
+        {stamp && (
+          <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace', flexShrink: 0 }}>
+            {stamp}
+          </Typography.Text>
         )}
       </span>
     </Tooltip>

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { ENTITY_COLOR } from '../../shared/lib/entityId';
+import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
 import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
@@ -340,6 +341,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
   const shown = satellites.slice(0, MAX_SATELLITES_SHOWN);
   const overflow = satellites.length - shown.length;
   const { prefix: titlePrefix, rest: titleRest } = splitTitlePrefix(node.title);
+  const stamp = formatGraphTimestamp(node.createdAt);
 
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -387,6 +389,11 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
             {node.id}
           </Typography.Text>
+          {stamp && (
+            <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
+              {stamp}
+            </Typography.Text>
+          )}
           <Typography.Text style={{ fontSize: 10, color, textTransform: 'uppercase', letterSpacing: 0.4 }}>
             {status}
           </Typography.Text>
