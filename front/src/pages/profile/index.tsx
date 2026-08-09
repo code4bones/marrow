@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
-import { DeleteOutlined } from '@ant-design/icons';
+import { DeleteOutlined, GithubOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -23,6 +23,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
@@ -30,7 +31,7 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
-import { type OAuthClient, type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
+import { type GithubLinkStatus, type OAuthClient, type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -712,6 +713,99 @@ function AccountSection() {
   );
 }
 
+function GithubSection() {
+  const { t } = useTranslation('profile');
+  const fetchGithubStatus = useAuthStore((s) => s.fetchGithubStatus);
+  const unlinkGithub = useAuthStore((s) => s.unlinkGithub);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [status, setStatus] = useState<GithubLinkStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(searchParams.get('githubError'));
+
+  const load = async () => {
+    try {
+      const result = await fetchGithubStatus();
+      setStatus(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('couldNotLoadGithubStatus'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const linked = searchParams.get('githubLinked');
+    const linkError = searchParams.get('githubError');
+    if (!linked && !linkError) {
+      return;
+    }
+    void (async () => {
+      if (linked) {
+        message.success(t('githubLinked'));
+        await load();
+      }
+      setSearchParams((params) => {
+        params.delete('githubLinked');
+        params.delete('githubError');
+        return params;
+      }, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unlink = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await unlinkGithub();
+      message.success(t('githubUnlinked'));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('couldNotUnlinkGithub'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="GitHub" size="small" style={{ marginBottom: 16 }}>
+      {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
+      {loading ? (
+        <Spin size="small" />
+      ) : status?.linked ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <GithubOutlined style={{ fontSize: 18 }} />
+          <Text>{t('githubConnectedAs', { login: status.githubLogin })}</Text>
+          <Popconfirm
+            title={t('unlinkGithubConfirmTitle')}
+            description={t('unlinkGithubDescription')}
+            okText={t('unlinkGithub')}
+            okButtonProps={{ danger: true, loading: busy }}
+            onConfirm={unlink}
+          >
+            <Button size="small">{t('unlinkGithub')}</Button>
+          </Popconfirm>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Text type="secondary">{t('githubNotConnected')}</Text>
+          <Button icon={<GithubOutlined />} href={`${API_BASE_URL}/auth/github/start?intent=link`}>
+            {t('connectGithub')}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TwoFactorSection() {
   const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
@@ -987,7 +1081,7 @@ export function ProfilePage() {
   const { t } = useTranslation('profile');
   const sections = [
     { key: 'connect', label: t('connect'), children: <ConnectSection /> },
-    { key: 'account', label: t('account'), children: <><AccountSection /><LanguageSection /></> },
+    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
   ];

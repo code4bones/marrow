@@ -88,6 +88,11 @@ interface ClaimContextResult {
   purpose: string;
 }
 
+export interface GithubLinkStatus {
+  linked: boolean;
+  githubLogin: string | null;
+}
+
 interface ClaimResult {
   email: string;
   emailVerified: boolean;
@@ -107,12 +112,20 @@ interface AuthState {
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   loginTotp: (code: string) => Promise<void>;
+  /** Populates the second-login-step state from a GitHub-callback redirect (?pendingTotpUserId=...) instead of a login() response. */
+  setPendingTotpUserId: (userId: string | null) => void;
   bootstrapAdmin: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 
   registerStart: (email: string, password: string) => Promise<RegisterStartResult>;
+  /** Fetches otpauthUrl/secretBase32 for a GitHub-originated pending registration (?githubToken=...) without consuming it -- registerConfirm still finishes it, same as the password flow. */
+  registerPendingContext: (token: string) => Promise<RegisterStartResult>;
   registerConfirm: (token: string, code: string) => Promise<RegisterConfirmResult>;
+
+  /** GitHub account link status for the profile page's Connect section. */
+  fetchGithubStatus: () => Promise<GithubLinkStatus>;
+  unlinkGithub: () => Promise<void>;
 
   /** Invite-claim flow (admin-issued invite, or a password-reset link — same token/password shape). */
   claimContext: (token: string) => Promise<ClaimContextResult>;
@@ -258,6 +271,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  setPendingTotpUserId: (userId) => set({ pendingTotpUserId: userId }),
+
   loginTotp: async (code) => {
     const userId = get().pendingTotpUserId;
     if (!userId) {
@@ -306,8 +321,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   registerStart: (email, password) =>
     postJson<RegisterStartResult>('/auth/register', { email, password }, 'Could not start registration.'),
 
+  registerPendingContext: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/auth/register/pending?token=${encodeURIComponent(token)}`, {
+      credentials: 'include',
+    });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'This link is invalid or has expired.');
+    }
+    return body.data as RegisterStartResult;
+  },
+
   registerConfirm: (token, code) =>
     postJson<RegisterConfirmResult>('/auth/register/confirm', { token, code }, 'Invalid or expired code.'),
+
+  fetchGithubStatus: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/github`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load GitHub link status.');
+    }
+    return body.data as GithubLinkStatus;
+  },
+
+  unlinkGithub: () => postJson('/auth/profile/github/unlink', {}, 'Could not unlink GitHub.'),
 
   claimContext: async (token) => {
     const response = await fetch(`${API_BASE_URL}/auth/claim?token=${encodeURIComponent(token)}`, {

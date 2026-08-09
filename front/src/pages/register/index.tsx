@@ -1,7 +1,7 @@
-import { Alert, Button, Form, Input, Typography } from 'antd';
-import { useState } from 'react';
+import { Alert, Button, Form, Input, Spin, Typography } from 'antd';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
@@ -24,12 +24,39 @@ interface EnrollState {
 export function RegisterPage() {
   const { t } = useTranslation('auth');
   const registerStart = useAuthStore((s) => s.registerStart);
+  const registerPendingContext = useAuthStore((s) => s.registerPendingContext);
   const registerConfirm = useAuthStore((s) => s.registerConfirm);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form] = Form.useForm<CredentialsFormValues>();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [enroll, setEnroll] = useState<EnrollState | null>(null);
+  const githubToken = searchParams.get('githubToken');
+  const [loadingGithubContext, setLoadingGithubContext] = useState(Boolean(githubToken));
+
+  // GitHub sign-in for a brand-new email lands here (GET /auth/github/callback
+  // -> registerViaGithub -> redirect with ?githubToken=...) -- skip straight
+  // to the same TOTP-enroll step a password registration reaches after
+  // submitting the form, just without ever seeing that form.
+  useEffect(() => {
+    if (!githubToken) {
+      return;
+    }
+    registerPendingContext(githubToken)
+      .then((result) => setEnroll({ token: githubToken, otpauthUrl: result.otpauthUrl, secretBase32: result.secretBase32 }))
+      .catch((err) => setError(err instanceof Error ? err.message : t('linkInvalidOrExpired')))
+      .finally(() => setLoadingGithubContext(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubToken]);
+
+  if (loadingGithubContext) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   const onFinish = async ({ email, password }: CredentialsFormValues) => {
     setError(null);
