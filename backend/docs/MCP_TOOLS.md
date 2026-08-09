@@ -2046,9 +2046,20 @@ Output:
 
 ```json
 {
-  "task": {}
+  "task": {
+    "noteIds": ["I-MEMORY-060"],
+    "noteCount": 1
+  }
 }
 ```
+
+`noteIds`/`noteCount` list other records linked *to* this task via a
+`*_for` relation (implementation notes, review notes, handoffs, test
+results, ...) -- ids only, no bodies. A non-zero `noteCount` is a signal
+to call `preflight` or `link.list(id=<taskId>, direction="to")` before
+treating `scope`/`acceptance`/`notes` alone as the complete picture; a
+closed task can still have a later note superseding something in its
+original scope.
 
 ---
 

@@ -88,13 +88,27 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   }
 
   // T-MEMORY-057 (IDOR): task ids are sequential/predictable too.
+  //
+  // I-MEMORY-065: task.get used to return scope/acceptance/notes but never
+  // surfaced that OTHER records (implementation notes, review notes,
+  // superseding decisions/notes on a related record) point AT this task via
+  // links -- an agent reading task.get alone had no signal those existed at
+  // all, and had to separately know to call preflight(taskId) or
+  // link.list(toId=task) to discover them. noteIds/noteCount are cheap (ids
+  // only, no bodies) but make that gap visible.
   protected async getTask(id: string, context?: NormalizedGatewayRequestContext) {
     const row = await this.taskSelectWithActiveClaimCount(this.db("tasks")).where({ id }).first();
     if (!row) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(row.project_id), context);
-    return taskOut(row);
+    const noteLinks = await this.db("links")
+      .where({ to_id: id })
+      .andWhere("relation", "like", "%_for")
+      .orderBy("created_at", "desc")
+      .select("from_id");
+    const noteIds = noteLinks.map((link: Row) => String(link.from_id));
+    return { ...taskOut(row), noteIds, noteCount: noteIds.length };
   }
 
   protected async deleteTask(input: Row, context: NormalizedGatewayRequestContext) {
@@ -370,8 +384,24 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         .join("\n"),
       related_id: id
     }, context);
+
+    // I-MEMORY-065: a task can go straight from created to completed with no
+    // claim, no acceptance evidence, and no reason -- gateway history alone
+    // then can't establish that anything was actually done. Not blocked
+    // (plenty of trivial/manual completions are legitimate), just surfaced
+    // so the caller notices at the moment it happens instead of a reviewer
+    // discovering it much later with no trail left to follow.
+    let warning: string | undefined;
+    if (!completedClaim && !evidence && !reason) {
+      const everClaimed = await this.db("task_claims").where({ task_id: id }).first();
+      if (!everClaimed) {
+        warning = `Task ${id} was completed without ever being claimed and without acceptanceEvidence or reason -- there is no record of what was actually done.`;
+      }
+    }
+
     return {
       task: await this.getTask(id, context),
+      ...(warning ? { warning } : {}),
       completedClaim,
       event
     };
