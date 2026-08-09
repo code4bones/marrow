@@ -6,7 +6,7 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
@@ -32,12 +32,24 @@ function categorizeEvent(type: string): VersionKey | null {
   return PREFIX_MAP.find(([prefix]) => type.startsWith(prefix))?.[1] ?? null;
 }
 
-/** Small count badge next to a Statistic's title — only rendered once there's something new to show. */
+// I-MEMORY-audit: the badge counts events of this category since
+// notificationsSeenAt -- a "recent activity" signal, unrelated to the
+// Statistic's own value (a current total/count). Shown side by side with
+// no explanation, the two numbers read as if they should agree (they
+// don't: e.g. finishing several tasks today shows up here as high recent
+// activity even while the open-tasks total drops to 0). A tooltip spells
+// out what the badge actually counts so it can't be misread as "N of
+// these are new" or "N still open".
 function StatTitle({ label, newCount }: { label: string; newCount: number }) {
+  const { t } = useTranslation('projects');
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       {label}
-      {newCount > 0 && <Badge count={newCount} size="small" overflowCount={99} color="#177ddc" />}
+      {newCount > 0 && (
+        <Tooltip title={t('recentActivityCount', { count: newCount })}>
+          <Badge count={newCount} size="small" overflowCount={99} color="#177ddc" />
+        </Tooltip>
+      )}
     </span>
   );
 }
@@ -194,7 +206,12 @@ export function ProjectOverview({ slug }: { slug: string }) {
         <Row gutter={24}>
           <Col>
             <Statistic
-              title={<StatTitle label={t('openTasks')} newCount={newTaskCount} />}
+              // Badge intentionally omitted here (kept on "All tasks" below
+              // instead): newTaskCount counts ALL task-related activity,
+              // completions included, which pulls this exact number in the
+              // opposite direction of "open" -- pairing it with this stat
+              // specifically read as if N tasks had just become open.
+              title={<StatTitle label={t('openTasks')} newCount={0} />}
               value={counts.openTasks}
               prefix={<CalendarOutlined />}
               valueStyle={{ fontSize: 20 }}
