@@ -1390,12 +1390,34 @@ function setCorsHeaders(response: ServerResponse): void {
 
 function corsHeaders(): Record<string, string> {
   return {
-    "access-control-allow-origin": process.env.GRAPHQL_CORS_ORIGIN ?? "*",
+    "access-control-allow-origin": process.env.GRAPHQL_CORS_ORIGIN ?? defaultCorsOrigin(),
     "access-control-allow-methods": "GET,POST,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-project-memory-client-id,x-project-memory-client-label,x-project-memory-client-kind,x-request-id",
     "access-control-expose-headers": "x-request-id",
     vary: "origin"
   };
+}
+
+// T-MEMORY-060 (whitebox pentest finding #5, I-MEMORY-055): the web UI is
+// always same-origin with this API (nginx serves both from one vhost), so
+// scoping this to that origin has zero effect on legitimate use -- "*" only
+// ever helped a cross-origin attacker page, and bearer-token auth + a
+// SameSite=Lax session cookie already mean stolen credentials aren't usable
+// cross-origin anyway (this was a low-risk finding, not a live exploit).
+// Derived from PROJECT_MEMORY_PUBLIC_URL (already set in every real
+// deployment for the OAuth facade) so this tightens automatically with no
+// new required env var; GRAPHQL_CORS_ORIGIN above still wins if set
+// explicitly, and "*" remains the fallback only when neither is configured.
+function defaultCorsOrigin(): string {
+  const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL;
+  if (!publicUrl) {
+    return "*";
+  }
+  try {
+    return new URL(publicUrl).origin;
+  } catch {
+    return "*";
+  }
 }
 
 function operationNameFromBody(body: unknown): string | undefined {
