@@ -127,7 +127,7 @@ CREATE TABLE items (
   type TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL DEFAULT 'current',
   tags TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -142,7 +142,7 @@ If `project_id` is null, the item is common knowledge.
 ### Suggested item statuses
 
 ```text
-active
+current
 draft
 archived
 superseded
@@ -347,7 +347,7 @@ CREATE TABLE decisions (
   id TEXT PRIMARY KEY,
   project_id TEXT,
   title TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL DEFAULT 'current',
   context TEXT,
   decision TEXT NOT NULL,
   rationale TEXT,
@@ -369,7 +369,7 @@ Allowed statuses:
 
 ```text
 draft
-active
+current
 superseded
 rejected
 archived
@@ -471,7 +471,7 @@ CREATE TABLE artifacts (
   size_bytes BIGINT NOT NULL,
   sha256 TEXT NOT NULL,
   storage_path TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL DEFAULT 'current',
   archived_at TEXT,
   archived_by TEXT,
   archive_reason TEXT,
@@ -485,7 +485,7 @@ CREATE TABLE artifacts (
 Allowed statuses:
 
 ```text
-active
+current
 archived
 ```
 
@@ -495,7 +495,7 @@ Artifact path is unique inside project/common scope:
 coalesce(project_id, '__common__') + path
 ```
 
-Default artifact search should return only active artifacts. Archived artifacts
+Default artifact search should return only current artifacts. Archived artifacts
 remain retrievable by explicit id/path and can be searched when requested.
 
 ## `kv`

@@ -218,7 +218,7 @@ const artifactSearchSchema = z.object({
   project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   includeArchived: z.boolean().optional(),
-  status: z.enum(["active", "archived"]).optional(),
+  status: z.enum(["current", "archived"]).optional(),
   tags: z.array(z.string()).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   compact: z.boolean().optional()
@@ -230,7 +230,7 @@ const artifactListSchema = z.object({
   pathPrefix: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
   includeArchived: z.boolean().optional(),
-  status: z.enum(["active", "archived"]).optional(),
+  status: z.enum(["current", "archived"]).optional(),
   limit: z.number().int().min(1).max(200).optional(),
   compact: z.boolean().optional()
 });

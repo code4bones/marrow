@@ -876,7 +876,7 @@ Input:
   "includeCommon": true,
   "pathPrefix": "templates/agents/frontend",
   "tags": ["agents"],
-  "status": "active",
+  "status": "current",
   "compact": true,
   "limit": 20
 }
@@ -902,7 +902,7 @@ Output:
       "scope": "common",
       "path": "templates/agents/frontend/AGENTS.md",
       "title": "Frontend AGENTS.md",
-      "status": "active",
+      "status": "current",
       "downloadPath": "/artifacts/A-COMMON-001/download"
     }
   ]
@@ -1596,7 +1596,7 @@ Input:
   "type": "agent_rule",
   "title": "Keep diffs small",
   "body": "Agents should prefer small, reviewable diffs and avoid unrelated refactors.",
-  "status": "active",
+  "status": "current",
   "tags": ["common", "agent", "workflow"],
   "summary": "Prefer small, reviewable diffs; avoid unrelated refactors."
 }
@@ -1793,7 +1793,7 @@ Input:
   "project": "project-memory-mcp",
   "includeCommon": true,
   "type": "agent_rule",
-  "status": "active",
+  "status": "current",
   "limit": 10
 }
 ```
@@ -1818,7 +1818,7 @@ Output:
       "type": "agent_rule",
       "title": "Always run preflight",
       "excerpt": "Before starting a task, call preflight...",
-      "status": "active",
+      "status": "current",
       "tags": ["common", "agent"]
     }
   ]
@@ -1830,7 +1830,7 @@ Ranking:
 1. project-specific records
 2. common records
 3. FTS rank within each group, weighted (I-MEMORY-022 step 5):
-   * **status** — `active` 1.0, `draft` 0.9, `superseded` 0.4, `archived` 0.3,
+   * **status** — `current` 1.0, `draft` 0.9, `superseded` 0.4, `archived` 0.3,
      `rejected` 0.2. Superseded/archived/rejected records stay findable, just
      ranked below an otherwise-equal active match.
    * **chain-head** — a record that is the target (`toId`) of a `supersedes`,
@@ -1868,7 +1868,7 @@ Input:
   "id": "I-MEMORY-001",
   "title": "Updated title",
   "body": "Updated body",
-  "status": "active",
+  "status": "current",
   "tags": ["architecture"],
   "summary": "Updated TL;DR"
 }
@@ -2170,7 +2170,7 @@ Input:
 {
   "project": "project-memory-mcp",
   "title": "Use SQLite FTS5 for MVP search",
-  "status": "active",
+  "status": "current",
   "context": "The project needs local search for agent memory.",
   "decision": "Use SQLite FTS5 in the MVP instead of embeddings.",
   "rationale": "FTS5 is local, deterministic, simple, and enough for early project memory.",
@@ -2257,7 +2257,7 @@ Output:
 {
   "decision": {
     "id": "D-MEMORY-002",
-    "status": "active",
+    "status": "current",
     "supersedesId": "D-MEMORY-001"
   },
   "superseded": {
@@ -2303,7 +2303,7 @@ Input:
 {
   "project": "project-memory-mcp",
   "includeCommon": true,
-  "status": "active",
+  "status": "current",
   "limit": 20
 }
 ```

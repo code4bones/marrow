@@ -29,7 +29,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       type: String(input.type),
       title: String(input.title),
       body: String(input.body),
-      status: typeof input.status === "string" ? input.status : "active",
+      status: typeof input.status === "string" ? input.status : "current",
       tags: jsonStringArray(input.tags),
       summary: stringOrNull(input.summary),
       ...writeActorFields(context),
@@ -117,7 +117,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         type: "failed_attempt",
         title: input.title,
         body: failedAttemptBody(input),
-        status: "active",
+        status: "current",
         tags,
         match: input.match ?? "scope_type_title"
       },
@@ -480,7 +480,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     let query = this.db("items")
       .select("id", "project_id", "type", "title", "status", "tags", "created_at", "updated_at")
       .select(this.db.raw("char_length(body) as body_chars"))
-      .where("status", "active");
+      .where("status", "current");
     query = query.andWhere((builder) => {
       if (projectId) {
         builder.orWhere("project_id", projectId);

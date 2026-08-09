@@ -32,7 +32,7 @@ export class MemoryService {
       type: input.type,
       title: input.title,
       body: input.body,
-      status: input.status ?? "active",
+      status: input.status ?? "current",
       tags: input.tags ?? [],
       createdAt: now,
       updatedAt: now

@@ -623,7 +623,7 @@ try {
       type: "agent_rule",
       title: "Gateway MCP HTTP smoke rule (active, status ranking)",
       body: `Active record mentioning ${statusRankNonce}.`,
-      status: "active",
+      status: "current",
       tags: ["smoke", "ranking"]
     }
   });
@@ -663,7 +663,7 @@ try {
       type: "agent_rule",
       title: "Gateway MCP HTTP smoke rule (chain-head: old)",
       body: `Old record mentioning ${chainHeadNonce}.`,
-      status: "active",
+      status: "current",
       tags: ["smoke", "ranking"]
     }
   });
@@ -676,7 +676,7 @@ try {
       type: "agent_rule",
       title: "Gateway MCP HTTP smoke rule (chain-head: new)",
       body: `New record mentioning ${chainHeadNonce}, refines the old one.`,
-      status: "active",
+      status: "current",
       tags: ["smoke", "ranking"],
       links: [{ toId: chainOldItemId, relation: "refines" }]
     }

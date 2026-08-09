@@ -144,7 +144,7 @@ export async function seedBundledTemplates(options: SeedTemplatesOptions = {}): 
         size_bytes: content.byteLength,
         sha256,
         storage_path: storagePath,
-        status: "active",
+        status: "current",
         archived_at: null,
         archived_by: null,
         archive_reason: null,
@@ -222,7 +222,7 @@ async function templateArtifactIsCurrent(
 ): Promise<boolean> {
   return (
     String(existing.sha256) === sha256 &&
-    String(existing.status ?? "active") === "active" &&
+    String(existing.status ?? "current") === "current" &&
     String(existing.title) === seed.title &&
     String(existing.description ?? "") === seed.description &&
     String(existing.storage_path) === storagePath &&

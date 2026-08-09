@@ -128,7 +128,7 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
         type: "reply",
         title: shortText(body, 120) ?? body,
         body,
-        status: "active",
+        status: "current",
         tags: ["reply", threadTag(requestId)]
       },
       context

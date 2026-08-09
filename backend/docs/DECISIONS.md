@@ -4,7 +4,7 @@ This document records important project decisions until the MCP memory server is
 
 ## D-MEMORY-001: MVP is local-first stdio
 
-Status: active
+Status: current
 
 Context:
 
@@ -28,7 +28,7 @@ Consequences:
 
 ## D-MEMORY-002: Collaboration is now an explicit product requirement
 
-Status: active
+Status: current
 
 Context:
 
@@ -54,7 +54,7 @@ Consequences:
 
 ## D-MEMORY-003: Use PostgreSQL as the primary shared gateway database
 
-Status: active
+Status: current
 
 Context:
 

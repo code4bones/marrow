@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 import { recordLinksInputSchema } from "../../memory/model/schema.js";
 
-export const decisionStatusSchema = z.enum(["draft", "active", "superseded", "rejected", "archived"]);
+export const decisionStatusSchema = z.enum(["draft", "current", "superseded", "rejected", "archived"]);
 
 export const recordDecisionSchema = z.object({
   project: z.string().nullable().optional(),

@@ -1,4 +1,4 @@
-export type ItemStatus = "active" | "draft" | "archived" | "superseded" | "rejected";
+export type ItemStatus = "current" | "draft" | "archived" | "superseded" | "rejected";
 
 export interface MemoryItem {
   id: string;

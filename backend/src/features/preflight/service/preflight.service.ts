@@ -31,7 +31,7 @@ export class PreflightService {
     const relevantDecisions = this.decisions.list({
       project: project.id,
       includeCommon,
-      status: "active",
+      status: "current",
       limit: limits.decisions
     });
 
@@ -41,7 +41,7 @@ export class PreflightService {
         project: project.id,
         includeCommon,
         type: "agent_rule",
-        status: "active",
+        status: "current",
         limit: Math.ceil(limits.items / 2)
       }),
       ...this.memory.search({
@@ -49,7 +49,7 @@ export class PreflightService {
         project: project.id,
         includeCommon,
         type: "workflow_rule",
-        status: "active",
+        status: "current",
         limit: Math.floor(limits.items / 2)
       })
     ].filter((item) => item.scope === "common");
@@ -58,7 +58,7 @@ export class PreflightService {
       query,
       project: project.id,
       includeCommon,
-      status: "active",
+      status: "current",
       limit: limits.items
     });
 
@@ -67,7 +67,7 @@ export class PreflightService {
       project: project.id,
       includeCommon,
       type: "failed_attempt",
-      status: "active",
+      status: "current",
       limit: limits.failedAttempts
     });
 

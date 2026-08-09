@@ -125,7 +125,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       size_bytes: content.byteLength,
       sha256: createHash("sha256").update(content).digest("hex"),
       storage_path: storagePath,
-      status: existing?.status ?? "active",
+      status: existing?.status ?? "current",
       archived_at: existing?.archived_at ?? null,
       archived_by: existing?.archived_by ?? null,
       archive_reason: existing?.archive_reason ?? null,
@@ -188,7 +188,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (input.status) {
       query = query.andWhere("status", String(input.status));
     } else if (input.includeArchived !== true) {
-      query = query.andWhere("status", "active");
+      query = query.andWhere("status", "current");
     }
 
     const rows = await query
@@ -225,7 +225,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (input.status) {
       base.andWhere("status", String(input.status));
     } else if (input.includeArchived !== true) {
-      base.andWhere("status", "active");
+      base.andWhere("status", "current");
     }
 
     return this.pageRows(
@@ -275,7 +275,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (input.status) {
       query = query.andWhere("status", String(input.status));
     } else if (input.includeArchived !== true) {
-      query = query.andWhere("status", "active");
+      query = query.andWhere("status", "current");
     }
 
     const rows = await query
@@ -317,7 +317,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (input.status) {
       base.andWhere("status", String(input.status));
     } else if (input.includeArchived !== true) {
-      base.andWhere("status", "active");
+      base.andWhere("status", "current");
     }
 
     return this.pageRows(

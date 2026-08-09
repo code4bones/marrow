@@ -18,7 +18,7 @@ export function artifactOut(row: Row) {
     path: String(row.path),
     title: String(row.title),
     description: stringOrNull(row.description),
-    status: typeof row.status === "string" ? row.status : "active",
+    status: typeof row.status === "string" ? row.status : "current",
     contentType: String(row.content_type),
     sizeBytes: Number(row.size_bytes ?? 0),
     sha256: String(row.sha256),

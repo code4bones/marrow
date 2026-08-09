@@ -46,7 +46,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       project: project.id,
       includeCommon: input.includeCommon !== false,
       type: "failed_attempt",
-      status: "active",
+      status: "current",
       limit: limits.failedAttempts ?? 5
     });
     return {
@@ -65,21 +65,21 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       relevantDecisions: await this.listDecisions({
         project: project.id,
         includeCommon: input.includeCommon !== false,
-        status: "active",
+        status: "current",
         limit: limits.decisions ?? 10
       }),
       commonRules: await this.searchMemory({
         query: "preflight task scope acceptance diffs failed attempts",
         project: project.id,
         includeCommon: true,
-        status: "active",
+        status: "current",
         limit: limits.items ?? 10
       }),
       relatedItems: await this.searchMemory({
         query,
         project: project.id,
         includeCommon: input.includeCommon !== false,
-        status: "active",
+        status: "current",
         limit: limits.items ?? 10
       }),
       failedAttempts,
@@ -106,7 +106,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       project: project?.id,
       includeCommon,
       type: "failed_attempt",
-      status: "active",
+      status: "current",
       limit: limits.failedAttempts ?? 5
     });
 
@@ -116,21 +116,21 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       relevantDecisions: await this.listDecisions({
         project: project?.id,
         includeCommon,
-        status: "active",
+        status: "current",
         limit: limits.decisions ?? 10
       }),
       commonRules: await this.searchMemory({
         query: "preflight task scope acceptance diffs failed attempts",
         project: project?.id,
         includeCommon: true,
-        status: "active",
+        status: "current",
         limit: limits.items ?? 10
       }),
       relatedItems: await this.searchMemory({
         query,
         project: project?.id,
         includeCommon,
-        status: "active",
+        status: "current",
         limit: limits.items ?? 10
       }),
       failedAttempts,

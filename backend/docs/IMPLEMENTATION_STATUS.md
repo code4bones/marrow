@@ -130,7 +130,7 @@ GraphQL mutations cover create/update/archive/delete flows for memory items,
 tasks, task claims, task-linked notes, decisions, artifacts, events, and links. Hard-delete operations are
 available for explicit cleanup and remove relationship links that point at the
 deleted record where applicable. Decisions now support an `archived` lifecycle
-status in addition to `draft`, `active`, `superseded`, and `rejected`.
+status in addition to `draft`, `current`, `superseded`, and `rejected`.
 
 The web UI's table queries have paginated variants such as `projectsPage`,
 `tasksPage`, `decisionsPage`, `memoryItemsPage`, `artifactsPage`,

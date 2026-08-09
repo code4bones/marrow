@@ -92,7 +92,7 @@ export class BaseService {
     includeCommon: boolean,
     limit: number
   ): Promise<Row[]> {
-    let query = this.db("items").select("*").where({ type, status: "active" });
+    let query = this.db("items").select("*").where({ type, status: "current" });
     query = query.andWhere((builder) => {
       if (projectId) {
         builder.orWhere("project_id", projectId);

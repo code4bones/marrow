@@ -152,7 +152,7 @@ Decision detail should show:
 - consequences
 - supersedes/superseded-by links
 
-Use status badges: active, draft, superseded, rejected.
+Use status badges: current, draft, superseded, rejected.
 
 ### 6. Known Faults
 

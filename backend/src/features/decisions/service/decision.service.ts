@@ -22,7 +22,7 @@ export class DecisionService {
       id: nextId(this.db, "decisions", project ? `D-${projectKeyFromId(project.id)}` : "D-COMMON"),
       projectId: project?.id ?? null,
       title: input.title,
-      status: input.status ?? "active",
+      status: input.status ?? "current",
       context: input.context ?? null,
       decision: input.decision,
       rationale: input.rationale ?? null,

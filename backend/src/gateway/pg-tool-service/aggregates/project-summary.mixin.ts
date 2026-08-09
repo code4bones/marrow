@@ -49,7 +49,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       this.listDecisions({
         project: project.id,
         includeCommon,
-        status: "active",
+        status: "current",
         limit: limits.decisions
       }),
       this.searchMemory({
@@ -57,7 +57,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
         project: project.id,
         includeCommon,
         type: "failed_attempt",
-        status: "active",
+        status: "current",
         limit: limits.faults
       }),
       this.listRecentItemsByType("handoff", project.id, includeCommon, limits.handoffs),
@@ -71,7 +71,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
         query: explicitQuery,
         project: project.id,
         includeCommon,
-        status: "active",
+        status: "current",
         limit: limits.memory
       }),
       this.listEvents({

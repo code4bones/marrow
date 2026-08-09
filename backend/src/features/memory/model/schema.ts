@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-export const itemStatusSchema = z.enum(["active", "draft", "archived", "superseded", "rejected"]);
+export const itemStatusSchema = z.enum(["current", "draft", "archived", "superseded", "rejected"]);
 
 // Reused by decision.record too. Optional, additive: creates link.create
 // edges atomically with the new record so the knowledge graph doesn't stay

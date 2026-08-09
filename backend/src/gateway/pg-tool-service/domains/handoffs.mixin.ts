@@ -18,7 +18,7 @@ export function HandoffsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
         type: "handoff",
         title: input.title,
         body: handoffBody(input),
-        status: "active",
+        status: "current",
         tags
       },
       context
@@ -62,7 +62,7 @@ export function HandoffsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
         project: input.project,
         includeCommon: input.includeCommon !== false,
         type: "handoff",
-        status: "active",
+        status: "current",
         limit: input.limit ?? 10
       },
       context
