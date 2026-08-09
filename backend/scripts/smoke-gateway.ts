@@ -194,6 +194,22 @@ try {
   state.memoryId = expectData<{ item: { id: string } }>(memory).item.id;
   console.log("ok - memory.create");
 
+  // T-MEMORY-055 regression: updating title/body/status without resending
+  // tags on an already-tagged record must not throw a jsonb write error --
+  // the tags-omitted fallback has to re-serialize the driver-parsed array,
+  // not pass it through raw.
+  const memoryUpdateNoTags = await callGateway("memory.update", {
+    id: state.memoryId,
+    title: "Gateway smoke task preflight failed attempt (updated)"
+  });
+  const updatedMemory = expectData<{ item: { id: string; title: string; tags: string[] } }>(memoryUpdateNoTags).item;
+  assert(updatedMemory.title === "Gateway smoke task preflight failed attempt (updated)", "memory.update did not apply the new title.");
+  assert(
+    Array.isArray(updatedMemory.tags) && updatedMemory.tags.includes("smoke") && updatedMemory.tags.includes("gateway"),
+    "memory.update with tags omitted should preserve the existing tags."
+  );
+  console.log("ok - memory.update with tags omitted (T-MEMORY-055 regression)");
+
   const task = await callGateway("task.create", {
     project: state.projectId,
     title: "Gateway smoke task",

@@ -457,7 +457,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
             : typeof input.description === "string"
               ? input.description
               : current.description,
-        tags: Array.isArray(input.tags) ? jsonStringArray(input.tags) : current.tags,
+        tags: jsonStringArray(Array.isArray(input.tags) ? input.tags : current.tags),
         updated_by: context.clientId,
         source_instance_id: context.clientId,
         updated_at: nowIso(),
