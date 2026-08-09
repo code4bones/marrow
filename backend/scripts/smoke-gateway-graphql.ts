@@ -152,7 +152,7 @@ try {
   // T-MEMORY-063 regression: projectSummary.artifacts/handoffs are backed by
   // the trimmed compact formatters (no contentType/sizeBytes/type) -- this
   // must not throw a GraphQL non-nullable-field error just because those
-  // fields were selected, the way PMemUI's own Project Overview query does.
+  // fields were selected, the way the web UI's own Project Overview query does.
   assert(Array.isArray(data.projectSummary.artifacts), "GraphQL projectSummary.artifacts (with contentType/sizeBytes selected) should not throw.");
   console.log("ok - graphql project explorer queries");
 

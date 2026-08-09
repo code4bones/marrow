@@ -357,7 +357,7 @@ async function createAdmin(args: string[]): Promise<void> {
     console.log("One-time link to set a password (valid 24h, single use):");
     console.log(link);
     if (!base) {
-      console.log("PROJECT_MEMORY_PUBLIC_URL is not set in .env — prepend your PMemUI base URL to the path above.");
+      console.log("PROJECT_MEMORY_PUBLIC_URL is not set in .env — prepend your Marrow web UI base URL to the path above.");
     }
   } finally {
     await db.destroy();

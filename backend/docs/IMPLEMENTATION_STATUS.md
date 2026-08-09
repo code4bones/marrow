@@ -1,4 +1,4 @@
-# Project Memory MCP — Implementation Status
+# Marrow MCP — Implementation Status
 
 This document records what has been implemented so far and what remains after the first MVP implementation pass.
 
@@ -110,7 +110,7 @@ Shared agents should connect to the MCP Streamable HTTP endpoint:
 http://127.0.0.1:8765/mcp
 ```
 
-PMemUI and browser-facing clients can use the gateway GraphQL endpoint:
+The web UI and browser-facing clients can use the gateway GraphQL endpoint:
 
 ```text
 ${GW_ENDPOINT}/graphql
@@ -118,7 +118,7 @@ ${GW_ENDPOINT}/graphql
 
 The GraphQL slice maps to existing gateway tools for gateway status, projects,
 project summaries, memory search, tasks, decisions, artifacts, artifact text,
-events, links, and controlled mutations for full PMemUI maintenance. The
+events, links, and controlled mutations for full web UI maintenance. The
 endpoint uses the same gateway authorization as `/mcp` and `/call`; GraphQL
 queries require OAuth `memory:read`, while mutations require `memory:read` and
 `memory:write`. On production this resolves to
@@ -132,7 +132,7 @@ available for explicit cleanup and remove relationship links that point at the
 deleted record where applicable. Decisions now support an `archived` lifecycle
 status in addition to `draft`, `active`, `superseded`, and `rejected`.
 
-PMemUI table queries have paginated variants such as `projectsPage`,
+The web UI's table queries have paginated variants such as `projectsPage`,
 `tasksPage`, `decisionsPage`, `memoryItemsPage`, `artifactsPage`,
 `artifactSearchPage`, `memorySearchPage`, `linksPage`, `eventsPage`, and
 `gatewayClientsPage`. They accept
@@ -140,7 +140,7 @@ PMemUI table queries have paginated variants such as `projectsPage`,
 `totalCount`, `hasNextPage`, and `hasPreviousPage`. Pagination is executed in
 PostgreSQL with `COUNT(*)`, `LIMIT`, and `OFFSET`.
 
-PMemUI record navigation uses `record(id)` for any core identifier (`P-*`,
+The web UI's record navigation uses `record(id)` for any core identifier (`P-*`,
 `I-*`, `T-*`, `D-*`, `A-*`, `E-*`, `L-*`, plus common custom item IDs). The
 field returns `{ id, kind, projectId, record }`, where `record` is a GraphQL
 union payload for the concrete project, memory item, task, decision, artifact,
@@ -154,7 +154,7 @@ OAuth tokens are checked per tool. Read-only tools require `memory:read`; write
 tools such as `project.create`, `task.create`, `artifact.put_text`,
 `memory.update`, `handoff.create`, and status/archive-changing tools require
 both `memory:read` and `memory:write`.
-Because pmem is an internal gateway, successful OAuth authorization grants the
+Because marrow is an internal gateway, successful OAuth authorization grants the
 full configured scope set (`memory:read memory:write` by default), even when a
 host initially requests only `memory:read`. This keeps Claude-style connectors
 from getting stuck with read-only tokens when they later call write tools.

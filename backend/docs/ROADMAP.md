@@ -1,4 +1,4 @@
-# Project Memory MCP — Roadmap
+# Marrow MCP — Roadmap
 
 This roadmap starts after the PostgreSQL gateway 1.1 line.
 
@@ -57,7 +57,7 @@ Next:
 
 ### 3. Agent UX
 
-Goal: make agents operate pmem as a predictable state machine.
+Goal: make agents operate marrow as a predictable state machine.
 
 Implemented:
 

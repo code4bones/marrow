@@ -35,7 +35,7 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   // pipeline's status) is different: this is a single-owner/small-team
   // self-host instance, not multi-tenant SaaS, and the whole point of
   // building this was so an agent (Claude Code, an OAuth connector) could
-  // check CI status through PMem instead of the operator SSH-ing in and
+  // check CI status through Marrow instead of the operator SSH-ing in and
   // grepping journalctl by hand. So for the read paths, a caller with no
   // cookie/personal-token identity (static token, OAuth, no auth
   // configured) falls back to the instance's primary admin -- same

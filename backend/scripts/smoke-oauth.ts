@@ -6,7 +6,7 @@
 // gets is resolved fresh from that user's CURRENT role on every request,
 // exactly like a session or personal token. Covers: the new
 // session-cookie-backed /oauth/authorize (GET redirects to the frontend
-// origin, POST mints a code from a pmem_session), the JWT's real sub/exp
+// origin, POST mints a code from a marrow_session), the JWT's real sub/exp
 // claims, an admin-role user's OAuth token reaching an admin-tier tool
 // (memory.delete) directly with no elevation header, a member-role user's
 // OAuth token still getting INSUFFICIENT_SCOPE on the same tool, a stale/
@@ -247,7 +247,7 @@ try {
   // --- POST /oauth/authorize: session-cookie-backed now, no magic token --
   const noSessionAuthorize = await postAuthorize(authorizeUrl, undefined);
   assert(noSessionAuthorize.status === 401, `POST /oauth/authorize without a session should be 401. Status: ${noSessionAuthorize.status}`);
-  console.log("ok - POST /oauth/authorize without a pmem_session is rejected (401), no magic token accepted anywhere");
+  console.log("ok - POST /oauth/authorize without a marrow_session is rejected (401), no magic token accepted anywhere");
 
   const adminCookie = await loginSession(adminEmail, adminPassword);
   const memberCookie = await loginSession(memberEmail, memberPassword);

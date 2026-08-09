@@ -1,11 +1,11 @@
-# Project Memory MCP — Agent Onboarding
+# Marrow MCP — Agent Onboarding
 
-This is the first-run workflow for an agent connected to a shared pmem gateway.
+This is the first-run workflow for an agent connected to a shared marrow gateway.
 
 Use it when:
 
-- the agent has just connected to pmem
-- the user asks what pmem is
+- the agent has just connected to marrow
+- the user asks what marrow is
 - the agent starts work in a repository with shared project memory
 - the agent needs reusable templates or team context
 
@@ -28,7 +28,7 @@ gateway.manuals(audience="all", includeContent=true)
 Use `audience="agent"` when only the agent workflow is needed.
 
 Use `audience="conventions"` when the task involves ChatGPT-Codex
-collaboration, handoffs, artifacts, or deciding which pmem storage surface to
+collaboration, handoffs, artifacts, or deciding which marrow storage surface to
 use.
 
 ## Select Project Scope
@@ -47,7 +47,7 @@ project.list
 project.set_current
 ```
 
-Create a project only when the repository is clearly new to pmem:
+Create a project only when the repository is clearly new to marrow:
 
 ```text
 project.create
@@ -134,7 +134,7 @@ Write back durable information only. Use `handoff.create` for compact session
 summaries, `memory.upsert` for compact reusable status or conventions,
 `decision.record` for durable architecture, `artifact.put_text` for generated text files,
 `artifact.put` for binaries or exact bytes
-or docs, and `failed_attempt.record` for dead ends. Do not write pmem after
+or docs, and `failed_attempt.record` for dead ends. Do not write to marrow after
 every tiny edit.
 
 ## Ask The User When
@@ -147,4 +147,4 @@ Ask for clarification when:
 - preflight reports conflicting decisions, forbidden scope, or relevant faults
 - validation requires a decision outside the task scope
 
-Do not ask during the normal path when pmem has enough context to proceed.
+Do not ask during the normal path when marrow has enough context to proceed.

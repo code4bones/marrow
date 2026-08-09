@@ -1,14 +1,14 @@
-# Project Memory MCP — Agent Guide
+# Marrow MCP — Agent Guide
 
-This guide tells agents when and how to use Project Memory MCP (`pmem`).
+This guide tells agents when and how to use Marrow MCP (`marrow`).
 
-Use it as an operating procedure. Do not treat pmem as a passive note database.
+Use it as an operating procedure. Do not treat marrow as a passive note database.
 It is part of task execution.
 
-## PMem Token Discipline
+## Marrow Token Discipline
 
-PMem tool results remain in the model context for the rest of the session. Use
-PMem as a lazy index first, not as a document dump.
+Marrow tool results remain in the model context for the rest of the session. Use
+Marrow as a lazy index first, not as a document dump.
 
 Default workflow:
 
@@ -29,9 +29,9 @@ Avoid during normal coding flow:
 - broad list calls with high limits
 - `artifact.read_text` before selecting a specific artifact
 - `artifact.get(includeContent=true)` unless exact bytes/base64 are required
-- `gateway.clients`, `gateway.diagnostics`, and other debug tools unless diagnosing PMem itself
+- `gateway.clients`, `gateway.diagnostics`, and other debug tools unless diagnosing Marrow itself
 
-Many PMem tools return `data.efficiencyHints`. Treat this as an operating
+Many Marrow tools return `data.efficiencyHints`. Treat this as an operating
 signal, not decoration. If `base64Included=true`, `fullBodiesIncluded=true`, or
 `compactAfterThis=true`, keep only the useful facts and compact the chat before
 continuing implementation. Follow `preferredNextTools` before making broader
@@ -39,7 +39,7 @@ list/read calls.
 
 ## First Rule
 
-If the user asks what `pmem`, `project-memory`, or this MCP server is, call:
+If the user asks what `marrow`, `project-memory`, or this MCP server is, call:
 
 ```text
 gateway.about
@@ -48,7 +48,7 @@ gateway.about
 Then summarize the result in human language.
 
 If the user asks for manuals, docs, instructions, onboarding, or Markdown files
-explaining pmem, call:
+explaining marrow, call:
 
 ```text
 gateway.manuals
@@ -104,9 +104,9 @@ storage: postgresql
 If you only have local SQLite state, say that shared collaboration memory is not
 confirmed.
 
-## When To Use pmem
+## When To Use marrow
 
-Use pmem before work when:
+Use marrow before work when:
 
 - starting work in a repository
 - the user asks to continue project work
@@ -117,7 +117,7 @@ Use pmem before work when:
 - you are about to create, supersede, or rely on a decision
 - an approach failed in a way future agents should not repeat
 
-Use pmem after work when:
+Use marrow after work when:
 
 - a task status changed
 - a durable decision was made
@@ -127,7 +127,7 @@ Use pmem after work when:
 
 ## Storage Surface Mapping
 
-Use the right pmem surface for the right kind of information:
+Use the right marrow surface for the right kind of information:
 
 - `memory.*` for compact durable knowledge, status, conventions, constraints,
   and links to related artifacts or decisions
@@ -144,9 +144,9 @@ Do not store secrets, tokens, private keys, cookies, session IDs, full `.env`
 files, raw authorization headers, or raw logs. Redact before writing if a secret
 appears in diagnostic output.
 
-## When Not To Use pmem
+## When Not To Use marrow
 
-Do not use pmem for:
+Do not use marrow for:
 
 - trivial one-command answers
 - secrets, tokens, credentials, private keys, or passwords
@@ -405,7 +405,7 @@ Use `project.summary` when you need a compact project-level snapshot before
 deciding which task, handoff, artifact, or decision to read in full.
 
 Use `context.changed_since` during long or resumed sessions when you already
-have a `nextCursor` from a prior pmem response and only need incremental
+have a `nextCursor` from a prior marrow response and only need incremental
 changes.
 
 Use `memory.hygiene_report` when project memory feels noisy, repetitive, or too
@@ -460,13 +460,13 @@ Do not ask when you can safely:
 When starting work:
 
 ```text
-I will check pmem first: current project, relevant decisions, and preflight.
+I will check marrow first: current project, relevant decisions, and preflight.
 ```
 
 When memory blocks the requested approach:
 
 ```text
-pmem has an active decision that conflicts with this approach: D-... .
+marrow has an active decision that conflicts with this approach: D-... .
 I need direction before changing the architecture.
 ```
 
@@ -486,7 +486,7 @@ instead of a note.
 
 ## Minimal Tool Chains
 
-Explain pmem:
+Explain marrow:
 
 ```text
 gateway.about

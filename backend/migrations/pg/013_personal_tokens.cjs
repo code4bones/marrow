@@ -1,4 +1,4 @@
-// T-MEMORY-047: personal PMem API tokens -- a third bearer-auth source
+// T-MEMORY-047: personal Marrow API tokens -- a third bearer-auth source
 // alongside the shared static MCP_TOKEN and OAuth connector tokens, scoped
 // to exactly one user, so a newly admin-approved user can connect Claude
 // Code / Codex without separately asking an admin for the shared

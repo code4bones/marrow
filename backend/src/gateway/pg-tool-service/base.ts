@@ -125,7 +125,7 @@ export class BaseService {
     const out = eventOut(row);
     // T-MEMORY-042: this is the single choke point every mutation across
     // every domain already passes through -- publishing here, once, covers
-    // PMemUI's live-update feed for the whole gateway with no other call
+    // the web UI's live-update feed for the whole gateway with no other call
     // site needing to change. EventEmitter.emit() (which publish() wraps)
     // runs subscriber callbacks synchronously and rethrows synchronously if
     // one throws -- guarded here because a live-update side effect must

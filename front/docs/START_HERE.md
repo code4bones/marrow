@@ -1,13 +1,13 @@
-# PMemUI Start Here
+# Marrow Web UI Start Here
 
 This artifact is the handoff for a new frontend-agent session.
 
 ## Project
 
-- PMem project slug: `pmem-ui`
-- Product name: PMemUI
-- Purpose: web UI for Project Memory gateway browsing, triage, diagnostics, and controlled maintenance.
-- Source of truth: PMem gateway data and artifacts.
+- Marrow project slug: `pmem-ui`
+- Product name: Marrow's web UI
+- Purpose: web UI for Marrow gateway browsing, triage, diagnostics, and controlled maintenance.
+- Source of truth: Marrow gateway data and artifacts.
 
 ## Read First
 

@@ -1,16 +1,16 @@
-# Project Memory UI Concept
+# Marrow UI Concept
 
-Audience: frontend agent implementing a future Project Memory web UI.
+Audience: frontend agent implementing a future Marrow web UI.
 
 This document is a product and implementation concept, not a current MVP
-requirement. The existing pmem gateway remains the source of truth. The UI must
+requirement. The existing marrow gateway remains the source of truth. The UI must
 make shared memory observable and safer to operate; it must not become a generic
 note-taking application.
 
 ## Goal
 
 Build a quiet operational dashboard for developers and agents who need to
-understand what pmem knows before changing code.
+understand what marrow knows before changing code.
 
 The UI should answer these questions quickly:
 
@@ -253,7 +253,7 @@ Do not expose secrets.
 
 ### 10. Delete And Prune UX
 
-Deletion is dangerous because pmem is shared team memory.
+Deletion is dangerous because marrow is shared team memory.
 
 Rules:
 
@@ -300,14 +300,14 @@ The UI stack requested for this frontend is React, TypeScript, Vite, Zustand,
 and GraphQL.
 
 Do not call PostgreSQL directly from the browser. Add a server-side GraphQL
-gateway in front of the existing pmem service layer or MCP/gateway API.
+gateway in front of the existing marrow service layer or MCP/gateway API.
 
 Recommended shape:
 
 ```text
 Browser React app
   -> GraphQL API
-    -> pmem gateway service / HTTP tool calls
+    -> marrow gateway service / HTTP tool calls
       -> PostgreSQL + artifact storage
 ```
 
@@ -559,7 +559,7 @@ This makes links shareable without building too many detail routes.
 
 The first useful frontend milestone is complete when:
 
-- a developer can connect to a pmem gateway
+- a developer can connect to a marrow gateway
 - project list loads
 - selecting a project shows a compact overview
 - tasks, decisions, artifacts, and events are browseable

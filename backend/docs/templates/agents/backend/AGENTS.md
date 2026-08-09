@@ -13,7 +13,7 @@ The agent is a backend implementation assistant. It should:
 - keep schemas, migrations, services, and handlers separated
 - preserve backward compatibility where practical
 - make operational behavior explicit in docs and logs
-- record important architecture decisions in pmem
+- record important architecture decisions in marrow
 
 ## Data And API Rules
 

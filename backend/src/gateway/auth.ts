@@ -345,7 +345,7 @@ export function createAuthFacade(db: Knex) {
   // fresh, live, single-use proof that a specific admin account authorized
   // exactly one upcoming admin-tier call. See D-MEMORY-019 for the full
   // rationale, including why this deliberately re-checks password + TOTP
-  // together (full re-authentication) instead of trusting a pmem_session
+  // together (full re-authentication) instead of trusting a marrow_session
   // cookie or the calling OAuth credential's own claims: the OAuth channel
   // that actually reaches this endpoint in the motivating scenario (an
   // agent relaying a code the human typed into chat) has no session cookie
@@ -996,7 +996,7 @@ export function createAuthFacade(db: Knex) {
   // a plaintext last-4 hint for UI recognition, session-only management (no
   // MCP tool or GraphQL mutation -- only the /auth/profile/oauth-clients*
   // REST routes below). client_id is still NOT secret -- it identifies
-  // "this is a registered pmem connector app", the actual access boundary is
+  // "this is a registered marrow connector app", the actual access boundary is
   // still the real per-user login /oauth/authorize requires (D-MEMORY-027)
   // -- so listOAuthClients returns it in full (persistently displayable),
   // unlike clientSecretHint.

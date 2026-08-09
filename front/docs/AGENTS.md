@@ -1,12 +1,12 @@
 # AGENTS.md
 
-# PMemUI Frontend Agent Instructions
+# Marrow Web UI Frontend Agent Instructions
 
-PMemUI is the future web interface for Project Memory (pmem/pm3m). It must make shared agent memory observable, searchable, and safe to maintain. It is an operational developer tool, not a marketing site and not a generic note-taking app.
+The web UI is the future web interface for Marrow (marrow/pm3m). It must make shared agent memory observable, searchable, and safe to maintain. It is an operational developer tool, not a marketing site and not a generic note-taking app.
 
-## Required PMem Bootstrap
+## Required Marrow Bootstrap
 
-When starting a PMemUI session, use PMem first:
+When starting a web UI session, use Marrow first:
 
 1. Select or inspect project `pmem-ui` / `PMemUI`.
 2. Read this artifact: `AGENTS.md`.
@@ -17,7 +17,7 @@ When starting a PMemUI session, use PMem first:
 
 ## Agent Role
 
-The agent is a frontend implementation assistant. It should keep changes small, preserve backend contracts, and turn PMem records into a clear operational interface for developers and other agents.
+The agent is a frontend implementation assistant. It should keep changes small, preserve backend contracts, and turn Marrow records into a clear operational interface for developers and other agents.
 
 Do not build a landing page. The first screen should be the usable application shell: project list, selected project overview, recent activity, and clear connection state.
 
@@ -32,7 +32,7 @@ Use:
 - GraphQL for the browser-facing API boundary
 - Generated GraphQL types where practical
 
-Do not call PostgreSQL directly from the browser. The browser talks to GraphQL; GraphQL talks to the PMem gateway/service layer.
+Do not call PostgreSQL directly from the browser. The browser talks to GraphQL; GraphQL talks to the marrow gateway/service layer.
 
 ## Architecture: Feature-Sliced Design
 
@@ -112,7 +112,7 @@ Server data belongs in the GraphQL query cache. Do not duplicate normalized serv
 
 ## Safety Rules
 
-- PMem is shared company memory; destructive actions need explicit confirmation.
+- Marrow is shared company memory; destructive actions need explicit confirmation.
 - Current auth model is trusted internal token access. Do not design role/ACL screens unless backend roles exist.
 - Do not expose secrets from logs or artifacts.
 - Missing backend capabilities should be disabled or absent, not mocked as real.
@@ -131,7 +131,7 @@ For layout or interaction changes, run the local app and verify key flows with b
 
 ## Imported Baseline Template
 
-The common frontend template below remains applicable unless this PMemUI-specific file overrides it.
+The common frontend template below remains applicable unless this Marrow-specific file overrides it.
 
 # AGENTS.md
 

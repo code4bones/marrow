@@ -33,7 +33,7 @@ export type OAuthAuthorizeSessionResult =
 
 // SSO real-login authorize flow (replaces the old shared magic-token gate):
 // `ownerUserId` is the Marrow user who was actually logged in (via
-// pmem_session) when the authorization code was minted -- frozen here so
+// marrow_session) when the authorization code was minted -- frozen here so
 // the token exchange can stamp it as the JWT's `sub`. Deliberately NOT
 // freezing a role/scope claim alongside it: the granted tier is resolved
 // fresh from `users` on every subsequent request (http-server.ts's
@@ -163,7 +163,7 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     // of the API prefix -- see frontendOrigin() below) with the original
     // query string intact, so the frontend's login/consent UI can run.
     // Real session-cookie authorization happens in authorizeWithSession
-    // below, once the frontend has a pmem_session to present.
+    // below, once the frontend has a marrow_session to present.
     async authorizeRedirectUrl(url: URL): Promise<OAuthAuthorizeRedirectResult> {
       const validation = await validateAuthorizeParams(url.searchParams, config, db);
       if (!validation.ok) {
@@ -175,7 +175,7 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     },
     // POST /oauth/authorize (http-server.ts): the new session-cookie-backed
     // replacement for the old magic-token POST. Called only after
-    // http-server.ts has already confirmed a valid pmem_session and resolved
+    // http-server.ts has already confirmed a valid marrow_session and resolved
     // its owning user -- this never re-authenticates a human itself (no
     // password/TOTP here), it only mints the code and freezes ownerUserId.
     async authorizeWithSession(params: URLSearchParams, ownerUserId: string): Promise<OAuthAuthorizeSessionResult> {
@@ -331,7 +331,7 @@ async function validateAuthorizeParams(
       codeChallenge: params.get("code_challenge") ?? "",
       resource,
       state: params.get("state") ?? "",
-      // PMem is an internal gateway: successful OAuth means access to
+      // Marrow is an internal gateway: successful OAuth means access to
       // whatever this gateway supports (config.scopes), independent of what
       // the client actually requested via `scope=` -- not renegotiated or
       // frozen here. The real authorization decision now happens fresh on
@@ -420,7 +420,7 @@ function basicClientCredentials(
   };
 }
 
-// 30 days, matching the pmem_session cookie's own TTL (auth.ts's
+// 30 days, matching the marrow_session cookie's own TTL (auth.ts's
 // SESSION_TTL_MS) -- an OAuth connector's access token should not outlive
 // the browser session that authorized it by much more than that.
 const ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -432,7 +432,7 @@ function issueJwt(config: OAuthConfig, record: OAuthCodeRecord): string {
     iss: config.issuer,
     aud: record.resource,
     // Real identity (T-MEMORY-0xx SSO): the Marrow user who was logged in
-    // via pmem_session when this code was minted (see authorizeWithSession
+    // via marrow_session when this code was minted (see authorizeWithSession
     // above), not the old hardcoded "project-memory-user" literal. Scope
     // tier is resolved fresh from this user's CURRENT role on every call,
     // never cached in the token.

@@ -191,7 +191,7 @@ export async function startGatewayServer(
     void handleRequest(service, options, graphql, request, response);
   });
 
-  // T-MEMORY-042: live-update WS transport for PMemUI's single
+  // T-MEMORY-042: live-update WS transport for the web UI's single
   // `gatewayEvents` subscription (graphql.ts). noServer:true because this
   // gateway hand-rolls its own createServer((req,res)=>...) callback above
   // instead of using a framework -- the WS server never listens on its own
@@ -382,7 +382,7 @@ async function handleRequest(
 
     // POST is called by the frontend itself (fetch with credentials:
     // 'include', not a browser form submit) once it has confirmed a
-    // pmem_session -- either an existing cookie, or one just established via
+    // marrow_session -- either an existing cookie, or one just established via
     // the frontend's own login/TOTP screens. No magic token anywhere in this
     // path; a valid session is the only thing that can mint a code, and the
     // code is stamped with that session's real userId.
@@ -1833,7 +1833,7 @@ type OAuthOwner = { userId: string; role: string; email: string; clientId: strin
 // Scope tier granted by a request that already passed isAuthorized(). Static
 // token and no-token ("none") are fixed ceilings; a session's tier is
 // role-derived (decision 1 in D-MEMORY-007: no separate "elevate to admin"
-// UX, PMemUI has no destructive UI anyway per D-MEMORY-015). An OAuth
+// UX, the web UI has no destructive UI anyway per D-MEMORY-015). An OAuth
 // bearer's tier is role-derived the same way (T-MEMORY-0xx SSO) -- it IS a
 // specific Marrow user, connecting through a connector instead of a browser
 // tab or CLI, and its tier tracks that user's CURRENT role exactly like a

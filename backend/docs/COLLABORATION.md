@@ -1,10 +1,10 @@
-# Project Memory MCP — Collaboration
+# Marrow MCP — Collaboration
 
-This document describes how Project Memory MCP supports team collaboration while preserving local-first operation.
+This document describes how Marrow MCP supports team collaboration while preserving local-first operation.
 
 For operational conventions shared by ChatGPT, Codex, and other agents, see
 [PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md](PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md).
-That document defines which pmem storage surface to use for memory, artifacts,
+That document defines which marrow storage surface to use for memory, artifacts,
 decisions, tasks, failed attempts, and handoffs.
 
 ## Goal
@@ -25,7 +25,7 @@ The system should prevent knowledge from being trapped in one developer's local 
 
 ## Runtime Modes
 
-Project Memory MCP supports two runtime modes.
+Marrow MCP supports two runtime modes.
 
 ### Local Mode
 
@@ -53,10 +53,10 @@ Use it for:
 
 Gateway mode is the correct collaboration runtime. Do not use a shared SQLite file as the main team database.
 
-In active collaboration, use Project Memory as a shared context layer:
+In active collaboration, use Marrow as a shared context layer:
 
 ```text
-ChatGPT <-> Project Memory <-> Codex / agents
+ChatGPT <-> Marrow <-> Codex / agents
 ```
 
 Files and larger reusable documents belong in `artifact.*`; compact durable

@@ -1,4 +1,4 @@
-# Project Memory Gateway — Backup And Restore
+# Marrow Gateway — Backup And Restore
 
 This runbook is for the PostgreSQL-backed shared gateway.
 
@@ -20,7 +20,7 @@ under the operator's normal secret-handling policy.
 
 ## Preflight
 
-Ask pmem for the safe backup surface:
+Ask marrow for the safe backup surface:
 
 ```text
 gateway.backup_manifest

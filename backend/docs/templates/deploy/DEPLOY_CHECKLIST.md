@@ -23,7 +23,7 @@ Use this checklist before and after deploying a service.
 - Verify the public route through the proxy.
 - Check logs for startup errors and repeated warnings.
 - Confirm expected version and tool count if the service exposes diagnostics.
-- Record the deploy event in pmem.
+- Record the deploy event in marrow.
 
 ## Rollback Notes
 

@@ -33,7 +33,7 @@ Do not:
 
 For each task:
 
-1. Call pmem preflight when available.
+1. Call marrow preflight when available.
 2. Identify the smallest safe scope.
 3. Implement the requested change.
 4. Run the smallest relevant validation.

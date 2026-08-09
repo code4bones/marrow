@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const PROJECT_KEY = 'pmem_selected_project';
+const PROJECT_KEY = 'marrow_selected_project';
 
 interface WorkspaceState {
   selectedProjectSlug: string | null;

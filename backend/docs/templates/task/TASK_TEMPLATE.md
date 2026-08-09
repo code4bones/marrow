@@ -15,7 +15,7 @@ Describe what should change and what should stay out of scope.
 - The requested behavior is implemented.
 - Relevant tests or manual checks pass.
 - Documentation is updated when behavior changes.
-- Important decisions, events, and faults are recorded in pmem.
+- Important decisions, events, and faults are recorded in marrow.
 
 ## Allowed Files
 

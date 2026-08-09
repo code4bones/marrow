@@ -1,15 +1,15 @@
-# Project Memory MCP - Collaboration Conventions
+# Marrow MCP - Collaboration Conventions
 
-This document defines working conventions for using Project Memory as a shared
+This document defines working conventions for using Marrow as a shared
 collaboration layer between ChatGPT, Codex, and other agents.
 
 The goal is to keep context durable, searchable, and useful without turning
-Project Memory into a noisy chat log or raw command-output dump.
+Marrow into a noisy chat log or raw command-output dump.
 
-Project Memory should act as a shared project brain:
+Marrow should act as a shared project brain:
 
 ```text
-ChatGPT <-> Project Memory <-> Codex / agents
+ChatGPT <-> Marrow <-> Codex / agents
 ```
 
 ## Core Principle
@@ -45,7 +45,7 @@ Good examples:
 - `Current OAuth facade status`
 - `ChatGPT Apps connector is installed and tested`
 - `Use same-origin OAuth deployment for v1`
-- `Codex should read latest handoff before touching PMem OAuth code`
+- `Codex should read latest handoff before touching Marrow OAuth code`
 
 Avoid:
 
@@ -79,10 +79,10 @@ Recommended path style:
 Examples:
 
 ```text
-conventions/PROJECT_MEMORY_COLLABORATION.md
+conventions/MARROW_COLLABORATION.md
 chatgpt-smoke/README.md
 oauth/OAUTH_FACADE_FOR_CHATGPT_APPS.md
-agents/CODEX_PROJECT_MEMORY.md
+agents/CODEX_MARROW.md
 ```
 
 For Markdown documents, prefer:
@@ -105,7 +105,7 @@ A decision should explain:
 
 Good examples:
 
-- `Use Project Memory as shared ChatGPT-Codex context layer`
+- `Use Marrow as shared ChatGPT-Codex context layer`
 - `Keep internal MCP_TOKEN server-side only`
 - `Use OAuth facade with magic token for ChatGPT Apps`
 - `Use broad memory:read memory:write scopes for v1`
@@ -127,7 +127,7 @@ A task should include:
 
 Good examples:
 
-- `Refine Project Memory collaboration conventions`
+- `Refine Marrow collaboration conventions`
 - `Add per-tool securitySchemes metadata`
 - `Document exact ChatGPT connector setup values`
 - `Add smoke test for artifact upload through ChatGPT Apps`
@@ -147,7 +147,7 @@ Good examples:
 
 - `Wildcard redirect URI rejected as unsafe`
 - `Raw static bearer token cannot be used directly as ChatGPT App auth`
-- `Search query wording triggered safety block; use neutral PMem queries`
+- `Search query wording triggered safety block; use neutral Marrow queries`
 
 Failed attempts matter because agents tend to retry plausible dead ends unless
 they are explicitly recorded.
@@ -221,11 +221,11 @@ Write one or more of:
 - `failed_attempt.record` for dead ends
 - `task.update_status` for task lifecycle
 
-Do not write Project Memory after every tiny edit.
+Do not write to Marrow after every tiny edit.
 
 ## Conflict Policy
 
-If Project Memory conflicts with repository state:
+If Marrow conflicts with repository state:
 
 1. Prefer the current repository state.
 2. Do not silently ignore the conflict.
@@ -245,9 +245,9 @@ Use predictable titles.
 Good titles:
 
 ```text
-Project Memory Collaboration Conventions
-Handoff: Project Memory OAuth facade for ChatGPT Apps
-Decision: Use Project Memory as ChatGPT-Codex shared context layer
+Marrow Collaboration Conventions
+Handoff: Marrow OAuth facade for ChatGPT Apps
+Decision: Use Marrow as ChatGPT-Codex shared context layer
 Failed attempt: Wildcard OAuth redirect URI
 Status: ChatGPT Apps connector installed and tested
 ```
@@ -273,7 +273,7 @@ Recommended tags:
 chatgpt
 codex
 agent
-pmem
+marrow
 project-memory
 handoff
 convention
@@ -303,8 +303,7 @@ Never store:
 - personal secrets
 - raw authorization headers
 
-If a secret appears in a log, redact it before writing anything to Project
-Memory.
+If a secret appears in a log, redact it before writing anything to Marrow.
 
 Safe examples:
 
@@ -336,7 +335,7 @@ When ChatGPT or Codex creates a file that should be shared:
 Example artifact path:
 
 ```text
-conventions/PROJECT_MEMORY_COLLABORATION.md
+conventions/MARROW_COLLABORATION.md
 ```
 
 ## Minimal Shared Workflow
@@ -345,27 +344,27 @@ conventions/PROJECT_MEMORY_COLLABORATION.md
 
 ```text
 ChatGPT writes artifact:
-  artifact.put_text path="conventions/PROJECT_MEMORY_COLLABORATION.md"
+  artifact.put_text path="conventions/MARROW_COLLABORATION.md"
 
 ChatGPT writes memory:
-  memory.upsert title="Project Memory Collaboration Conventions uploaded"
+  memory.upsert title="Marrow Collaboration Conventions uploaded"
 ```
 
 ### Codex Continues
 
 ```text
 Codex searches:
-  artifact.search query="Project Memory Collaboration Conventions"
+  artifact.search query="Marrow Collaboration Conventions"
 
 Codex retrieves:
   artifact.peek id="..."
   artifact.read_text id="...", for Markdown/text content
   artifact.get id="...", only if exact base64 bytes are needed
 
-Codex edits repo or updates PMem.
+Codex edits repo or updates Marrow.
 
 Codex writes handoff:
-  handoff.create title="Handoff: refined Project Memory conventions"
+  handoff.create title="Handoff: refined Marrow conventions"
 ```
 
 ### ChatGPT Resumes
@@ -377,7 +376,7 @@ ChatGPT summarizes next steps for the user.
 
 ## Healthy Usage
 
-Project Memory usage is healthy when:
+Marrow usage is healthy when:
 
 - future agents can understand current project state quickly
 - durable decisions are easy to find
@@ -391,7 +390,7 @@ Project Memory usage is healthy when:
 
 As of 2026-06-20:
 
-- ChatGPT Apps connector can access the PMem gateway.
+- ChatGPT Apps connector can access the Marrow gateway.
 - ChatGPT can read and write memory records.
 - ChatGPT can upload and retrieve artifacts.
 - Codex can see artifacts uploaded by ChatGPT.
@@ -401,15 +400,15 @@ As of 2026-06-20:
 Confirmed bridge:
 
 ```text
-ChatGPT <-> PMem memory/artifact <-> Codex
-Codex -> PMem memory/artifact <-> ChatGPT
+ChatGPT <-> Marrow memory/artifact <-> Codex
+Codex -> Marrow memory/artifact <-> ChatGPT
 ```
 
 ## Next Improvement Ideas
 
 - Keep this document available through `gateway.manuals`.
-- Make agents read these conventions before PMem-related work.
-- Add a task template for PMem-backed handoffs.
+- Make agents read these conventions before Marrow-related work.
+- Add a task template for Marrow-backed handoffs.
 - Add per-project artifact path conventions.
 - Add finer OAuth scopes later if broad `memory:read memory:write` becomes too
   coarse.

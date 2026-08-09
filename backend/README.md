@@ -1,4 +1,4 @@
-# Project Memory MCP
+# Marrow MCP
 
 Local-first MCP server for structured project memory used by coding agents.
 
@@ -81,14 +81,14 @@ See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the detai
 
 See [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md) for a practical developer guide covering purpose, setup, safe usage, artifacts, and operations.
 
-See [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for the operational guide agents should follow when deciding whether and how to use pmem.
+See [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for the operational guide agents should follow when deciding whether and how to use marrow.
 
 See [docs/FRONTEND_UI_CONCEPT.md](docs/FRONTEND_UI_CONCEPT.md) for the future
 React/TypeScript/Vite/Zustand/GraphQL UI concept for browsing and maintaining
-shared pmem knowledge.
+shared marrow knowledge.
 
 See [docs/GRAPHQL_API.md](docs/GRAPHQL_API.md) for the shared gateway GraphQL
-endpoint intended for the PMemUI frontend.
+endpoint intended for the Marrow web UI frontend.
 
 See [docs/TOOL_WORKFLOWS.md](docs/TOOL_WORKFLOWS.md) for recommended tool chains agents should follow.
 
@@ -102,7 +102,7 @@ See [docs/NGINX.md](docs/NGINX.md) for nginx reverse proxy locations for the sha
 
 See [docs/AUTH.md](docs/AUTH.md) for the users/sessions/tokens schema and the `pm3m admin create` bootstrap command (per-user access model, first piece).
 
-See [docs/AUTH_LAYERING.md](docs/AUTH_LAYERING.md) for the rule on stacking edge auth (Basic Auth, forward-auth) in front of an app that manages its own `Authorization` header, and a worked incident from PMemUI's first public deploy.
+See [docs/AUTH_LAYERING.md](docs/AUTH_LAYERING.md) for the rule on stacking edge auth (Basic Auth, forward-auth) in front of an app that manages its own `Authorization` header, and a worked incident from the Marrow web UI's first public deploy.
 
 See [docs/CHAT_CONNECTOR_OAUTH_GUIDE.md](docs/CHAT_CONNECTOR_OAUTH_GUIDE.md) for the reusable OAuth facade pattern used to connect MCP servers to ChatGPT and Claude web connectors.
 
@@ -291,7 +291,7 @@ resource (`PROJECT_MEMORY_OAUTH_AUDIENCE`) and the MCP endpoint resource
 (`${PROJECT_MEMORY_PUBLIC_URL}/mcp`) for stricter MCP clients.
 When `client_kind` contains `claude`, MCP tool names are exposed with
 Claude-safe aliases such as `project_create` and `artifact_read_text`; the
-gateway maps them back to the canonical pmem tools internally.
+gateway maps them back to the canonical marrow tools internally.
 
 Client-specific variables point agents at the public gateway base URL:
 
@@ -476,6 +476,6 @@ npm run smoke:package
 ## Notes
 
 - The server is local-first, with an optional shared PostgreSQL gateway mode.
-- PMemUI (browser UI) and per-user auth (email+password+session, invite-based, see `docs/AUTH.md`) exist for the gateway mode; there is still no remote sync, cloud dependency, embeddings, or vector search.
+- The web UI (browser UI) and per-user auth (email+password+session, invite-based, see `docs/AUTH.md`) exist for the gateway mode; there is still no remote sync, cloud dependency, embeddings, or vector search.
 - Project-specific memory and common memory are separate. Default search includes current project plus common knowledge.
 - `preflight` is the main workflow guardrail before editing project files.

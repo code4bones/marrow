@@ -4,7 +4,7 @@ This document describes the reusable pattern we used to expose this MCP gateway
 as a custom connector / app in ChatGPT and Claude web chat surfaces.
 
 Use it as a portability guide for another MCP server. Product-specific names in
-examples use `project-memory` / `pmem`, but the architecture is not PMem-specific.
+examples use `project-memory` / `marrow`, but the architecture is not Marrow-specific.
 
 ## Goal
 
@@ -86,7 +86,7 @@ PROJECT_MEMORY_MAGIC_TOKEN="private-human-login-token"
 # PROJECT_MEMORY_MAGIC_TOKEN_HASH="sha256:<hex>"
 
 # Optional allowlist. Set this when the chat host lets you configure client_id.
-PROJECT_MEMORY_OAUTH_CLIENT_ID="pmem"
+PROJECT_MEMORY_OAUTH_CLIENT_ID="marrow"
 
 # Optional confidential client support.
 # If set, metadata advertises client_secret_post and client_secret_basic.
@@ -101,7 +101,7 @@ PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n...\n-----END
 # Optional.
 PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS=300
 PROJECT_MEMORY_OAUTH_SCOPES="memory:read memory:write"
-PROJECT_MEMORY_OAUTH_KEY_ID="pmem-oauth"
+PROJECT_MEMORY_OAUTH_KEY_ID="marrow-oauth"
 ```
 
 For this package, generate a dotenv-ready RSA private key with:
@@ -303,7 +303,7 @@ create/update/delete tools  -> memory:read memory:write
 admin tools                 -> memory:admin, optional later
 ```
 
-In PMem we grant the full configured internal scope set after successful OAuth,
+In Marrow we grant the full configured internal scope set after successful OAuth,
 even if the host initially asks only for `memory:read`. Some hosts do not retry
 OAuth scope escalation before calling write tools.
 
@@ -348,7 +348,7 @@ Claude-specific lessons from this implementation:
   metadata and try a wrong path.
 - Claude's frontend rejected dotted tool names in our test with a pattern like
   `^[a-zA-Z0-9_-]{1,64}$`.
-- Provide transport aliases for Claude-safe names. PMem converts canonical
+- Provide transport aliases for Claude-safe names. Marrow converts canonical
   names like `project.create` to `project_create` when `client_kind` or
   `User-Agent` indicates Claude.
 - Tool execution maps aliases back to canonical tool names server-side.
@@ -360,7 +360,7 @@ https://mcp.example.com/api/mcp?client_id=<stable-client-id>&client_label=<human
 ```
 
 The `client_kind=claude-code` query parameter is not OAuth. It is a server-side
-hint for PMem to expose Claude-safe tool names.
+hint for Marrow to expose Claude-safe tool names.
 
 ## Nginx / Reverse Proxy Pattern
 

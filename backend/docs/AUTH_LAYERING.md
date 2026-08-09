@@ -1,7 +1,7 @@
 # Auth Layering Rule
 
 Audience: anyone adding a network/edge auth layer (reverse proxy Basic Auth,
-forward-auth, VPN gateway) in front of a pmem gateway or PMemUI deployment,
+forward-auth, VPN gateway) in front of a marrow gateway or Marrow web UI deployment,
 including self-host operators.
 
 ## The rule
@@ -19,14 +19,14 @@ and an application layer both try to own `Authorization` for the same path,
 the application's value always wins on the wire — the edge layer never sees
 what it expects, fails auth, and (for the resource types below) re-prompts.
 
-This is not a pmem-specific bug pattern; it is the generic failure mode of
+This is not a marrow-specific bug pattern; it is the generic failure mode of
 stacking HTTP Basic Auth in front of any app that manages its own bearer
 token. It surfaces almost every time someone does it, so treat "wrap the app
 in Basic Auth" as fine only when the app has no `Authorization` header of its
 own to protect, or when the Basic-Auth layer is explicitly scoped to exclude
 the paths the app uses for its own auth.
 
-## Worked incident (2026-08-06/07, PMemUI first public deploy)
+## Worked incident (2026-08-06/07, Marrow web UI first public deploy)
 
 An NPM ("Nginx Proxy Manager") Access List (Basic Auth) was added in front of
 `marrow.example.com` as a same-day stopgap after the first public CI/CD deploy.
@@ -46,7 +46,7 @@ Two independent causes stacked:
    `transformIndexHtml` plugin that strips `crossorigin` from the build
    output (safe here — all assets are same-origin).
 
-2. **The channel collision described above.** PMemUI's Apollo client sets
+2. **The channel collision described above.** The web UI's Apollo client sets
    `Authorization: Bearer <token>` on every GraphQL request to `/api/graphql`
    (documented, correct gateway behavior — see `GRAPHQL_API.md`). NPM's
    Access List applied `auth_basic` to a single catch-all `location /` that
@@ -67,7 +67,7 @@ Why a different app on the same NPM Access List (code-server, several hops
 downstream) never hit this: it authenticates via a session **cookie**, not an
 `Authorization` header the frontend sets itself. Cookie and Basic Auth are
 different channels — they compose fine. The failure is specific to apps that
-manage their own `Authorization` header, which PMemUI does by design (it's
+manage their own `Authorization` header, which the web UI does by design (it's
 the gateway's documented auth contract).
 
 ## Rule of thumb for adding an edge layer
@@ -80,13 +80,13 @@ the gateway's documented auth contract).
   explicitly to the paths that don't carry the app's own `Authorization`
   header** (here: SPA shell paths, not `/api/*`). Never apply it as a single
   catch-all covering both.
-- Once PMemUI has real per-user login (tracked as the next step after the
+- Once the web UI has real per-user login (tracked as the next step after the
   shared `MCP_TOKEN`-in-a-text-box model — see `DECISIONS.md` /
   `D-PMEM-003` and the pmem-ui project decisions), prefer a **cookie-backed
   session** for the browser-facing side specifically because it doesn't
   compete with any `Authorization`-based layer underneath or in front of it.
 
-## Current state (as of PMemUI v0.1.2)
+## Current state (as of Marrow web UI v0.1.2)
 
 | Path            | Edge layer (NPM)        | App/internal nginx layer                          |
 |------------------|--------------------------|-----------------------------------------------------|

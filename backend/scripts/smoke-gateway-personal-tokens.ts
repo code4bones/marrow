@@ -1,4 +1,4 @@
-// T-MEMORY-047: personal PMem API tokens -- a third bearer-auth source,
+// T-MEMORY-047: personal Marrow API tokens -- a third bearer-auth source,
 // scoped to exactly one user, end to end against the real gateway
 // (ephemeral local instance, real Postgres) -- same style as
 // scripts/smoke-gateway-scopes.ts (session-derived scope tiers) and

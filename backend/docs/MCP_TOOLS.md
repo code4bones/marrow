@@ -1,8 +1,8 @@
 # MCP_TOOLS.md
 
-# Project Memory MCP — Tool Specification
+# Marrow MCP — Tool Specification
 
-This document describes the initial MCP tools exposed by the Project Memory MCP server.
+This document describes the initial MCP tools exposed by the Marrow MCP server.
 
 Tool names may be adapted to the MCP SDK naming conventions, but the concepts and behavior should remain stable.
 
@@ -58,7 +58,7 @@ Token-sensitive tools may also return `data.efficiencyHints`:
 
 ```json
 {
-  "rule": "Use PMem as a lazy index first...",
+  "rule": "Use Marrow as a lazy index first...",
   "severity": "warn",
   "strategy": "bounded-text-no-base64",
   "fullBodiesIncluded": true,
@@ -168,7 +168,7 @@ Gateway tools are available only through PostgreSQL gateway mode.
 
 ### `gateway.about`
 
-Explain what Project Memory (`pmem`) is and how an agent should use it after connecting.
+Explain what Marrow (`marrow`) is and how an agent should use it after connecting.
 
 Input:
 
@@ -181,9 +181,9 @@ Output:
 ```json
 {
   "about": {
-    "name": "Project Memory",
-    "shortName": "pmem",
-    "summary": "Project Memory is a shared MCP memory gateway...",
+    "name": "Marrow",
+    "shortName": "marrow",
+    "summary": "Marrow is a shared MCP memory gateway...",
     "manuals": {
       "tool": "gateway.manuals",
       "recommendedCalls": [
@@ -233,7 +233,7 @@ Output:
       "artifact.search or artifact.list before creating local AGENTS.md/templates"
     ],
     "recommendedAgentFlow": [
-      "Call gateway.about if the agent has not used pmem before.",
+      "Call gateway.about if the agent has not used marrow before.",
       "Call gateway.status to confirm shared gateway mode.",
       "Call memory.search with the task topic and include common knowledge."
     ],
@@ -252,7 +252,7 @@ Output:
 }
 ```
 
-Use this when a developer or agent asks what `project-memory` / `pmem` is, how
+Use this when a developer or agent asks what `project-memory` / `marrow` is, how
 to start, which tools to call first, or how to connect another MCP client.
 
 ---
@@ -272,8 +272,8 @@ Output:
 ```json
 {
   "version": {
-    "name": "Project Memory",
-    "shortName": "pmem",
+    "name": "Marrow",
+    "shortName": "marrow",
     "packageName": "@deadragdoll/pm3m",
     "packageVersion": "1.20.0",
     "mode": "gateway",
@@ -289,7 +289,7 @@ Output:
 }
 ```
 
-Use this when an agent or operator needs to confirm which pmem build is
+Use this when an agent or operator needs to confirm which marrow build is
 connected.
 
 ---
@@ -415,7 +415,7 @@ credentials.
 
 ### `gateway.manuals`
 
-Return bundled Project Memory Markdown manuals.
+Return bundled Marrow Markdown manuals.
 
 Use this after `gateway.about` when a developer or agent wants the actual
 `.md` documentation files on their side.
@@ -458,7 +458,7 @@ Output:
       "id": "developer",
       "audience": "developer",
       "aliases": ["user", "manual"],
-      "title": "Project Memory MCP Developer Manual",
+      "title": "Marrow Developer Manual",
       "description": "Purpose, setup, safe usage...",
       "path": "docs/DEVELOPER_MANUAL.md",
       "contentType": "text/markdown; charset=utf-8",
@@ -470,13 +470,13 @@ Output:
         },
         "packagePath": "docs/DEVELOPER_MANUAL.md"
       },
-      "content": "# Project Memory MCP — Developer Manual\n..."
+      "content": "# Marrow MCP — Developer Manual\n..."
     },
     {
       "id": "conventions",
       "audience": "conventions",
       "aliases": ["collaboration"],
-      "title": "Project Memory MCP Collaboration Conventions",
+      "title": "Marrow Collaboration Conventions",
       "description": "Shared storage-surface mapping and collaboration rules...",
       "path": "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md",
       "contentType": "text/markdown; charset=utf-8",
@@ -488,15 +488,15 @@ Output:
         },
         "packagePath": "docs/PROJECT_MEMORY_COLLABORATION_CONVENTIONS.md"
       },
-      "content": "# Project Memory MCP - Collaboration Conventions\n..."
+      "content": "# Marrow MCP - Collaboration Conventions\n..."
     },
     {
       "id": "onboarding",
       "audience": "onboarding",
       "aliases": ["start", "first-run", "quickstart"],
-      "title": "Project Memory MCP Agent Onboarding",
+      "title": "Marrow Agent Onboarding",
       "path": "docs/AGENT_ONBOARDING.md",
-      "content": "# Project Memory MCP — Agent Onboarding\n..."
+      "content": "# Marrow MCP — Agent Onboarding\n..."
     }
   ]
 }
@@ -959,7 +959,7 @@ Output for Markdown/text artifacts:
 {
   "artifact": {
     "id": "A-COMMON-001",
-    "path": "conventions/PROJECT_MEMORY_COLLABORATION.md",
+    "path": "conventions/MARROW_COLLABORATION.md",
     "contentType": "text/markdown; charset=utf-8",
     "sizeBytes": 9005,
     "downloadPath": "/artifacts/A-COMMON-001/download",
@@ -969,9 +969,9 @@ Output for Markdown/text artifacts:
       "truncated": false,
       "readBytes": 9005,
       "maxBytes": 65536,
-      "excerpt": "# Project Memory...",
+      "excerpt": "# Marrow...",
       "outline": [
-        { "level": 1, "title": "Project Memory MCP - Collaboration Conventions", "line": 1 },
+        { "level": 1, "title": "Marrow MCP - Collaboration Conventions", "line": 1 },
         { "level": 2, "title": "Core Principle", "line": 14 }
       ]
     }
@@ -1576,7 +1576,7 @@ In shared gateway mode, current project is scoped to the requesting client. One
 developer or agent changing current project must not change another client's
 implicit project scope.
 
-Gateway clients should send a stable `client_id`. If omitted, pmem assigns a
+Gateway clients should send a stable `client_id`. If omitted, marrow assigns a
 temporary anonymous id for the request, so current project state is isolated but
 not durable. Temporary anonymous client records and their current-project keys
 are cleaned up after `GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS`; set it to `0` to
@@ -2945,7 +2945,7 @@ Output:
   "handoffs": [
     {
       "id": "I-MEMORY-010",
-      "title": "Project Memory OAuth facade for ChatGPT Apps",
+      "title": "Marrow OAuth facade for ChatGPT Apps",
       "excerpt": "Work completed: ...",
       "tags": ["handoff", "oauth"],
       "updatedAt": "2026-06-20T13:22:21.278Z"

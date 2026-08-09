@@ -178,7 +178,7 @@ Behavior:
 4. Preserve `state`.
 5. Preserve `resource`.
 6. `GET` 302s to Marrow's own frontend (`<publicUrl origin>/oauth/authorize`, same query string) instead of rendering any backend HTML -- see "Session-based authorize (SSO)" below. There is no magic token anywhere in this flow.
-7. Once the frontend confirms a real `pmem_session` (existing cookie, or a fresh login through Marrow's own login/TOTP screens) and the user clicks Approve, its `POST /oauth/authorize` call issues a short-lived authorization code bound to that session's real `userId`.
+7. Once the frontend confirms a real `marrow_session` (existing cookie, or a fresh login through Marrow's own login/TOTP screens) and the user clicks Approve, its `POST /oauth/authorize` call issues a short-lived authorization code bound to that session's real `userId`.
 8. Redirect to:
 
 ```text
@@ -390,7 +390,7 @@ Flow:
    `<publicUrl origin>/oauth/authorize?<original query string>` --
    `oauth.ts`'s `authorizeRedirectUrl()`.
 2. The frontend page (`front/src/pages/oauth-authorize/index.tsx`) checks for
-   an existing `pmem_session` cookie. If there isn't one, it renders Marrow's
+   an existing `marrow_session` cookie. If there isn't one, it renders Marrow's
    normal login + TOTP screens in place (reusing the same components/actions
    `/login` uses) until there is one -- no separate credential type, no magic
    token field anywhere.

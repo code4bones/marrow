@@ -2,8 +2,8 @@
 
 # Auth schema and bootstrap
 
-This is the per-user access model for PMemUI (see `docs/AUTH_LAYERING.md` for
-the edge/proxy layering rule it complements, and PMem decisions
+This is the per-user access model for Marrow's web UI (see `docs/AUTH_LAYERING.md` for
+the edge/proxy layering rule it complements, and Marrow decisions
 `D-MEMORY-007`, `D-MEMORY-008`, `D-MEMORY-011`, `D-MEMORY-016`, `D-MEMORY-019`).
 It covers the schema, the CLI bootstrap command, the HTTP `/auth/*` routes
 (the original invite→claim→verify-email path, session login/logout, TOTP 2FA
@@ -103,7 +103,7 @@ Root of trust is shell access to the machine running `pm3m`, not the network
   `/auth/claim?token=<raw token>`.
 - If `PROJECT_MEMORY_PUBLIC_URL` is set in `.env`, the link is printed as a
   full URL; otherwise only the path is printed with a note to prepend the
-  PMemUI base URL manually.
+  Marrow web UI base URL manually.
 
 The existing shared `MCP_TOKEN` is untouched by this bootstrap itself. It is
 migrated into an owned, scoped credential separately at gateway startup --
@@ -163,7 +163,7 @@ never yields a live, directly usable credential.
 
 The GraphQL endpoint (and every other gateway route gated by `isAuthorized`)
 accepts four credential sources side by side: the static `MCP_TOKEN`
-bearer, an OAuth bearer token, a `pmem_session` cookie, and (`T-MEMORY-047`)
+bearer, an OAuth bearer token, a `marrow_session` cookie, and (`T-MEMORY-047`)
 a personal API token bearer -- see "Personal API tokens" below. Each
 source's scope (see "Scopes: read / write / admin" below) is checked on
 every request, not just for OAuth. When a session or a personal token is
@@ -174,7 +174,7 @@ token IS that specific user connecting programmatically.
 
 The GraphQL WS subscription transport (`T-MEMORY-042`, see
 `docs/GRAPHQL_API.md`'s "Subscriptions" section) is stricter than the HTTP
-endpoint above: it accepts **only** the `pmem_session` cookie, never the
+endpoint above: it accepts **only** the `marrow_session` cookie, never the
 static `MCP_TOKEN` or an OAuth bearer. A WS upgrade with no session, or an
 invalid/expired one, is refused inside `graphql-ws`'s `onConnect` before the
 handshake ever reaches `connection_ack` -- see `startGatewayServer` in
@@ -191,10 +191,10 @@ strict superset of the one before it (`admin` implies `write` and `read`).
 | static `MCP_TOKEN` | `admin` | Unchanged from before this task — existing Claude Code / ChatGPT configs must keep working after the upgrade with zero edits. See "MCP_TOKEN migration" below for how this got a stable, owned credential row. |
 | no token configured at all (`source:"none"`) | `admin` | Unchanged — this is already a fully-open dev/trusted mode; scopes add no extra protection on top of "anyone can already call anything." |
 | session cookie, `role=admin` | `admin` | — |
-| session cookie, `role=member` | `write` | Decision 1: session scope is derived straight from the user's role, no separate "elevate to admin" UX — PMemUI has no destructive UI to elevate into anyway (`D-MEMORY-015`). |
+| session cookie, `role=member` | `write` | Decision 1: session scope is derived straight from the user's role, no separate "elevate to admin" UX — the web UI has no destructive UI to elevate into anyway (`D-MEMORY-015`). |
 | personal API token, owner `role=admin` (`T-MEMORY-047`) | `admin` | Same role-derived resolution as a session cookie — see "Personal API tokens" below. |
 | personal API token, owner `role=member` (`T-MEMORY-047`) | `write` | Same role-derived resolution as a session cookie. A personal token IS that specific user connecting programmatically, not a separate, wider-scoped credential class. |
-| OAuth bearer (Claude Code / ChatGPT connectors) | role-derived, identical to a session's (`T-MEMORY-0xx` SSO, supersedes decision 2 below) | `/oauth/authorize` now requires a real Marrow login (`pmem_session`) instead of the old shared magic token — see `docs/OAUTH_FACADE_FOR_CHATGPT_APPS.md`'s "Session-based authorize (SSO)" — so the issued JWT's `sub` is the real logged-in user's `userId`, not the old hardcoded `"project-memory-user"` literal. `http-server.ts`'s `resolveScopeTier()` resolves that user's *current* role fresh from `users` on every request (never cached in the token): `admin` role → `admin` tier, `member` role → `write` tier, same as a session or personal token. A `sub` that doesn't resolve to an active user (disabled/deleted account, or a still-valid pre-SSO token with the old hardcoded `sub`) fails closed as `401 unauthenticated`, never silently downgraded to `write`. ~~Decision 2 (original text, kept for history): an OAuth-issued token never gets `admin`, regardless of the underlying human's role — deliberate protection against an agent hallucinating a delete call, since the old magic-token flow had no way to prove who was behind the token.~~ That rationale no longer applies once the authorize step verifies real identity; the elevation mechanism below is unaffected and still covers the member-role-OAuth case. |
+| OAuth bearer (Claude Code / ChatGPT connectors) | role-derived, identical to a session's (`T-MEMORY-0xx` SSO, supersedes decision 2 below) | `/oauth/authorize` now requires a real Marrow login (`marrow_session`) instead of the old shared magic token — see `docs/OAUTH_FACADE_FOR_CHATGPT_APPS.md`'s "Session-based authorize (SSO)" — so the issued JWT's `sub` is the real logged-in user's `userId`, not the old hardcoded `"project-memory-user"` literal. `http-server.ts`'s `resolveScopeTier()` resolves that user's *current* role fresh from `users` on every request (never cached in the token): `admin` role → `admin` tier, `member` role → `write` tier, same as a session or personal token. A `sub` that doesn't resolve to an active user (disabled/deleted account, or a still-valid pre-SSO token with the old hardcoded `sub`) fails closed as `401 unauthenticated`, never silently downgraded to `write`. ~~Decision 2 (original text, kept for history): an OAuth-issued token never gets `admin`, regardless of the underlying human's role — deliberate protection against an agent hallucinating a delete call, since the old magic-token flow had no way to prove who was behind the token.~~ That rationale no longer applies once the authorize step verifies real identity; the elevation mechanism below is unaffected and still covers the member-role-OAuth case. |
 
 `admin` covers every hard-delete operation: `memory.delete`, `decision.delete`,
 `project.delete`, `event.delete`, `link.delete`, `artifact.delete`,
@@ -246,7 +246,7 @@ Two steps:
    re-authentication (password *and* the current 6-digit TOTP code, both
    checked fresh at that moment), not a lookup against any existing session
    or OAuth token — deliberately, since the OAuth-connected agent that
-   actually needs this in the motivating scenario has no `pmem_session`
+   actually needs this in the motivating scenario has no `marrow_session`
    cookie to present, and `gateway_clients.owner_user_id` (the "which human
    owns this credential" column added by `T-MEMORY-029`) is only ever
    populated for the migrated static `MCP_TOKEN` credential today, not for
@@ -529,14 +529,14 @@ rejection of putting a PAT in `.env`).
   fallback for reading them.** `git.credential_create` and
   `git.credential_delete` (and their GraphQL equivalents) resolve
   `owner_user_id` **exclusively** from `context.sessionUserId` -- a real
-  `pmem_session` browser cookie. A raw token should only ever enter or leave
+  `marrow_session` browser cookie. A raw token should only ever enter or leave
   storage through the trusted browser profile UI, so static `MCP_TOKEN`,
   OAuth-connected agents (Claude Code, ChatGPT), and any other non-session
   caller hit `AppError("UNAUTHORIZED", "...caller can manage credentials")`
   for those two.
   `git.credential_list` and `git.pipeline_status` are different: this is a
   single-owner/small-team self-host instance, and the entire point of this
-  feature was letting an agent connected through PMem check CI status
+  feature was letting an agent connected through Marrow check CI status
   instead of the operator SSH-ing into the deploy host and grepping
   `journalctl` by hand (see `I-MEMORY-031`/`I-MEMORY-034` for that
   friction). So for these two *read-only* paths, a non-session caller falls

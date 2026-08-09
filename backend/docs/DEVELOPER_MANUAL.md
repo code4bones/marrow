@@ -1,6 +1,6 @@
-# Project Memory MCP — Developer Manual
+# Marrow MCP — Developer Manual
 
-Project Memory MCP (`pmem`) is a shared memory layer for coding agents.
+Marrow MCP (`marrow`) is a shared memory layer for coding agents.
 
 It exists to make agent work reproducible: the agent should know the current
 project, active task, previous decisions, failed attempts, reusable rules, and
@@ -9,7 +9,7 @@ shared files before it starts changing code.
 This is not a generic note-taking app. Store only knowledge that should affect
 future work.
 
-## What pmem Solves
+## What marrow Solves
 
 Agents lose context between sessions. That causes repeated mistakes:
 
@@ -19,7 +19,7 @@ Agents lose context between sessions. That causes repeated mistakes:
 - reusable templates are copied manually or drift between projects
 - shared team knowledge stays inside one developer's local chat
 
-`pmem` gives agents a structured place to ask:
+`marrow` gives agents a structured place to ask:
 
 - Which project am I working on?
 - What task is next?
@@ -168,7 +168,7 @@ codewhale-tui mcp tools project-memory
 After connecting an agent, ask:
 
 ```text
-Расскажи, что такое project-memory / pmem, и как мне его использовать.
+Расскажи, что такое project-memory / marrow, и как мне его использовать.
 ```
 
 The agent should call `gateway.about`.
@@ -176,7 +176,7 @@ The agent should call `gateway.about`.
 To receive the bundled Markdown manuals directly through MCP, ask:
 
 ```text
-Дай мне manuals по pmem в Markdown: user/developer и agent.
+Дай мне manuals по marrow в Markdown: user/developer и agent.
 ```
 
 Expected tool flow:
@@ -195,7 +195,7 @@ gateway.manuals(audience="onboarding", includeContent=true)
 Then ask it to check the shared gateway:
 
 ```text
-Проверь, что ты подключен к общему pmem gateway.
+Проверь, что ты подключен к общему marrow gateway.
 ```
 
 Expected tool flow:
@@ -225,14 +225,14 @@ gateway.client_prune
 If the agent only sees local SQLite state, it is not connected to the shared
 gateway.
 
-## How To Use pmem Safely
+## How To Use marrow Safely
 
 ### Before Implementation
 
 Ask the agent to check memory before non-trivial work:
 
 ```text
-Перед началом проверь pmem: текущий проект, решения, похожие ошибки и preflight.
+Перед началом проверь marrow: текущий проект, решения, похожие ошибки и preflight.
 ```
 
 Expected flow:
@@ -289,7 +289,7 @@ For ChatGPT-Codex collaboration rules, load or read
 through `gateway.manuals(audience="conventions", includeContent=true)`.
 
 Never store secrets, tokens, private keys, cookies, session IDs, full `.env`
-files, raw authorization headers, passwords, or raw logs in Project Memory.
+files, raw authorization headers, passwords, or raw logs in Marrow.
 Redact before writing if a secret appears in diagnostic output.
 
 ## Artifact Workflow
@@ -437,7 +437,7 @@ Do not store secrets:
 - production tokens
 - customer data
 
-Do not use pmem as a raw log bucket:
+Do not use marrow as a raw log bucket:
 
 - avoid huge build logs
 - avoid raw terminal dumps unless summarized
@@ -459,37 +459,37 @@ Do not let the agent invent missing context:
 Start a repository:
 
 ```text
-Проверь pmem, выбери текущий проект, найди связанные решения и сделай preflight.
+Проверь marrow, выбери текущий проект, найди связанные решения и сделай preflight.
 ```
 
 Find reusable knowledge:
 
 ```text
-Поищи в pmem common knowledge паттерны для TypeScript service/repository слоя.
+Поищи в marrow common knowledge паттерны для TypeScript service/repository слоя.
 ```
 
 Find reusable files:
 
 ```text
-Поищи на pmem gateway общий AGENTS.md для frontend-проекта и предложи лучший вариант.
+Поищи на marrow gateway общий AGENTS.md для frontend-проекта и предложи лучший вариант.
 ```
 
 Record a decision:
 
 ```text
-Запиши в pmem решение: gateway использует PostgreSQL и хранит artifact metadata в БД, а bytes на диске.
+Запиши в marrow решение: gateway использует PostgreSQL и хранит artifact metadata в БД, а bytes на диске.
 ```
 
 Record a fault or failed attempt:
 
 ```text
-Запиши fault в pmem: что пробовали, почему не сработало, что не повторять, и лучший следующий подход.
+Запиши fault в marrow: что пробовали, почему не сработало, что не повторять, и лучший следующий подход.
 ```
 
 Leave a handoff:
 
 ```text
-Создай handoff в pmem: что сделано, какие файлы трогали, что проверено и что дальше.
+Создай handoff в marrow: что сделано, какие файлы трогали, что проверено и что дальше.
 ```
 
 ## Operations Notes

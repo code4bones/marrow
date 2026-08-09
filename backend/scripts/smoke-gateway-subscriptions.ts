@@ -231,7 +231,7 @@ try {
   console.log("ok - WS subscription without any session cookie is rejected at the handshake (never acknowledged)");
 
   // --- Reject: garbage/invalid cookie -----------------------------------
-  const invalidCookieClient = new GatewayWsClient(wsUrl, "pmem_session=not-a-real-session-token");
+  const invalidCookieClient = new GatewayWsClient(wsUrl, "marrow_session=not-a-real-session-token");
   openSockets.push(invalidCookieClient);
   await invalidCookieClient.waitForOpen();
   invalidCookieClient.send({ type: "connection_init" });

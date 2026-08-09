@@ -22,7 +22,7 @@
 // the admin-fallback for credential *reads* (list, pipeline_status) that
 // same non-session callers get instead -- the actual point of this task,
 // letting an agent connected over OAuth or the static token check CI
-// status through PMem.
+// status through Marrow.
 import { createHash, randomUUID } from "node:crypto";
 import { startGatewayServer } from "../src/gateway/http-server.js";
 import { createAuthFacade, hashPassword, hashToken } from "../src/gateway/auth.js";
@@ -402,7 +402,7 @@ try {
   // of an already-stored credential should still work for it by resolving
   // to the instance's primary admin (resolveGitCredentialReader in
   // pg-tool-service.ts) -- otherwise the feature can't do the thing it was
-  // built for (an agent checking CI status through PMem). Managing the
+  // built for (an agent checking CI status through Marrow). Managing the
   // credential itself (create/delete) stays session-only regardless, per
   // the earlier assertions.
   //
@@ -582,7 +582,7 @@ async function mintOAuthAccessToken(sessionCookie: string): Promise<string> {
 
   // T-MEMORY-0xx SSO: POST /oauth/authorize is now session-cookie-backed
   // (JSON body, no magic_token) -- the frontend calls this exact shape
-  // after its own login/consent screen confirms a pmem_session.
+  // after its own login/consent screen confirms a marrow_session.
   const authorize = await fetch(`${started.url}/oauth/authorize`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie: sessionCookie },

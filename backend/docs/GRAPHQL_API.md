@@ -1,7 +1,7 @@
 # Gateway GraphQL API
 
 The shared gateway exposes a browser-facing GraphQL endpoint for the future
-PMemUI frontend:
+Marrow web UI frontend:
 
 ```text
 POST /graphql
@@ -42,7 +42,7 @@ X-Project-Memory-Client-Kind: frontend
 
 ## Purpose
 
-GraphQL is the browser-facing API boundary for PMemUI. The frontend should call
+GraphQL is the browser-facing API boundary for the Marrow web UI. The frontend should call
 `${GW_ENDPOINT}/graphql`, not PostgreSQL and not MCP transport directly.
 
 Resolvers map to existing gateway tools through `PgToolService.call()` so
@@ -189,7 +189,7 @@ query Search($project: String!, $query: String!) {
 }
 ```
 
-Paginated table fields are available for the main PMemUI grids:
+Paginated table fields are available for the main Marrow web UI grids:
 
 ```graphql
 query ProjectTables($project: String!) {
@@ -309,7 +309,7 @@ query SearchTables($project: String!, $query: String!) {
 
 ## Pagination
 
-PMemUI table queries use offset pagination for the first frontend slice:
+Marrow web UI table queries use offset pagination for the first frontend slice:
 
 ```graphql
 input PaginationInput {
@@ -337,7 +337,7 @@ type PaginatedTasks {
 
 The gateway executes pagination at PostgreSQL level with `COUNT(*)`,
 `LIMIT`, and `OFFSET`. `limit` is bounded server-side. This shape is chosen for
-PMemUI data grids because the frontend can show total rows, page size, current
+Marrow web UI data grids because the frontend can show total rows, page size, current
 page, and next/previous controls without guessing.
 
 Keep existing non-paginated list fields for compact agent workflows and simple
@@ -346,7 +346,7 @@ selectors. Use `*Page` fields for UI tables.
 ## Available Mutations
 
 Project, memory, task, decision, link, event, and artifact lifecycle mutations
-are available for PMemUI maintenance screens. Most mutations require `write`
+are available for Marrow web UI maintenance screens. Most mutations require `write`
 scope; the seven hard-delete mutations require `admin` scope instead (see
 "Authorization and scope errors" below) and should be guarded by explicit UI
 confirmation regardless of scope.
@@ -398,7 +398,7 @@ Project and task lifecycle:
 
 ```graphql
 mutation TaskStatus($id: ID!) {
-  updateTaskStatus(id: $id, status: "doing", note: "Started from PMemUI") {
+  updateTaskStatus(id: $id, status: "doing", note: "Started from the web UI") {
     id
     status
     updatedAt
@@ -467,7 +467,7 @@ Decision lifecycle:
 mutation DecisionMaintenance($project: String!, $id: ID!) {
   recordDecision(input: {
     project: $project
-    title: "Use record(id) for PMemUI detail navigation"
+    title: "Use record(id) for web UI detail navigation"
     decision: "Clickable IDs resolve through the generic record lookup."
     tags: ["frontend", "graphql"]
   }) {
@@ -491,7 +491,7 @@ mutation DecisionMaintenance($project: String!, $id: ID!) {
 
 `supersedeDecision` creates a replacement decision and supersedes the old one
 in one call — the same workflow as the `decision.supersede` MCP tool, just
-exposed to GraphQL clients (added for PMemUI's timeline "create a connected
+exposed to GraphQL clients (added for the web UI's timeline "create a connected
 decision" action):
 
 ```graphql
@@ -663,7 +663,7 @@ session's own credential.
 - Use `artifactText` for Markdown/text content.
 - Do not request base64 for text previews or reads.
 - Keep GraphQL queries scoped by project where practical.
-- Use `*Page` fields for PMemUI tables that need page size and total row count.
+- Use `*Page` fields for Marrow web UI tables that need page size and total row count.
 - Treat `gatewayStatus`, `gatewayVersion`, and `gatewayDiagnostics` as JSON
   scalars for diagnostics views.
 - Use destructive mutations only after explicit UI confirmation.
@@ -717,13 +717,13 @@ Sec-WebSocket-Protocol: graphql-transport-ws
 
 Same path as the HTTP GraphQL endpoint -- `isGraphqlRequestPath()` decides
 which upgrade requests the gateway's WS server takes over; anything else has
-its socket destroyed immediately. **Session-cookie auth only.** The `pmem_session`
+its socket destroyed immediately. **Session-cookie auth only.** The `marrow_session`
 cookie travels on the WS upgrade request exactly like any other same-origin
 HTTP request (browsers attach cookies to the WS handshake automatically), and
 `identifyFromRequest()` (`src/gateway/auth.ts`) resolves it the same way it
 does for `/auth/*` and `/graphql` HTTP requests. The static `MCP_TOKEN`
 bearer and OAuth bearers are **never** accepted for subscriptions -- this is
-a PMemUI-only feature, not an agent channel; an MCP agent doesn't need a live
+a web-UI-only feature, not an agent channel; an MCP agent doesn't need a live
 feed of writes it just made itself. A connection with no session, or an
 invalid/expired one, is refused inside `graphql-ws`'s `onConnect` callback
 (`useServer({ onConnect })` in `http-server.ts`): the socket closes with code
@@ -760,7 +760,7 @@ subscription LiveFeed {
 }
 ```
 
-A client (PMemUI's `GraphQLWsLink` in `apollo.ts`, or any `graphql-ws`
+A client (the web UI's `GraphQLWsLink` in `apollo.ts`, or any `graphql-ws`
 client) opens one subscription to this field and, on each envelope, refetches
 whatever query populated the screen currently showing -- the payload is
 enough to route ("something in this project changed, of this type") but is

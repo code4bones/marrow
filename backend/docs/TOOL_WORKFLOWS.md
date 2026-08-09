@@ -1,6 +1,6 @@
-# Project Memory MCP — Tool Workflows
+# Marrow MCP — Tool Workflows
 
-This document describes recommended tool chains for agents using Project Memory MCP.
+This document describes recommended tool chains for agents using Marrow MCP.
 
 The tools are intentionally small. Agents should combine them into predictable workflows instead of treating them as unrelated commands.
 
@@ -52,7 +52,7 @@ gateway.manuals(audience="conventions", includeContent=true)
 ```
 
 Use it when the task involves ChatGPT-Codex handoff, shared artifacts,
-cross-agent context, or choosing the correct pmem storage surface.
+cross-agent context, or choosing the correct marrow storage surface.
 
 ## Backlog Selection
 
@@ -112,7 +112,7 @@ Purpose:
 - preserve important knowledge
 - avoid repeating failed attempts
 
-Write back only durable information. Do not create pmem records for every small
+Write back only durable information. Do not create marrow records for every small
 edit or transient observation.
 
 ## Storage Surface Selection
@@ -393,7 +393,7 @@ ChatGPT resumes:
   summarize next steps for the user
 ```
 
-Repository files remain authoritative if they conflict with pmem records.
+Repository files remain authoritative if they conflict with marrow records.
 
 ## Default Agent Chain
 
