@@ -211,6 +211,36 @@ try {
   );
   console.log("ok - auth login rate-limits repeated attempts");
 
+  // T-MEMORY-058 (whitebox pentest finding #2, I-MEMORY-055): clientIp() used
+  // to take the leftmost X-Forwarded-For value, which a client can set to
+  // anything -- rotating it per request used to get a fresh ip:<clientIp>
+  // rate-limit bucket every time, defeating the IP half of the limiter (the
+  // per-email half still caught same-account brute force, but the
+  // cross-account "one attacker IP, many target accounts" protection was
+  // gone). A different email each attempt keeps the per-email bucket from
+  // ever tripping, isolating this to the IP bucket specifically. X-Real-IP
+  // is what nginx actually sets in prod (unconditionally overwritten with
+  // the real peer, unlike XFF) -- held constant here to prove the limiter
+  // now keys on it instead of the attacker-rotated XFF.
+  let lastXffSpoofStatus = 0;
+  for (let attempt = 0; attempt < 9; attempt += 1) {
+    const response = await fetch(`${started.url}/auth/login`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-real-ip": "203.0.113.9",
+        "x-forwarded-for": `198.51.100.${attempt}`
+      },
+      body: JSON.stringify({ email: `gateway-auth-smoke-xffspoof-${unique}-${attempt}@example.test`, password: "wrong-password" })
+    });
+    lastXffSpoofStatus = response.status;
+  }
+  assert(
+    lastXffSpoofStatus === 429,
+    `A constant X-Real-IP with a different email + rotated X-Forwarded-For every attempt should still be rate-limited by IP (429). Got: ${lastXffSpoofStatus}`
+  );
+  console.log("ok - rotating X-Forwarded-For no longer defeats the IP-keyed rate limiter (keys on X-Real-IP instead)");
+
   await verifyClaimingUnclaimedAdmin();
 
   console.log(`Gateway auth smoke test passed using ${started.url}`);

@@ -2020,8 +2020,19 @@ function sendMcpUnauthorized(response: ServerResponse, requestId: string, auth: 
   response.end(payload);
 }
 
+// T-MEMORY-058 (whitebox pentest finding #2, I-MEMORY-055): X-Forwarded-For
+// is set by the CLIENT and only appended-to by nginx, so the leftmost value
+// used here previously was attacker-controlled -- rotate it per request and
+// the login/2fa/elevate rate limiter's ip:<clientIp> bucket never repeats.
+// X-Real-IP is different: nginx's `proxy_set_header X-Real-IP $remote_addr`
+// (see backend/deploy/nginx/marrow.example.conf and every location block
+// that proxies here) unconditionally overwrites whatever value a client
+// sent for that header with the real TCP peer address, so it can't be
+// spoofed the same way. request.socket.remoteAddress is the fallback for
+// any deployment topology without that trusted header (e.g. local dev with
+// no reverse proxy in front at all) -- also the real peer, never XFF.
 function clientIp(request: IncomingMessage): string {
-  return headerString(request, "x-forwarded-for")?.split(",")[0]?.trim() || request.socket.remoteAddress || "unknown";
+  return headerString(request, "x-real-ip") || request.socket.remoteAddress || "unknown";
 }
 
 function sanitizeLogBody(value: unknown): unknown {
