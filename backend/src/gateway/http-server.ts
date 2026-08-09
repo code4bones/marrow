@@ -161,10 +161,31 @@ type GatewayWsExtra = Record<PropertyKey, unknown> & {
   sessionIdentity?: SessionIdentity;
 };
 
+// T-MEMORY-062 (pentest finding #6): isAuthorized() falls through to
+// {ok:true, source:"none"} when neither a static token nor OAuth is
+// configured, and resolveScopeTier maps "none" to the ADMIN tier -- a
+// deploy/config mistake that leaves both unset would silently open the
+// entire instance at admin scope to any anonymous caller. Fail fast instead,
+// unless the operator explicitly opts in for a trusted localhost/dev context.
+export function assertAuthConfigured(options: GatewayServerOptions): void {
+  if (options.token || options.oauth) {
+    return;
+  }
+  const override = process.env.PROJECT_MEMORY_ALLOW_NO_AUTH?.trim().toLowerCase();
+  if (override && !["0", "false", "no", "off", ""].includes(override)) {
+    return;
+  }
+  throw new AppError(
+    "VALIDATION_ERROR",
+    "Refusing to start: no auth source configured (neither MCP_TOKEN nor OAuth). This would silently grant admin-tier access to any anonymous caller. Set MCP_TOKEN, configure OAuth, or set PROJECT_MEMORY_ALLOW_NO_AUTH=1 for a trusted localhost/dev context."
+  );
+}
+
 export async function startGatewayServer(
   service: PgToolService,
   options: GatewayServerOptions
 ): Promise<StartedGatewayServer> {
+  assertAuthConfigured(options);
   const graphql = await createGatewayGraphqlServer();
   const server = createServer((request, response) => {
     void handleRequest(service, options, graphql, request, response);
