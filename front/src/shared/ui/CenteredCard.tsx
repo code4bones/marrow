@@ -3,6 +3,15 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarrowMark } from './MarrowMark';
 
+/** A part of the backronym line that grows from nothing into `children` (a word or the "M"->"MARROW"/dash separator), in place, without shifting sibling text vertically -- see the `.marrow-grow` grid trick in the <style> block below. */
+function Grow({ anim, children }: { anim: string; children: ReactNode }) {
+  return (
+    <span className="marrow-grow" style={{ animationName: anim }}>
+      <span className="marrow-grow-inner">{children}</span>
+    </span>
+  );
+}
+
 /** Full-height centered card used by the auth pages (login, register, 2FA, invite/claim links). */
 export function CenteredCard({ children, width = 400 }: { children: ReactNode; width?: number }) {
   const { t } = useTranslation('auth');
@@ -29,69 +38,73 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           .marrow-acronym-letter { color: #202020; }
         }
 
-        /* Looping "exhaust trail" intro on the backronym line only (the
-           [logo] MARROW title above stays static). "MARROW" starts centered
-           alone, drives off to the left, and its motion synchronously wipes
-           open the "Ain't RAM — Recall Outlives Workers" backronym in the
-           space it vacates -- like exhaust left behind a departing car.
-           Once revealed, the tagline fades in below; everything holds, then
-           fades out together and the cycle repeats. All animations share the
-           same 7.5s duration and 0 delay so they stay in lockstep. */
+        /* Looping backronym reveal on the [logo] MARROW title's subtitle line
+           (the title itself is static, untouched). "MARROW" starts as one
+           tight word -- literally just its own 6 letters, M-A-R-R-O-W, sitting
+           adjacent with no gaps. Each letter (except M) has a hidden trailing
+           "suffix" completing it into its backronym word (A -> "in't", first
+           R -> "AM", second R -> "ecall", O -> "utlives", W -> "orkers"), plus
+           a standalone hidden separator that blooms into " -- " between the
+           two words. M's own suffix ("ARROW") reconstructs the word "MARROW"
+           itself, in the brand color, since M *is* what the whole thing stands
+           for. Growing a suffix pushes the following letters rightward, which
+           reads as the word disassembling/spreading letter by letter. Every
+           suffix uses the CSS grid 0fr->1fr trick (animating grid-template-
+           columns, not width) so it doesn't need a guessed pixel width and
+           never affects line height -- only horizontal growth happens, so the
+           form below never shifts vertically. All 7 suffixes plus the tagline
+           and the group fade share one 8s timeline (0 delay, same duration)
+           so they stay in lockstep forever: hold compact -> cascade-bloom
+           left to right -> hold expanded (tagline fades in, then out) ->
+           snap back to "MARROW" -> hold -> fade out together -> pause -> loop. */
+        .marrow-line { white-space: nowrap; }
+        .marrow-grow {
+          display: inline-grid;
+          grid-template-columns: 0fr;
+          vertical-align: bottom;
+          animation-duration: 8s;
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+        }
+        .marrow-grow-inner {
+          overflow: hidden;
+          min-width: 0;
+          white-space: pre;
+        }
+        .marrow-tagline {
+          opacity: 0;
+          animation: marrow-tagline-fade 8s ease-in-out infinite;
+        }
         .marrow-anim-root {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 8px;
-          animation: marrow-group-cycle 7.5s ease-in-out infinite;
-        }
-        .marrow-row {
-          position: relative;
-          display: flex;
-          align-items: center;
-          height: 20px;
-        }
-        .marrow-car {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          white-space: nowrap;
-          animation: marrow-car-move 7.5s ease-in-out infinite;
-        }
-        .marrow-reveal {
-          display: inline-block;
-          white-space: nowrap;
-          animation: marrow-reveal-wipe 7.5s ease-in-out infinite;
-        }
-        .marrow-tagline {
-          opacity: 0;
-          animation: marrow-tagline-fade 7.5s ease-in-out infinite;
+          animation: marrow-group-cycle 8s ease-in-out infinite;
         }
 
-        @keyframes marrow-car-move {
-          0%, 11% { transform: translate(-50%, -50%); opacity: 1; }
-          25%, 100% { transform: translate(-200%, -50%); opacity: 0; }
-        }
-        @keyframes marrow-reveal-wipe {
-          0%, 11% { clip-path: inset(0 100% 0 0); }
-          25%, 100% { clip-path: inset(0 0% 0 0); }
-        }
+        @keyframes marrow-grow-m    { 0%, 6%  { grid-template-columns: 0fr; } 10%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-a    { 0%, 10% { grid-template-columns: 0fr; } 14%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-r1   { 0%, 14% { grid-template-columns: 0fr; } 18%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-dash { 0%, 18% { grid-template-columns: 0fr; } 20%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-r2   { 0%, 20% { grid-template-columns: 0fr; } 24%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-o    { 0%, 24% { grid-template-columns: 0fr; } 28%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+        @keyframes marrow-grow-w    { 0%, 28% { grid-template-columns: 0fr; } 32%, 60% { grid-template-columns: 1fr; } 66%, 100% { grid-template-columns: 0fr; } }
+
         @keyframes marrow-tagline-fade {
-          0%, 38% { opacity: 0; }
-          45%, 100% { opacity: 0.75; }
+          0%, 34% { opacity: 0; }
+          40%, 55% { opacity: 0.75; }
+          60%, 100% { opacity: 0; }
         }
         @keyframes marrow-group-cycle {
-          0%, 80% { opacity: 1; }
-          88%, 100% { opacity: 0; }
+          0%, 85% { opacity: 1; }
+          92%, 100% { opacity: 0; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .marrow-anim-root, .marrow-car, .marrow-reveal, .marrow-tagline {
-            animation: none;
-          }
-          .marrow-row { flex-direction: column; height: auto; gap: 6px; }
-          .marrow-car { position: static; transform: none; opacity: 1; }
-          .marrow-reveal { clip-path: none; }
-          .marrow-tagline { opacity: 0.75; }
+          .marrow-anim-root { animation: none; }
+          .marrow-grow { grid-template-columns: 1fr; animation: none; }
+          .marrow-tagline { opacity: 0.75; animation: none; }
         }
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -111,23 +124,29 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
           blank line -- it's always mounted for the lifetime of the
           component (never toggled mid-cycle), so it reserves its layout
           space up front and the animation never shifts the form below. */}
-      <div className="marrow-anim-root" style={{ maxWidth: 340 }}>
-        <div className="marrow-row">
-          <Typography.Text type="secondary" className="marrow-car" style={{ fontSize: 13, fontWeight: 700 }}>
-            MARROW
-          </Typography.Text>
-          <Typography.Text type="secondary" className="marrow-reveal" style={{ fontSize: 13 }}>
-            <span className="marrow-acronym-letter">A</span>in&apos;t <span className="marrow-acronym-letter">R</span>AM
-            {' — '}
-            <span className="marrow-acronym-letter">R</span>ecall <span className="marrow-acronym-letter">O</span>utlives{' '}
-            <span className="marrow-acronym-letter">W</span>orkers
-          </Typography.Text>
-        </div>
+      <div className="marrow-anim-root">
+        <Typography.Text type="secondary" className="marrow-line" style={{ fontSize: 13 }}>
+          <span className="marrow-brand-text">
+            M
+            <Grow anim="marrow-grow-m">ARROW </Grow>
+          </span>
+          <span className="marrow-acronym-letter">A</span>
+          <Grow anim="marrow-grow-a">in&apos;t </Grow>
+          <span className="marrow-acronym-letter">R</span>
+          <Grow anim="marrow-grow-r1">AM</Grow>
+          <Grow anim="marrow-grow-dash">{' — '}</Grow>
+          <span className="marrow-acronym-letter">R</span>
+          <Grow anim="marrow-grow-r2">ecall </Grow>
+          <span className="marrow-acronym-letter">O</span>
+          <Grow anim="marrow-grow-o">utlives </Grow>
+          <span className="marrow-acronym-letter">W</span>
+          <Grow anim="marrow-grow-w">orkers</Grow>
+        </Typography.Text>
         {tagline && (
           <Typography.Text
             type="secondary"
             className="marrow-tagline"
-            style={{ fontSize: 12, display: 'block', textAlign: 'center' }}
+            style={{ fontSize: 12, display: 'block', textAlign: 'center', maxWidth: 320 }}
           >
             {tagline}
           </Typography.Text>
