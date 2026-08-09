@@ -2,13 +2,13 @@
   <title>Marrow</title>
   <style>
     /* Standalone favicons get no page CSS context, so currentColor always
-       resolved to black -- invisible on a dark browser tab bar. Mirrors
-       brand-icons/README.md's dark-drawn-for-light-bg / white-for-dark-bg
-       raster convention, done responsively instead of via separate files. */
-    .badge { fill: #16161A; }
-    @media (prefers-color-scheme: dark) {
-      .badge { fill: #F5F5F5; }
-    }
+       resolved to black -- invisible on a dark browser tab bar.
+       prefers-color-scheme support for favicon SVGs is too inconsistent
+       across browsers to rely on (confirmed: stayed on the dark branch's
+       default in practice) -- fixed light fill instead, since the app
+       itself has no light theme at all (ThemeProvider forces darkAlgorithm
+       unconditionally), so a light-on-dark badge is the right default. */
+    .badge { fill: #F5F5F5; }
   </style>
   <mask id="m">
     <rect width="256" height="256" fill="black"/>
