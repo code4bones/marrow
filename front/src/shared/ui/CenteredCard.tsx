@@ -16,9 +16,17 @@ export function CenteredCard({ children, width = 400 }: { children: ReactNode; w
         background: '#141414',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <MarrowMark size={28} />
-        <Typography.Text strong style={{ fontSize: 18, letterSpacing: 1 }}>
+      <style>{`
+        .marrow-brand-mark { color: #FF8C00; }
+        .marrow-brand-text { color: #33FF33; }
+        @media (prefers-color-scheme: light) {
+          .marrow-brand-mark { color: #202020; }
+          .marrow-brand-text { color: #505050; }
+        }
+      `}</style>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <MarrowMark size={48} className="marrow-brand-mark" />
+        <Typography.Text strong className="marrow-brand-text" style={{ fontSize: 28, letterSpacing: 1 }}>
           MARROW
         </Typography.Text>
       </div>
