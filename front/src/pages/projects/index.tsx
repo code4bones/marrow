@@ -32,11 +32,12 @@ export function ProjectsPage() {
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Left: project list */}
       <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #303030' }}>
-        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Icon toggle, not a dropdown -- owner: a full-width Select here
+              read as oversized for a binary choice in this narrow sidebar.
+              Left-aligned, separate from New Project on the right -- owner:
+              glued together on one side read as one control. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {/* Icon toggle, not a dropdown -- owner: a full-width Select
-                here read as oversized for a binary choice in this narrow
-                sidebar. */}
             <Tooltip title={t('sortAlphabetical')}>
               <Button
                 size="small"
@@ -53,8 +54,8 @@ export function ProjectsPage() {
                 onClick={() => setSort('createdAt')}
               />
             </Tooltip>
-            <CreateProjectModal onDone={() => refetch()} />
           </div>
+          <CreateProjectModal onDone={() => refetch()} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
