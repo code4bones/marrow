@@ -24,7 +24,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 function statusOptions(t: (key: string) => string) {
   return [
     { label: t('allStatuses'), value: '' },
-    { label: t('statusCurrent'), value: 'current' },
+    { label: t('statusAccepted'), value: 'accepted' },
     { label: t('statusDraft'), value: 'draft' },
     { label: t('statusSuperseded'), value: 'superseded' },
     { label: t('statusRejected'), value: 'rejected' },

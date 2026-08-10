@@ -14,6 +14,11 @@ export const STATUS_COLORS: Record<string, string> = {
   // valid, not archived/superseded").
   active: 'green',
   current: 'green',
+  // decisions only (migration 041): "current" renamed to "accepted" there
+  // specifically, since "current" read as "the current one" (vs. older
+  // versions) when it meant "adopted, in force". Kept as "current" for
+  // items (memory) and artifacts, where "accepted" wouldn't fit.
+  accepted: 'green',
   open: 'green',
   in_progress: 'blue',
   done: 'default',

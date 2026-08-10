@@ -29,10 +29,12 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 // This is why @xyflow/react is gone from this file: a canvas that needs
 // hijacked wheel handling for pan/zoom can't also deliver "feels native"
 // scrolling, so the whole widget moved to plain DOM flow + overflow:auto.
-// "current" (formerly "active" -- decisions/memory/artifacts were renamed,
-// see migration 037) means "adopted and still in force, not superseded".
+// "accepted" (formerly "active", then "current" -- see migrations 037 and
+// 041) means "adopted and still in force, not superseded". Decision-only:
+// memory/artifact statuses still use "current" (see GENERIC_STATUS_COLORS
+// below), decisions do not.
 const STATUS_COLOR: Record<string, string> = {
-  current: '#52c41a',
+  accepted: '#52c41a',
   draft: '#d89614',
   superseded: '#8c8c8c',
   rejected: '#8c8c8c',
@@ -43,7 +45,7 @@ const REJECTED_BORDER = '#a61d24';
 
 function statusLabels(t: (key: string) => string): Record<string, string> {
   return {
-    current: t('legendStatusCurrent'),
+    accepted: t('legendStatusAccepted'),
     draft: t('legendStatusDraft'),
     superseded: t('legendStatusSuperseded'),
     rejected: t('legendStatusRejected'),
