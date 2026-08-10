@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Divider,
   Empty,
@@ -447,6 +446,21 @@ function ConnectSection() {
         </>
       ),
     },
+    {
+      // Owner: a small collapsed section below both tabs read as tucked
+      // away/associated with whichever tab happened to be open, not its
+      // own thing -- a real third tab makes it unambiguous this is a
+      // standalone "anything not under a known connection" bucket, not
+      // part of Claude's or Codex's own setup.
+      key: 'other',
+      label: t('otherLegacyCredentials'),
+      children: (
+        <>
+          <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />
+          <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} />
+        </>
+      ),
+    },
   ];
 
   return (
@@ -469,24 +483,6 @@ function ConnectSection() {
       <Card size="small">
         <Tabs size="small" items={items} />
       </Card>
-
-      <Collapse
-        ghost
-        size="small"
-        style={{ marginTop: 16 }}
-        items={[
-          {
-            key: 'other',
-            label: <Text type="secondary" style={{ fontSize: 12.5 }}>{t('otherLegacyCredentials')}</Text>,
-            children: (
-              <>
-                <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />
-                <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} />
-              </>
-            ),
-          },
-        ]}
-      />
     </>
   );
 }
