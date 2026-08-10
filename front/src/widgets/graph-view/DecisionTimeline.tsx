@@ -3,7 +3,7 @@ import {
 } from '@ant-design/icons';
 import { AutoComplete, Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
@@ -114,6 +114,17 @@ function kindDotColor(kind: string): string {
 }
 
 const MAX_SATELLITES_SHOWN = 8;
+
+// `?? []` at every call site allocated a brand new empty array on every
+// single render for any record with no satellites/remarks -- harmless on
+// its own, but it fed straight into RecordCard's memo (above) as a prop
+// that could never compare equal to the previous render's, defeating memo
+// for exactly the common case (most cards have neither). One shared
+// reference for the empty case; a record that actually has satellites/
+// remarks still gets its own real (and, post-GraphEdge-id-fix, stable
+// across unrelated refetches) array from satellitesByRecord/remarksByTarget.
+const EMPTY_SATELLITES: GraphNode[] = [];
+const EMPTY_REMARKS: RemarkPreview[] = [];
 
 const TASK_MARKER_COLOR = '#177ddc';
 
@@ -309,7 +320,16 @@ interface RecordCardProps {
   remarks: RemarkPreview[];
   linkCount: number;
   isOpen: boolean;
-  onToggleDrill: () => void;
+  // A stable (useCallback'd) dispatch function + the primitive level this
+  // card would open at, not a pre-bound closure -- every call site used to
+  // pass `onToggleDrill={() => onToggle(id, level)}`, a brand new function
+  // reference on every single render regardless of whether onToggle itself
+  // was stable, which defeated RecordCard's own React.memo below (memo
+  // compares props by reference, and that inline arrow never compared
+  // equal to the previous render's). RecordCard builds its own click
+  // handler internally from these two instead.
+  onToggle: (id: string, level: number) => void;
+  toggleLevel: number;
   /**
    * False for the header card at the top of an already-open drill column —
    * that card IS the column (its own links are already showing right below
@@ -332,7 +352,17 @@ interface RecordCardProps {
 // card itself was already kind-agnostic in shape, it just needed its status
 // swatch to stop assuming decision statuses (see statusColorFor above) and
 // its details-trigger to stop hardcoding 'decision' as the drawer type.
-function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDrill, interactive = true }: RecordCardProps) {
+//
+// Wrapped in memo (T-MEMORY-065 follow-up: owner reported one task's
+// status change re-rendering the entire Timeline/Tree pane, not just its
+// own card) -- this only actually skips re-renders because node/satellites/
+// remarks now come from a properly cache-normalized query result
+// (GraphEdge got an id so Apollo can keep unrelated entities' object
+// references stable across a projectGraph refetch, see graph.mixin.ts)
+// and onToggle/toggleLevel are a stable callback + primitive instead of a
+// fresh closure per card (see RecordCardProps above) -- memo alone
+// without those two would've compared not-equal on every render anyway.
+const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggle, toggleLevel, interactive = true }: RecordCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const status = node.status ?? 'active';
   const color = statusColorFor(node.kind, status);
@@ -348,7 +378,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
       <div
-        onClick={interactive ? onToggleDrill : undefined}
+        onClick={interactive ? () => onToggle(node.id, toggleLevel) : undefined}
         style={{
           minHeight: 84,
           background: isOpen ? '#1c2a38' : '#1f1f1f',
@@ -464,7 +494,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
       </div>
     </div>
   );
-}
+});
 
 // A link whose other end isn't in the currently loaded graph nodes (depth
 // limit) *and* hasn't come back from the lazy point-lookup yet (or the
@@ -737,11 +767,12 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
             : (
               <RecordCard
                 node={row.node}
-                satellites={satellitesByRecord.get(row.node.id) ?? []}
-                remarks={remarksByTarget.get(row.node.id) ?? []}
+                satellites={satellitesByRecord.get(row.node.id) ?? EMPTY_SATELLITES}
+                remarks={remarksByTarget.get(row.node.id) ?? EMPTY_REMARKS}
                 linkCount={(linksByRecord.get(row.node.id) ?? []).length}
                 isOpen={chain[0] === row.node.id}
-                onToggleDrill={() => onToggle(row.node.id, 0)}
+                onToggle={onToggle}
+                toggleLevel={0}
               />
             );
           return (
@@ -825,12 +856,13 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         <div style={{ width: COLUMN_CARD_W }}>
           <RecordCard
             node={rootNode}
-            satellites={satellitesByRecord.get(rootId) ?? []}
-            remarks={remarksByTarget.get(rootId) ?? []}
+            satellites={satellitesByRecord.get(rootId) ?? EMPTY_SATELLITES}
+            remarks={remarksByTarget.get(rootId) ?? EMPTY_REMARKS}
             linkCount={(linksByRecord.get(rootId) ?? []).length}
             isOpen
             interactive={false}
-            onToggleDrill={() => {}}
+            onToggle={onToggle}
+            toggleLevel={level}
           />
         </div>
         {/* Bridges the root card to the first branch's own trunk (TreeBranch
@@ -871,11 +903,12 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
               ? (
                 <RecordCard
                   node={row.node}
-                  satellites={satellitesByRecord.get(row.node.id) ?? []}
-                  remarks={remarksByTarget.get(row.node.id) ?? []}
+                  satellites={satellitesByRecord.get(row.node.id) ?? EMPTY_SATELLITES}
+                  remarks={remarksByTarget.get(row.node.id) ?? EMPTY_REMARKS}
                   linkCount={(linksByRecord.get(row.node.id) ?? []).length}
                   isOpen={activeChildId === row.node.id}
-                  onToggleDrill={() => onToggle(row.node!.id, level + 1)}
+                  onToggle={onToggle}
+                  toggleLevel={level + 1}
                 />
               )
               : <UnresolvedEntryRow id={row.id} />;

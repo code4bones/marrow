@@ -77,6 +77,7 @@ export interface GraphNode {
 }
 
 export interface GraphEdge {
+  id: string;
   from: string;
   to: string;
   relation: string;
