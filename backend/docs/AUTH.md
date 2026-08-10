@@ -132,8 +132,10 @@ other gateway route.
 | `POST /auth/2fa/disable` | session cookie | Body `{ currentPassword }`. Verifies the password, then clears `totp_secret`/`totp_enabled`/`totp_recovery_code_hashes`. |
 | `POST /auth/2fa/recovery-codes/regenerate` | session cookie | Body `{ currentPassword }`. Verifies the password, requires `totp_enabled=true`, replaces the stored recovery-code hashes with 10 fresh ones, and returns `{ recoveryCodes }` (plaintext, once). |
 | `POST /auth/profile/password` | session cookie | Body `{ currentPassword, newPassword }`. Verifies the current password, then sets a new one (same ≥8-character rule as claim/register). |
-| `GET /auth/profile/personal-token` | session cookie | `T-MEMORY-047`, see "Personal API tokens" below. `{ exists, tokenHint, createdAt, lastUsedAt }` -- side-effect-free, never the raw token. |
-| `POST /auth/profile/personal-token/regenerate` | session cookie | `T-MEMORY-047`. Always issues a fresh token, invalidating any existing one for this user. Returns `{ token, tokenHint, createdAt }` -- the raw token, shown exactly once. |
+| `GET /auth/profile/personal-tokens` | session cookie | `T-MEMORY-047`, see "Personal API tokens" below. Returns every token this user owns as `[{ id, label, tokenHint, createdAt, lastUsedAt }]` -- side-effect-free, never a raw token. |
+| `POST /auth/profile/personal-tokens` | session cookie | `T-MEMORY-047`. Creates a brand-new named token, never touching any existing one. Body `{ label? }`. Returns `{ id, token, tokenHint, label, createdAt }` -- the raw token, shown exactly once. |
+| `POST /auth/profile/personal-tokens/:id/regenerate` | session cookie | `T-MEMORY-047`. Rotates the secret on one specific token (by id), leaving its label and every other token for this user untouched. Returns the same shape as create. |
+| `DELETE /auth/profile/personal-tokens/:id` | session cookie | `T-MEMORY-047`. Removes one specific token, leaving the user's other tokens untouched. |
 | `POST /auth/elevate` | none (public, like `/auth/login`) | Body `{ email, password, code }`. Step-up admin elevation (`T-MEMORY-041`, `D-MEMORY-019`) — see "Step-up admin elevation" below. Re-checks the account's password *and* current TOTP code together (full re-authentication, not a session lookup); on success returns `{ token, expiresAt }`, a short-lived (60s), single-use grant. Rejects with the same generic `"Invalid email or password."` for a wrong password, `"Invalid verification code."` for a wrong TOTP code, `"Elevation is only available to admin accounts."` for a correctly-authenticated `role=member` account, and a `VALIDATION_ERROR` telling the caller to enable 2FA first if the (admin) account has no TOTP enrolled. Rate-limited the same way as `/auth/login` (email + IP keys, same in-memory limiter), with its own key prefix so it doesn't share counters with plain login attempts against the same account. |
 | `POST /auth/register` | none | Body `{ email, password }`. Public, no invite required (D-MEMORY-016). Rejects if the email is already a `users` row or has a still-valid `pending_registrations` row (same "already exists" message as `/auth/invite`); a *password* under 8 characters is rejected the same as `/auth/claim`. Generates + encrypts a TOTP secret, stores a `pending_registrations` row (30-minute TTL) with an opaque token, and returns `{ token, otpauthUrl, secretBase32 }` for the QR/enroll screen. No `users` row exists yet. |
 | `POST /auth/register/confirm` | none | Body `{ token, code }`. Looks up the `pending_registrations` row by `token_hash`; 400 "invalid or expired" if missing/expired, same message family as the invite/claim tokens. Verifies `code` against the stored secret; on success creates the real `users` row (`role=member`, `status=pending_approval`, `totp_enabled=true`, `email_verified_at=null`), deletes the `pending_registrations` row, and returns `{ email, recoveryCodes }` (plaintext codes, once). The account cannot log in yet — see `status=pending_approval` below. |
@@ -353,10 +355,19 @@ newly self-registered-and-approved user had to separately ask an admin for
 the one shared credential -- the exact thing individual credentials are
 supposed to avoid.
 
-- **Table**: `personal_tokens` (migration `013_personal_tokens.cjs`) --
-  `id`, `owner_user_id` (FK -> `users`, `UNIQUE`, cascade-deleted with the
-  user -- one live token per user, not a list like `git_credentials`),
-  `token_hash`, `token_hint`, `created_at`, `last_used_at` (nullable).
+- **Table**: `personal_tokens` (migration `013_personal_tokens.cjs`, made
+  multi-token-per-user in `048_personal_tokens_multiple.cjs`) -- `id`,
+  `owner_user_id` (FK -> `users`, cascade-deleted with the user -- no
+  longer `UNIQUE`; a user may hold many tokens, one per named connection,
+  a list like `git_credentials` rather than a single row), `token_hash`
+  (still independently `UNIQUE` -- `identifyPersonalToken()` looks up
+  directly by hash value, unaffected by dropping the per-user constraint),
+  `token_hint`, `label` (nullable, e.g. `"Claude Code (CLI)"`), `created_at`,
+  `last_used_at` (nullable). Fixes a real problem hit live: under the old
+  one-per-user model, generating a token for a second agent (e.g. Codex,
+  after Claude Code was already connected) silently invalidated the first
+  agent's already-working token -- same fix, same reasoning, as
+  `017_oauth_clients_per_connector.cjs` applied to `oauth_clients` earlier.
 - **Hash-only, not encrypted.** Unlike `users.totp_secret` and
   `git_credentials.token_enc` (which must be recoverable in plaintext
   server-side to do their job -- rendering a QR code, calling an outbound
@@ -385,39 +396,31 @@ supposed to avoid.
   generation time and never again, with a regenerate path for after. A
   database read (backup, replica, log) never yields a usable personal token,
   same as those.
-- **One endpoint serves both "Generate" and "Regenerate".**
-  `POST /auth/profile/personal-token/regenerate` (session cookie required)
-  always issues a fresh token, replacing any existing row for that user in
-  one transaction ("replace, don't mutate, a secret row" -- the same
-  convention this codebase already uses for recovery codes and git
-  credentials) and returning the raw token, its hint, and `createdAt`
-  exactly once. There is no separate "create" vs. "regenerate" route: the
-  frontend's Connect section (`front/src/pages/profile/index.tsx`) just
-  labels the button "Generate" when no token currently exists and
-  "Regenerate" once one does, calling the same endpoint either way.
-  `GET /auth/profile/personal-token` (session cookie required) is
-  side-effect-free status only -- `{ exists, tokenHint, createdAt,
-  lastUsedAt }`, never the raw token -- so polling it can never accidentally
-  mint or leak a secret.
-- **Generation is lazy, on first visit to the profile's Connect section --
-  not automatic at admin-approval time.** The task record explicitly left
-  this as an implementation choice ("generate at approve time, or lazily on
-  first visit, if no token exists yet"). Approve-time generation was
-  rejected here: with shown-once semantics and no SMTP configured for this
-  gateway (see "No SMTP sending yet" below), a token minted server-side at
-  the moment an admin clicks "Approve" has no channel to ever reach the
-  approved user's browser -- the admin's own response never carries it (an
-  admin is not that token's owner), and there is no email to relay it
-  through either. Such a token would just be an immediately-orphaned row the
-  user would have to regenerate the instant they first visited Connect
-  anyway. Instead, the Connect section calls `GET
-  /auth/profile/personal-token` on mount and, if `exists: false`,
-  automatically calls the regenerate endpoint once to produce and display a
-  token the user actually sees -- still an explicit `POST`, not a side
-  effect of the `GET`. This still satisfies the acceptance criterion ("sees
-  their own token immediately after approval, without asking an admin"): the
-  token appears the moment they first open their own profile after logging
-  in, no separate request to anyone required.
+- **Four endpoints: list, create, regenerate-one, delete-one** -- mirrors
+  `oauth_clients`' own list/create/regenerate/delete CRUD exactly.
+  `POST /auth/profile/personal-tokens` always inserts a brand-new row
+  (never deletes/replaces an existing one), returning the raw token, its
+  hint, label, and `createdAt` exactly once. `POST
+  /auth/profile/personal-tokens/:id/regenerate` rotates the secret on one
+  specific row in place (its label untouched), also shown-once.
+  `DELETE /auth/profile/personal-tokens/:id` removes one row. `GET
+  /auth/profile/personal-tokens` is side-effect-free -- `[{ id, label,
+  tokenHint, createdAt, lastUsedAt }]`, never a raw token -- so polling it
+  can never accidentally mint or leak a secret.
+- **Generation is lazy, per named connection, on first visit to that
+  connection's section of the profile's Connect page -- not automatic at
+  admin-approval time.** Same reasoning as before this became multi-token:
+  with shown-once semantics and no SMTP configured for this gateway (see
+  "No SMTP sending yet" below), a token minted server-side has no channel
+  to ever reach the user's browser except the response to their own
+  explicit request. The frontend's `PersonalTokenPanel`
+  (`front/src/features/auth/PersonalTokenPanel.tsx`, mirroring
+  `OAuthClientPanel`) is embedded once per named connection (e.g. once
+  under "Claude Code (CLI)", once under "Codex (CLI)") with a fixed label;
+  each instance lists only tokens matching its own label and auto-creates
+  one the first time that section is visited with none yet -- still an
+  explicit `POST`, not a side effect of the `GET`. A catch-all,
+  free-label instance (`excludeLabels`) lists anything else.
 - **Scope tier: role-derived, identical to a session's** (`admin` role ->
   `admin` scope, `member` role -> `write` scope) -- see the scope table
   above and `resolveScopeTier()` in `http-server.ts`. `identifyPersonalToken()`
@@ -463,25 +466,27 @@ supposed to avoid.
 ### Smoke coverage
 
 `scripts/smoke-gateway-personal-tokens.ts` covers, against a real gateway/
-Postgres instance: `GET`/`POST regenerate` both requiring a session (401
-without one) → a freshly-active user having no token yet (`exists: false`,
-confirming the lazy-on-first-visit design over approve-time generation) →
-regenerate returning a raw token exactly once, with only its sha256 hash and
-a last-4 hint ever persisted → the status endpoint never re-exposing the
-full token after that → the token authenticating over `Authorization:
-Bearer` on `/call` with a role-derived scope tier identical to a session's
-(a member's token getting `INSUFFICIENT_SCOPE` on `memory.delete`, an
-admin's token succeeding) → project-membership filtering applying to a
-member's personal token exactly like their session would (not bypassed) →
-regenerate invalidating the previous token immediately (old token 401s,
-exactly one row per user afterward) → git-credential *management* staying
-denied ("logged-in session" required) even over a valid personal-token
-bearer for the same user → and git-credential *reads* resolving directly to
-that bearer's own owner rather than the OAuth/static-token admin-fallback.
-Not wired into `package.json` as an `npm run smoke:gateway:*` alias by this
-task (`package.json` is outside this task's allowed files) -- same
-precedent `scripts/smoke-gateway-elevation.ts` set; run directly via `node
-dist/scripts/smoke-gateway-personal-tokens.js` after `npm run build`.
+Postgres instance: list/create both requiring a session (401 without one) →
+a freshly-active user having an empty list → create returning a raw token
+exactly once, with only its sha256 hash and a last-4 hint ever persisted →
+the list endpoint never re-exposing a full token after that → the token
+authenticating over `Authorization: Bearer` on `/call` with a role-derived
+scope tier identical to a session's (a member's token getting
+`INSUFFICIENT_SCOPE` on `memory.delete`, an admin's token succeeding) →
+project-membership filtering applying to a member's personal token exactly
+like their session would (not bypassed) → **a second named token being
+fully independent of the first** (creating it doesn't touch the first;
+regenerating or deleting either one never invalidates the other) -- the
+actual bug this multi-token pass fixes → a different user's session being
+unable to regenerate/delete another user's token by id → git-credential
+*management* staying denied ("logged-in session" required) even over a
+valid personal-token bearer for the same user → and git-credential *reads*
+resolving directly to that bearer's own owner rather than the
+OAuth/static-token admin-fallback. Not wired into `package.json` as an `npm
+run smoke:gateway:*` alias by this task (`package.json` is outside this
+task's allowed files) -- same precedent `scripts/smoke-gateway-elevation.ts`
+set; run directly via `node dist/scripts/smoke-gateway-personal-tokens.js`
+after `npm run build`.
 
 ## Git host credentials (`T-MEMORY-044`)
 

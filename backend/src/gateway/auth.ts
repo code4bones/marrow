@@ -920,67 +920,114 @@ export function createAuthFacade(db: Knex) {
     };
   }
 
-  // --- Personal API tokens (T-MEMORY-047) ---
+  // --- Personal API tokens (T-MEMORY-047, made multi-token per user in a
+  // later pass mirroring oauth_clients/017_oauth_clients_per_connector.cjs)
+  // ---
   // A third bearer-auth source, alongside the shared static MCP_TOKEN and
-  // OAuth connector tokens (see docs/AUTH.md "Personal API tokens"), scoped
-  // to exactly one user. Hash-only storage (token_hash), same "never store
-  // the raw secret" convention as sessions/tokens/admin_elevations -- this
-  // token is only ever verified, never redisplayed, so there's nothing to
-  // decrypt and therefore no separate encryption key to manage for it.
-  // Management (status check, regenerate) is session-only, same "a raw
-  // secret only ever enters/leaves the system through the trusted browser
-  // profile UI" convention as password/2FA/git-credential management --
-  // there is deliberately no MCP tool or GraphQL mutation for this, only
-  // the /auth/profile/personal-token* REST routes below.
+  // OAuth connector tokens (see docs/AUTH.md "Personal API tokens"). Hash-only
+  // storage (token_hash), same "never store the raw secret" convention as
+  // sessions/tokens/admin_elevations -- this token is only ever verified,
+  // never redisplayed, so there's nothing to decrypt and therefore no
+  // separate encryption key to manage for it. Management (list, create,
+  // regenerate, delete) is session-only, same "a raw secret only ever
+  // enters/leaves the system through the trusted browser profile UI"
+  // convention as password/2FA/git-credential management -- there is
+  // deliberately no MCP tool or GraphQL mutation for this, only the
+  // /auth/profile/personal-tokens* REST routes below.
+  //
+  // A user may hold many rows now, one per named connection (e.g. "Claude
+  // Code (CLI)", "Codex (CLI)") -- owner_user_id is no longer UNIQUE, only
+  // token_hash is (still looked up directly by value in
+  // identifyPersonalToken below). This is the fix for a real problem hit
+  // live: under the old one-per-user model, generating a token for a second
+  // agent silently invalidated the first agent's already-working token.
 
-  async function personalTokenStatus(userId: string): Promise<{
-    exists: boolean;
-    tokenHint: string | null;
-    createdAt: string | null;
+  type PersonalTokenRow = {
+    id: string;
+    label: string | null;
+    tokenHint: string;
+    createdAt: string;
     lastUsedAt: string | null;
-  }> {
-    const row = await db("personal_tokens").where({ owner_user_id: userId }).first();
-    if (!row) {
-      return { exists: false, tokenHint: null, createdAt: null, lastUsedAt: null };
-    }
+  };
+
+  function toPersonalTokenRow(row: Record<string, unknown>): PersonalTokenRow {
     return {
-      exists: true,
+      id: row.id as string,
+      label: (row.label as string | null) ?? null,
       tokenHint: row.token_hint as string,
       createdAt: new Date(row.created_at as string).toISOString(),
       lastUsedAt: row.last_used_at ? new Date(row.last_used_at as string).toISOString() : null
     };
   }
 
+  async function listPersonalTokens(userId: string): Promise<PersonalTokenRow[]> {
+    const rows = await db("personal_tokens").where({ owner_user_id: userId }).orderBy("created_at", "desc");
+    return rows.map(toPersonalTokenRow);
+  }
+
   /**
-   * Always issues a fresh token, replacing any existing one for this user in
-   * the same transaction ("replace, don't mutate, a secret row" -- same
-   * convention as recovery codes and git credentials). Serves both first-time
-   * generation (no existing row) and explicit regenerate (existing row
-   * invalidated atomically) through one call, so the frontend's "Generate"
-   * and "Regenerate" buttons can hit the same endpoint. The raw token is
-   * returned exactly once, at the moment of this call -- shown-once, same
-   * principle as recovery codes / the TOTP secret, per this task's resolved
-   * design question (consistency with that existing pattern, chosen over a
-   * persistently-visible token).
+   * Always inserts a brand-new row -- creating a token for a new connection
+   * never touches any of the user's other tokens. The raw token is returned
+   * exactly once, at the moment of this call (shown-once), same principle
+   * as recovery codes / the TOTP secret / OAuth client secrets.
+   */
+  async function createPersonalToken(
+    userId: string,
+    label: string | null
+  ): Promise<{ id: string; token: string; tokenHint: string; label: string | null; createdAt: Date }> {
+    const now = new Date();
+    const id = randomUUID();
+    const rawToken = newOpaqueToken();
+    const tokenHint = rawToken.slice(-4);
+    await db("personal_tokens").insert({
+      id,
+      owner_user_id: userId,
+      token_hash: hashToken(rawToken),
+      token_hint: tokenHint,
+      label,
+      created_at: now,
+      last_used_at: null
+    });
+    return { id, token: rawToken, tokenHint, label, createdAt: now };
+  }
+
+  // Ownership-checked lookup shared by regeneratePersonalToken/deletePersonalToken
+  // below -- same "don't distinguish a row that isn't yours from a row that
+  // doesn't exist" convention as requireOwnedOAuthClient/assertProjectMember.
+  async function requireOwnedPersonalToken(userId: string, id: string): Promise<Record<string, unknown>> {
+    const row = await db("personal_tokens").where({ id }).first();
+    if (!row || row.owner_user_id !== userId) {
+      throw new AppError("NOT_FOUND", "Personal token not found.");
+    }
+    return row;
+  }
+
+  /**
+   * Rotates the secret in place on one specific token row, leaving its
+   * label and every other token for this user untouched. The raw token is
+   * returned exactly once, at the moment of this call.
    */
   async function regeneratePersonalToken(
-    userId: string
-  ): Promise<{ token: string; tokenHint: string; createdAt: Date }> {
+    userId: string,
+    id: string
+  ): Promise<{ id: string; token: string; tokenHint: string; label: string | null; createdAt: Date }> {
+    const existing = await requireOwnedPersonalToken(userId, id);
     const now = new Date();
     const rawToken = newOpaqueToken();
     const tokenHint = rawToken.slice(-4);
-    await db.transaction(async (trx) => {
-      await trx("personal_tokens").where({ owner_user_id: userId }).del();
-      await trx("personal_tokens").insert({
-        id: randomUUID(),
-        owner_user_id: userId,
+    await db("personal_tokens")
+      .where({ id })
+      .update({
         token_hash: hashToken(rawToken),
         token_hint: tokenHint,
-        created_at: now,
         last_used_at: null
       });
-    });
-    return { token: rawToken, tokenHint, createdAt: now };
+    return { id, token: rawToken, tokenHint, label: (existing.label as string | null) ?? null, createdAt: now };
+  }
+
+  async function deletePersonalToken(userId: string, id: string): Promise<void> {
+    await requireOwnedPersonalToken(userId, id);
+    await db("personal_tokens").where({ id }).del();
   }
 
   // --- Per-connector OAuth credentials (replaces the old static, shared
@@ -1292,8 +1339,10 @@ export function createAuthFacade(db: Knex) {
     deleteUser,
     requestElevation,
     consumeElevation,
-    personalTokenStatus,
+    listPersonalTokens,
+    createPersonalToken,
     regeneratePersonalToken,
+    deletePersonalToken,
     listOAuthClients,
     oauthClientPublicInfo,
     createOAuthClient,

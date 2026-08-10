@@ -1154,26 +1154,67 @@ async function handleAuthRoute(
   // regenerate explicitly (auto-triggered on first visit when none exists
   // yet, or on an explicit "Regenerate" click) -- see front/src/pages/profile.
 
-  if (request.method === "GET" && requestPath === "/auth/profile/personal-token") {
+  if (request.method === "GET" && requestPath === "/auth/profile/personal-tokens") {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
       return true;
     }
-    const result = await auth.personalTokenStatus(sessionAuth.userId);
+    const result = await auth.listPersonalTokens(sessionAuth.userId);
     send(200, { ok: true, data: result });
     return true;
   }
 
-  if (request.method === "POST" && requestPath === "/auth/profile/personal-token/regenerate") {
+  if (request.method === "POST" && requestPath === "/auth/profile/personal-tokens") {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
       return true;
     }
-    const result = await auth.regeneratePersonalToken(sessionAuth.userId);
+    const body = (await readJson(request)) as { label?: unknown };
+    const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : null;
+    const result = await auth.createPersonalToken(sessionAuth.userId, label);
     send(200, {
       ok: true,
-      data: { token: result.token, tokenHint: result.tokenHint, createdAt: result.createdAt.toISOString() }
+      data: {
+        id: result.id,
+        token: result.token,
+        tokenHint: result.tokenHint,
+        label: result.label,
+        createdAt: result.createdAt.toISOString()
+      }
     });
+    return true;
+  }
+
+  const personalTokenRegenerateMatch = requestPath.match(/^\/auth\/profile\/personal-tokens\/([^/]+)\/regenerate$/);
+  if (request.method === "POST" && personalTokenRegenerateMatch) {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const [, id] = personalTokenRegenerateMatch;
+    const result = await auth.regeneratePersonalToken(sessionAuth.userId, id);
+    send(200, {
+      ok: true,
+      data: {
+        id: result.id,
+        token: result.token,
+        tokenHint: result.tokenHint,
+        label: result.label,
+        createdAt: result.createdAt.toISOString()
+      }
+    });
+    return true;
+  }
+
+  const personalTokenMatch = requestPath.match(/^\/auth\/profile\/personal-tokens\/([^/]+)$/);
+  if (request.method === "DELETE" && personalTokenMatch) {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const [, id] = personalTokenMatch;
+    await auth.deletePersonalToken(sessionAuth.userId, id);
+    send(200, { ok: true, data: { id } });
     return true;
   }
 
