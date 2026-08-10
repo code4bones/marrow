@@ -338,6 +338,17 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
     if (input.includeContent === true) {
+      // Same rule peekArtifact/readTextArtifact already enforce for
+      // binary content -- extended here so an agent can't get a .xlsx (or
+      // any other binary) back as inline base64 just by asking getArtifact
+      // for includeContent, the one path that previously still allowed it
+      // for anything under maxBytes regardless of content type.
+      if (!isTextArtifact(String(row.content_type), String(row.path))) {
+        throw new AppError("VALIDATION_ERROR", "Artifact is binary. Use downloadPath instead of includeContent.", {
+          contentType: row.content_type,
+          downloadPath: output.downloadPath
+        });
+      }
       const maxBytes = Number(input.maxBytes ?? 1024 * 1024);
       const sizeBytes = Number(row.size_bytes ?? 0);
       if (sizeBytes > maxBytes) {

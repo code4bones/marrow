@@ -941,7 +941,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.get",
     description:
-      "Get artifact metadata by id or project/path. Set includeContent=true for small files when the agent needs base64 content inline.",
+      "Get artifact metadata by id or project/path. Set includeContent=true for small TEXT files when the agent needs base64 content inline; binary artifacts always reject includeContent -- fetch downloadPath instead.",
     schema: artifactGetSchema,
     outputSchema: output(artifactWithContentOutputDataSchema)
   },
