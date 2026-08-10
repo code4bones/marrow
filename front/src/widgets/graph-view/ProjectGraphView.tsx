@@ -3,6 +3,8 @@ import { Alert, Segmented, Select, Space, Switch, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
 import { GraphTree } from './GraphTree';
@@ -48,12 +50,25 @@ export function ProjectGraphView({ slug }: Props) {
 
   const projectId = projectData?.project.id;
 
-  const { data: graphData, loading: graphLoading, error: graphError } = useQuery<{ projectGraph: ProjectGraph }>(
+  const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
     {
       variables: { projectId, depth },
       skip: !projectId,
     },
+  );
+  // This query batches every kind (decisions/tasks/memory/artifacts/links)
+  // into one graph, unlike the per-kind list pages -- it was never wired to
+  // the realtime store at all, so Timeline/Tree only ever showed whatever
+  // was true at mount. Switching the Root selector doesn't re-fetch either
+  // (it just filters the same already-stale `nodes` client-side), so a tab
+  // left open through any change here silently drifted until a manual
+  // reload -- reported live: a task's status update showed correctly after
+  // reloading one tab, but a second tab still showed the old status no
+  // matter which Root kind was selected.
+  useRefetchOnVersion(
+    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion),
+    refetchGraph,
   );
 
   const error = projectError || graphError;
