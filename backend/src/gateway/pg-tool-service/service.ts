@@ -359,8 +359,17 @@ export class PgToolService extends ComposedService {
   // same "unauthenticated, bypasses call()'s scope/session machinery
   // entirely" reasoning as projectInviteContext above.
 
-  async artifactDownload(id: string): Promise<ArtifactDownload> {
-    const row = await this.artifactRowById(id);
+  // T-MEMORY-057-style IDOR: this used to call artifactRowById(id) with no
+  // context at all, so assertProjectMember's own guard (`if (!context)
+  // return;`, projects-core.mixin.ts) short-circuited and never checked
+  // project membership -- any authenticated caller (session, personal
+  // token, static token) could download any project's artifact bytes by
+  // id, the one check every other by-id artifact read (getArtifact et al.,
+  // which do pass context through) already had. Found while designing the
+  // agent-download side of the bulk artifact upload feature, since this is
+  // exactly the endpoint that flow leans on.
+  async artifactDownload(id: string, context: GatewayRequestContext = {}): Promise<ArtifactDownload> {
+    const row = await this.artifactRowById(id, normalizeContext(context));
     const absolutePath = artifactAbsolutePath(String(row.storage_path));
     ensureArtifactBytesExist(row, absolutePath);
     return {

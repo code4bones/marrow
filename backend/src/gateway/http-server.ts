@@ -752,7 +752,7 @@ async function sendArtifactDownload(
   encodedId: string
 ): Promise<void> {
   const id = decodeURIComponent(encodedId);
-  const download = await service.artifactDownload(id);
+  const download = await service.artifactDownload(id, context);
   const fileStat = await stat(download.absolutePath);
   const filename = path.posix.basename(download.artifact.path).replace(/["\\]/g, "_");
   response.writeHead(200, {
