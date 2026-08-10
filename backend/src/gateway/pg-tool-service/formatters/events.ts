@@ -1,4 +1,4 @@
-import { shortText, stringOrNull } from "./common.js";
+import { dateStringOrNull, shortText, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 export function compactEventRecord(record: Row) {
@@ -25,7 +25,7 @@ export function eventOut(row: Row) {
     // wrote this into created_by (and mirrored it into source_instance_id)
     // on every event row -- this DTO just stops hiding it from callers.
     credentialId: stringOrNull(row.created_by),
-    createdAt: String(row.created_at)
+    createdAt: dateStringOrNull(row.created_at)
   };
 }
 

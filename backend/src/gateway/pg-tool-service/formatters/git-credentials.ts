@@ -1,4 +1,5 @@
 import { decryptGitToken, tokenHint } from "../../git-credentials.js";
+import { dateStringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 // T-MEMORY-044: the token_enc column never appears here, under any key --
@@ -10,9 +11,9 @@ export function gitCredentialOut(row: Row, options: { includeHint?: boolean } = 
     id: String(row.id),
     host: String(row.host),
     label: String(row.label),
-    createdAt: String(row.created_at),
-    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
-    lastUsedAt: row.last_used_at ? String(row.last_used_at) : null
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at),
+    lastUsedAt: dateStringOrNull(row.last_used_at)
   };
   if (options.includeHint && row.token_enc) {
     try {

@@ -196,16 +196,21 @@ export function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-// timestamptz columns come back from pg/knex as Date objects, not strings —
-// stringOrNull alone silently drops them. Everywhere else in this file
-// timestamps go through String(row.created_at) (JS Date.toString(), not
-// ISO — kept consistent with that, not "corrected" to ISO), which is only
-// safe because those fields are always selected/present; graphNodeOut's
-// createdAt is occasionally absent by design (unselected columns), so it
-// needs the null check stringOrNull gives plus proper Date handling.
+// timestamptz columns come back from pg/knex as Date objects, not strings.
+// This used to return Date.toString() ("Thu Aug 06 2026 21:39:02 GMT+0000
+// (Coordinated Universal Time)") "for consistency" with the plain
+// String(row.created_at) calls scattered across the other formatters in
+// this directory -- but that format isn't lexically sortable (it starts
+// with a weekday name, so "Fri ..." sorts before "Thu ..." regardless of
+// which is actually later), which silently broke every client-side
+// chronological sort/compare built on a raw createdAt/updatedAt string
+// (found via DecisionTimeline's newest-first ordering reading wrong).
+// toISOString() is what every other formatter's date field should also be
+// emitting now -- see the sibling String(row.xxx_at) call sites fixed
+// alongside this to call dateStringOrNull instead.
 export function dateStringOrNull(value: unknown): string | null {
   if (value instanceof Date) {
-    return String(value);
+    return value.toISOString();
   }
   return stringOrNull(value);
 }

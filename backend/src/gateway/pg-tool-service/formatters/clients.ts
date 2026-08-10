@@ -1,5 +1,5 @@
 import { defaultAnonymousClientTtlSeconds } from "../types.js";
-import { jsonObject, stringOrNull } from "./common.js";
+import { dateStringOrNull, jsonObject, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 export function cutoffFromSeconds(seconds: number): string {
@@ -19,10 +19,10 @@ export function clientOut(row: Row) {
   return {
     id: String(row.id),
     label: stringOrNull(row.label),
-    lastSeenAt: stringOrNull(row.last_seen_at),
+    lastSeenAt: dateStringOrNull(row.last_seen_at),
     metadata: jsonObject(row.metadata),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 
@@ -32,6 +32,6 @@ export function compactClient(row: Row) {
     id: String(row.id),
     label: stringOrNull(row.label),
     kind: stringOrNull(jsonObject(row.metadata).kind),
-    lastSeenAt: stringOrNull(row.last_seen_at)
+    lastSeenAt: dateStringOrNull(row.last_seen_at)
   };
 }

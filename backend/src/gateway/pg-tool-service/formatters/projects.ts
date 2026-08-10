@@ -1,5 +1,5 @@
 import path from "node:path";
-import { shortText, stringOrNull } from "./common.js";
+import { dateStringOrNull, shortText, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 export function compactProject(project: Row) {
@@ -22,8 +22,8 @@ export function projectOut(row: Row) {
     status: String(row.status),
     rootPath: stringOrNull(row.root_path),
     ownerUserId: stringOrNull(row.owner_user_id),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 

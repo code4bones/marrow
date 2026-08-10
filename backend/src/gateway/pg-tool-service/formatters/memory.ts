@@ -1,4 +1,4 @@
-import { stringArray, stringOrNull, shortText } from "./common.js";
+import { dateStringOrNull, stringArray, stringOrNull, shortText } from "./common.js";
 import type { Row } from "../types.js";
 
 function excerpt(body: string): string {
@@ -16,8 +16,8 @@ export function itemOut(row: Row) {
     status: String(row.status),
     tags: stringArray(row.tags),
     summary: stringOrNull(row.summary),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 

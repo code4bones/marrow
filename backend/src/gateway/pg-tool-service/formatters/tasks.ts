@@ -1,5 +1,5 @@
 import { taskClaimRoles, defaultTaskClaimLeaseSeconds } from "../types.js";
-import { boundedInteger, shortText, stringArray, stringOrNull } from "./common.js";
+import { boundedInteger, dateStringOrNull, shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 // T-MEMORY-063: a compact card answers "open this or not", not "what does it
@@ -39,8 +39,8 @@ export function taskOut(row: Row) {
     dependsOn: stringArray(row.depends_on),
     notes: stringOrNull(row.notes),
     activeClaimCount: Number(row.active_claim_count ?? 0),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 
@@ -56,11 +56,11 @@ export function taskClaimOut(row: Row) {
     role: String(row.role),
     scope: stringOrNull(row.scope),
     status: taskClaimEffectiveStatus(row),
-    leaseExpiresAt: String(row.lease_expires_at),
-    heartbeatAt: String(row.heartbeat_at),
+    leaseExpiresAt: dateStringOrNull(row.lease_expires_at),
+    heartbeatAt: dateStringOrNull(row.heartbeat_at),
     note: stringOrNull(row.note),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at)
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 
