@@ -4,6 +4,7 @@ import { Button, Drawer, Form, Input, Select, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CREATE_MEMORY } from '../../shared/api/queries';
+import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButton';
 
 function typeOptions(t: (key: string) => string) {
   return [
@@ -72,7 +73,21 @@ export function CreateMemoryDrawer({ projectSlug, onDone }: Props) {
           <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="body" label={t('body')} rules={[{ required: true }]}>
+          <Form.Item
+            name="body"
+            label={
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span>{t('body')}</span>
+                <ImportTextFromFileButton
+                  label={t('importFromFile')}
+                  hint={t('importFromFileHint')}
+                  errorMessage={(name) => t('couldNotReadFile', { name })}
+                  onText={(text) => form.setFieldsValue({ body: text })}
+                />
+              </div>
+            }
+            rules={[{ required: true }]}
+          >
             <Input.TextArea rows={8} style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </Form.Item>
           <Form.Item name="tags" label={t('tagsCommaSeparated')}>

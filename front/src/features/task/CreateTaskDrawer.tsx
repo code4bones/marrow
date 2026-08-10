@@ -4,6 +4,7 @@ import { Button, Drawer, Form, Input, InputNumber, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CREATE_TASK } from '../../shared/api/queries';
+import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButton';
 
 interface Props {
   projectSlug: string;
@@ -68,7 +69,20 @@ export function CreateTaskDrawer({ projectSlug, onDone }: Props) {
           <Form.Item name="priority" label={t('priority')}>
             <InputNumber style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="scope" label={t('scope')}>
+          <Form.Item
+            name="scope"
+            label={
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span>{t('scope')}</span>
+                <ImportTextFromFileButton
+                  label={t('importFromFile')}
+                  hint={t('importFromFileHint')}
+                  errorMessage={(name) => t('couldNotReadFile', { name })}
+                  onText={(text) => form.setFieldsValue({ scope: text })}
+                />
+              </div>
+            }
+          >
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item name="acceptance" label={t('acceptanceCriteria')}>

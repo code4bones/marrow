@@ -21,6 +21,7 @@ import {
   type SessionIdentity
 } from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
+import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import {
   ADMIN_GRAPHQL_MUTATION_NAMES,
@@ -576,6 +577,28 @@ async function handleRequest(
 
     if (request.method === "GET" && requestPath === "/tools") {
       send(200, { ok: true, tools: service.listTools() });
+      return;
+    }
+
+    // Session-only (like /auth/profile/*), not a static-token/OAuth surface
+    // -- this is purely a web UI convenience (New Task/Memory drawers' "fill
+    // this field from a file" upload) and never persists anything: the file
+    // is read once to extract plain text and discarded, no artifact/DB row
+    // is created. See document-extract.ts.
+    if (request.method === "POST" && requestPath === "/extract-text") {
+      if (!sessionAuth) {
+        send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+        return;
+      }
+      try {
+        const { filename, buffer } = await readMultipartFile(request);
+        const text = await extractDocumentText(filename, buffer);
+        send(200, { ok: true, data: { text } });
+      } catch (error) {
+        const appError =
+          error instanceof AppError ? error : new AppError("VALIDATION_ERROR", "Could not read the uploaded file.");
+        send(400, fail(appError));
+      }
       return;
     }
 
