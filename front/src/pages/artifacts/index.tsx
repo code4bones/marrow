@@ -8,6 +8,7 @@ import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactBu
 import { DeleteArtifactButton } from '../../features/artifact/DeleteArtifactButton';
 import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { UpdateArtifactMetaModal } from '../../features/artifact/UpdateArtifactMetaModal';
+import { UploadArtifactsButton } from '../../features/artifact/UploadArtifactsButton';
 import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
@@ -86,7 +87,12 @@ export function ArtifactsPage() {
     <PageLayout
       title={t('artifacts')}
       subtitle={slug}
-      headerExtra={slug ? <PutTextArtifactDrawer projectSlug={slug} onDone={() => refetch()} /> : undefined}
+      headerExtra={slug ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <PutTextArtifactDrawer projectSlug={slug} onDone={() => refetch()} />
+          <UploadArtifactsButton projectSlug={slug} onDone={() => refetch()} />
+        </div>
+      ) : undefined}
     >
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
       <Table<Artifact>
