@@ -399,31 +399,36 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
             it out on longer ids/timestamps or narrower cards. Now a small
             pill straddling the card's top-right corner instead (top: 0 +
             translateY(-50%), the usual "floating" badge treatment — half
-            outside the border, half inside — not tucked fully inside the
-            padding) — borderColor above already conveys status via the
-            card's border color, this is just the label. */}
-        <div
+            outside the border, half inside) — borderColor above already
+            conveys status via the card's border color, this is just the
+            label. Plain antd Tag rather than a hand-rolled div: a raw div
+            with a translucent background looked washed-out floating over
+            two different backdrops (card interior vs. the gap behind it),
+            and Typography.Text's own line-height sat the text low inside
+            the pill. Tag's custom-color mode gives a solid fill with
+            correctly-centered text for free. */}
+        <Tag
+          color={color}
           style={{
             position: 'absolute',
             top: 0,
             right: 10,
             transform: 'translateY(-50%)',
             zIndex: 1,
+            margin: 0,
             maxWidth: STATUS_BADGE_RESERVE_PX - 4,
-            padding: '1px 6px',
-            borderRadius: 8,
-            border: `1px solid ${color}`,
-            background: `${color}22`,
+            padding: '0 6px',
+            lineHeight: '16px',
+            fontSize: 9,
+            textTransform: 'uppercase',
+            letterSpacing: 0.4,
+            whiteSpace: 'nowrap',
             overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
-          <Typography.Text
-            style={{ fontSize: 9, color, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}
-            ellipsis={{ tooltip: status }}
-          >
-            {status}
-          </Typography.Text>
-        </div>
+          {status}
+        </Tag>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
