@@ -43,13 +43,15 @@ const STATUS_COLOR: Record<string, string> = {
 
 const REJECTED_BORDER = '#a61d24';
 
-// Right-hand gutter reserved on RecordCard's title area for the top-right
-// status badge (see RecordCard) — sized for the longest realistic status
-// value ("superseded", "cancelled") at the badge's 9px font plus its own
-// pill padding/border, with a little slack. A tighter 62px was tried first
-// and visually clipped even 8-letter values like "accepted"/"archived"/
-// "rejected" into "ACCEPT…"/"ARCHIV…"/"REJECT…" — 92px was the smallest
-// that read every status in full at a live check.
+// Max width for the top-right status badge (see RecordCard) — sized for the
+// longest realistic status value ("superseded", "cancelled") at the badge's
+// 9px font plus its own pill padding, with a little slack. No longer a
+// layout gutter (the badge floats above the card's border, out of the title
+// row's flow, so it doesn't need to reserve space there) — just an ellipsis
+// cap so it can't grow wider than the corner it sits in. A tighter 62px was
+// tried first and visually clipped even 8-letter values like "accepted"/
+// "archived"/"rejected" into "ACCEPT…"/"ARCHIV…"/"REJECT…" — 92px was the
+// smallest that read every status in full at a live check.
 const STATUS_BADGE_RESERVE_PX = 92;
 
 function statusLabels(t: (key: string) => string): Record<string, string> {
@@ -365,13 +367,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
           position: 'relative',
         }}
       >
-        {/* Reserves a right-hand gutter (STATUS_BADGE_RESERVE_PX) across
-            BOTH the optional title-prefix line and the title row, so the
-            absolutely-positioned status badge below never overlaps the
-            title text, the title-prefix's own ellipsis, or the title row's
-            own DetailsTrigger/DrillIndicator icon cluster — regardless of
-            which of those are present for a given card. */}
-        <div style={{ paddingRight: STATUS_BADGE_RESERVE_PX }}>
+        <div>
           {titlePrefix && (
             <Typography.Text
               style={{ fontSize: 9.5, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 0.3, display: 'block', marginBottom: 1 }}
