@@ -37,6 +37,13 @@ interface PersonalTokenPanelProps {
    * "export" framing wouldn't make sense.
    */
   exportVarName?: string;
+  /**
+   * Called after any successful create/regenerate/delete -- lets a sibling
+   * that also reads this user's tokens (ConnectedSummary, fetched
+   * independently on its own mount) know to refetch, same reasoning as
+   * OAuthClientPanel's own onChanged.
+   */
+  onChanged?: () => void;
 }
 
 /**
@@ -54,7 +61,7 @@ interface PersonalTokenPanelProps {
  * under the old model, generating a token to connect Codex after Claude
  * Code was already working knocked Claude Code's connection out.
  */
-export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }: PersonalTokenPanelProps) {
+export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName, onChanged }: PersonalTokenPanelProps) {
   const { t } = useTranslation('profile');
   const fetchPersonalTokens = useAuthStore((s) => s.fetchPersonalTokens);
   const createPersonalToken = useAuthStore((s) => s.createPersonalToken);
@@ -90,6 +97,7 @@ export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }:
       setAddingOpen(false);
       setNewLabel('');
       await load();
+      onChanged?.();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : t('couldNotCreateToken'));
     } finally {
@@ -112,6 +120,7 @@ export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }:
           setRevealedTokens((prev) => ({ ...prev, [created.id]: created.token }));
           setAllTokens(await fetchPersonalTokens());
           setAutoCreating(false);
+          onChanged?.();
         }
       } catch (err) {
         if (cancelled) return;
@@ -139,6 +148,7 @@ export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }:
       const result = await regeneratePersonalToken(id);
       setRevealedTokens((prev) => ({ ...prev, [id]: result.token }));
       await load();
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('couldNotRegenerateToken'));
     } finally {
@@ -157,6 +167,7 @@ export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }:
         return next;
       });
       await load();
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('couldNotDeleteToken'));
     } finally {

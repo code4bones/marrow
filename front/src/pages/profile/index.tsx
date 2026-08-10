@@ -206,7 +206,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * not a bug here — not worth a bigger token-blocklist feature just for
  * this.
  */
-function ConnectedSummary() {
+function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
   const { t } = useTranslation('profile');
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
@@ -220,7 +220,14 @@ function ConnectedSummary() {
     fetchOAuthClients().then(setClients).catch(() => setClients([]));
     fetchPersonalTokens().then(setTokens).catch(() => setTokens([]));
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // refreshKey: bumped by ConnectSection whenever any OAuthClientPanel/
+  // PersonalTokenPanel instance below finishes a create/regenerate/delete/
+  // relabel -- those panels fetch this same user's credentials/tokens
+  // independently on their own mount, so without this signal, relabeling a
+  // legacy credential into "Claude.ai" in the Other tab left this card
+  // showing stale "Not connected yet" until a full page reload (reported
+  // live right after the Edit label feature shipped).
+  useEffect(load, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const findClient = (label: string) => clients?.find((c) => c.label === label) ?? null;
   const claude = findClient('Claude.ai');
@@ -336,6 +343,11 @@ function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
+  // Bumped by every panel below via onChanged, read by ConnectedSummary to
+  // know when to refetch -- see ConnectedSummary's own comment.
+  const [summaryRefreshKey, setSummaryRefreshKey] = useState(0);
+  const bumpSummary = () => setSummaryRefreshKey((k) => k + 1);
+
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
@@ -382,7 +394,7 @@ function ConnectSection() {
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             {t('claudeCliIntro')}
           </Text>
-          <PersonalTokenPanel fixedLabel="Claude Code (CLI)" exportVarName="MARROW_MCP_TOKEN" />
+          <PersonalTokenPanel fixedLabel="Claude Code (CLI)" exportVarName="MARROW_MCP_TOKEN" onChanged={bumpSummary} />
           <Step n={1}>{t('setTokenInShellClaude')}</Step>
           <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={claudeCodeCmd} />
@@ -401,7 +413,7 @@ function ConnectSection() {
           <Step n={2}>{t('pasteAsConnectorUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
           <Step n={3}>{t('clientIdSecretClaude')}</Step>
-          <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} />
+          <OAuthClientPanel fixedLabel="Claude.ai" fixedRedirectUri={claudeCallbackUrl} onChanged={bumpSummary} />
           <Step n={4}>{t('clickConnectClaude')}</Step>
           <Step n={5}>
             {t('logInApproveAccessClaude')} <Text strong>{t('you')}</Text> {t('specifically')}
@@ -421,7 +433,7 @@ function ConnectSection() {
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             {t('codexCliIntro')}
           </Text>
-          <PersonalTokenPanel fixedLabel="Codex (CLI)" exportVarName="MARROW_MCP_TOKEN" />
+          <PersonalTokenPanel fixedLabel="Codex (CLI)" exportVarName="MARROW_MCP_TOKEN" onChanged={bumpSummary} />
           <Step n={1}>{t('setTokenInShellCodex')}</Step>
           <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={codexCmd} />
@@ -439,7 +451,7 @@ function ConnectSection() {
           <Step n={2}>{t('pasteAsConnectorMcpUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
           <Step n={3}>{t('clientIdSecretChatGpt')}</Step>
-          <OAuthClientPanel fixedLabel="ChatGPT" />
+          <OAuthClientPanel fixedLabel="ChatGPT" onChanged={bumpSummary} />
           <Step n={4}>{t('clickConnectChatGpt')}</Step>
           <Step n={5}>{t('logInApproveAccess')}</Step>
           <Step n={6}>{t('askChatGptToUseTools')}</Step>
@@ -456,8 +468,8 @@ function ConnectSection() {
       label: t('otherLegacyCredentials'),
       children: (
         <>
-          <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />
-          <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} />
+          <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} onChanged={bumpSummary} />
+          <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} onChanged={bumpSummary} />
         </>
       ),
     },
@@ -465,7 +477,7 @@ function ConnectSection() {
 
   return (
     <>
-      <ConnectedSummary />
+      <ConnectedSummary refreshKey={summaryRefreshKey} />
 
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 16 }}>
         {t('connectIntroBefore')} (

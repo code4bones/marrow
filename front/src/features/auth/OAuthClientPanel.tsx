@@ -32,6 +32,16 @@ interface OAuthClientPanelProps {
    * genuinely custom connector). Keeps the free-text Label input.
    */
   excludeLabels?: string[];
+  /**
+   * Called after any successful create/regenerate/delete/relabel -- lets a
+   * sibling that also reads this user's credentials (ConnectedSummary,
+   * fetched independently on its own mount) know to refetch. Without this,
+   * relabeling a legacy credential into "Claude.ai" here left the
+   * Connected card at the top of the page showing stale "Not connected
+   * yet" until a full page reload, reported live right after the Edit
+   * label feature shipped.
+   */
+  onChanged?: () => void;
 }
 
 /**
@@ -50,7 +60,7 @@ interface OAuthClientPanelProps {
  * connector (e.g. ChatGPT) silently invalidated the first one already
  * working (e.g. Claude.ai).
  */
-export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }: OAuthClientPanelProps) {
+export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels, onChanged }: OAuthClientPanelProps) {
   const { t } = useTranslation('profile');
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
   const createOAuthClient = useAuthStore((s) => s.createOAuthClient);
@@ -127,6 +137,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       setRevealedSecrets((prev) => ({ ...prev, [result.id]: result.clientSecret }));
       resetCreateForm();
       await load();
+      onChanged?.();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : t('couldNotCreateCredential'));
     } finally {
@@ -141,6 +152,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       const result = await regenerateOAuthClient(id);
       setRevealedSecrets((prev) => ({ ...prev, [id]: result.clientSecret }));
       await load();
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('couldNotRegenerateCredential'));
     } finally {
@@ -174,6 +186,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
       });
       setEditingId(null);
       await load();
+      onChanged?.();
     } catch (err) {
       setEditError(err instanceof Error ? err.message : t('couldNotUpdateRedirectUri'));
     } finally {
@@ -192,6 +205,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
         return next;
       });
       await load();
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('couldNotDeleteCredential'));
     } finally {
