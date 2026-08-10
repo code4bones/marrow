@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client/core';
 
 export const GET_PROJECTS = gql`
-  query GetProjects($status: String) {
-    projects(status: $status) {
+  query GetProjects($status: String, $sort: String) {
+    projects(status: $status, sort: $sort) {
       id slug title description status rootPath updatedAt
     }
   }

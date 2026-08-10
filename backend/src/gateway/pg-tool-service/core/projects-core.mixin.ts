@@ -61,7 +61,9 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   }
 
   protected async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
-    let query = this.db("projects").select("*").orderBy("slug");
+    let query = input.sort === "createdAt"
+      ? this.db("projects").select("*").orderBy("created_at", "desc")
+      : this.db("projects").select("*").orderBy("slug");
     if (input.status) {
       query = query.where("status", String(input.status));
     }

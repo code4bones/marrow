@@ -20,5 +20,6 @@ export const projectLookupSchema = z
 
 export const listProjectsSchema = z.object({
   status: projectStatusSchema.optional(),
-  compact: z.boolean().optional()
+  compact: z.boolean().optional(),
+  sort: z.enum(["slug", "createdAt"]).optional()
 });

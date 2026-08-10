@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, List, Skeleton, Typography } from 'antd';
-import { useEffect } from 'react';
+import { Alert, List, Select, Skeleton, Typography } from 'antd';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
@@ -23,7 +23,8 @@ export function ProjectsPage() {
     if (slug) setSelectedProject(slug);
   }, [slug, setSelectedProject]);
 
-  const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS);
+  const [sort, setSort] = useState<'slug' | 'createdAt'>('slug');
+  const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS, { variables: { sort } });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
 
   return (
@@ -35,6 +36,19 @@ export function ProjectsPage() {
             {t('projects')}
           </Typography.Text>
           <CreateProjectModal onDone={() => refetch()} />
+        </div>
+
+        <div style={{ padding: '0 8px 8px' }}>
+          <Select<'slug' | 'createdAt'>
+            value={sort}
+            onChange={setSort}
+            size="small"
+            style={{ width: '100%' }}
+            options={[
+              { label: t('sortAlphabetical'), value: 'slug' },
+              { label: t('sortNewestFirst'), value: 'createdAt' },
+            ]}
+          />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>

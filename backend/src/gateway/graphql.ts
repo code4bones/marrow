@@ -86,7 +86,7 @@ const typeDefs = `#graphql
     gatewayClients(anonymous: Boolean, staleOlderThanSeconds: Int, limit: Int): [GatewayClient!]!
     gatewayClientsPage(anonymous: Boolean, staleOlderThanSeconds: Int, pagination: PaginationInput): PaginatedGatewayClients!
 
-    projects(status: String): [Project!]!
+    projects(status: String, sort: String): [Project!]!
     projectsPage(status: String, pagination: PaginationInput): PaginatedProjects!
     project(id: ID, slug: String): Project!
     # Get-or-create: lazily creates the project's invite link on first
