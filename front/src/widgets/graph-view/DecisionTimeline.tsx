@@ -345,7 +345,7 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
         style={{
           minHeight: 84,
           background: isOpen ? '#1c2a38' : '#1f1f1f',
-          border: `2px solid ${borderColor}`,
+          border: `1px solid ${borderColor}`,
           borderRadius: 6,
           padding: '8px 12px',
           cursor: interactive ? 'pointer' : 'default',
@@ -829,12 +829,15 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         {/* Bridges the root card to the first branch's own trunk (TreeBranch
             draws its vertical line starting at its own top, y:0 — nothing
             connected that to the root card above it, so the chain visually
-            broke right after the root every time). No margin here — the
-            line is position:absolute top:0/bottom:0 against this div's own
-            box, so any margin outside it would just reopen the same gap as
-            unpainted space. This div's height *is* the entire gap. Only
-            drawn when there's something below to connect to. */}
-        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 13 }}>
+            broke right after the root every time). Measured live: the root
+            RecordCard's own wrapper carries `marginBottom: 10` (invisible
+            spacing, not covered by this div's own box no matter how it's
+            sized) before this div even starts — marginTop: -10 cancels that
+            margin so this div's box actually starts flush against the
+            card's real bottom edge, and its height (10 + the original
+            13px gap = 23) is the entire distance from there to where
+            TreeBranch's own trunk begins drawing. */}
+        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 23, marginTop: -10 }}>
           {rows.length > 0 && (
             <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, bottom: 0, width: 1, background: TRUNK_COLOR }} />
           )}
