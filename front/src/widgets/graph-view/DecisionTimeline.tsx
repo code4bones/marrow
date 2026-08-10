@@ -397,14 +397,18 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
 
         {/* Status used to share the id/timestamp row below, which squeezed
             it out on longer ids/timestamps or narrower cards. Now a small
-            top-right corner pill instead — borderColor above already
-            conveys status via the card's border color, this is just the
-            label. */}
+            pill straddling the card's top-right corner instead (top: 0 +
+            translateY(-50%), the usual "floating" badge treatment — half
+            outside the border, half inside — not tucked fully inside the
+            padding) — borderColor above already conveys status via the
+            card's border color, this is just the label. */}
         <div
           style={{
             position: 'absolute',
-            top: 6,
-            right: 6,
+            top: 0,
+            right: 10,
+            transform: 'translateY(-50%)',
+            zIndex: 1,
             maxWidth: STATUS_BADGE_RESERVE_PX - 4,
             padding: '1px 6px',
             borderRadius: 8,
