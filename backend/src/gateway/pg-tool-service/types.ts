@@ -9,6 +9,17 @@ export type GraphNode = {
 };
 
 export type GraphEdge = {
+  // Deterministic, not DB-backed (some edges -- "blocks"/"supersedes" -- are
+  // synthesized from a task/decision column, not a real `links` row) --
+  // same from:to:relation triple GraphMixin already dedupes edges by.
+  // Exists so Apollo's InMemoryCache can normalize GraphEdge like it
+  // already does GraphNode (which has a real id): without one, the whole
+  // `edges` array was unnormalizable, forcing every client-side memo
+  // keyed off it (satellitesByRecord, remarksByTarget) to recompute new
+  // Map/array references on every projectGraph refetch even when nothing
+  // about the edges actually changed -- see T-MEMORY-065 follow-up on the
+  // "one task's status change re-rendered the whole Timeline" report.
+  id: string;
   from: string;
   to: string;
   relation: string;

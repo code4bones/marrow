@@ -26,11 +26,12 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     const addNode = (node: GraphNode) => {
       nodes.set(node.id, node);
     };
-    const addEdge = (edge: GraphEdge) => {
+    const addEdge = (edge: Omit<GraphEdge, "id">) => {
       if (!edge.from || !edge.to || !edge.relation) {
         return;
       }
-      edges.set(`${edge.from}\0${edge.to}\0${edge.relation}`, edge);
+      const key = `${edge.from}\0${edge.to}\0${edge.relation}`;
+      edges.set(key, { ...edge, id: `${edge.from}:${edge.to}:${edge.relation}` });
     };
 
     addNode(graphNodeOut("PROJECT", project));

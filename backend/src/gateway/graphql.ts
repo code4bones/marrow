@@ -552,6 +552,7 @@ const typeDefs = `#graphql
   }
 
   type GraphEdge {
+    id: ID!
     from: ID!
     to: ID!
     relation: String!
