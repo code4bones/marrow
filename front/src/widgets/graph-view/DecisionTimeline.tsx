@@ -266,10 +266,10 @@ function DetailsTrigger({ onClick }: { onClick: () => void }) {
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 20, height: 18, borderRadius: 4, cursor: 'pointer', flexShrink: 0, color: '#595959',
+          width: 20, height: 18, borderRadius: 4, cursor: 'pointer', flexShrink: 0, color: '#8c8c8c',
         }}
       >
-        <InfoCircleOutlined style={{ fontSize: 12 }} />
+        <InfoCircleOutlined style={{ fontSize: 11 }} />
       </span>
     </Tooltip>
   );
