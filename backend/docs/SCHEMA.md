@@ -437,6 +437,8 @@ Event examples:
 
 ```text
 project.created
+project.updated
+project.deleted
 task.created
 task.started
 task.completed

@@ -119,6 +119,11 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       patch.owner_user_id = input.ownerUserId;
     }
     const [row] = await this.db("projects").where({ id: project.id }).update(patch).returning("*");
+    await this.recordEventForProject(row.id, {
+      type: "project.updated",
+      title: `Project updated: ${String(row.title)}`,
+      related_id: row.id
+    }, context);
     return projectOut(row);
   }
 
@@ -203,7 +208,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.isMemberOfProject(projectId, session.userId);
   }
 
-  protected async deleteProject(input: Row, context?: NormalizedGatewayRequestContext) {
+  protected async deleteProject(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.getProject(input, context);
     await this.assertProjectOwnerOrAdmin(project, context);
     const counts = await this.projectDeleteCounts(project.id);
@@ -232,6 +237,16 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     for (const artifact of artifactRows) {
       await rm(artifactAbsolutePath(String(artifact.storage_path)), { force: true });
     }
+
+    // Common-scope (project_id: null), not project.id -- the row is already
+    // gone by this point and events.project_id has a FK on projects(id), so
+    // scoping this to the just-deleted project would fail the insert. Common
+    // scope also means every open session sees it, not just former members.
+    await this.recordEventForProject(null, {
+      type: "project.deleted",
+      title: `Project deleted: ${String(project.title)}`,
+      related_id: project.id
+    }, context);
 
     return {
       deletedProject: project,

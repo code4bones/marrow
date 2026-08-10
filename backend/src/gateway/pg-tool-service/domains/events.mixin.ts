@@ -64,13 +64,18 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     return this.pageRows(base, input, (query) => query.select("*").orderBy("created_at", "desc"), eventOut);
   }
 
-  protected async deleteEvent(input: Row) {
+  protected async deleteEvent(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("events").where({ id }).first();
     if (!current) {
       throw new AppError("NOT_FOUND", `Event ${id} does not exist.`, { id });
     }
     await this.db("events").where({ id }).del();
+    await this.recordEventForProject(current.project_id, {
+      type: "event.deleted",
+      title: `Event deleted: ${String(current.title ?? current.type)}`,
+      related_id: id
+    }, context);
     return {
       deletedEvent: eventOut(current)
     };

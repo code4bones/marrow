@@ -242,7 +242,7 @@ export class PgToolService extends ComposedService {
         case "event.list":
           return ok("Events listed.", { events: await this.listEvents(parsed, requestContext) });
         case "event.delete":
-          return ok("Event deleted.", await this.deleteEvent(parsed));
+          return ok("Event deleted.", await this.deleteEvent(parsed, requestContext));
         case "link.create":
           return ok("Link created.", { link: await this.createLink(parsed, requestContext) });
         case "link.list":
