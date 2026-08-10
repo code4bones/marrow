@@ -417,6 +417,14 @@ export const RECORD_DECISION = gql`
   }
 `;
 
+export const UPDATE_DECISION_STATUS = gql`
+  mutation UpdateDecisionStatus($id: ID!, $status: String!, $reason: String) {
+    updateDecisionStatus(id: $id, status: $status, reason: $reason) {
+      id status updatedAt
+    }
+  }
+`;
+
 export const SUPERSEDE_DECISION = gql`
   mutation SupersedeDecision($input: RecordDecisionInput!) {
     supersedeDecision(input: $input) {

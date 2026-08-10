@@ -10,8 +10,12 @@ import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
+import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
+import { DecisionStatusSelect } from '../../features/decision/DecisionStatusSelect';
+import { MemoryStatusSelect } from '../../features/memory/MemoryStatusSelect';
+import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
 import { Markdown } from '../../shared/ui/Markdown';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -84,7 +88,7 @@ function TaskBody({ r }: { r: Task }) {
   const { t } = useTranslation('common');
   return (
     <>
-      <Field label={t('status')}><StatusBadge status={r.status} /></Field>
+      <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
       {r.priority != null && <Field label={t('priority')}><Text>{r.priority}</Text></Field>}
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
@@ -111,7 +115,16 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
   const { t } = useTranslation('common');
   return (
     <>
-      <Field label={t('status')}><StatusBadge status={r.status} /></Field>
+      <Field label={t('status')}>
+        {/* A superseded decision's status is structural (paired with the
+            replacement decision + the supersedes link) -- the backend
+            rejects setting it back directly, so this stays read-only for
+            that one status rather than showing an editable control that
+            would just error on change. */}
+        {r.status === 'superseded'
+          ? <StatusBadge status={r.status} />
+          : <DecisionStatusSelect id={r.id} value={r.status} />}
+      </Field>
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
       {r.context && <Field label={t('context')}><Markdown>{r.context}</Markdown></Field>}
       {r.decision && <Field label={t('decision')}><Markdown>{r.decision}</Markdown></Field>}
@@ -131,7 +144,16 @@ function ArtifactBody({ r }: { r: Artifact }) {
     <>
       <Field label={t('path')}><Text code style={{ fontSize: 12 }}>{r.path}</Text></Field>
       <Field label={t('scope')}><Tag style={{ fontSize: 11 }}>{r.scope}</Tag></Field>
-      <Field label={t('status')}><StatusBadge status={r.status} /></Field>
+      <Field label={t('status')}>
+        {/* Artifacts only have two real states (current/archived, no
+            intermediate draft/rejected like decisions/memory) -- the
+            existing one-way Archive action already covers that, no
+            dropdown needed. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <StatusBadge status={r.status} />
+          {r.status !== 'archived' && <ArchiveArtifactButton id={r.id} />}
+        </div>
+      </Field>
       {r.contentType && <Field label={t('contentType')}><Text>{r.contentType}</Text></Field>}
       {r.sizeBytes != null && <Field label={t('size')}><Text>{(r.sizeBytes / 1024).toFixed(1)} KB</Text></Field>}
       {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
@@ -147,7 +169,7 @@ function MemoryBody({ r }: { r: MemoryRecord }) {
   return (
     <>
       <Field label={t('type')}><Tag style={{ fontSize: 11 }}>{r.type}</Tag></Field>
-      <Field label={t('status')}><StatusBadge status={r.status} /></Field>
+      <Field label={t('status')}><MemoryStatusSelect id={r.id} value={r.status} /></Field>
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
       {r.excerpt && <Field label={t('excerpt')}><Text type="secondary" style={{ fontSize: 12 }}>{r.excerpt}</Text></Field>}
       {r.body && (
