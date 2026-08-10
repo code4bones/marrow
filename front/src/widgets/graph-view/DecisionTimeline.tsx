@@ -598,10 +598,16 @@ function buildDrillRows(rootId: string, linksByRecord: Map<string, Link[]>, node
 // the browser pins the current day's label to the top of the column
 // while you scroll past it, for free, with no scroll listener, no ref
 // bookkeeping, and no derived-state effect to keep in sync.
+// Local calendar day, not UTC (toISOString().slice(0, 10) would use UTC and
+// could disagree with formatDayLabel's local-time label just below for
+// entries near a UTC-midnight boundary -- two entries on the same local
+// evening could get split into two day groups, or vice versa).
 function dayKey(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function formatDayLabel(iso: string): string {
