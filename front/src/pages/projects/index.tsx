@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, List, Select, Skeleton, Typography } from 'antd';
+import { Alert, Button, List, Skeleton, Tooltip, Typography } from 'antd';
+import { ClockCircleOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -35,20 +36,28 @@ export function ProjectsPage() {
           <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
             {t('projects')}
           </Typography.Text>
-          <CreateProjectModal onDone={() => refetch()} />
-        </div>
-
-        <div style={{ padding: '0 8px 8px' }}>
-          <Select<'slug' | 'createdAt'>
-            value={sort}
-            onChange={setSort}
-            size="small"
-            style={{ width: '100%' }}
-            options={[
-              { label: t('sortAlphabetical'), value: 'slug' },
-              { label: t('sortNewestFirst'), value: 'createdAt' },
-            ]}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {/* Icon toggle, not a dropdown -- owner: a full-width Select
+                here read as oversized for a binary choice in this narrow
+                sidebar. */}
+            <Tooltip title={t('sortAlphabetical')}>
+              <Button
+                size="small"
+                type={sort === 'slug' ? 'primary' : 'text'}
+                icon={<SortAscendingOutlined />}
+                onClick={() => setSort('slug')}
+              />
+            </Tooltip>
+            <Tooltip title={t('sortNewestFirst')}>
+              <Button
+                size="small"
+                type={sort === 'createdAt' ? 'primary' : 'text'}
+                icon={<ClockCircleOutlined />}
+                onClick={() => setSort('createdAt')}
+              />
+            </Tooltip>
+            <CreateProjectModal onDone={() => refetch()} />
+          </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
