@@ -13,6 +13,20 @@ interface UploadedFile {
   buffer: Buffer;
 }
 
+// busboy decodes a plain (non RFC-5987-extended) `filename="..."` header
+// value as latin1, the historical RFC 2388 assumption -- but browsers send
+// raw UTF-8 bytes there for non-ASCII names, with no extended-notation
+// fallback. Every UTF-8 byte lands as its own latin1 codepoint, and
+// re-encoding that string to UTF-8 downstream (JSON responses, this
+// filename becoming an artifact's storage path) doubles the corruption
+// into exactly the "Ð¸Ð¼Ñ" mojibake pattern reported live on a Cyrillic
+// filename. Re-interpreting the string's code units as latin1 bytes and
+// decoding *those* as UTF-8 recovers the original text; a no-op for
+// pure-ASCII filenames, since ASCII is identical in both encodings.
+function fixMultipartFilenameEncoding(filename: string): string {
+  return Buffer.from(filename, "latin1").toString("utf8");
+}
+
 // Streams the first (only) file field off a multipart/form-data request via
 // busboy. Buffered in memory rather than written to disk -- nothing this
 // endpoint reads is ever persisted; the buffer is discarded the moment
@@ -53,7 +67,7 @@ export function readMultipartFile(request: IncomingMessage): Promise<UploadedFil
           return;
         }
         settled = true;
-        resolve({ filename: info.filename, buffer: Buffer.concat(chunks) });
+        resolve({ filename: fixMultipartFilenameEncoding(info.filename), buffer: Buffer.concat(chunks) });
       });
     });
 
