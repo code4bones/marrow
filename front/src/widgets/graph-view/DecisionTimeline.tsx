@@ -285,7 +285,7 @@ interface RelationBadge {
 // the old flat "arrow + tag row above the card" layout. `isLast` stops the
 // trunk right after this stub instead of running it the full row height,
 // giving the last entry in a column the expected "└" terminator look.
-function TreeBranch({ relation, direction, isLast, children }: RelationBadge & { isLast: boolean; children: ReactNode }) {
+function TreeBranch({ direction, isLast, children }: RelationBadge & { isLast: boolean; children: ReactNode }) {
   return (
     <div style={{ display: 'flex', width: COLUMN_CARD_W, marginBottom: 10 }}>
       <div style={{ width: GUTTER_W, position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
@@ -296,7 +296,6 @@ function TreeBranch({ relation, direction, isLast, children }: RelationBadge & {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2, marginLeft: 2 }}>
           <Typography.Text type="secondary" style={{ fontSize: 10 }}>{direction === 'out' ? '→' : '←'}</Typography.Text>
-          <Tag style={{ fontSize: 9, lineHeight: '14px', margin: 0, padding: '0 4px' }}>{relation}</Tag>
         </div>
         {children}
       </div>
@@ -531,7 +530,11 @@ type BaselineRow =
 function buildBaselineRows(decisions: GraphNode[], taskMarkers: TaskMarker[]): BaselineRow[] {
   const decisionEntries = decisions.map((d) => ({ kind: 'decision' as const, node: d, createdAt: d.createdAt }));
   const taskEntries = taskMarkers.map((m) => ({ kind: 'task' as const, marker: m, createdAt: m.createdAt as string | null }));
-  const merged = [...decisionEntries, ...taskEntries].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+  // Owner's call: newest first, top to bottom, matching every list page in
+  // the app rather than reading like a history book (oldest first). Reverse
+  // chronological order means `prevTime` below is always the more-recent
+  // neighbor, so the gap delta is prevTime - t (was t - prevTime).
+  const merged = [...decisionEntries, ...taskEntries].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 
   const rows: BaselineRow[] = [];
   let prevTime: number | null = null;
@@ -539,7 +542,7 @@ function buildBaselineRows(decisions: GraphNode[], taskMarkers: TaskMarker[]): B
   for (const entry of merged) {
     const t = entry.createdAt ? new Date(entry.createdAt).getTime() : NaN;
     if (prevTime !== null && !Number.isNaN(t)) {
-      const delta = t - prevTime;
+      const delta = prevTime - t;
       if (delta > GAP_THRESHOLD_MS) rows.push({ kind: 'gap', label: `⋯ ${formatDuration(delta)} ⋯` });
     }
     if (!Number.isNaN(t)) prevTime = t;
@@ -561,9 +564,10 @@ function buildDrillRows(rootId: string, linksByRecord: Map<string, Link[]>, node
     const otherId = link.fromId === rootId ? link.toId : link.fromId;
     return { link, id: otherId, node: nodeById.get(otherId) ?? null };
   });
-  // Chronological when we know the other end's date; unresolvable/undated
-  // ones keep the query's own order at the end rather than being dropped.
-  const withDate = resolved.filter((r) => r.node?.createdAt).sort((a, b) => (a.node!.createdAt as string).localeCompare(b.node!.createdAt as string));
+  // Newest first (see buildBaselineRows) when we know the other end's date;
+  // unresolvable/undated ones keep the query's own order at the end rather
+  // than being dropped.
+  const withDate = resolved.filter((r) => r.node?.createdAt).sort((a, b) => (b.node!.createdAt as string).localeCompare(a.node!.createdAt as string));
   const withoutDate = resolved.filter((r) => !r.node?.createdAt);
   const ordered = [...withDate, ...withoutDate];
 
@@ -575,7 +579,7 @@ function buildDrillRows(rootId: string, linksByRecord: Map<string, Link[]>, node
   for (const r of ordered) {
     const t = r.node?.createdAt ? new Date(r.node.createdAt).getTime() : NaN;
     if (prevTime !== null && !Number.isNaN(t)) {
-      const delta = t - prevTime;
+      const delta = prevTime - t;
       if (delta > GAP_THRESHOLD_MS) rows.push({ kind: 'gap', label: `⋯ ${formatDuration(delta)} ⋯` });
     }
     if (!Number.isNaN(t)) prevTime = t;
