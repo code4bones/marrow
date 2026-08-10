@@ -320,10 +320,16 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       base.andWhere("status", "current");
     }
 
+    // Owner's call (T-MEMORY realtime/sort audit): every other domain page
+    // (tasks/decisions/memory/events) already defaults to newest-activity
+    // first. This one alone sorted alphabetically by path, which reads as
+    // stale/frozen next to the others. listArtifacts (the MCP path-browsing
+    // tool, above) intentionally keeps path order -- that one's for
+    // navigating by path prefix, not a recent-activity feed.
     return this.pageRows(
       base,
       input,
-      (query) => query.select("*").orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("path", "asc"),
+      (query) => query.select("*").orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("updated_at", "desc"),
       artifactOut
     );
   }
