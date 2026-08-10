@@ -65,7 +65,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       relevantDecisions: await this.listDecisions({
         project: project.id,
         includeCommon: input.includeCommon !== false,
-        status: "current",
+        status: "accepted",
         limit: limits.decisions ?? 10
       }),
       commonRules: await this.searchMemory({
@@ -116,7 +116,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       relevantDecisions: await this.listDecisions({
         project: project?.id,
         includeCommon,
-        status: "current",
+        status: "accepted",
         limit: limits.decisions ?? 10
       }),
       commonRules: await this.searchMemory({

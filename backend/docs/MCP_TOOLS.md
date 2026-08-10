@@ -2181,7 +2181,7 @@ Input:
 {
   "project": "project-memory-mcp",
   "title": "Use SQLite FTS5 for MVP search",
-  "status": "current",
+  "status": "accepted",
   "context": "The project needs local search for agent memory.",
   "decision": "Use SQLite FTS5 in the MVP instead of embeddings.",
   "rationale": "FTS5 is local, deterministic, simple, and enough for early project memory.",
@@ -2268,7 +2268,7 @@ Output:
 {
   "decision": {
     "id": "D-MEMORY-002",
-    "status": "current",
+    "status": "accepted",
     "supersedesId": "D-MEMORY-001"
   },
   "superseded": {
@@ -2314,7 +2314,7 @@ Input:
 {
   "project": "project-memory-mcp",
   "includeCommon": true,
-  "status": "current",
+  "status": "accepted",
   "limit": 20
 }
 ```

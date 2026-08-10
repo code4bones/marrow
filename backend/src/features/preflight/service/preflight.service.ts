@@ -31,7 +31,7 @@ export class PreflightService {
     const relevantDecisions = this.decisions.list({
       project: project.id,
       includeCommon,
-      status: "current",
+      status: "accepted",
       limit: limits.decisions
     });
 

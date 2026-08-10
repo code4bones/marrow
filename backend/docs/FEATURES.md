@@ -167,7 +167,7 @@ Required fields:
 Decision statuses:
 
 * `draft`
-* `current`
+* `accepted`
 * `superseded`
 * `rejected`
 * `archived`

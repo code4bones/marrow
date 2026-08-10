@@ -347,7 +347,7 @@ CREATE TABLE decisions (
   id TEXT PRIMARY KEY,
   project_id TEXT,
   title TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'current',
+  status TEXT NOT NULL DEFAULT 'accepted',
   context TEXT,
   decision TEXT NOT NULL,
   rationale TEXT,
@@ -369,7 +369,7 @@ Allowed statuses:
 
 ```text
 draft
-current
+accepted
 superseded
 rejected
 archived

@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY,
   project_id TEXT,
   title TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'current',
+  status TEXT NOT NULL DEFAULT 'accepted',
   context TEXT,
   decision TEXT NOT NULL,
   rationale TEXT,

@@ -49,7 +49,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       this.listDecisions({
         project: project.id,
         includeCommon,
-        status: "current",
+        status: "accepted",
         limit: limits.decisions
       }),
       this.searchMemory({

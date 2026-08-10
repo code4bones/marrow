@@ -1,4 +1,4 @@
-export type DecisionStatus = "draft" | "current" | "superseded" | "rejected" | "archived";
+export type DecisionStatus = "draft" | "accepted" | "superseded" | "rejected" | "archived";
 
 export interface Decision {
   id: string;
