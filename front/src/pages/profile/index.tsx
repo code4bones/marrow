@@ -27,11 +27,12 @@ import { useSearchParams } from 'react-router-dom';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
+import { PersonalTokenPanel } from '../../features/auth/PersonalTokenPanel';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
-import { type GithubLinkStatus, type OAuthClient, type PersonalTokenStatus, useAuthStore } from '../../shared/model/auth.store';
+import { type GithubLinkStatus, type OAuthClient, type PersonalToken, useAuthStore } from '../../shared/model/auth.store';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -162,182 +163,13 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 /**
- * T-MEMORY-047: this user's own personal Marrow API token, for CLI/agent
- * connections (Claude Code, Codex) — replaces the old admin-issued shared
- * MCP_TOKEN placeholder in ConnectSection below. Shown-once + regenerate,
- * same principle as TOTP recovery codes / the TOTP secret (see
- * TotpEnrollWizard): the plaintext token is only ever visible in the
- * response right after generate/regenerate, never recoverable from the
- * status endpoint afterward. Generation is lazy — if the status check on
- * mount reports no token yet, this hook generates one automatically (still
- * an explicit POST, not a side effect of the status GET) so a
- * freshly-approved user sees a working token the first time they open this
- * page, without asking an admin — see docs/AUTH.md's "Personal API tokens"
- * section for why this is lazy-on-first-visit rather than generated at
- * admin-approval time.
- *
- * Pulled out of the panel component (was `PersonalTokenPanel`) so the ONE
- * token this hook manages can be displayed/regenerated from TWO places at
- * once (the Claude tab's CLI section and the Codex tab's CLI section,
- * grouped by service like everything else on this page) without triggering
- * two independent fetch-and-lazy-generate races — there is exactly one
- * fetch effect, called once from ConnectSection, and both tabs render the
- * same shared state via <PersonalTokenControls>.
+ * "Set the token in the shell" as a real, copy-pasteable
+ * `export MARROW_MCP_TOKEN="..."` command right after generating it --
+ * handled by PersonalTokenPanel's own `exportVarName` prop now (see
+ * features/auth/PersonalTokenPanel.tsx), one instance per CLI connection
+ * (Claude Code, Codex) instead of a single shared token both tabs used to
+ * point at.
  */
-function usePersonalToken() {
-  const { t } = useTranslation('profile');
-  const fetchPersonalToken = useAuthStore((s) => s.fetchPersonalToken);
-  const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
-
-  const [status, setStatus] = useState<PersonalTokenStatus | null>(null);
-  const [revealedToken, setRevealedToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const generate = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const result = await regeneratePersonalToken();
-      setStatus({ exists: true, tokenHint: result.tokenHint, createdAt: result.createdAt, lastUsedAt: null });
-      setRevealedToken(result.token);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('couldNotGenerateToken'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await fetchPersonalToken();
-        if (cancelled) return;
-        setStatus(result);
-        setLoading(false);
-        if (!result.exists) {
-          await generate();
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : t('couldNotLoadTokenStatus'));
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return { status, revealedToken, loading, busy, error, generate };
-}
-
-type PersonalTokenState = ReturnType<typeof usePersonalToken>;
-
-function PersonalTokenControls({ status, revealedToken, loading, busy, error, generate }: PersonalTokenState) {
-  const { t } = useTranslation('profile');
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  if (loading) {
-    return (
-      <div style={{ marginBottom: 16 }}>
-        <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>{t('loadingPersonalToken')}</Text>
-      </div>
-    );
-  }
-
-  const hasEverBeenShown = revealedToken !== null;
-  const stillGenerating = busy && !hasEverBeenShown && !status?.exists;
-
-  return (
-    <div style={{ marginBottom: 16 }}>
-      {error && <Alert type="error" message={error} style={{ marginBottom: 12 }} showIcon />}
-
-      {stillGenerating && (
-        <div style={{ marginBottom: 12 }}>
-          <Spin size="small" /> <Text type="secondary" style={{ fontSize: 12.5 }}>{t('generatingPersonalToken')}</Text>
-        </div>
-      )}
-
-      {revealedToken && (
-        <>
-          <Alert
-            type="warning"
-            showIcon
-            message={t('copyYourTokenNow')}
-            description={t('copyTokenDescription')}
-            style={{ marginBottom: 12 }}
-          />
-          <CodeBlock code={revealedToken} />
-        </>
-      )}
-
-      {!revealedToken && status?.exists && (
-        <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
-          {t('tokenEndingIn')} <Text code>…{status.tokenHint}</Text> · {t('created')} <Timestamp value={status.createdAt} /> ·
-          {' '}{t('lastUsed')} <Timestamp value={status.lastUsedAt} /> · {t('notShownAgainUseRegenerateOne')}
-        </Text>
-      )}
-
-      {(status?.exists || hasEverBeenShown) && (
-        <Popconfirm
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          title={t('regeneratePersonalTokenConfirmTitle')}
-          description={t('regeneratePersonalTokenDescription')}
-          okText={t('regenerate')}
-          okButtonProps={{ danger: true, loading: busy }}
-          onConfirm={() => {
-            setConfirmOpen(false);
-            void generate();
-          }}
-        >
-          <Button size="small" loading={busy && !stillGenerating}>
-            {t('regenerate')}
-          </Button>
-        </Popconfirm>
-      )}
-    </div>
-  );
-}
-
-/**
- * Renders "Set the token in the shell" as a real, copy-pasteable command
- * ONLY when a real token is actually in hand. A CodeBlock's copy icon makes
- * whatever's inside it look like a runnable command -- rendering the old
- * "<your token isn't shown again, click Regenerate...>" placeholder text
- * inside one invited exactly the mistake it warned about: a user copying
- * that literal placeholder into their shell as if it were the real export.
- * Reported live: a freshly-approved developer did exactly this. Now the
- * no-real-token states render as a plain (non-copyable) Alert instead.
- */
-function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string | null; tokenStatus: PersonalTokenStatus | null }) {
-  const { t } = useTranslation('profile');
-  if (personalToken) {
-    return <CodeBlock code={`export MARROW_MCP_TOKEN="${personalToken}"`} />;
-  }
-  if (tokenStatus?.exists) {
-    return (
-      <Alert
-        type="warning"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message={
-          <>
-            {t('tokenNotShownAgainBefore')} <Text code>…{tokenStatus.tokenHint}</Text>{t('tokenNotShownAgainMiddle')}{' '}
-            <Text strong>{t('regenerate')}</Text> {t('tokenNotShownAgainAfter')}
-          </>
-        }
-      />
-    );
-  }
-  return (
-    <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('generatingTokenAboveMoment')} />
-  );
-}
 
 /**
  * "Connect" — end-to-end onboarding for wiring an agent or a web chat surface
@@ -375,26 +207,43 @@ function ExportTokenStep({ personalToken, tokenStatus }: { personalToken: string
  * not a bug here — not worth a bigger token-blocklist feature just for
  * this.
  */
-function ConnectedSummary({ personalTokenState }: { personalTokenState: PersonalTokenState }) {
+function ConnectedSummary() {
   const { t } = useTranslation('profile');
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
+  const fetchPersonalTokens = useAuthStore((s) => s.fetchPersonalTokens);
+  const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
   const [clients, setClients] = useState<OAuthClient[] | null>(null);
+  const [tokens, setTokens] = useState<PersonalToken[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = () => {
     fetchOAuthClients().then(setClients).catch(() => setClients([]));
+    fetchPersonalTokens().then(setTokens).catch(() => setTokens([]));
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const findClient = (label: string) => clients?.find((c) => c.label === label) ?? null;
   const claude = findClient('Claude.ai');
   const chatgpt = findClient('ChatGPT');
+  const findToken = (label: string) => tokens?.find((tk) => tk.label === label) ?? null;
+  const claudeCli = findToken('Claude Code (CLI)');
+  const codexCli = findToken('Codex (CLI)');
 
   const revokeOAuth = async (id: string) => {
     setBusyId(id);
     try {
       await deleteOAuthClient(id);
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const regenerateToken = async (id: string) => {
+    setBusyId(id);
+    try {
+      await regeneratePersonalToken(id);
       load();
     } finally {
       setBusyId(null);
@@ -411,13 +260,22 @@ function ConnectedSummary({ personalTokenState }: { personalTokenState: Personal
     busy?: boolean;
   }[] = [
     {
-      key: 'cli',
-      name: t('cliConnectionName'),
-      connected: Boolean(personalTokenState.status?.exists),
-      lastUsed: personalTokenState.status?.lastUsedAt ?? null,
-      onRevoke: () => void personalTokenState.generate(),
+      key: 'claude-cli',
+      name: t('claudeCliConnectionName'),
+      connected: Boolean(claudeCli),
+      lastUsed: claudeCli?.lastUsedAt ?? null,
+      onRevoke: claudeCli ? () => void regenerateToken(claudeCli.id) : undefined,
       revokeLabel: t('regenerate'),
-      busy: personalTokenState.busy,
+      busy: claudeCli ? busyId === claudeCli.id : false,
+    },
+    {
+      key: 'codex-cli',
+      name: t('codexCliConnectionName'),
+      connected: Boolean(codexCli),
+      lastUsed: codexCli?.lastUsedAt ?? null,
+      onRevoke: codexCli ? () => void regenerateToken(codexCli.id) : undefined,
+      revokeLabel: t('regenerate'),
+      busy: codexCli ? busyId === codexCli.id : false,
     },
     {
       key: 'claude-web',
@@ -479,9 +337,6 @@ function ConnectSection() {
   const user = useAuthStore((s) => s.user);
   const mcpUrl = `${API_BASE_URL}/mcp`;
 
-  const personalTokenState = usePersonalToken();
-  const { status: tokenStatus, revealedToken: personalToken } = personalTokenState;
-
   const suggestedId = user?.email ?? 'me';
   const enc = encodeURIComponent(suggestedId);
   const urlFor = (clientKind: string) => `${mcpUrl}?client_id=${enc}&client_label=${enc}&client_kind=${clientKind}`;
@@ -528,9 +383,8 @@ function ConnectSection() {
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             {t('claudeCliIntro')}
           </Text>
-          <PersonalTokenControls {...personalTokenState} />
+          <PersonalTokenPanel fixedLabel="Claude Code (CLI)" exportVarName="MARROW_MCP_TOKEN" />
           <Step n={1}>{t('setTokenInShellClaude')}</Step>
-          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={claudeCodeCmd} />
           <Step n={3}>
@@ -568,9 +422,8 @@ function ConnectSection() {
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             {t('codexCliIntro')}
           </Text>
-          <PersonalTokenControls {...personalTokenState} />
+          <PersonalTokenPanel fixedLabel="Codex (CLI)" exportVarName="MARROW_MCP_TOKEN" />
           <Step n={1}>{t('setTokenInShellCodex')}</Step>
-          <ExportTokenStep personalToken={personalToken} tokenStatus={tokenStatus} />
           <Step n={2}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={codexCmd} />
           <Step n={3}>
@@ -598,7 +451,7 @@ function ConnectSection() {
 
   return (
     <>
-      <ConnectedSummary personalTokenState={personalTokenState} />
+      <ConnectedSummary />
 
       <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 16 }}>
         {t('connectIntroBefore')} (
@@ -625,7 +478,12 @@ function ConnectSection() {
           {
             key: 'other',
             label: <Text type="secondary" style={{ fontSize: 12.5 }}>{t('otherLegacyCredentials')}</Text>,
-            children: <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />,
+            children: (
+              <>
+                <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} />
+                <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} />
+              </>
+            ),
           },
         ]}
       />

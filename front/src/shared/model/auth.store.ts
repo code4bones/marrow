@@ -45,16 +45,21 @@ interface RecoveryCodesResult {
   recoveryCodes: string[];
 }
 
-export interface PersonalTokenStatus {
-  exists: boolean;
-  tokenHint: string | null;
-  createdAt: string | null;
+/** One named personal API token (e.g. "Claude Code (CLI)", "Codex (CLI)") — a user may hold several, each fully independent: regenerating or deleting one never touches another. */
+export interface PersonalToken {
+  id: string;
+  label: string | null;
+  tokenHint: string;
+  createdAt: string;
   lastUsedAt: string | null;
 }
 
-export interface PersonalTokenRegenerateResult {
+/** Returned once, at creation or regeneration time — the only moment the raw token is ever visible (shown-once, same as recovery codes / the TOTP secret). */
+export interface PersonalTokenSecretResult {
+  id: string;
   token: string;
   tokenHint: string;
+  label: string | null;
   createdAt: string;
 }
 
@@ -138,10 +143,14 @@ interface AuthState {
   disable2fa: (currentPassword: string) => Promise<void>;
   regenerateRecoveryCodes: (currentPassword: string) => Promise<RecoveryCodesResult>;
 
-  /** T-MEMORY-047: personal Marrow API token for CLI/agent connections — see the Connect section of the profile page. */
-  fetchPersonalToken: () => Promise<PersonalTokenStatus>;
-  /** Serves both first-time "Generate" and later "Regenerate" — always issues a fresh token, invalidating any previous one. Raw token is returned exactly once (shown-once, same as recovery codes / the TOTP secret). */
-  regeneratePersonalToken: () => Promise<PersonalTokenRegenerateResult>;
+  /** T-MEMORY-047: this user's personal Marrow API tokens (one per named CLI/agent connection, e.g. "Claude Code (CLI)"/"Codex (CLI)") — see the Connect section of the profile page. */
+  fetchPersonalTokens: () => Promise<PersonalToken[]>;
+  /** Creates a brand-new, independent token — never touches any of this user's other tokens (the fix for the old "generating one invalidates all" problem). token is returned exactly once (shown-once). */
+  createPersonalToken: (label: string | null) => Promise<PersonalTokenSecretResult>;
+  /** Rotates the secret for one specific token (by id), invalidating only that token's previous value — every other token keeps working unchanged. token is returned exactly once (shown-once); label is unchanged. */
+  regeneratePersonalToken: (id: string) => Promise<PersonalTokenSecretResult>;
+  /** Permanently removes one token; every other token is unaffected. */
+  deletePersonalToken: (id: string) => Promise<void>;
 
   /** This user's OAuth connector credentials (client id + secret hint per named connector), for the web-connector (Claude.ai/ChatGPT) tabs of the Connect section — replaces the old one-per-user OAuth client id/secret pair. */
   fetchOAuthClients: () => Promise<OAuthClient[]>;
@@ -414,21 +423,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       'Could not regenerate recovery codes.',
     ),
 
-  fetchPersonalToken: async () => {
-    const response = await fetch(`${API_BASE_URL}/auth/profile/personal-token`, { credentials: 'include' });
+  fetchPersonalTokens: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/personal-tokens`, { credentials: 'include' });
     const body = await readJson(response);
     if (!response.ok || body.ok === false) {
-      throw new Error(body.error?.message ?? 'Could not load your personal token status.');
+      throw new Error(body.error?.message ?? 'Could not load your personal tokens.');
     }
-    return body.data as PersonalTokenStatus;
+    return body.data as PersonalToken[];
   },
 
-  regeneratePersonalToken: () =>
-    postJson<PersonalTokenRegenerateResult>(
-      '/auth/profile/personal-token/regenerate',
-      {},
-      'Could not generate a personal token.',
+  createPersonalToken: (label) =>
+    postJson<PersonalTokenSecretResult>(
+      '/auth/profile/personal-tokens',
+      { label },
+      'Could not create a personal token.',
     ),
+
+  regeneratePersonalToken: (id) =>
+    postJson<PersonalTokenSecretResult>(
+      `/auth/profile/personal-tokens/${id}/regenerate`,
+      {},
+      'Could not regenerate this personal token.',
+    ),
+
+  deletePersonalToken: (id) => deleteRequest(`/auth/profile/personal-tokens/${id}`, 'Could not delete this personal token.'),
 
   fetchOAuthClients: async () => {
     const response = await fetch(`${API_BASE_URL}/auth/profile/oauth-clients`, { credentials: 'include' });
