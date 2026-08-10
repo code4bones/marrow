@@ -608,6 +608,48 @@ async function handleRequest(
       return;
     }
 
+    // Session-only, same reasoning as /extract-text -- a web UI convenience
+    // for bulk-uploading binary files (spreadsheets, etc.) as artifacts
+    // without the browser ever base64-encoding the bytes into a GraphQL
+    // mutation. Metadata (project/path/overwrite) rides the query string so
+    // the body stays a single-file multipart stream, reusing readMultipartFile
+    // as-is (T-MEMORY: an agent then pulls these back down with its own
+    // credentials via GET /artifacts/:id/download -- see that route above
+    // -- no base64 on either side of the round trip).
+    if (request.method === "POST" && requestPath === "/artifacts/upload") {
+      if (!sessionAuth) {
+        send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+        return;
+      }
+      const url = parseRequestUrl(request);
+      const project = url.searchParams.get("project");
+      if (!project) {
+        send(400, fail(new AppError("VALIDATION_ERROR", "Query parameter 'project' is required.")));
+        return;
+      }
+      const overwrite = url.searchParams.get("overwrite") === "true";
+      const requestedPath = url.searchParams.get("path");
+      try {
+        const { filename, buffer } = await readMultipartFile(request);
+        const artifactPath = requestedPath && requestedPath.length > 0 ? requestedPath : `uploads/${filename}`;
+        // Matches /call's own convention (http-server.ts below): ok/failure
+        // is signaled in the body via result.ok, not the HTTP status --
+        // ARTIFACT_CONFLICT etc. are business outcomes, not transport
+        // errors, so this always answers 200 once the tool actually ran.
+        const result = await service.call(
+          "artifact.put",
+          { project, path: artifactPath, contentBase64: buffer.toString("base64"), overwrite },
+          context
+        );
+        send(200, result);
+      } catch (error) {
+        const appError =
+          error instanceof AppError ? error : new AppError("VALIDATION_ERROR", "Could not upload the file.");
+        send(400, fail(appError));
+      }
+      return;
+    }
+
     if (request.method === "POST" && requestPath === "/call") {
       const body = (await readJson(request)) as ToolCallBody;
       if (typeof body.tool !== "string") {
