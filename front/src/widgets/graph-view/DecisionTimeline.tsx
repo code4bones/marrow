@@ -833,7 +833,16 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             onToggleDrill={() => {}}
           />
         </div>
-        <div style={{ width: COLUMN_CARD_W, height: 1, background: '#303030', margin: '2px 0 10px' }} />
+        {/* Bridges the root card to the first branch's own trunk (TreeBranch
+            draws its vertical line starting at its own top, y:0 — nothing
+            connected that to the root card above it, so the chain visually
+            broke right after the root every time, arrow or no arrow). Only
+            drawn when there's something below to connect to. */}
+        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 13, margin: '2px 0 10px' }}>
+          {rows.length > 0 && (
+            <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, bottom: 0, width: 1, background: TRUNK_COLOR }} />
+          )}
+        </div>
         {rows.length === 0 && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('noLinksYet')}</Typography.Text>
         )}
