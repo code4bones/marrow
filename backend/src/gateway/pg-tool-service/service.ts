@@ -281,6 +281,8 @@ export class PgToolService extends ComposedService {
           return ok("Git credential deleted.", await this.deleteGitCredential(parsed, requestContext));
         case "git.pipeline_status":
           return ok("Pipeline status loaded.", await this.gitPipelineStatus(parsed, requestContext));
+        case "git.job_trace":
+          return ok("Job trace loaded.", await this.gitJobTrace(parsed, requestContext));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }

@@ -75,11 +75,27 @@ const fakeGitHttpFetch: typeof fetch = async (input) => {
     if (url.pathname.endsWith("/jobs")) {
       return new Response(
         JSON.stringify([
-          { name: "build", status: "success" },
-          { name: "test", status: "success" },
-          { name: "deploy", status: "running" }
+          { id: 9001, name: "build", status: "success" },
+          { id: 9002, name: "test", status: "success" },
+          { id: 9003, name: "deploy", status: "running" }
         ]),
         { status: 200 }
+      );
+    }
+    const jobByIdMatch = url.pathname.match(/\/jobs\/(\d+)$/);
+    if (jobByIdMatch) {
+      return new Response(JSON.stringify({ id: 9003, name: "deploy", status: "running" }), { status: 200 });
+    }
+    if (url.pathname.endsWith("/jobs/9003/trace")) {
+      return new Response(
+        [
+          "Running with gitlab-runner 16.0.0",
+          "$ npm ci",
+          "token=super-secret-value-should-not-leak",
+          "Authorization: Bearer some-bearer-token-value",
+          "npm ERR! deploy failed"
+        ].join("\n"),
+        { status: 200, headers: { "content-type": "text/plain" } }
       );
     }
     if (url.pathname.includes("/pipelines")) {
@@ -349,6 +365,40 @@ try {
   const usedRow = await db("git_credentials").where({ id: credentialId }).first();
   assert(usedRow!.last_used_at !== null, "last_used_at should be stamped after a successful pipeline_status call.");
   console.log("ok - git.pipeline_status updates last_used_at on the resolved credential");
+
+  // --- git.job_trace: by jobId, redacted by default -----------------------
+  const traceByIdResult = await callTool(
+    "git.job_trace",
+    { host: GOOD_HOST, project: "group/project", jobId: 9003 },
+    sessionHeaders(memberACookie)
+  );
+  const traceByIdBody = expectData<{ jobId: number; jobName: string; jobStatus: string; trace: string; truncated: boolean }>(unwrap(traceByIdResult));
+  assert(traceByIdBody.jobId === 9003 && traceByIdBody.jobName === "deploy", `Unexpected job resolved by jobId. Got: ${JSON.stringify(traceByIdBody)}`);
+  assert(traceByIdBody.trace.includes("npm ERR! deploy failed"), "Trace should include the fake log's actual content.");
+  assert(!traceByIdBody.trace.includes("super-secret-value-should-not-leak"), "Default redact=true should have masked the token= line.");
+  assert(!traceByIdBody.trace.includes("some-bearer-token-value"), "Default redact=true should have masked the Authorization: Bearer line.");
+  assert(traceByIdBody.trace.includes("[REDACTED]"), "Redacted lines should be replaced with a visible [REDACTED] marker, not silently dropped.");
+  console.log("ok - git.job_trace resolves a job by id and redacts common secret patterns by default");
+
+  // --- git.job_trace: by jobName + ref (resolves the latest pipeline first) --
+  const traceByNameResult = await callTool(
+    "git.job_trace",
+    { host: GOOD_HOST, project: "group/project", ref: "main", jobName: "deploy", redact: false },
+    sessionHeaders(memberACookie)
+  );
+  const traceByNameBody = expectData<{ jobId: number; trace: string }>(unwrap(traceByNameResult));
+  assert(traceByNameBody.jobId === 9003, "jobName+ref resolution should have found the same job id.");
+  assert(traceByNameBody.trace.includes("super-secret-value-should-not-leak"), "redact=false should return the raw, unmasked trace.");
+  console.log("ok - git.job_trace resolves a job by name within the latest pipeline for a ref, and redact=false returns the raw trace");
+
+  // --- git.job_trace: neither jobId nor jobName ----------------------------
+  const traceMissingArgsResult = await callTool(
+    "git.job_trace",
+    { host: GOOD_HOST, project: "group/project" },
+    sessionHeaders(memberACookie)
+  );
+  assertFailureCode(unwrap(traceMissingArgsResult), "VALIDATION_ERROR", "git.job_trace with neither jobId nor jobName should fail clearly, not silently pick a job.");
+  console.log("ok - git.job_trace requires jobId or jobName");
 
   // --- git.pipeline_status: GitLab itself rejects the token (401) --------
   const rejectingCreate = expectData<{ id: string }>(
@@ -681,6 +731,12 @@ function unwrap(result: { status: number; json: unknown }): ToolResponse<unknown
 function expectData<T>(response: ToolResponse<unknown>): T {
   assert(response.ok, response.ok ? "Unexpected gateway failure." : response.error.message);
   return response.data as T;
+}
+
+function assertFailureCode(response: ToolResponse<unknown>, code: string, message: string): void {
+  if (response.ok || response.error.code !== code) {
+    throw new Error(`${message} Response: ${JSON.stringify(response)}`);
+  }
 }
 
 function sessionCookieFrom(response: Response): string | null {

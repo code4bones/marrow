@@ -222,6 +222,7 @@ const typeDefs = `#graphql
     # docs/AUTH.md's "Git host credentials" section.
     gitCredentials: [GitCredential!]!
     gitPipelineStatus(host: String!, project: String!, ref: String): JSON
+    gitJobTrace(host: String!, project: String!, jobId: Int, ref: String, jobName: String, tailLines: Int, redact: Boolean): JSON
   }
 
   type Mutation {
@@ -1004,7 +1005,9 @@ const resolvers = {
     gitCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
     gitPipelineStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await callTool<Row>(context, "git.pipeline_status", cleanInput(args))
+      await callTool<Row>(context, "git.pipeline_status", cleanInput(args)),
+    gitJobTrace: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.job_trace", cleanInput(args))
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

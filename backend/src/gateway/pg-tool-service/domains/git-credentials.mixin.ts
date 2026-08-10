@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { decryptGitToken, encryptGitToken, fetchGitlabPipelineStatus } from "../../git-credentials.js";
+import { decryptGitToken, encryptGitToken, fetchGitlabJobTrace, fetchGitlabPipelineStatus } from "../../git-credentials.js";
 import { gitCredentialOut } from "../formatters/git-credentials.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
@@ -132,15 +132,13 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
     return { deleted: true as const };
   }
 
-  protected async gitPipelineStatus(input: Row, context: NormalizedGatewayRequestContext) {
+  // Shared by gitPipelineStatus and gitJobTrace below -- resolves and
+  // decrypts the caller's stored credential for `host`, or fails clearly
+  // if none exists. Most recently created credential wins when more than
+  // one row exists for this (owner, host) pair (e.g. mid-rotation) -- see
+  // the schema comment in migrations/pg/012_git_credentials.cjs.
+  protected async resolveGitCredentialToken(host: string, context: NormalizedGatewayRequestContext): Promise<{ id: string; token: string }> {
     const ownerUserId = await this.resolveGitCredentialReader(context);
-    const host = String(input.host);
-    const project = String(input.project);
-    const ref = typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined;
-
-    // Most recently created credential wins when more than one row exists
-    // for this (owner, host) pair (e.g. mid-rotation) -- see the schema
-    // comment in migrations/pg/012_git_credentials.cjs.
     const credentialRow = await this.db("git_credentials")
       .where({ owner_user_id: ownerUserId, host })
       .orderBy("created_at", "desc")
@@ -152,16 +150,23 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
         { host }
       );
     }
+    return { id: String(credentialRow.id), token: decryptGitToken(String(credentialRow.token_enc)) };
+  }
 
-    const token = decryptGitToken(String(credentialRow.token_enc));
+  protected async gitPipelineStatus(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const ref = typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined;
+
+    const credential = await this.resolveGitCredentialToken(host, context);
     const result = await fetchGitlabPipelineStatus({
       host,
       project,
       ref,
-      token,
+      token: credential.token,
       httpFetch: this.gitHttpFetch
     });
-    await this.db("git_credentials").where({ id: credentialRow.id }).update({ last_used_at: nowIso() });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
     return {
       status: result.status,
       ref: result.ref,
@@ -169,6 +174,33 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
       webUrl: result.webUrl,
       jobs: result.jobs
     };
+  }
+
+  // I-MEMORY-070: git.pipeline_status alone could tell an agent a job
+  // failed but not why -- no job id/trace was ever exposed. Diagnosing a
+  // failed CI job otherwise meant the operator SSHing in and grepping logs
+  // by hand, exactly the manual step this whole git-credentials proxy
+  // exists to replace. Redaction defaults on (see redactTrace's own
+  // comment in git-credentials.ts) -- an agent debugging a failure
+  // normally wants redact=true; redact=false is there for a human
+  // explicitly asking to see the raw trace.
+  protected async gitJobTrace(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const result = await fetchGitlabJobTrace({
+      host,
+      project,
+      jobId: typeof input.jobId === "number" ? input.jobId : undefined,
+      ref: typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined,
+      jobName: typeof input.jobName === "string" ? input.jobName : undefined,
+      tailLines: typeof input.tailLines === "number" ? input.tailLines : undefined,
+      redact: input.redact !== false,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    return result;
   }
 
   };

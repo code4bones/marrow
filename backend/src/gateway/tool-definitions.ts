@@ -433,6 +433,20 @@ const gitPipelineStatusSchema = z.object({
   project: z.string().min(1),
   ref: z.string().min(1).optional()
 });
+// Either jobId (from a prior git.pipeline_status call) or jobName (+
+// optional ref) is required -- enforced at runtime in gitJobTrace itself
+// (VALIDATION_ERROR), not here, matching decision.supersede's own pattern
+// of leaning on the tool's own runtime check rather than a parallel
+// refine() for a "one of several optional fields" requirement.
+const gitJobTraceSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  jobId: z.number().int().positive().optional(),
+  ref: z.string().min(1).optional(),
+  jobName: z.string().min(1).optional(),
+  tailLines: z.number().int().min(1).max(2000).optional(),
+  redact: z.boolean().optional()
+});
 
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
@@ -679,6 +693,7 @@ const gitCredentialOutSchema = z
   })
   .catchall(z.unknown());
 const gitPipelineJobSchema = z.object({
+  id: z.number(),
   name: z.string(),
   status: z.string()
 });
@@ -688,6 +703,13 @@ const gitPipelineStatusOutSchema = z.object({
   sha: z.string(),
   webUrl: z.string(),
   jobs: z.array(gitPipelineJobSchema)
+});
+const gitJobTraceOutSchema = z.object({
+  jobId: z.number(),
+  jobName: z.string(),
+  jobStatus: z.string(),
+  trace: z.string(),
+  truncated: z.boolean()
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -1254,9 +1276,16 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "git.pipeline_status",
     description:
-      "Resolve a stored credential for `host` (the caller's own for a browser session, the instance owner's for an agent connection) and call that GitLab instance's REST API for the latest pipeline (optionally filtered by ref) and its jobs. The raw token never leaves the server. Fails clearly if no credential is stored for that host.",
+      "Resolve a stored credential for `host` (the caller's own for a browser session, the instance owner's for an agent connection) and call that GitLab instance's REST API for the latest pipeline (optionally filtered by ref) and its jobs (each with id/name/status). The raw token never leaves the server. Fails clearly if no credential is stored for that host.",
     schema: gitPipelineStatusSchema,
     outputSchema: output(gitPipelineStatusOutSchema)
+  },
+  {
+    name: "git.job_trace",
+    description:
+      "Fetch the tail of a GitLab job's raw log (e.g. to see why a failed pipeline job actually failed) using the same stored credential as git.pipeline_status. Pass jobId from a prior git.pipeline_status call, or jobName (+ optional ref) to resolve it from the latest pipeline. Defaults to the last 200 lines and redacts common secret patterns (token=/password=/Bearer .../glpat-.../etc) -- pass redact=false only when a human explicitly needs the raw output.",
+    schema: gitJobTraceSchema,
+    outputSchema: output(gitJobTraceOutSchema)
   }
 ];
 

@@ -39,6 +39,7 @@ export function tokenHint(token: string): string {
 }
 
 export interface GitPipelineJob {
+  id: number;
   name: string;
   status: string;
 }
@@ -49,6 +50,14 @@ export interface GitPipelineStatusResult {
   sha: string;
   webUrl: string;
   jobs: GitPipelineJob[];
+}
+
+export interface GitJobTraceResult {
+  jobId: number;
+  jobName: string;
+  jobStatus: string;
+  trace: string;
+  truncated: boolean;
 }
 
 /**
@@ -70,8 +79,54 @@ interface GitlabPipeline {
 }
 
 interface GitlabJob {
+  id: number;
   name: string;
   status: string;
+}
+
+function gitlabBaseUrl(host: string): string {
+  return `https://${host}/api/v4`;
+}
+
+async function fetchLatestGitlabPipeline(
+  host: string,
+  project: string,
+  ref: string | undefined,
+  token: string,
+  httpFetch: GitHttpFetch
+): Promise<GitlabPipeline> {
+  const projectPath = encodeURIComponent(project);
+  const pipelinesUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/pipelines`);
+  if (ref) {
+    pipelinesUrl.searchParams.set("ref", ref);
+  }
+  pipelinesUrl.searchParams.set("per_page", "1");
+
+  const pipelines = await gitlabGet<GitlabPipeline[]>(pipelinesUrl, token, httpFetch, host);
+  const latest = pipelines[0];
+  if (!latest) {
+    throw new AppError(
+      "NOT_FOUND",
+      ref
+        ? `No pipelines found for project ${project} on ${host} (ref ${ref}).`
+        : `No pipelines found for project ${project} on ${host}.`,
+      { host, project, ref: ref ?? null }
+    );
+  }
+  return latest;
+}
+
+async function fetchGitlabPipelineJobs(
+  host: string,
+  project: string,
+  pipelineId: number,
+  token: string,
+  httpFetch: GitHttpFetch
+): Promise<GitlabJob[]> {
+  const projectPath = encodeURIComponent(project);
+  const jobsUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/pipelines/${pipelineId}/jobs`);
+  jobsUrl.searchParams.set("per_page", "100");
+  return gitlabGet<GitlabJob[]>(jobsUrl, token, httpFetch, host);
 }
 
 /**
@@ -89,40 +144,115 @@ export async function fetchGitlabPipelineStatus(input: {
   httpFetch: GitHttpFetch;
 }): Promise<GitPipelineStatusResult> {
   const { host, project, ref, token, httpFetch } = input;
-  const baseUrl = `https://${host}/api/v4`;
-  const projectPath = encodeURIComponent(project);
-  const pipelinesUrl = new URL(`${baseUrl}/projects/${projectPath}/pipelines`);
-  if (ref) {
-    pipelinesUrl.searchParams.set("ref", ref);
-  }
-  pipelinesUrl.searchParams.set("per_page", "1");
-
-  const pipelines = await gitlabGet<GitlabPipeline[]>(pipelinesUrl, token, httpFetch, host);
-  const latest = pipelines[0];
-  if (!latest) {
-    throw new AppError(
-      "NOT_FOUND",
-      ref
-        ? `No pipelines found for project ${project} on ${host} (ref ${ref}).`
-        : `No pipelines found for project ${project} on ${host}.`,
-      { host, project, ref: ref ?? null }
-    );
-  }
-
-  const jobsUrl = new URL(`${baseUrl}/projects/${projectPath}/pipelines/${latest.id}/jobs`);
-  jobsUrl.searchParams.set("per_page", "100");
-  const jobs = await gitlabGet<GitlabJob[]>(jobsUrl, token, httpFetch, host);
+  const latest = await fetchLatestGitlabPipeline(host, project, ref, token, httpFetch);
+  const jobs = await fetchGitlabPipelineJobs(host, project, latest.id, token, httpFetch);
 
   return {
     status: latest.status,
     ref: latest.ref,
     sha: latest.sha,
     webUrl: latest.web_url,
-    jobs: jobs.map((job) => ({ name: job.name, status: job.status }))
+    jobs: jobs.map((job) => ({ id: job.id, name: job.name, status: job.status }))
   };
 }
 
-async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<T> {
+const DEFAULT_TRACE_TAIL_LINES = 200;
+const MAX_TRACE_TAIL_LINES = 2000;
+
+// Best-effort secondary redaction pass. GitLab already masks any CI/CD
+// variable actually flagged `masked` in its own trace output server-side --
+// this is defense in depth for secrets that leak into a job's plain stdout
+// unmasked (a printed env var, a tool's own verbose/debug output), not a
+// substitute for marking real secrets as masked variables in GitLab itself.
+// Necessarily imperfect (can't catch what it doesn't recognize the shape
+// of) -- on by default because the failure mode of over-redacting a build
+// log is annoying, the failure mode of leaking a token in a shared gateway
+// response is not.
+const SECRET_LINE_PATTERNS: RegExp[] = [
+  /((?:token|password|passwd|secret|api[_-]?key|access[_-]?key)\s*[:=]\s*)\S+/gi,
+  /\b(Authorization:\s*Bearer\s+)\S+/gi,
+  /\b(glpat-|gho_|ghp_|ghs_|github_pat_)\S+/gi,
+  /\bAKIA[0-9A-Z]{16}\b/g
+];
+
+function redactTrace(text: string): string {
+  let redacted = text;
+  for (const pattern of SECRET_LINE_PATTERNS) {
+    redacted = redacted.replace(pattern, (match, prefix?: string) =>
+      prefix ? `${prefix}[REDACTED]` : "[REDACTED]"
+    );
+  }
+  return redacted;
+}
+
+function tailLines(text: string, maxLines: number): { text: string; truncated: boolean } {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) {
+    return { text, truncated: false };
+  }
+  return { text: lines.slice(lines.length - maxLines).join("\n"), truncated: true };
+}
+
+/**
+ * Resolves a job's raw log via GitLab's job trace endpoint (plain text, not
+ * JSON -- see gitlabGetText below) and returns just its tail, optionally
+ * redacted. `jobId` takes priority when given; otherwise resolves the
+ * latest pipeline for `ref` and finds a job matching `jobName` within it,
+ * so a caller that already has a job id from git.pipeline_status can skip
+ * straight to it, and one that only knows "which job failed by name" still
+ * doesn't have to make two separate tool calls.
+ */
+export async function fetchGitlabJobTrace(input: {
+  host: string;
+  project: string;
+  jobId?: number;
+  ref?: string;
+  jobName?: string;
+  tailLines?: number;
+  redact?: boolean;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitJobTraceResult> {
+  const { host, project, token, httpFetch } = input;
+  const maxLines = Math.min(Math.max(input.tailLines ?? DEFAULT_TRACE_TAIL_LINES, 1), MAX_TRACE_TAIL_LINES);
+  const shouldRedact = input.redact !== false;
+
+  let job: GitlabJob;
+  if (typeof input.jobId === "number") {
+    const projectPath = encodeURIComponent(project);
+    const jobUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/jobs/${input.jobId}`);
+    job = await gitlabGet<GitlabJob>(jobUrl, token, httpFetch, host);
+  } else if (input.jobName) {
+    const latest = await fetchLatestGitlabPipeline(host, project, input.ref, token, httpFetch);
+    const jobs = await fetchGitlabPipelineJobs(host, project, latest.id, token, httpFetch);
+    const match = jobs.find((j) => j.name === input.jobName);
+    if (!match) {
+      throw new AppError(
+        "NOT_FOUND",
+        `No job named "${input.jobName}" found in the latest pipeline for ${project} on ${host}${input.ref ? ` (ref ${input.ref})` : ""}.`,
+        { host, project, ref: input.ref ?? null, jobName: input.jobName, availableJobs: jobs.map((j) => j.name) }
+      );
+    }
+    job = match;
+  } else {
+    throw new AppError("VALIDATION_ERROR", "git.job_trace requires either jobId or jobName.");
+  }
+
+  const projectPath = encodeURIComponent(project);
+  const traceUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/jobs/${job.id}/trace`);
+  const rawTrace = await gitlabGetText(traceUrl, token, httpFetch, host);
+  const { text: tailed, truncated } = tailLines(rawTrace, maxLines);
+
+  return {
+    jobId: job.id,
+    jobName: job.name,
+    jobStatus: job.status,
+    trace: shouldRedact ? redactTrace(tailed) : tailed,
+    truncated
+  };
+}
+
+async function gitlabRequest(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<Response> {
   let response: Response;
   try {
     response = await httpFetch(url.toString(), {
@@ -143,6 +273,13 @@ async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, ho
       { host, status: response.status }
     );
   }
+  if (response.status === 404) {
+    throw new AppError(
+      "NOT_FOUND",
+      `GitLab returned 404 for ${url.pathname} on ${host}.`,
+      { host, status: response.status, url: url.pathname }
+    );
+  }
   if (!response.ok) {
     throw new AppError(
       "GATEWAY_ERROR",
@@ -150,5 +287,17 @@ async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, ho
       { host, status: response.status, url: url.pathname }
     );
   }
+  return response;
+}
+
+async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<T> {
+  const response = await gitlabRequest(url, token, httpFetch, host);
   return (await response.json()) as T;
+}
+
+// GitLab's job trace endpoint (GET .../jobs/:id/trace) returns plain text,
+// not JSON -- everything else this file talks to does.
+async function gitlabGetText(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<string> {
+  const response = await gitlabRequest(url, token, httpFetch, host);
+  return response.text();
 }
