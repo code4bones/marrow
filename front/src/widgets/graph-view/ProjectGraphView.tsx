@@ -77,7 +77,17 @@ export function ProjectGraphView({ slug }: Props) {
   const graph = graphData?.projectGraph;
   const nodes = graph?.nodes ?? [];
   const edges = graph?.edges ?? [];
-  const loading = projectLoading || graphLoading;
+  // `&& !xData`, not just `xLoading` -- useRefetchOnVersion right above
+  // calls refetchGraph() on every realtime event across every domain, and
+  // Apollo flips *Loading back to true for that background refetch too, not
+  // only the true first load. DecisionTimeline/GraphTree both gate their
+  // entire render on this `loading` prop with an unconditional early
+  // return, so passing the raw flag through swapped the whole Timeline
+  // (every open column, every card) for a "Loading…" placeholder on every
+  // single event anywhere in the project -- reported live as the whole
+  // task list re-rendering on one task's status change. Once data exists
+  // from the initial load, a background refetch updates in place instead.
+  const loading = (projectLoading && !projectData) || (graphLoading && !graphData);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
