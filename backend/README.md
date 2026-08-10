@@ -1,8 +1,8 @@
 # Marrow MCP
 
-Local-first MCP server for structured project memory used by coding agents.
+Shared MCP memory gateway and local-first project memory server for coding agents.
 
-The default local stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5.
+The local stdio server stores projects, common knowledge, memory items, tasks, decisions, links, events, and preflight context in SQLite. Search uses SQLite FTS5. This is the zero-setup single-agent mode, not the primary deployment -- most real usage (including the web UI) runs shared gateway mode instead.
 
 Shared gateway mode stores the same tool model in PostgreSQL and exposes it through an HTTP gateway with a direct MCP Streamable HTTP endpoint.
 Preflight output includes `knownFaults` so agents can avoid repeating failed
