@@ -27,3 +27,12 @@ export const listDecisionsSchema = z.object({
 export const getDecisionSchema = z.object({
   id: z.string().min(1)
 });
+
+// "superseded" deliberately excluded — that transition only happens as a
+// side effect of decision.supersede (paired with the new decision + the
+// supersedes link), never as a standalone status flip.
+export const updateDecisionStatusSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["draft", "accepted", "rejected", "archived"]),
+  reason: z.string().optional()
+});

@@ -1,5 +1,10 @@
 import * as z from "zod/v4";
-import { getDecisionSchema, listDecisionsSchema, recordDecisionSchema } from "../features/decisions/model/schema.js";
+import {
+  getDecisionSchema,
+  listDecisionsSchema,
+  recordDecisionSchema,
+  updateDecisionStatusSchema
+} from "../features/decisions/model/schema.js";
 import { listEventsSchema, recordEventSchema } from "../features/events/model/schema.js";
 import { createLinkSchema, listLinksSchema } from "../features/links/model/schema.js";
 import {
@@ -1065,6 +1070,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "decision.record",
     description: "Record a shared project or common decision.",
     schema: recordDecisionSchema,
+    access: "write"
+  },
+  {
+    name: "decision.update_status",
+    description: "Update a shared decision's status directly (draft/accepted/rejected/archived). Use decision.supersede to mark a decision superseded.",
+    schema: updateDecisionStatusSchema,
     access: "write"
   },
   {

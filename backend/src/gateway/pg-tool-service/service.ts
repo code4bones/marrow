@@ -227,6 +227,8 @@ export class PgToolService extends ComposedService {
           return ok("Task status updated.", { task: await this.updateTaskStatus(parsed, requestContext) });
         case "decision.record":
           return ok("Decision recorded.", { decision: await this.recordDecision(parsed, requestContext) });
+        case "decision.update_status":
+          return ok("Decision status updated.", { decision: await this.updateDecisionStatus(parsed, requestContext) });
         case "decision.supersede":
           return ok("Decision superseded.", await this.supersedeDecision(parsed, requestContext));
         case "decision.archive":

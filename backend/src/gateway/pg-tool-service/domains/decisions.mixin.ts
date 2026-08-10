@@ -241,6 +241,48 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     };
   }
 
+  protected async updateDecisionStatus(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const status = String(input.status);
+    const current = await this.db("decisions").where({ id }).first();
+    if (!current) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
+    // A superseded decision's status is structural (paired with the
+    // replacement decision + the supersedes link created by
+    // decision.supersede) -- flipping it back here would desync it from
+    // that link without undoing it. Recorded so callers get a clear reason
+    // rather than a silent no-op.
+    if (String(current.status) === "superseded") {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `Decision ${id} has been superseded and its status can no longer be changed directly.`,
+        { id }
+      );
+    }
+
+    const [row] = await this.db("decisions")
+      .where({ id })
+      .update({
+        status,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    await this.recordEventForProject(stringOrNull(row.project_id), {
+      type: "decision.status_changed",
+      title: `Decision status changed: ${String(row.title)}`,
+      body: stringOrNull(input.reason),
+      related_id: row.id
+    }, context);
+    return decisionOut(row);
+  }
+
   protected async deleteDecision(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("decisions").where({ id }).first();

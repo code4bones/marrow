@@ -247,6 +247,7 @@ const typeDefs = `#graphql
     deleteTask(id: ID!, reason: String): DeleteTaskResult!
 
     recordDecision(input: RecordDecisionInput!): Decision!
+    updateDecisionStatus(id: ID!, status: String!, reason: String): Decision!
     # Reuses RecordDecisionInput's schema shape; supersedesId/rationale are
     # required at runtime by decisionSupersedeSchema, not by this GraphQL
     # type — matches recordDecision's own pattern of leaning on the MCP
@@ -1044,6 +1045,8 @@ const resolvers = {
       await callTool<Row>(context, "task.delete", cleanInput(args)),
     recordDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.record", cleanInput(args.input as Row))).decision,
+    updateDecisionStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "decision.update_status", cleanInput(args))).decision,
     supersedeDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "decision.supersede", cleanInput(args.input as Row)),
     archiveDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
