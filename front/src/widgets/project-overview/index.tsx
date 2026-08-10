@@ -196,7 +196,17 @@ export function ProjectOverview({ slug }: { slug: string }) {
   );
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchNewEvents);
 
-  if (loading) {
+  // `&& !data`, not just `loading` -- Apollo's refetch() (T-MEMORY-051's
+  // own realtime hook right above) can flip loading back to true for the
+  // *background* refetch too, not only the true first load. Gating on
+  // loading alone swapped this entire subtree for a Skeleton element on
+  // every realtime event, which unmounts everything under it -- including
+  // ProjectGraphView's own Root-kind selector state, reported live: it
+  // silently reset to the "Decisions" default on every single status
+  // change elsewhere, no matter how many times it was switched back.
+  // Once `data` exists from the initial load, never show the skeleton
+  // again -- a background refetch updates in place instead.
+  if (loading && !data) {
     return (
       <div style={{ padding: 24 }}>
         <Skeleton active paragraph={{ rows: 6 }} />
