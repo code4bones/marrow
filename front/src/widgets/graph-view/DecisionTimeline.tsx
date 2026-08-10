@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
-import { ENTITY_COLOR } from '../../shared/lib/entityId';
+import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
@@ -42,6 +42,15 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const REJECTED_BORDER = '#a61d24';
+
+// Right-hand gutter reserved on RecordCard's title area for the top-right
+// status badge (see RecordCard) — sized for the longest realistic status
+// value ("superseded", "cancelled") at the badge's 9px font plus its own
+// pill padding/border, with a little slack. A tighter 62px was tried first
+// and visually clipped even 8-letter values like "accepted"/"archived"/
+// "rejected" into "ACCEPT…"/"ARCHIV…"/"REJECT…" — 92px was the smallest
+// that read every status in full at a live check.
+const STATUS_BADGE_RESERVE_PX = 92;
 
 function statusLabels(t: (key: string) => string): Record<string, string> {
   return {
@@ -96,22 +105,12 @@ function splitTitlePrefix(title: string): { prefix: string | null; rest: string 
 // Small kind-identity dot used in the root-search dropdown (id/title match
 // across all kinds) — reuses the app's one canonical kind→color mapping
 // (shared/lib/entityId.ts, the same one RecordLink chips use) rather than
-// this file's own SATELLITE_KIND_COLOR below, which only covers non-decision
-// satellite dots and doesn't include decision itself.
+// SATELLITE_KIND_COLOR (also imported from entityId.ts), which only covers
+// non-decision satellite dots and doesn't include decision itself.
 function kindDotColor(kind: string): string {
   return ENTITY_COLOR[kind.toLowerCase() as keyof typeof ENTITY_COLOR] ?? ENTITY_COLOR.unknown;
 }
 
-// Matches KnowledgeGraph.tsx's (retired) kind palette so a task/item/artifact
-// reads the same color whether it's a dot here or elsewhere. DECISION added
-// under D-MEMORY-024 — satellites are no longer decision-only-root, so a
-// Task/Memory/Artifact-rooted card can now have a decision satellite too.
-const SATELLITE_KIND_COLOR: Record<string, string> = {
-  DECISION: '#9254de',
-  TASK: '#13a8a8',
-  MEMORY: '#d89614',
-  ARTIFACT: '#f759ab',
-};
 const MAX_SATELLITES_SHOWN = 8;
 
 const TASK_MARKER_COLOR = '#177ddc';
@@ -361,9 +360,18 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
           display: 'flex',
           flexDirection: 'column',
           boxShadow: toneColor ? `inset 4px 0 0 0 ${toneColor}` : undefined,
+          // Anchors the top-right status badge below (position: absolute)
+          // to this card rather than to the page.
+          position: 'relative',
         }}
       >
-        <div>
+        {/* Reserves a right-hand gutter (STATUS_BADGE_RESERVE_PX) across
+            BOTH the optional title-prefix line and the title row, so the
+            absolutely-positioned status badge below never overlaps the
+            title text, the title-prefix's own ellipsis, or the title row's
+            own DetailsTrigger/DrillIndicator icon cluster — regardless of
+            which of those are present for a given card. */}
+        <div style={{ paddingRight: STATUS_BADGE_RESERVE_PX }}>
           {titlePrefix && (
             <Typography.Text
               style={{ fontSize: 9.5, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 0.3, display: 'block', marginBottom: 1 }}
@@ -387,6 +395,32 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
           </div>
         </div>
 
+        {/* Status used to share the id/timestamp row below, which squeezed
+            it out on longer ids/timestamps or narrower cards. Now a small
+            top-right corner pill instead — borderColor above already
+            conveys status via the card's border color, this is just the
+            label. */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 6,
+            maxWidth: STATUS_BADGE_RESERVE_PX - 4,
+            padding: '1px 6px',
+            borderRadius: 8,
+            border: `1px solid ${color}`,
+            background: `${color}22`,
+            overflow: 'hidden',
+          }}
+        >
+          <Typography.Text
+            style={{ fontSize: 9, color, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}
+            ellipsis={{ tooltip: status }}
+          >
+            {status}
+          </Typography.Text>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
             {node.id}
@@ -396,9 +430,6 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
               {stamp}
             </Typography.Text>
           )}
-          <Typography.Text style={{ fontSize: 10, color, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            {status}
-          </Typography.Text>
         </div>
 
         {(satellites.length > 0 || remarks.length > 0) && (

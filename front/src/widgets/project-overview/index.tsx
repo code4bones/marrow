@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ShareProjectButton } from '../../features/project/ShareProjectButton';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
+import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
@@ -28,6 +29,21 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 // nav-rail's own UNREAD_WINDOW_SIZE (cheap to poll on every realtime bump,
 // wide enough to be accurate against any realistic notificationsSeenAt).
 const NEW_BADGE_WINDOW_SIZE = 100;
+
+// Owner's ask: color each stat row icon with the same domain color already
+// painted on screen elsewhere — specifically the colors shown in the
+// Timeline's own legend ("dotsOnACard") and as the small satellite dots on
+// its record cards (SATELLITE_KIND_COLOR, shared/lib/entityId.ts). NOT
+// ENTITY_COLOR (also in entityId.ts) — that's a different mapping that
+// disagrees with SATELLITE_KIND_COLOR for task/artifact; SATELLITE_KIND_COLOR
+// is the one the owner is visually comparing against. It has no EVENT entry
+// (events are never a satellite dot), so Events falls back to ENTITY_COLOR
+// there, which has no existing on-screen precedent to conflict with.
+const STAT_COLOR_TASK = SATELLITE_KIND_COLOR.TASK;
+const STAT_COLOR_DECISION = SATELLITE_KIND_COLOR.DECISION;
+const STAT_COLOR_ARTIFACT = SATELLITE_KIND_COLOR.ARTIFACT;
+const STAT_COLOR_MEMORY = SATELLITE_KIND_COLOR.MEMORY;
+const STAT_COLOR_EVENT = ENTITY_COLOR.event;
 
 /** First PREFIX_MAP entry whose prefix matches this event's type, or null (e.g. "gitCredential." has no bucket). */
 function categorizeEvent(type: string): VersionKey | null {
@@ -254,14 +270,18 @@ export function ProjectOverview({ slug }: { slug: string }) {
                 // specifically read as if N tasks had just become open.
                 title={<StatTitle label={t('openTasksStat')} newCount={0} />}
                 value={counts.openTasks}
-                prefix={<CalendarOutlined />}
-                valueStyle={{ fontSize: 20 }}
+                prefix={<CalendarOutlined style={{ color: STAT_COLOR_TASK }} />}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_TASK }}
               />
             </ClickableStat>
           </Col>
           <Col>
             <ClickableStat to={`/projects/${slug}/tasks`}>
-              <Statistic title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />} value={counts.tasks} valueStyle={{ fontSize: 20 }} />
+              <Statistic
+                title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />}
+                value={counts.tasks}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_TASK }}
+              />
             </ClickableStat>
           </Col>
           <Col>
@@ -269,8 +289,8 @@ export function ProjectOverview({ slug }: { slug: string }) {
               <Statistic
                 title={<StatTitle label={t('decisions')} newCount={newDecisionCount} />}
                 value={counts.decisions}
-                prefix={<ApartmentOutlined />}
-                valueStyle={{ fontSize: 20 }}
+                prefix={<ApartmentOutlined style={{ color: STAT_COLOR_DECISION }} />}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_DECISION }}
               />
             </ClickableStat>
           </Col>
@@ -279,8 +299,8 @@ export function ProjectOverview({ slug }: { slug: string }) {
               <Statistic
                 title={<StatTitle label={t('artifacts')} newCount={newArtifactCount} />}
                 value={counts.artifacts}
-                prefix={<DatabaseOutlined />}
-                valueStyle={{ fontSize: 20 }}
+                prefix={<DatabaseOutlined style={{ color: STAT_COLOR_ARTIFACT }} />}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_ARTIFACT }}
               />
             </ClickableStat>
           </Col>
@@ -289,14 +309,18 @@ export function ProjectOverview({ slug }: { slug: string }) {
               <Statistic
                 title={<StatTitle label={t('events')} newCount={newEventCount} />}
                 value={counts.events}
-                prefix={<ThunderboltOutlined />}
-                valueStyle={{ fontSize: 20 }}
+                prefix={<ThunderboltOutlined style={{ color: STAT_COLOR_EVENT }} />}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_EVENT }}
               />
             </ClickableStat>
           </Col>
           <Col>
             <ClickableStat to={`/projects/${slug}/memory`}>
-              <Statistic title={<StatTitle label={t('memory')} newCount={newMemoryCount} />} value={counts.items} valueStyle={{ fontSize: 20 }} />
+              <Statistic
+                title={<StatTitle label={t('memory')} newCount={newMemoryCount} />}
+                value={counts.items}
+                valueStyle={{ fontSize: 20, color: STAT_COLOR_MEMORY }}
+              />
             </ClickableStat>
           </Col>
           {counts.openTasks > 0 && (
