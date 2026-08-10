@@ -629,16 +629,34 @@ async function handleRequest(
       }
       const overwrite = url.searchParams.get("overwrite") === "true";
       const requestedPath = url.searchParams.get("path");
+      // Optional grouping (owner: dropping 10 sample files flat into
+      // uploads/ with no way to tell them apart from unrelated uploads
+      // wasn't useful -- needs a name a batch shares and can be picked
+      // back out by, both to browse and for an agent to bulk-download by
+      // prefix). Doubles as a folder segment (uploads/<group>/<filename>)
+      // and a tag, so the same "which batch is this" answer works whether
+      // you're browsing by path or filtering the Artifacts table by tag.
+      const group = url.searchParams.get("group");
       try {
         const { filename, buffer } = await readMultipartFile(request);
-        const artifactPath = requestedPath && requestedPath.length > 0 ? requestedPath : `uploads/${filename}`;
+        const artifactPath = requestedPath && requestedPath.length > 0
+          ? requestedPath
+          : group
+            ? `uploads/${group}/${filename}`
+            : `uploads/${filename}`;
         // Matches /call's own convention (http-server.ts below): ok/failure
         // is signaled in the body via result.ok, not the HTTP status --
         // ARTIFACT_CONFLICT etc. are business outcomes, not transport
         // errors, so this always answers 200 once the tool actually ran.
         const result = await service.call(
           "artifact.put",
-          { project, path: artifactPath, contentBase64: buffer.toString("base64"), overwrite },
+          {
+            project,
+            path: artifactPath,
+            contentBase64: buffer.toString("base64"),
+            overwrite,
+            tags: group ? [group] : undefined
+          },
           context
         );
         send(200, result);

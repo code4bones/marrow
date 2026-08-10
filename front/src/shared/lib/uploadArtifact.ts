@@ -12,11 +12,12 @@ import type { Artifact } from '../model/types';
 export async function uploadArtifact(
   file: File,
   projectSlug: string,
-  options?: { path?: string; overwrite?: boolean },
+  options?: { path?: string; overwrite?: boolean; group?: string },
 ): Promise<Artifact> {
   const params = new URLSearchParams({ project: projectSlug });
   if (options?.path) params.set('path', options.path);
   if (options?.overwrite) params.set('overwrite', 'true');
+  if (options?.group) params.set('group', options.group);
 
   const formData = new FormData();
   formData.append('file', file);

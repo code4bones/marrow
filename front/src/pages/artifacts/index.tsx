@@ -46,6 +46,7 @@ export function ArtifactsPage() {
   }, [slug, markSeen]);
 
   const pageInfo = data?.artifactsPage.pageInfo;
+  const existingGroups = Array.from(new Set((data?.artifactsPage.items ?? []).flatMap((a) => a.tags))).sort();
 
   const columns: ColumnsType<Artifact> = [
     {
@@ -90,7 +91,7 @@ export function ArtifactsPage() {
       headerExtra={slug ? (
         <div style={{ display: 'flex', gap: 8 }}>
           <PutTextArtifactDrawer projectSlug={slug} onDone={() => refetch()} />
-          <UploadArtifactsButton projectSlug={slug} onDone={() => refetch()} />
+          <UploadArtifactsButton projectSlug={slug} existingGroups={existingGroups} onDone={() => refetch()} />
         </div>
       ) : undefined}
     >
