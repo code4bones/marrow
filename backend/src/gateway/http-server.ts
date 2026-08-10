@@ -1296,23 +1296,36 @@ async function handleAuthRoute(
     return true;
   }
 
-  // Fixes a credential's redirect_uri in place (client_id/secret untouched)
-  // -- lets a connector whose callback was wrong or never captured (e.g. a
-  // legacy credential from before per-connector redirect_uri tracking) be
-  // repaired without forcing the user to delete it and re-paste a brand-new
-  // client_id/secret into the connector's own setup screen.
+  // Fixes a credential's label and/or redirect_uri in place (client_id/secret
+  // untouched) -- lets a connector whose callback was wrong or never
+  // captured, or a legacy credential created before per-connector labeling
+  // existed (label: null, sitting in the "other/legacy" catch-all), be
+  // repaired/relabeled without forcing the user to delete it and re-paste a
+  // brand-new client_id/secret into the connector's own setup screen. Both
+  // fields optional -- a request only needs to include what it's changing.
   if (request.method === "PATCH" && oauthClientMatch) {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
       return true;
     }
     const [, id] = oauthClientMatch;
-    const body = (await readJson(request)) as { redirectUri?: unknown };
-    if (typeof body.redirectUri !== "string" || !body.redirectUri.trim()) {
-      send(400, fail(new AppError("VALIDATION_ERROR", "redirectUri is required.")));
+    const body = (await readJson(request)) as { label?: unknown; redirectUri?: unknown };
+    const updates: { label?: string | null; redirectUri?: string } = {};
+    if (body.label !== undefined) {
+      updates.label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : null;
+    }
+    if (body.redirectUri !== undefined) {
+      if (typeof body.redirectUri !== "string" || !body.redirectUri.trim()) {
+        send(400, fail(new AppError("VALIDATION_ERROR", "redirectUri, if provided, must be a non-empty string.")));
+        return true;
+      }
+      updates.redirectUri = body.redirectUri.trim();
+    }
+    if (Object.keys(updates).length === 0) {
+      send(400, fail(new AppError("VALIDATION_ERROR", "At least one of label or redirectUri is required.")));
       return true;
     }
-    const result = await auth.updateOAuthClientRedirectUri(sessionAuth.userId, id, body.redirectUri.trim());
+    const result = await auth.updateOAuthClient(sessionAuth.userId, id, updates);
     send(200, { ok: true, data: result });
     return true;
   }

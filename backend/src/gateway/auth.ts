@@ -1181,20 +1181,27 @@ export function createAuthFacade(db: Knex) {
   }
 
   /**
-   * Updates only the redirect_uri on an existing credential, leaving
-   * client_id/secret untouched -- lets a connector whose callback URL was
-   * wrong or never captured (e.g. a credential created before per-connector
-   * redirect_uri tracking existed) be fixed in place, without forcing the
-   * user to delete it and re-paste a brand-new client_id/secret pair into
-   * the connector's own setup screen.
+   * Updates label and/or redirect_uri on an existing credential in place,
+   * leaving client_id/secret untouched -- lets a connector whose callback
+   * URL was wrong or never captured, or a credential created before
+   * per-connector labeling existed (label: null, sitting in the "other/
+   * legacy" catch-all), be fixed/relabeled without forcing the user to
+   * delete it and re-paste a brand-new client_id/secret pair into the
+   * connector's own setup screen. Both fields optional and independent --
+   * a caller only patches what it actually wants to change.
    */
-  async function updateOAuthClientRedirectUri(
+  async function updateOAuthClient(
     userId: string,
     id: string,
-    redirectUri: string
+    updates: { label?: string | null; redirectUri?: string }
   ): Promise<OAuthClientRow> {
     await requireOwnedOAuthClient(userId, id);
-    await db("oauth_clients").where({ id }).update({ redirect_uri: redirectUri });
+    const patch: Record<string, unknown> = {};
+    if (updates.label !== undefined) patch.label = updates.label;
+    if (updates.redirectUri !== undefined) patch.redirect_uri = updates.redirectUri;
+    if (Object.keys(patch).length > 0) {
+      await db("oauth_clients").where({ id }).update(patch);
+    }
     const row = await db("oauth_clients").where({ id }).first();
     return toOAuthClientRow(row as Record<string, unknown>);
   }
@@ -1347,7 +1354,7 @@ export function createAuthFacade(db: Knex) {
     oauthClientPublicInfo,
     createOAuthClient,
     regenerateOAuthClient,
-    updateOAuthClientRedirectUri,
+    updateOAuthClient,
     deleteOAuthClient,
     identifyPersonalToken,
     notificationsSeenAt,
