@@ -32,10 +32,7 @@ export function ProjectsPage() {
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Left: project list */}
       <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #303030' }}>
-        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
-            {t('projects')}
-          </Typography.Text>
+        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {/* Icon toggle, not a dropdown -- owner: a full-width Select
                 here read as oversized for a binary choice in this narrow
