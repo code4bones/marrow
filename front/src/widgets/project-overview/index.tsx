@@ -88,7 +88,7 @@ function ClickableStat({ to, children }: { to: string; children: React.ReactNode
         }
       }}
       className="project-overview-stat"
-      style={{ cursor: 'pointer', borderRadius: 6, padding: 4, margin: -4 }}
+      style={{ cursor: 'pointer', borderRadius: 6, padding: 4, margin: -4, textAlign: 'center' }}
     >
       {children}
     </div>
