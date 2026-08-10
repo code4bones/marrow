@@ -63,7 +63,12 @@ export function UploadArtifactsButton({ projectSlug, existingGroups, onDone }: P
         <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 16 }}>
           {t('uploadGroupHint')}
         </Typography.Text>
-        <Upload.Dragger multiple customRequest={customRequest}>
+        {/* antd's Dragger defaults to height: 100% -- fine when it shares a
+            tall form with other fields (PutTextArtifactDrawer), but this
+            drawer has nothing else below it, so with no other content
+            fighting for height it stretched to fill the entire drawer
+            body. Fixed height overrides that. */}
+        <Upload.Dragger multiple customRequest={customRequest} style={{ height: 180 }}>
           <p style={{ margin: '8px 0 0' }}><InboxOutlined style={{ fontSize: 24 }} /></p>
           <p style={{ margin: '4px 0 12px', fontSize: 12.5 }}>{t('dropFilesHint')}</p>
         </Upload.Dragger>
