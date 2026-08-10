@@ -401,10 +401,16 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
             with a translucent background looked washed-out floating over
             two different backdrops (card interior vs. the gap behind it),
             and Typography.Text's own line-height sat the text low inside
-            the pill. Tag's custom-color mode gives a solid fill with
-            correctly-centered text for free. */}
+            the pill. Deliberately NOT using Tag's `color` prop: "accepted"'s
+            color (#52c41a) happens to equal antd's own "green" preset hex,
+            which made Tag silently switch to its pastel preset style (pale
+            background + green text) instead of a solid fill for that one
+            status only -- every other status has no such collision and
+            rendered solid, which is what made it stand out as wrong.
+            Setting background/border/text color directly via `style`
+            instead sidesteps that preset auto-detection for every status,
+            not just this one. */}
         <Tag
-          color={color}
           style={{
             position: 'absolute',
             top: 0,
@@ -421,6 +427,9 @@ function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggleDril
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            backgroundColor: color,
+            borderColor: color,
+            color: '#fff',
           }}
         >
           {status}
