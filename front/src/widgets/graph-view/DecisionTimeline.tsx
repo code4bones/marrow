@@ -285,7 +285,14 @@ function TreeBranch({ isLast, children }: { isLast: boolean; children: ReactNode
   return (
     <div style={{ display: 'flex', width: COLUMN_CARD_W, marginBottom: 10 }}>
       <div style={{ width: GUTTER_W, position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
-        <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, width: 1, background: TRUNK_COLOR, height: isLast ? STUB_Y : '100%' }} />
+        {/* Same marginBottom: 10 gap as the root-card bridge above -- this
+            row's own gutter only stretches to match its own content height
+            (alignSelf: stretch), so a plain height: '100%' trunk stopped
+            dead at that boundary and never reached into its own trailing
+            margin to connect with the next row's trunk. +10px reaches
+            through it. Only for non-last rows -- isLast's shorter stub is
+            the deliberate "└" terminator, nothing follows it to reach. */}
+        <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, width: 1, background: TRUNK_COLOR, height: isLast ? STUB_Y : 'calc(100% + 10px)' }} />
         <div style={{ position: 'absolute', left: GUTTER_W / 2, top: STUB_Y, width: GUTTER_W / 2, height: 1, background: TRUNK_COLOR }} />
         <div style={{ position: 'absolute', left: GUTTER_W / 2 - 2, top: STUB_Y - 2, width: 5, height: 5, borderRadius: '50%', background: TRUNK_COLOR }} />
       </div>
