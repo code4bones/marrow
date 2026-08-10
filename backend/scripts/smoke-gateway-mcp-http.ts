@@ -1261,6 +1261,53 @@ try {
   });
   assertOk(deleteTaskCreateResult.structuredContent, "temporary task.create for task.delete failed.");
   const deleteTaskId = readNestedString(deleteTaskCreateResult.structuredContent, ["data", "task", "id"]);
+
+  // T-MEMORY-065: task.delete must cascade to items that exist solely to
+  // describe the task (a task-note and a remark, both linked via a
+  // "*_for"/"annotates" relation) while leaving an independent memory item
+  // that's merely relates_to-linked untouched -- only its link should go.
+  const ownedNoteResult = await client.callTool({
+    name: "task.add_note",
+    arguments: {
+      taskId: deleteTaskId,
+      type: "implementation_note",
+      body: "Smoke note that should be deleted along with its parent task."
+    }
+  });
+  assertOk(ownedNoteResult.structuredContent, "task.add_note for cascade-delete smoke fixture failed.");
+  const ownedNoteId = readNestedString(ownedNoteResult.structuredContent, ["data", "item", "id"]);
+
+  const ownedRemarkResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "remark",
+      title: "Smoke remark",
+      body: "Smoke remark that should be deleted along with its parent task.",
+      tags: ["remark"],
+      links: [{ toId: deleteTaskId, relation: "annotates" }]
+    }
+  });
+  assertOk(ownedRemarkResult.structuredContent, "memory.create (annotates remark) for cascade-delete smoke fixture failed.");
+  const ownedRemarkId = readNestedString(ownedRemarkResult.structuredContent, ["data", "item", "id"]);
+
+  const sharedMemoryResult = await client.callTool({
+    name: "memory.create",
+    arguments: {
+      project: state.projectId,
+      type: "note",
+      title: "Smoke independent memory, merely linked to the delete-me task",
+      body: "Must survive task.delete -- only its link to the task should be removed."
+    }
+  });
+  assertOk(sharedMemoryResult.structuredContent, "memory.create for shared-entity smoke fixture failed.");
+  const sharedMemoryId = readNestedString(sharedMemoryResult.structuredContent, ["data", "item", "id"]);
+  const sharedLinkResult = await client.callTool({
+    name: "link.create",
+    arguments: { project: state.projectId, fromId: sharedMemoryId, toId: deleteTaskId, relation: "relates_to" }
+  });
+  assertOk(sharedLinkResult.structuredContent, "link.create for shared-entity smoke fixture failed.");
+
   const deleteTaskResult = await client.callTool({
     name: "task.delete",
     arguments: {
@@ -1272,6 +1319,25 @@ try {
   assert(
     readNestedString(deleteTaskResult.structuredContent, ["data", "deletedTask", "id"]) === deleteTaskId,
     "task.delete returned the wrong deleted task."
+  );
+  const deletedNoteIds = readNestedArray(deleteTaskResult.structuredContent, ["data", "deletedNoteIds"]);
+  assert(
+    deletedNoteIds.includes(ownedNoteId) && deletedNoteIds.includes(ownedRemarkId),
+    "task.delete's deletedNoteIds did not include the owned note and remark."
+  );
+
+  const ownedNoteAfterDelete = await client.callTool({ name: "memory.get", arguments: { id: ownedNoteId } });
+  assertFailureCode(ownedNoteAfterDelete.structuredContent, "ITEM_NOT_FOUND", "task.delete left the owned implementation note behind (not orphan-cleaned).");
+  const ownedRemarkAfterDelete = await client.callTool({ name: "memory.get", arguments: { id: ownedRemarkId } });
+  assertFailureCode(ownedRemarkAfterDelete.structuredContent, "ITEM_NOT_FOUND", "task.delete left the owned remark behind (not orphan-cleaned).");
+
+  const sharedMemoryAfterDelete = await client.callTool({ name: "memory.get", arguments: { id: sharedMemoryId } });
+  assertOk(sharedMemoryAfterDelete.structuredContent, "task.delete incorrectly deleted an independent, merely-linked memory item.");
+  const sharedLinksAfterDelete = await client.callTool({ name: "link.list", arguments: { id: sharedMemoryId } });
+  assertOk(sharedLinksAfterDelete.structuredContent, "link.list for the surviving shared memory item failed.");
+  assert(
+    readNestedArray(sharedLinksAfterDelete.structuredContent, ["data", "links"]).length === 0,
+    "task.delete left a dangling link on the surviving shared memory item instead of removing it."
   );
 
   const failedAttemptResult = await client.callTool({

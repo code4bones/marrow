@@ -21,6 +21,23 @@ import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
 import { type MemoryInstance } from "./memory.mixin.js";
 
+// T-MEMORY-065: relations that exclusively mean "this item exists to
+// annotate/describe that task" -- addTaskNote's own default relations
+// (a caller can still override `relation` at note-creation time, which is
+// why deleteOwnedTaskNotes below also checks the "task-note" tag, not just
+// this set) plus RemarkPanel's hardcoded "annotates". Never a relation
+// that could mean "these two independent records are merely related"
+// (relates_to, derives_from, refines, supersedes, warns_against, ...) --
+// those must never trigger a cascade delete of the other side.
+const OWNED_TASK_NOTE_RELATIONS = new Set([
+  "annotates",
+  "implementation_note_for",
+  "review_note_for",
+  "test_result_for",
+  "handoff_for",
+  "note_for"
+]);
+
 export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBase) {
   return class extends Base {
   protected async createTask(input: Row, context: NormalizedGatewayRequestContext) {
@@ -111,12 +128,57 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return { ...taskOut(row), noteIds, noteCount: noteIds.length };
   }
 
+  // T-MEMORY-065: task.add_note/remark items exist solely to describe this
+  // task -- deleteLinksForRecord alone only ever removed the *link*, never
+  // the note/remark item itself, leaving it orphaned in `items` (still
+  // tagged "task-note"/"remark", now pointing at nothing). "Owned" is
+  // narrowed to *exclusively* linked (see OWNED_TASK_NOTE_RELATIONS above
+  // the mixin factory): an item that also has some other link (e.g. a note
+  // that got cross-referenced elsewhere) is left alone -- only its link to
+  // this task is removed, same as any other shared entity. Matches
+  // T-MEMORY-065 acceptance criteria 2 vs 3.
+  protected async deleteOwnedTaskNotes(taskId: string, context: NormalizedGatewayRequestContext): Promise<string[]> {
+    const incoming = await this.db("links").where({ to_id: taskId });
+    const candidateIds = new Set<string>();
+    for (const link of incoming) {
+      const relation = String(link.relation);
+      if (OWNED_TASK_NOTE_RELATIONS.has(relation)) {
+        candidateIds.add(String(link.from_id));
+        continue;
+      }
+      const item = await this.db("items").where({ id: link.from_id }).first();
+      if (item && jsonStringArray(item.tags).includes("task-note")) {
+        candidateIds.add(String(link.from_id));
+      }
+    }
+
+    const deletedIds: string[] = [];
+    for (const itemId of candidateIds) {
+      // whereNot(object) chains NOT per-key (NOT from_id=x AND NOT to_id=y),
+      // not a grouped NOT(x AND y) -- that would incorrectly exclude the
+      // item's *only* other link too whenever its to_id happened to equal
+      // taskId for some unrelated reason. A builder callback groups it
+      // properly: NOT (from_id = itemId AND to_id = taskId).
+      const otherLinks = await this.db("links")
+        .where((builder) => builder.where("from_id", itemId).orWhere("to_id", itemId))
+        .whereNot((builder) => builder.where("from_id", itemId).andWhere("to_id", taskId))
+        .first();
+      if (otherLinks) {
+        continue;
+      }
+      await this.deleteMemory({ id: itemId, reason: "Parent task deleted." }, context);
+      deletedIds.push(itemId);
+    }
+    return deletedIds;
+  }
+
   protected async deleteTask(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("tasks").where({ id }).first();
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
+    const deletedNoteIds = await this.deleteOwnedTaskNotes(id, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
       deletedLinks = await this.deleteLinksForRecord(id, trx);
@@ -131,6 +193,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return {
       deletedTask: taskOut(current),
       deletedLinks,
+      deletedNoteIds,
       event
     };
   }
