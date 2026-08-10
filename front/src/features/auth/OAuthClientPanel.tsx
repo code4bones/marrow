@@ -56,7 +56,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
   const createOAuthClient = useAuthStore((s) => s.createOAuthClient);
   const regenerateOAuthClient = useAuthStore((s) => s.regenerateOAuthClient);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
-  const updateOAuthClientRedirectUri = useAuthStore((s) => s.updateOAuthClientRedirectUri);
+  const updateOAuthClient = useAuthStore((s) => s.updateOAuthClient);
 
   const [allClients, setAllClients] = useState<OAuthClient[] | null>(null);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
@@ -71,6 +71,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
   const [editRedirectUri, setEditRedirectUri] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -147,22 +148,30 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
     }
   };
 
-  const startEditRedirectUri = (client: OAuthClient) => {
+  const startEdit = (client: OAuthClient) => {
     setEditError(null);
     setEditingId(client.id);
+    setEditLabel(client.label ?? '');
     setEditRedirectUri(client.redirectUri ?? '');
   };
 
-  const cancelEditRedirectUri = () => {
+  const cancelEdit = () => {
     setEditingId(null);
     setEditError(null);
   };
 
-  const saveEditRedirectUri = async (id: string) => {
+  const saveEdit = async (id: string) => {
     setEditError(null);
     setEditSaving(true);
     try {
-      await updateOAuthClientRedirectUri(id, editRedirectUri.trim());
+      await updateOAuthClient(id, {
+        // Label is only editable from the catch-all/unscoped view -- a
+        // fixedLabel panel's tokens are always exactly that label, so
+        // there's nothing to change there (see the edit-trigger's own
+        // fixedLabel guard below).
+        ...(fixedLabel ? {} : { label: editLabel.trim() || null }),
+        redirectUri: editRedirectUri.trim(),
+      });
       setEditingId(null);
       await load();
     } catch (err) {
@@ -216,7 +225,17 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
           <div key={client.id} style={{ border: '1px solid #303030', borderRadius: 6, padding: 12, marginBottom: 12 }}>
             {!fixedLabel && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <Text strong>{client.label || t('untitledCredential')}</Text>
+                <span>
+                  <Text strong>{client.label || t('untitledCredential')}</Text>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<EditOutlined />}
+                    title={t('editLabel')}
+                    disabled={busyId !== null && busyId !== client.id}
+                    onClick={() => startEdit(client)}
+                  />
+                </span>
                 <Popconfirm
                   title={t('deleteCredentialConfirmTitle')}
                   description={t('deleteCredentialDescription')}
@@ -263,6 +282,19 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
             {editingId === client.id ? (
               <div style={{ marginBottom: 12 }}>
                 {editError && <Alert type="error" message={editError} style={{ marginBottom: 8 }} showIcon />}
+                {!fixedLabel && (
+                  <>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
+                      {t('label')}
+                    </Text>
+                    <Input
+                      placeholder={t('labelPlaceholder')}
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      style={{ marginBottom: 8 }}
+                    />
+                  </>
+                )}
                 <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12.5 }}>
                   {t('redirectUriLabel')}
                 </Text>
@@ -278,11 +310,11 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
                     size="small"
                     loading={editSaving}
                     disabled={!editRedirectUri.trim()}
-                    onClick={() => void saveEditRedirectUri(client.id)}
+                    onClick={() => void saveEdit(client.id)}
                   >
                     {t('save')}
                   </Button>
-                  <Button size="small" disabled={editSaving} onClick={cancelEditRedirectUri}>
+                  <Button size="small" disabled={editSaving} onClick={cancelEdit}>
                     {t('cancel')}
                   </Button>
                 </div>
@@ -297,7 +329,7 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
                   icon={<EditOutlined />}
                   title={t('editRedirectUri')}
                   disabled={busyId !== null && busyId !== client.id}
-                  onClick={() => startEditRedirectUri(client)}
+                  onClick={() => startEdit(client)}
                 />
               </Text>
             )}
