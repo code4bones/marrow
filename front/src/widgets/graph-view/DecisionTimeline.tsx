@@ -275,17 +275,13 @@ function DetailsTrigger({ onClick }: { onClick: () => void }) {
   );
 }
 
-interface RelationBadge {
-  relation: string;
-  direction: 'out' | 'in';
-}
-
 // Branch: a fixed-height gutter carrying the trunk line + a stub to the
-// child card, with the relation tag floating at the junction — replaces
-// the old flat "arrow + tag row above the card" layout. `isLast` stops the
-// trunk right after this stub instead of running it the full row height,
-// giving the last entry in a column the expected "└" terminator look.
-function TreeBranch({ direction, isLast, children }: RelationBadge & { isLast: boolean; children: ReactNode }) {
+// child card. `isLast` stops the trunk right after this stub instead of
+// running it the full row height, giving the last entry in a column the
+// expected "└" terminator look. Used to also show a relation-type tag and
+// a direction arrow at the junction -- owner: neither helped read the
+// structure, just noise -- so this is purely the line + stub + card now.
+function TreeBranch({ isLast, children }: { isLast: boolean; children: ReactNode }) {
   return (
     <div style={{ display: 'flex', width: COLUMN_CARD_W, marginBottom: 10 }}>
       <div style={{ width: GUTTER_W, position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
@@ -294,9 +290,6 @@ function TreeBranch({ direction, isLast, children }: RelationBadge & { isLast: b
         <div style={{ position: 'absolute', left: GUTTER_W / 2 - 2, top: STUB_Y - 2, width: 5, height: 5, borderRadius: '50%', background: TRUNK_COLOR }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2, marginLeft: 2 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 10 }}>{direction === 'out' ? '→' : '←'}</Typography.Text>
-        </div>
         {children}
       </div>
     </div>
@@ -836,9 +829,12 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         {/* Bridges the root card to the first branch's own trunk (TreeBranch
             draws its vertical line starting at its own top, y:0 — nothing
             connected that to the root card above it, so the chain visually
-            broke right after the root every time, arrow or no arrow). Only
+            broke right after the root every time). No margin here — the
+            line is position:absolute top:0/bottom:0 against this div's own
+            box, so any margin outside it would just reopen the same gap as
+            unpainted space. This div's height *is* the entire gap. Only
             drawn when there's something below to connect to. */}
-        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 13, margin: '2px 0 10px' }}>
+        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 13 }}>
           {rows.length > 0 && (
             <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, bottom: 0, width: 1, background: TRUNK_COLOR }} />
           )}
@@ -853,7 +849,6 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
           const lastEntryIdx = rows.reduce((acc, r, i) => (r.kind === 'entry' ? i : acc), -1);
           return rows.map((row, i) => {
             if (row.kind === 'gap') return <GapRow key={`gap-${i}`} label={row.label} />;
-            const direction: 'out' | 'in' = row.link.fromId === rootId ? 'out' : 'in';
             const header = row.headerIso ? <StickyDayLabel key={`day-${row.link.id}`} iso={row.headerIso} /> : null;
             const isLast = i === lastEntryIdx;
 
@@ -878,7 +873,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             return (
               <div key={row.link.id} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
                 {header}
-                <TreeBranch relation={row.link.relation} direction={direction} isLast={isLast}>
+                <TreeBranch isLast={isLast}>
                   {inner}
                 </TreeBranch>
               </div>
