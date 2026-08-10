@@ -1,4 +1,4 @@
-import { Alert, Button, Empty, Input, Popconfirm, Spin, Typography } from 'antd';
+import { Alert, Button, Empty, Input, Popconfirm, Spin, Tag, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -221,7 +221,14 @@ export function PersonalTokenPanel({ fixedLabel, excludeLabels, exportVarName }:
             ) : (
               <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
                 {t('tokenEndingIn')} <Text code>…{token.tokenHint}</Text> · {t('created')} <Timestamp value={token.createdAt} /> ·
-                {' '}{t('lastUsed')} <Timestamp value={token.lastUsedAt} /> · {t('notShownAgainUseRegenerateOne')}
+                {' '}{token.lastUsedAt ? (
+                  <>
+                    <Tag color="green" style={{ fontSize: 11, lineHeight: '16px', padding: '0 6px' }}>{t('activeMarker')}</Tag>
+                    {' '}{t('lastUsed')} <Timestamp value={token.lastUsedAt} />
+                  </>
+                ) : (
+                  <Tag style={{ fontSize: 11, lineHeight: '16px', padding: '0 6px' }}>{t('neverUsedMarker')}</Tag>
+                )} · {t('notShownAgainUseRegenerateOne')}
               </Text>
             )}
 

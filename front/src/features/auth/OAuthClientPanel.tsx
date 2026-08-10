@@ -1,4 +1,4 @@
-import { Alert, Button, Empty, Input, Popconfirm, Spin, Typography } from 'antd';
+import { Alert, Button, Empty, Input, Popconfirm, Spin, Tag, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -274,7 +274,15 @@ export function OAuthClientPanel({ fixedLabel, fixedRedirectUri, excludeLabels }
                 <CodeBlock code={client.clientId} />
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12.5 }}>
                   {t('clientSecretEndingIn')} <Text code>…{client.clientSecretHint}</Text> · {t('created')}{' '}
-                  <Timestamp value={client.createdAt} /> · {t('lastUsed')} <Timestamp value={client.lastUsedAt} /> · {t('notShownAgainUseRegenerate')}
+                  <Timestamp value={client.createdAt} /> ·{' '}
+                  {client.lastUsedAt ? (
+                    <>
+                      <Tag color="green" style={{ fontSize: 11, lineHeight: '16px', padding: '0 6px' }}>{t('activeMarker')}</Tag>
+                      {' '}{t('lastUsed')} <Timestamp value={client.lastUsedAt} />
+                    </>
+                  ) : (
+                    <Tag style={{ fontSize: 11, lineHeight: '16px', padding: '0 6px' }}>{t('neverUsedMarker')}</Tag>
+                  )} · {t('notShownAgainUseRegenerate')}
                 </Text>
               </>
             )}
