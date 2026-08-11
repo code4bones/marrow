@@ -1,6 +1,6 @@
 import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Drawer, Form, Input, InputNumber, message } from 'antd';
+import { AutoComplete, Button, Drawer, Form, Input, InputNumber, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CREATE_TASK } from '../../shared/api/queries';
@@ -9,9 +9,11 @@ import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButt
 interface Props {
   projectSlug: string;
   onDone?: () => void;
+  /** Distinct milestone values already in use on this project, offered as autocomplete suggestions to avoid near-duplicate group names. */
+  milestoneSuggestions?: string[];
 }
 
-export function CreateTaskDrawer({ projectSlug, onDone }: Props) {
+export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: Props) {
   const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
@@ -64,7 +66,9 @@ export function CreateTaskDrawer({ projectSlug, onDone }: Props) {
             <Input />
           </Form.Item>
           <Form.Item name="milestone" label={t('milestone')}>
-            <Input />
+            <AutoComplete options={milestoneSuggestions?.map((m) => ({ value: m }))} filterOption={(input, option) => (option?.value ?? '').toLowerCase().includes(input.toLowerCase())}>
+              <Input />
+            </AutoComplete>
           </Form.Item>
           <Form.Item name="priority" label={t('priority')}>
             <InputNumber style={{ width: '100%' }} />

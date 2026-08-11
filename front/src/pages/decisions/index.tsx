@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Select, Table, Tag } from 'antd';
+import { Alert, Select, Switch, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { Decision, Paginated } from '../../shared/model/types';
+import { MilestoneGroupedList } from '../../shared/ui/MilestoneGroupedList';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -36,12 +37,20 @@ export function DecisionsPage() {
   const { t } = useTranslation('decisions');
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState('');
+  const [groupByMilestone, setGroupByMilestone] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();
 
   const { data, loading, error, refetch } = useQuery<{ decisionsPage: Paginated<Decision> }>(GET_DECISIONS_PAGE, {
     variables: { project: slug, status: status || undefined, limit: pageSize, offset },
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.decisionsVersion), refetch);
+
+  // Grouped view needs the whole (status-filtered) set, not one page --
+  // only fetched once the toggle is actually used.
+  const { data: allData, loading: allLoading } = useQuery<{ decisionsPage: Paginated<Decision> }>(GET_DECISIONS_PAGE, {
+    variables: { project: slug, status: status || undefined, limit: 200, offset: 0 },
+    skip: !slug || !groupByMilestone,
+  });
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   const markSeen = useSectionSeenStore((s) => s.markSeen);
   useEffect(() => {
@@ -69,6 +78,7 @@ export function DecisionsPage() {
       title: t('tagsCol'), dataIndex: 'tags', minWidth: 180,
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
+    { title: t('milestone'), dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
     { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
     {
       title: '', key: 'actions', width: 90, fixed: 'right',
@@ -97,28 +107,45 @@ export function DecisionsPage() {
             style={{ width: 150 }}
             size="small"
           />
+          <Switch
+            size="small"
+            checked={groupByMilestone}
+            onChange={setGroupByMilestone}
+            checkedChildren={t('groupByMilestone')}
+            unCheckedChildren={t('groupByMilestone')}
+          />
           {slug && <RecordDecisionDrawer projectSlug={slug} onDone={() => refetch()} />}
         </div>
       }
     >
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
-      <Table<Decision>
-        dataSource={data?.decisionsPage.items}
-        columns={columns}
-        rowKey="id"
-        size="small"
-        loading={loading}
-        scroll={{ x: 'max-content' }}
-        pagination={{
-          current: page,
-          pageSize,
-          total: pageInfo?.totalCount,
-          onChange,
-          showSizeChanger: true,
-          pageSizeOptions: ['15', '25', '50', '100'],
-          showTotal: (count) => t('decisionsCount', { count }),
-        }}
-      />
+      {groupByMilestone ? (
+        <MilestoneGroupedList<Decision>
+          items={allData?.decisionsPage.items ?? []}
+          columns={columns.filter((c) => ('dataIndex' in c ? c.dataIndex !== 'milestone' : true) && c.key !== 'actions')}
+          rowKey="id"
+          loading={allLoading}
+          noMilestoneLabel={t('noMilestone')}
+        />
+      ) : (
+        <Table<Decision>
+          dataSource={data?.decisionsPage.items}
+          columns={columns}
+          rowKey="id"
+          size="small"
+          loading={loading}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            current: page,
+            pageSize,
+            total: pageInfo?.totalCount,
+            onChange,
+            showSizeChanger: true,
+            pageSizeOptions: ['15', '25', '50', '100'],
+            showTotal: (count) => t('decisionsCount', { count }),
+          }}
+        />
+      )}
     </PageLayout>
   );
 }

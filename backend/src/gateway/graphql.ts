@@ -141,8 +141,8 @@ const typeDefs = `#graphql
     taskClaims(taskId: ID!, includeInactive: Boolean): [TaskClaim!]!
     nextTask(project: String!): Task
 
-    decisions(project: String, includeCommon: Boolean, status: String, limit: Int): [Decision!]!
-    decisionsPage(project: String, includeCommon: Boolean, status: String, pagination: PaginationInput): PaginatedDecisions!
+    decisions(project: String, includeCommon: Boolean, status: String, milestone: String, limit: Int): [Decision!]!
+    decisionsPage(project: String, includeCommon: Boolean, status: String, milestone: String, pagination: PaginationInput): PaginatedDecisions!
     decision(id: ID!): Decision!
 
     artifacts(
@@ -424,6 +424,7 @@ const typeDefs = `#graphql
     tags: [String!]
     supersedesId: String
     summary: String
+    milestone: String
     links: [RecordLinkInput!]
   }
 
@@ -711,6 +712,7 @@ const typeDefs = `#graphql
     tags: [String!]!
     supersedesId: String
     summary: String
+    milestone: String
     createdAt: String
     updatedAt: String
     linksCreated: [Link!]

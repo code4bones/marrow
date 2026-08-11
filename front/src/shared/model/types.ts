@@ -121,6 +121,7 @@ export interface Decision {
   consequences: string | null;
   tags: string[];
   supersedesId: string | null;
+  milestone: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }

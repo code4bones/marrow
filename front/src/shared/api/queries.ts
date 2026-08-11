@@ -51,9 +51,9 @@ export const GET_TASKS_PAGE = gql`
 `;
 
 export const GET_DECISIONS_PAGE = gql`
-  query GetDecisionsPage($project: String, $status: String, $limit: Int!, $offset: Int!) {
-    decisionsPage(project: $project, status: $status, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status context decision rationale tags updatedAt }
+  query GetDecisionsPage($project: String, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
+    decisionsPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
+      items { id title status context decision rationale tags milestone updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -412,7 +412,7 @@ export const DELETE_MEMORY = gql`
 export const RECORD_DECISION = gql`
   mutation RecordDecision($input: RecordDecisionInput!) {
     recordDecision(input: $input) {
-      id title status tags createdAt updatedAt
+      id title status tags milestone createdAt updatedAt
     }
   }
 `;

@@ -786,11 +786,27 @@ try {
       title: "Gateway MCP HTTP smoke original decision",
       decision: "Original smoke decision.",
       rationale: "The supersede smoke test needs an active source decision.",
-      tags: ["smoke", "decision"]
+      tags: ["smoke", "decision"],
+      milestone: "Gateway MCP HTTP smoke milestone"
     }
   });
   assertOk(originalDecisionResult.structuredContent, "decision.record failed.");
   const originalDecisionId = readNestedString(originalDecisionResult.structuredContent, ["data", "decision", "id"]);
+  assert(
+    readNestedString(originalDecisionResult.structuredContent, ["data", "decision", "milestone"]) === "Gateway MCP HTTP smoke milestone",
+    "decision.record did not round-trip the milestone field."
+  );
+
+  const decisionsByMilestoneResult = await client.callTool({
+    name: "decision.list",
+    arguments: { project: state.projectId, milestone: "Gateway MCP HTTP smoke milestone" }
+  });
+  assertOk(decisionsByMilestoneResult.structuredContent, "decision.list (milestone filter) failed.");
+  const decisionsByMilestone = readNestedArray(decisionsByMilestoneResult.structuredContent, ["data", "decisions"]);
+  assert(
+    decisionsByMilestone.length === 1 && isRecord(decisionsByMilestone[0]) && decisionsByMilestone[0].id === originalDecisionId,
+    "decision.list's milestone filter did not return exactly the one matching decision."
+  );
 
   const linkedDecisionResult = await client.callTool({
     name: "decision.record",

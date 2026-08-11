@@ -46,6 +46,7 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
           consequences: values.consequences || undefined,
           supersedesId: supersedesId ?? (values.supersedesId || undefined),
           tags: values.tags ? String(values.tags).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
+          milestone: values.milestone || undefined,
         },
       },
     });
@@ -99,6 +100,9 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
           )}
           <Form.Item name="tags" label={t('tagsCommaSeparated')}>
             <Input placeholder="frontend, graphql" />
+          </Form.Item>
+          <Form.Item name="milestone" label={t('milestone')}>
+            <Input />
           </Form.Item>
         </Form>
       </Drawer>

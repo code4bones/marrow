@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Badge, Select, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Badge, Select, Switch, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
 import type { Paginated, Task } from '../../shared/model/types';
+import { MilestoneGroupedList } from '../../shared/ui/MilestoneGroupedList';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -48,6 +49,7 @@ export function TasksPage() {
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState(DEFAULT_SORT);
+  const [groupByMilestone, setGroupByMilestone] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();
   const [sortField, sortDirection] = sort.split(':');
 
@@ -82,6 +84,8 @@ export function TasksPage() {
 
   const pageInfo = data?.tasksPage.pageInfo;
   const allTasks = allData?.tasksPage.items ?? [];
+  const filteredAllTasks = status ? allTasks.filter((task) => task.status === status) : allTasks;
+  const milestoneSuggestions = Array.from(new Set(allTasks.map((task) => task.milestone).filter((m): m is string => Boolean(m))));
 
   const columns: ColumnsType<Task> = [
     {
@@ -134,7 +138,14 @@ export function TasksPage() {
         style={{ width: 160 }}
         size="small"
       />
-      <CreateTaskDrawer projectSlug={slug} onDone={() => refetch()} />
+      <Switch
+        size="small"
+        checked={groupByMilestone}
+        onChange={setGroupByMilestone}
+        checkedChildren={t('groupByMilestone')}
+        unCheckedChildren={t('groupByMilestone')}
+      />
+      <CreateTaskDrawer projectSlug={slug} onDone={() => refetch()} milestoneSuggestions={milestoneSuggestions} />
     </div>
   );
 
@@ -152,23 +163,32 @@ export function TasksPage() {
             children: (
               <div style={{ height: '100%', overflowY: 'auto', padding: '0 0 8px' }}>
                 {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
-                <Table<Task>
-                  dataSource={data?.tasksPage.items}
-                  columns={columns}
-                  rowKey="id"
-                  size="small"
-                  loading={loading}
-                  scroll={{ x: 'max-content' }}
-                  pagination={{
-                    current: page,
-                    pageSize,
-                    total: pageInfo?.totalCount,
-                    onChange,
-                    showSizeChanger: true,
-                    pageSizeOptions: ['15', '25', '50', '100'],
-                    showTotal: (count) => t('tasksCount', { count }),
-                  }}
-                />
+                {groupByMilestone ? (
+                  <MilestoneGroupedList<Task>
+                    items={filteredAllTasks}
+                    columns={columns.filter((c) => c.key !== 'milestone' && ('dataIndex' in c ? c.dataIndex !== 'milestone' : true))}
+                    rowKey="id"
+                    noMilestoneLabel={t('noMilestone')}
+                  />
+                ) : (
+                  <Table<Task>
+                    dataSource={data?.tasksPage.items}
+                    columns={columns}
+                    rowKey="id"
+                    size="small"
+                    loading={loading}
+                    scroll={{ x: 'max-content' }}
+                    pagination={{
+                      current: page,
+                      pageSize,
+                      total: pageInfo?.totalCount,
+                      onChange,
+                      showSizeChanger: true,
+                      pageSizeOptions: ['15', '25', '50', '100'],
+                      showTotal: (count) => t('tasksCount', { count }),
+                    }}
+                  />
+                )}
               </div>
             ),
           },

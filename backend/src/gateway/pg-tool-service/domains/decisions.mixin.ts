@@ -25,6 +25,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       tags: jsonStringArray(input.tags),
       supersedes_id: stringOrNull(input.supersedesId),
       summary: stringOrNull(input.summary),
+      milestone: stringOrNull(input.milestone),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -75,6 +76,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       tags: jsonStringArray(input.tags),
       supersedes_id: String(input.supersedesId),
       summary: stringOrNull(input.summary),
+      milestone: stringOrNull(input.milestone),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -161,6 +163,9 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (input.status) {
       query = query.andWhere("status", String(input.status));
     }
+    if (input.milestone) {
+      query = query.andWhere("milestone", String(input.milestone));
+    }
     const rows = await query.orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("created_at", "desc").limit(Number(input.limit ?? 20));
     return rows.map(decisionOut);
   }
@@ -179,6 +184,9 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     });
     if (input.status) {
       base.andWhere("status", String(input.status));
+    }
+    if (input.milestone) {
+      base.andWhere("milestone", String(input.milestone));
     }
     return this.pageRows(
       base,

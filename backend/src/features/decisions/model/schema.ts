@@ -14,6 +14,7 @@ export const recordDecisionSchema = z.object({
   tags: z.array(z.string()).optional(),
   supersedesId: z.string().nullable().optional(),
   summary: z.string().optional(),
+  milestone: z.string().optional(),
   links: recordLinksInputSchema
 });
 
@@ -21,6 +22,7 @@ export const listDecisionsSchema = z.object({
   project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   status: decisionStatusSchema.optional(),
+  milestone: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional()
 });
 

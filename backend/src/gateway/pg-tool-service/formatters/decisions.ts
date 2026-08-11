@@ -29,6 +29,7 @@ export function decisionOut(row: Row) {
     tags: stringArray(row.tags),
     supersedesId: stringOrNull(row.supersedes_id),
     summary: stringOrNull(row.summary),
+    milestone: stringOrNull(row.milestone),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };
