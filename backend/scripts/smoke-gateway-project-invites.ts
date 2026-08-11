@@ -211,6 +211,12 @@ try {
   assert(renamed.project.title === "Invites Smoke Project (renamed by owner)", "project.update should apply the new title.");
   console.log("ok - the project's owner (here, the admin who created it) can rename it");
 
+  const rootPathUpdated = expectData<{ project: { id: string; rootPath: string | null } }>(
+    unwrap(await callTool("project.update", { id: projectId, rootPath: "/tmp/invites-smoke-new-root" }, sessionHeaders(adminCookie)))
+  );
+  assert(rootPathUpdated.project.rootPath === "/tmp/invites-smoke-new-root", "project.update should apply the new rootPath.");
+  console.log("ok - project.update can repoint an existing project's rootPath");
+
   // --- Regenerate: old code stops resolving, new code works ----------------
   const regenerated = expectData<{ code: string; url: string }>(
     unwrap(await callTool("project.invite_link_regenerate", { id: projectId }, sessionHeaders(adminCookie)))

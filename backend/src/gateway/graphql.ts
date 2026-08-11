@@ -227,7 +227,7 @@ const typeDefs = `#graphql
 
   type Mutation {
     createProject(input: CreateProjectInput!): Project!
-    updateProject(id: ID, slug: String, title: String, description: String, ownerUserId: String): Project!
+    updateProject(id: ID, slug: String, title: String, description: String, rootPath: String, ownerUserId: String): Project!
     regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
     claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!

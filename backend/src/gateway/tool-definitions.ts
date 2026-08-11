@@ -120,6 +120,7 @@ const projectDeleteSchema = projectLookupSchema.extend({
 const updateProjectSchema = projectLookupSchema.extend({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
+  rootPath: z.string().min(1).optional(),
   // Ownership reassignment escape hatch (e.g. the owner left) -- only ever
   // honored when the caller is a system admin; silently ignored otherwise.
   ownerUserId: z.string().optional()

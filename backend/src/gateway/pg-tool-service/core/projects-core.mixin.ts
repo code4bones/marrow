@@ -110,6 +110,9 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (input.description !== undefined) {
       patch.description = stringOrNull(input.description);
     }
+    if (input.rootPath !== undefined) {
+      patch.root_path = stringOrNull(input.rootPath);
+    }
     if (typeof input.slug === "string" && input.slug !== project.slug) {
       const clash = await this.db("projects").where({ slug: input.slug }).whereNot({ id: project.id }).first();
       if (clash) {
