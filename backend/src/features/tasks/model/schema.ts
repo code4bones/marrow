@@ -38,3 +38,8 @@ export const updateTaskStatusSchema = z.object({
   force: z.boolean().optional(),
   reason: z.string().optional()
 });
+
+export const updateTaskMilestoneSchema = z.object({
+  id: z.string().min(1),
+  milestone: z.string().nullable()
+});

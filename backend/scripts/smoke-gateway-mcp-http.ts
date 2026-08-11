@@ -808,6 +808,24 @@ try {
     "decision.list's milestone filter did not return exactly the one matching decision."
   );
 
+  const decisionMilestoneUpdateResult = await client.callTool({
+    name: "decision.update_milestone",
+    arguments: { id: originalDecisionId, milestone: "Gateway MCP HTTP smoke milestone (renamed)" }
+  });
+  assertOk(decisionMilestoneUpdateResult.structuredContent, "decision.update_milestone failed.");
+  assert(
+    readNestedString(decisionMilestoneUpdateResult.structuredContent, ["data", "decision", "milestone"]) === "Gateway MCP HTTP smoke milestone (renamed)",
+    "decision.update_milestone did not apply the new milestone."
+  );
+  const decisionMilestoneClearResult = await client.callTool({
+    name: "decision.update_milestone",
+    arguments: { id: originalDecisionId, milestone: null }
+  });
+  assertOk(decisionMilestoneClearResult.structuredContent, "decision.update_milestone (clear) failed.");
+  const clearedDecisionGet = await client.callTool({ name: "decision.get", arguments: { id: originalDecisionId } });
+  const clearedDecision = readNestedRecord(clearedDecisionGet.structuredContent, ["data", "decision"]);
+  assert(clearedDecision.milestone === null, "decision.update_milestone(milestone: null) did not clear the field.");
+
   const linkedDecisionResult = await client.callTool({
     name: "decision.record",
     arguments: {
@@ -1264,6 +1282,24 @@ try {
   });
   assertOk(taskResult.structuredContent, "task.create failed.");
   state.taskId = readNestedString(taskResult.structuredContent, ["data", "task", "id"]);
+
+  const taskMilestoneUpdateResult = await client.callTool({
+    name: "task.update_milestone",
+    arguments: { id: state.taskId, milestone: "Gateway MCP HTTP smoke milestone" }
+  });
+  assertOk(taskMilestoneUpdateResult.structuredContent, "task.update_milestone failed.");
+  assert(
+    readNestedString(taskMilestoneUpdateResult.structuredContent, ["data", "task", "milestone"]) === "Gateway MCP HTTP smoke milestone",
+    "task.update_milestone did not apply the new milestone."
+  );
+  const taskMilestoneClearResult = await client.callTool({
+    name: "task.update_milestone",
+    arguments: { id: state.taskId, milestone: null }
+  });
+  assertOk(taskMilestoneClearResult.structuredContent, "task.update_milestone (clear) failed.");
+  const clearedTaskGet = await client.callTool({ name: "task.get", arguments: { id: state.taskId } });
+  const clearedTask = readNestedRecord(clearedTaskGet.structuredContent, ["data", "task"]);
+  assert(clearedTask.milestone === null, "task.update_milestone(milestone: null) did not clear the field.");
 
   const deleteTaskCreateResult = await client.callTool({
     name: "task.create",

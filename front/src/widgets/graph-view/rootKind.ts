@@ -33,6 +33,13 @@ export function rootKindOptions(t: TFunc): { label: string; value: RootKind }[] 
   return ROOT_KIND_VALUES.map((value) => ({ value, label: rootKindLabel(t, value) }));
 }
 
+// Only tasks/decisions carry a `milestone` field -- memory items and
+// artifacts don't, so the "Group by milestone" toggle only makes sense for
+// those two root kinds (mirrors "Show tasks" being DECISION-only above it).
+export function kindHasMilestone(kind: RootKind): boolean {
+  return kind === 'TASK' || kind === 'DECISION';
+}
+
 // Empty-state hint shown under the baseline ribbon when no records of this
 // kind exist yet — DecisionTimeline is the sole consumer, so these live in
 // the 'decisions' namespace it already loads.

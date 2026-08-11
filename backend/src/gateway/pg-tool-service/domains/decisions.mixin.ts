@@ -291,6 +291,31 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     return decisionOut(row);
   }
 
+  // Mirrors updateDecisionStatus's shape minus the superseded-status guard
+  // (irrelevant to milestone reassignment) -- see updateTaskMilestone's
+  // comment in tasks.mixin.ts for why this exists.
+  protected async updateDecisionMilestone(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("decisions").where({ id }).first();
+    if (!current) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
+    const [row] = await this.db("decisions")
+      .where({ id })
+      .update({
+        milestone: stringOrNull(input.milestone),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    return decisionOut(row);
+  }
+
   protected async deleteDecision(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("decisions").where({ id }).first();

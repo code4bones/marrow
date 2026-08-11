@@ -38,3 +38,8 @@ export const updateDecisionStatusSchema = z.object({
   status: z.enum(["draft", "accepted", "rejected", "archived"]),
   reason: z.string().optional()
 });
+
+export const updateDecisionMilestoneSchema = z.object({
+  id: z.string().min(1),
+  milestone: z.string().nullable()
+});

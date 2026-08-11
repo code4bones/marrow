@@ -74,6 +74,7 @@ export interface GraphNode {
   title: string;
   status: string | null;
   createdAt: string | null;
+  milestone: string | null;
 }
 
 export interface GraphEdge {

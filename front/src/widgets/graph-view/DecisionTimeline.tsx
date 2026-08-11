@@ -496,6 +496,46 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
   );
 });
 
+// Baseline-column-only card for a milestone group ("[milestone]: N tasks")
+// — deliberately NOT a RecordCard (a milestone group isn't a real record:
+// no status, no satellites, no remarks), but shares its card shell (width/
+// border/radius/click-to-open/isOpen highlight) so it reads as the same
+// visual family. Clicking always opens (never collapses via re-click here
+// the way RecordCard's toggle does) since this is the one entry point into
+// a milestone's members, not a peer among other openable things at level 0.
+function MilestoneGroupCard({ milestone, label, isOpen, onToggle }: {
+  milestone: string | null;
+  label: string;
+  isOpen: boolean;
+  onToggle: (id: string, level: number) => void;
+}) {
+  return (
+    <div style={{ width: '100%', marginBottom: 10 }}>
+      <div
+        onClick={() => onToggle(milestoneGroupId(milestone), 0)}
+        style={{
+          minHeight: 56,
+          background: isOpen ? '#1c2a38' : '#1f1f1f',
+          border: `1px solid ${isOpen ? '#177ddc' : '#434343'}`,
+          borderRadius: 6,
+          padding: '10px 12px',
+          cursor: 'pointer',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        <Typography.Text style={{ fontSize: 13, color: '#e8e8e8', flex: 1, minWidth: 0 }} ellipsis={{ tooltip: label }}>
+          {label}
+        </Typography.Text>
+        <RightOutlined style={{ fontSize: 11, color: isOpen ? '#177ddc' : '#8c8c8c', flexShrink: 0 }} />
+      </div>
+    </div>
+  );
+}
+
 // A link whose other end isn't in the currently loaded graph nodes (depth
 // limit) *and* hasn't come back from the lazy point-lookup yet (or the
 // lookup failed) — still shown so the link isn't silently dropped, via the
@@ -582,6 +622,55 @@ function buildBaselineRows(decisions: GraphNode[], taskMarkers: TaskMarker[]): B
     rows.push(entry.kind === 'decision' ? { kind: 'decision', node: entry.node, headerIso } : { kind: 'task', marker: entry.marker, headerIso });
   }
   return rows;
+}
+
+interface MilestoneGroup {
+  milestone: string | null;
+  nodes: GraphNode[];
+}
+
+const EMPTY_MILESTONE_GROUPS: MilestoneGroup[] = [];
+
+// Sorted A-Z, with a trailing `{ milestone: null }` bucket for anything
+// ungrouped (only when non-empty) — mirrors shared/ui/MilestoneGroupedList's
+// grouping shape on the Tasks/Decisions list pages, so the two views agree.
+function buildMilestoneGroups(nodes: GraphNode[]): MilestoneGroup[] {
+  const byMilestone = new Map<string, GraphNode[]>();
+  const ungrouped: GraphNode[] = [];
+  for (const node of nodes) {
+    if (node.milestone) {
+      const bucket = byMilestone.get(node.milestone) ?? [];
+      bucket.push(node);
+      byMilestone.set(node.milestone, bucket);
+    } else {
+      ungrouped.push(node);
+    }
+  }
+  const groups: MilestoneGroup[] = Array.from(byMilestone.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([milestone, groupNodes]) => ({ milestone, nodes: groupNodes }));
+  if (ungrouped.length > 0) groups.push({ milestone: null, nodes: ungrouped });
+  return groups;
+}
+
+// Synthetic ids so a milestone group can flow through the exact same
+// `chain: string[]`/handleToggle mechanics as a real record id, with zero
+// changes to that machinery — only `validChain` and DrillColumn need to
+// recognize this shape (see their own comments). "::" can't appear in a
+// real record id (every id format in this app is `KIND-SLUG-NNN`), so a
+// plain prefix check is unambiguous.
+const MILESTONE_ID_PREFIX = 'milestone::';
+
+function milestoneGroupId(milestone: string | null): string {
+  return `${MILESTONE_ID_PREFIX}${milestone ?? ''}`;
+}
+
+// Returns the milestone name (or null for the "no milestone" bucket), or
+// undefined if `id` isn't a milestone-group id at all.
+function parseMilestoneGroupId(id: string): string | null | undefined {
+  if (!id.startsWith(MILESTONE_ID_PREFIX)) return undefined;
+  const rest = id.slice(MILESTONE_ID_PREFIX.length);
+  return rest.length > 0 ? rest : null;
 }
 
 type DrillRow =
@@ -686,6 +775,8 @@ interface ColumnCommonProps {
    * the same id repeatedly (e.g. every render of a still-unresolved row).
    */
   resolveNode: (id: string) => void;
+  /** Only non-empty when the baseline is in milestone-grouped mode — lets a level-0 DrillColumn recognize/expand a milestone-group root id without a separate fetch (see parseMilestoneGroupId). */
+  milestoneGroups: MilestoneGroup[];
 }
 
 // Root-changing search (D-MEMORY-022 pt.2) — client-side substring match
@@ -741,14 +832,25 @@ function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: st
   );
 }
 
-function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
+// "[milestone]: N tasks" / "[milestone]: N decisions" — count phrasing
+// borrows the already-seeded tasksCount/decisionsCount keys (Tasks/
+// Decisions list pages' own pagination footers), cross-namespace the same
+// way rootKind.ts's rootKindEmptyHint already does.
+function milestoneGroupLabel(t: (key: string, options?: Record<string, unknown>) => string, rootKind: RootKind, milestone: string | null, count: number): string {
+  const name = milestone ?? t('noMilestone', { ns: 'decisions' });
+  const countLabel = rootKind === 'TASK' ? t('tasksCount', { count, ns: 'tasks' }) : t('decisionsCount', { count, ns: 'decisions' });
+  return `${name}: ${countLabel}`;
+}
+
+function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilestone, ...common }: {
   rows: BaselineRow[];
   allNodes: GraphNode[];
   onSelectRoot: (id: string) => void;
   rootKind: RootKind;
+  groupByMilestone: boolean;
 } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
-  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle } = common;
+  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups } = common;
 
   return (
     <div style={COLUMN_OUTER_STYLE}>
@@ -759,35 +861,112 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, ...common }: {
         <RootSearch nodes={allNodes} onSelect={onSelectRoot} />
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
-        {rows.map((row, i) => {
-          if (row.kind === 'gap') return <GapRow key={`gap-${i}`} label={row.label} />;
-          const rowKey = row.kind === 'task' ? `task-${row.marker.id}` : row.node.id;
-          const body = row.kind === 'task'
-            ? <TaskMarkerRow marker={row.marker} />
-            : (
-              <RecordCard
-                node={row.node}
-                satellites={satellitesByRecord.get(row.node.id) ?? EMPTY_SATELLITES}
-                remarks={remarksByTarget.get(row.node.id) ?? EMPTY_REMARKS}
-                linkCount={(linksByRecord.get(row.node.id) ?? []).length}
-                isOpen={chain[0] === row.node.id}
+        {groupByMilestone
+          ? milestoneGroups.map((group) => (
+            <div key={milestoneGroupId(group.milestone)} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
+              <MilestoneGroupCard
+                milestone={group.milestone}
+                label={milestoneGroupLabel(t, rootKind, group.milestone, group.nodes.length)}
+                isOpen={chain[0] === milestoneGroupId(group.milestone)}
                 onToggle={onToggle}
-                toggleLevel={0}
               />
-            );
-          return (
-            <div key={rowKey} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
-              {row.headerIso && <StickyDayLabel iso={row.headerIso} />}
-              {body}
             </div>
-          );
-        })}
+          ))
+          : rows.map((row, i) => {
+            if (row.kind === 'gap') return <GapRow key={`gap-${i}`} label={row.label} />;
+            const rowKey = row.kind === 'task' ? `task-${row.marker.id}` : row.node.id;
+            const body = row.kind === 'task'
+              ? <TaskMarkerRow marker={row.marker} />
+              : (
+                <RecordCard
+                  node={row.node}
+                  satellites={satellitesByRecord.get(row.node.id) ?? EMPTY_SATELLITES}
+                  remarks={remarksByTarget.get(row.node.id) ?? EMPTY_REMARKS}
+                  linkCount={(linksByRecord.get(row.node.id) ?? []).length}
+                  isOpen={chain[0] === row.node.id}
+                  onToggle={onToggle}
+                  toggleLevel={0}
+                />
+              );
+            return (
+              <div key={rowKey} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
+                {row.headerIso && <StickyDayLabel iso={row.headerIso} />}
+                {body}
+              </div>
+            );
+          })}
       </div>
     </div>
   );
 }
 
-function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
+// Dispatches on rootId's shape before calling any hooks of its own (so
+// eslint-plugin-react-hooks never sees a conditional hook call) — a real
+// record id renders the normal link-drilling column unchanged; a
+// milestone-group synthetic id (see parseMilestoneGroupId) renders the
+// group's members instead. `key`s at both call sites already embed rootId
+// (BaselineColumn/DecisionTimeline), so React remounts fresh whenever an id
+// crosses between these two shapes — no component ever needs to switch
+// which branch it renders mid-lifetime.
+function DrillColumn({ rootId, level, rootKind, ...common }: { rootId: string; level: number; rootKind: RootKind } & ColumnCommonProps) {
+  const milestone = parseMilestoneGroupId(rootId);
+  if (milestone !== undefined) {
+    return <MilestoneDrillColumn milestone={milestone} level={level} rootKind={rootKind} {...common} />;
+  }
+  return <RecordDrillColumn rootId={rootId} level={level} {...common} />;
+}
+
+// Milestone-group members, one level deep from the baseline — no lazy
+// resolveNode/point-lookup needed here (unlike RecordDrillColumn below):
+// every member came straight from `milestoneGroups`, which is itself built
+// from the already-loaded `baselineNodes`, so every id is already in
+// `nodeById` by construction. Clicking a member card opens the *next*
+// column via the perfectly normal RecordDrillColumn path (it's a real
+// record id from there on) — only this one level is special-cased.
+function MilestoneDrillColumn({ milestone, level, rootKind, ...common }: { milestone: string | null; level: number; rootKind: RootKind } & ColumnCommonProps) {
+  const { t } = useTranslation('decisions');
+  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups } = common;
+  const rootId = milestoneGroupId(milestone);
+  const nodes = milestoneGroups.find((g) => g.milestone === milestone)?.nodes ?? [];
+  const activeChildId = chain[level + 1];
+  const label = milestoneGroupLabel(t, rootKind, milestone, nodes.length);
+
+  return (
+    <div style={COLUMN_OUTER_STYLE}>
+      <div style={{ ...COLUMN_TITLE_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, flex: 1, minWidth: 0 }} ellipsis={{ tooltip: label }}>
+          {label}
+        </Typography.Text>
+        <Tooltip title={t('closeThisColumn')}>
+          <span
+            role="button"
+            onClick={() => onToggle(rootId, level)}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 18, borderRadius: 4, cursor: 'pointer', color: '#8c8c8c', flexShrink: 0 }}
+          >
+            <CloseOutlined style={{ fontSize: 11 }} />
+          </span>
+        </Tooltip>
+      </div>
+      <div style={COLUMN_SCROLL_STYLE}>
+        {nodes.map((node) => (
+          <div key={node.id} style={{ width: COLUMN_CARD_W }}>
+            <RecordCard
+              node={node}
+              satellites={satellitesByRecord.get(node.id) ?? EMPTY_SATELLITES}
+              remarks={remarksByTarget.get(node.id) ?? EMPTY_REMARKS}
+              linkCount={(linksByRecord.get(node.id) ?? []).length}
+              isOpen={activeChildId === node.id}
+              onToggle={onToggle}
+              toggleLevel={level + 1}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecordDrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
   const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
   const rootNode = nodeById.get(rootId);
@@ -973,6 +1152,7 @@ function useLazyNodeResolver() {
           title: payload.title ?? rec.id,
           status: payload.status ?? null,
           createdAt: payload.createdAt ?? null,
+          milestone: null,
         };
         setResolved((cur) => {
           if (cur.has(id)) return cur;
@@ -998,9 +1178,11 @@ interface Props {
   showTasks: boolean;
   /** D-MEMORY-024: which kind the baseline ribbon lists — owned by the parent so the "Root:" dropdown can live in its header alongside "Show tasks"/"Link depth". */
   rootKind: RootKind;
+  /** Baseline column groups by milestone instead of chronological day-groups — owned by the parent (ProjectGraphView), already gated to TASK/DECISION roots there. */
+  groupByMilestone: boolean;
 }
 
-export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind }: Props) {
+export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind, groupByMilestone }: Props) {
   const { t } = useTranslation('decisions');
   const rowRef = useRef<HTMLDivElement>(null);
   // The one open Miller-column chain (D-MEMORY-021: linear, breadcrumb-
@@ -1019,6 +1201,15 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   const [rootKindAtLastChain, setRootKindAtLastChain] = useState(rootKind);
   if (rootKindAtLastChain !== rootKind) {
     setRootKindAtLastChain(rootKind);
+    setChain([]);
+  }
+  // Same reset, same reasoning, for the milestone-grouping toggle: a chain
+  // rooted in a milestone-group id (or in a day-grouped baseline id that a
+  // just-opened milestone column's own click semantics don't apply to)
+  // makes no sense once the baseline's own grouping mode flips.
+  const [groupByMilestoneAtLastChain, setGroupByMilestoneAtLastChain] = useState(groupByMilestone);
+  if (groupByMilestoneAtLastChain !== groupByMilestone) {
+    setGroupByMilestoneAtLastChain(groupByMilestone);
     setChain([]);
   }
 
@@ -1084,18 +1275,29 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     [baselineNodes, rootKind, overlay.taskMarkers],
   );
 
+  const milestoneGroups = useMemo(
+    () => (groupByMilestone ? buildMilestoneGroups(baselineNodes) : EMPTY_MILESTONE_GROUPS),
+    [groupByMilestone, baselineNodes],
+  );
+
   // Defensive: if a graph refetch drops an id mid-chain (rare — depth
   // change, project switch), truncate rather than render a column with no
   // root. Click-time ids are always valid, so this only ever fires on data
-  // changing out from under an open chain.
+  // changing out from under an open chain. A milestone-group id is never in
+  // `nodeById` (it's synthetic, see parseMilestoneGroupId) — valid whenever
+  // it names a group that still exists in the current `milestoneGroups`.
   const validChain = useMemo(() => {
     const out: string[] = [];
     for (const id of chain) {
-      if (!nodeById.has(id)) break;
+      const milestone = parseMilestoneGroupId(id);
+      const ok = milestone !== undefined
+        ? milestoneGroups.some((g) => g.milestone === milestone)
+        : nodeById.has(id);
+      if (!ok) break;
       out.push(id);
     }
     return out;
-  }, [chain, nodeById]);
+  }, [chain, nodeById, milestoneGroups]);
 
   // The single rule implementing D-MEMORY-021's click mechanics for every
   // slot in the chain at once (baseline click, a column's own root card,
@@ -1232,6 +1434,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     chain: validChain,
     onToggle: handleToggle,
     resolveNode,
+    milestoneGroups,
   };
 
   return (
@@ -1245,9 +1448,9 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
-        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} rootKind={rootKind} {...common} />
+        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} rootKind={rootKind} groupByMilestone={groupByMilestone} {...common} />
         {validChain.map((rootId, idx) => (
-          <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
+          <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} rootKind={rootKind} {...common} />
         ))}
       </div>
 

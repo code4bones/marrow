@@ -240,6 +240,7 @@ const typeDefs = `#graphql
 
     createTask(input: CreateTaskInput!): Task!
     updateTaskStatus(id: ID!, status: String!, note: String, force: Boolean, reason: String): Task!
+    updateTaskMilestone(id: ID!, milestone: String): Task!
     claimTask(input: TaskClaimInput!): TaskClaimResult!
     heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
     completeTaskClaim(claimId: ID!, note: String): TaskClaimResult!
@@ -250,6 +251,7 @@ const typeDefs = `#graphql
 
     recordDecision(input: RecordDecisionInput!): Decision!
     updateDecisionStatus(id: ID!, status: String!, reason: String): Decision!
+    updateDecisionMilestone(id: ID!, milestone: String): Decision!
     # Reuses RecordDecisionInput's schema shape; supersedesId/rationale are
     # required at runtime by decisionSupersedeSchema, not by this GraphQL
     # type — matches recordDecision's own pattern of leaning on the MCP
@@ -553,6 +555,7 @@ const typeDefs = `#graphql
     title: String!
     status: String
     createdAt: String
+    milestone: String
   }
 
   type GraphEdge {
@@ -1037,6 +1040,8 @@ const resolvers = {
       (await callTool<Row>(context, "task.create", cleanInput(args.input as Row))).task,
     updateTaskStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
+    updateTaskMilestone: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.update_milestone", cleanInput(args))).task,
     claimTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "task.claim", cleanInput(args.input as Row)),
     heartbeatTaskClaim: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1055,6 +1060,8 @@ const resolvers = {
       (await callTool<Row>(context, "decision.record", cleanInput(args.input as Row))).decision,
     updateDecisionStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.update_status", cleanInput(args))).decision,
+    updateDecisionMilestone: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "decision.update_milestone", cleanInput(args))).decision,
     supersedeDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "decision.supersede", cleanInput(args.input as Row)),
     archiveDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

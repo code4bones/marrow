@@ -248,6 +248,31 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return taskOut(row);
   }
 
+  // T-context (2026-08-11): task.create/milestone was write-once -- no way
+  // to group an already-created task under a work process after the fact,
+  // or fix a wrong one. Mirrors updateTaskStatus's shape minus the
+  // status-specific "done" special case; not a lifecycle transition, so no
+  // recordEventForProject call.
+  protected async updateTaskMilestone(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.assertProjectMember(String(current.project_id), context);
+    const [row] = await this.db("tasks")
+      .where({ id })
+      .update({
+        milestone: stringOrNull(input.milestone),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    return taskOut(row);
+  }
+
   protected async claimTask(input: Row, context: NormalizedGatewayRequestContext) {
     const taskId = String(input.taskId);
     const task = await this.taskRow(taskId, context);

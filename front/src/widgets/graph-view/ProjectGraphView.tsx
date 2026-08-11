@@ -8,7 +8,7 @@ import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
 import { GraphTree } from './GraphTree';
-import { rootKindOptions, type RootKind } from './rootKind';
+import { kindHasMilestone, rootKindOptions, type RootKind } from './rootKind';
 
 type ViewMode = 'timeline' | 'tree';
 
@@ -42,6 +42,10 @@ export function ProjectGraphView({ slug }: Props) {
   // they specifically want the fuller activity picture. Only meaningful
   // when decisions are the root — see DecisionTimeline's own guard.
   const [showTasks, setShowTasks] = useState(false);
+  // Work-process grouping for the baseline column -- only meaningful for
+  // TASK/DECISION roots (the only kinds with a `milestone` field), same
+  // "Timeline-only, sits unused-but-preserved for GraphTree" note as above.
+  const [groupByMilestone, setGroupByMilestone] = useState(false);
 
   const { data: projectData, loading: projectLoading, error: projectError } = useQuery<{ project: { id: string; title: string } }>(
     GET_PROJECT,
@@ -117,6 +121,12 @@ export function ProjectGraphView({ slug }: Props) {
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('showTasks')}</Typography.Text>
                 </Space>
               )}
+              {kindHasMilestone(rootKind) && (
+                <Space size={6}>
+                  <Switch size="small" checked={groupByMilestone} onChange={setGroupByMilestone} />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('groupByMilestone', { ns: 'decisions' })}</Typography.Text>
+                </Space>
+              )}
             </>
           )}
           {graph && (
@@ -135,6 +145,7 @@ export function ProjectGraphView({ slug }: Props) {
             projectSlug={slug}
             showTasks={rootKind === 'DECISION' && showTasks}
             rootKind={rootKind}
+            groupByMilestone={kindHasMilestone(rootKind) && groupByMilestone}
           />
         ) : (
           projectId && projectData && (

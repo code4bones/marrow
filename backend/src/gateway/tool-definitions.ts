@@ -3,6 +3,7 @@ import {
   getDecisionSchema,
   listDecisionsSchema,
   recordDecisionSchema,
+  updateDecisionMilestoneSchema,
   updateDecisionStatusSchema
 } from "../features/decisions/model/schema.js";
 import { listEventsSchema, recordEventSchema } from "../features/events/model/schema.js";
@@ -20,6 +21,7 @@ import {
   getTaskSchema,
   listTasksSchema,
   nextTaskSchema,
+  updateTaskMilestoneSchema,
   updateTaskStatusSchema
 } from "../features/tasks/model/schema.js";
 
@@ -1106,6 +1108,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "write"
   },
   {
+    name: "task.update_milestone",
+    description: "Set or clear (milestone: null) an existing task's milestone -- the work-process grouping that task.create's own milestone field can set at creation but has no update path afterward.",
+    schema: updateTaskMilestoneSchema,
+    access: "write"
+  },
+  {
     name: "decision.record",
     description: "Record a shared project or common decision.",
     schema: recordDecisionSchema,
@@ -1115,6 +1123,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "decision.update_status",
     description: "Update a shared decision's status directly (draft/accepted/rejected/archived). Use decision.supersede to mark a decision superseded.",
     schema: updateDecisionStatusSchema,
+    access: "write"
+  },
+  {
+    name: "decision.update_milestone",
+    description: "Set or clear (milestone: null) an existing decision's milestone -- the work-process grouping that decision.record's own milestone field can set at creation but has no update path afterward.",
+    schema: updateDecisionMilestoneSchema,
     access: "write"
   },
   {

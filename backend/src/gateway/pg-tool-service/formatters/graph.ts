@@ -7,6 +7,7 @@ export function graphNodeOut(kind: string, row: Row): GraphNode {
     kind,
     title: graphNodeTitle(kind, row),
     status: stringOrNull(row.status),
+    milestone: stringOrNull(row.milestone),
     // Most callers pass a raw db row (snake_case created_at, a Date object),
     // but the PROJECT node is built from resolveProject()'s already-
     // transformed projectOut() shape (camelCase createdAt, already a
