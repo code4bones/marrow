@@ -1023,7 +1023,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.create",
-    description: "Create a shared executable task for a project.",
+    description: "Create a shared executable task for a project. If this task is one of a batch of related work created together (e.g. several tasks handed to agents for one refactor or feature), set milestone to a short, stable name -- git-commit-subject style, e.g. \"Refactor auth module\" -- and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline. Leave milestone unset for a standalone task with no siblings.",
     schema: createTaskSchema,
     access: "write"
   },
@@ -1115,7 +1115,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "decision.record",
-    description: "Record a shared project or common decision.",
+    description: "Record a shared project or common decision. If this decision is one of a batch of related work (e.g. it belongs to the same refactor or feature as several tasks/decisions created together), set milestone to the exact same short, stable name -- git-commit-subject style, e.g. \"Refactor auth module\" -- used across that whole batch, so they group under one heading in the Decisions list and Timeline. Leave milestone unset for a standalone decision.",
     schema: recordDecisionSchema,
     access: "write"
   },

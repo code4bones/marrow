@@ -1993,6 +1993,14 @@ Required:
 * project or current project
 * title
 
+`milestone` groups related work under one heading in the Tasks list and
+Timeline (`"[milestone]: N tasks"`). When creating several tasks together
+for one batch of work (a refactor, a feature, anything an agent hands off
+as a set), give every task in that batch the exact same `milestone` string
+-- short and stable, git-commit-subject style ("Refactor auth module", not
+a sentence). Leave it unset for a standalone task. `task.update_milestone`
+sets or clears it afterward if it was missed or needs fixing.
+
 Output:
 
 ```json
@@ -2172,6 +2180,32 @@ Behavior:
   * `task.cancelled`
   * or `task.status_changed`
 
+### `task.update_milestone`
+
+Set or clear an existing task's `milestone` -- the work-process grouping
+`task.create` can only set at creation time otherwise. Use the same short,
+stable, git-commit-subject-style name as every other task/decision in the
+same batch of work (see [`task.create`](#taskcreate)).
+
+Input:
+
+```json
+{
+  "id": "T-MEMORY-001",
+  "milestone": "Refactor auth module"
+}
+```
+
+Pass `milestone: null` to clear it back to unset.
+
+Output:
+
+```json
+{
+  "task": {}
+}
+```
+
 ## Decision tools
 
 ### `decision.record`
@@ -2190,7 +2224,8 @@ Input:
   "rationale": "FTS5 is local, deterministic, simple, and enough for early project memory.",
   "consequences": "Semantic embeddings can be added later as an optional feature.",
   "tags": ["architecture", "search", "mvp"],
-  "supersedesId": null
+  "supersedesId": null,
+  "milestone": "MVP search"
 }
 ```
 
@@ -2204,6 +2239,12 @@ For common decision:
   "tags": ["common", "agent"]
 }
 ```
+
+`milestone` follows the same convention as [`task.create`](#taskcreate)'s:
+when this decision belongs to a batch of related work also producing
+tasks/other decisions, give all of them the exact same short, stable,
+git-commit-subject-style name so they group together in the Decisions list
+and Timeline. `decision.update_milestone` sets or clears it afterward.
 
 Optionally link the new decision to existing records at write time, the same
 way as [`memory.create`](#memorycreate):
@@ -2243,6 +2284,35 @@ Behavior:
   each entry; the created links are returned as `decision.linksCreated`
 * otherwise, if `tags` were given, run the same tag-overlap lookup as
   `memory.create` and return up to 3 hits as `decision.relatedCandidates`
+
+---
+
+### `decision.update_milestone`
+
+Set or clear an existing decision's `milestone` -- the work-process
+grouping `decision.record` can only set at creation time otherwise. Use
+the same short, stable, git-commit-subject-style name as every other
+task/decision in the same batch of work (see
+[`decision.record`](#decisionrecord)).
+
+Input:
+
+```json
+{
+  "id": "D-MEMORY-001",
+  "milestone": "Refactor auth module"
+}
+```
+
+Pass `milestone: null` to clear it back to unset.
+
+Output:
+
+```json
+{
+  "decision": {}
+}
+```
 
 ---
 
