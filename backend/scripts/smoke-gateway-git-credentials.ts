@@ -98,6 +98,15 @@ const fakeGitHttpFetch: typeof fetch = async (input) => {
         { status: 200, headers: { "content-type": "text/plain" } }
       );
     }
+    if (url.pathname.endsWith("/runners")) {
+      return new Response(
+        JSON.stringify([
+          { id: 501, description: "shared-runner-1", ip_address: "10.0.0.1", online: true, status: "online", is_shared: true, runner_type: "instance_type" },
+          { id: 502, description: "project-runner-stale", ip_address: null, online: false, status: "stale", is_shared: false, runner_type: "project_type" }
+        ]),
+        { status: 200 }
+      );
+    }
     if (url.pathname.includes("/pipelines")) {
       return new Response(
         JSON.stringify([
@@ -399,6 +408,22 @@ try {
   );
   assertFailureCode(unwrap(traceMissingArgsResult), "VALIDATION_ERROR", "git.job_trace with neither jobId nor jobName should fail clearly, not silently pick a job.");
   console.log("ok - git.job_trace requires jobId or jobName");
+
+  // --- git.runners_status: same stored credential, project-scoped runners endpoint ---
+  const runnersResult = await callTool(
+    "git.runners_status",
+    { host: GOOD_HOST, project: "group/project" },
+    sessionHeaders(memberACookie)
+  );
+  const runnersBody = expectData<{ runners: Array<{ id: number; description: string; online: boolean; status: string; isSharedRunner: boolean; runnerType: string }> }>(
+    unwrap(runnersResult)
+  );
+  assert(runnersBody.runners.length === 2, `Expected 2 runners, got: ${JSON.stringify(runnersBody.runners)}`);
+  const onlineRunner = runnersBody.runners.find((r) => r.id === 501);
+  const staleRunner = runnersBody.runners.find((r) => r.id === 502);
+  assert(onlineRunner?.online === true && onlineRunner.status === "online" && onlineRunner.isSharedRunner === true, "Online shared runner not reported correctly.");
+  assert(staleRunner?.online === false && staleRunner.status === "stale" && staleRunner.isSharedRunner === false, "Stale project runner not reported correctly.");
+  console.log("ok - git.runners_status resolves the caller's own credential and reports each runner's online/status");
 
   // --- git.pipeline_status: GitLab itself rejects the token (401) --------
   const rejectingCreate = expectData<{ id: string }>(

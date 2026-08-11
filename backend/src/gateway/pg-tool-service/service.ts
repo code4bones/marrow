@@ -283,6 +283,8 @@ export class PgToolService extends ComposedService {
           return ok("Pipeline status loaded.", await this.gitPipelineStatus(parsed, requestContext));
         case "git.job_trace":
           return ok("Job trace loaded.", await this.gitJobTrace(parsed, requestContext));
+        case "git.runners_status":
+          return ok("Runners status loaded.", await this.gitRunnersStatus(parsed, requestContext));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }

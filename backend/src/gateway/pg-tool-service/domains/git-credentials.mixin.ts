@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { decryptGitToken, encryptGitToken, fetchGitlabJobTrace, fetchGitlabPipelineStatus } from "../../git-credentials.js";
+import { decryptGitToken, encryptGitToken, fetchGitlabJobTrace, fetchGitlabPipelineStatus, fetchGitlabRunnersStatus } from "../../git-credentials.js";
 import { gitCredentialOut } from "../formatters/git-credentials.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
@@ -201,6 +201,26 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
     });
     await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
     return result;
+  }
+
+  // Runner online/offline visibility -- raised live by an agent (whispers
+  // project) that had git.pipeline_status/git.job_trace to see why a job
+  // failed but nothing to check whether a job was ever going to start in
+  // the first place (e.g. a pipeline stuck in "created"/"pending" because
+  // every runner tagged for it is offline). Same credential-resolution and
+  // last_used_at bookkeeping as the two tools above.
+  protected async gitRunnersStatus(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const runners = await fetchGitlabRunnersStatus({
+      host,
+      project,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    return { runners };
   }
 
   };

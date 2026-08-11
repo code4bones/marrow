@@ -223,6 +223,7 @@ const typeDefs = `#graphql
     gitCredentials: [GitCredential!]!
     gitPipelineStatus(host: String!, project: String!, ref: String): JSON
     gitJobTrace(host: String!, project: String!, jobId: Int, ref: String, jobName: String, tailLines: Int, redact: Boolean): JSON
+    gitRunnersStatus(host: String!, project: String!): JSON
   }
 
   type Mutation {
@@ -1007,7 +1008,9 @@ const resolvers = {
     gitPipelineStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.pipeline_status", cleanInput(args)),
     gitJobTrace: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await callTool<Row>(context, "git.job_trace", cleanInput(args))
+      await callTool<Row>(context, "git.job_trace", cleanInput(args)),
+    gitRunnersStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.runners_status", cleanInput(args))
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

@@ -448,6 +448,10 @@ const gitJobTraceSchema = z.object({
   tailLines: z.number().int().min(1).max(2000).optional(),
   redact: z.boolean().optional()
 });
+const gitRunnersStatusSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1)
+});
 
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
@@ -711,6 +715,18 @@ const gitJobTraceOutSchema = z.object({
   jobStatus: z.string(),
   trace: z.string(),
   truncated: z.boolean()
+});
+const gitRunnerSchema = z.object({
+  id: z.number(),
+  description: z.string(),
+  ipAddress: z.string().nullable(),
+  online: z.boolean(),
+  status: z.string(),
+  isSharedRunner: z.boolean(),
+  runnerType: z.string()
+});
+const gitRunnersStatusOutSchema = z.object({
+  runners: z.array(gitRunnerSchema)
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -1287,6 +1303,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
       "Fetch the tail of a GitLab job's raw log (e.g. to see why a failed pipeline job actually failed) using the same stored credential as git.pipeline_status. Pass jobId from a prior git.pipeline_status call, or jobName (+ optional ref) to resolve it from the latest pipeline. Defaults to the last 200 lines and redacts common secret patterns (token=/password=/Bearer .../glpat-.../etc) -- pass redact=false only when a human explicitly needs the raw output.",
     schema: gitJobTraceSchema,
     outputSchema: output(gitJobTraceOutSchema)
+  },
+  {
+    name: "git.runners_status",
+    description:
+      "List the GitLab runners available to a project (its own runners plus any shared/group runners assigned to it), using the same stored credential as git.pipeline_status. Each entry reports online/status (GitLab's own heartbeat-based online/offline/stale/never_contacted classification) -- useful for diagnosing a pipeline stuck in created/pending because no matching runner is online, which git.pipeline_status/git.job_trace alone can't explain.",
+    schema: gitRunnersStatusSchema,
+    outputSchema: output(gitRunnersStatusOutSchema)
   }
 ];
 

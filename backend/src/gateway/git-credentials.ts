@@ -252,6 +252,59 @@ export async function fetchGitlabJobTrace(input: {
   };
 }
 
+export interface GitRunner {
+  id: number;
+  description: string;
+  ipAddress: string | null;
+  online: boolean;
+  status: string;
+  isSharedRunner: boolean;
+  runnerType: string;
+}
+
+interface GitlabRunner {
+  id: number;
+  description: string;
+  ip_address: string | null;
+  online: boolean;
+  status: string;
+  is_shared: boolean;
+  runner_type: string;
+}
+
+/**
+ * Lists the runners available to a project (its own specific runners plus
+ * any shared/group runners assigned to it) via GitLab's project-scoped
+ * runners endpoint -- deliberately GET /projects/:id/runners, not the
+ * instance-wide GET /runners/all, since the latter requires the token's
+ * owner to be a GitLab instance admin, while this one only needs the same
+ * project-level read access git.pipeline_status/git.job_trace already rely
+ * on. `online`/`status` reflect GitLab's own heartbeat-based connectivity
+ * classification (online/offline/stale/never_contacted) -- there is no
+ * separate "currently running a job" flag in this endpoint's response.
+ */
+export async function fetchGitlabRunnersStatus(input: {
+  host: string;
+  project: string;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitRunner[]> {
+  const { host, project, token, httpFetch } = input;
+  const projectPath = encodeURIComponent(project);
+  const runnersUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/runners`);
+  runnersUrl.searchParams.set("per_page", "100");
+  const runners = await gitlabGet<GitlabRunner[]>(runnersUrl, token, httpFetch, host);
+  return runners.map((runner) => ({
+    id: runner.id,
+    description: runner.description,
+    ipAddress: runner.ip_address,
+    online: runner.online,
+    status: runner.status,
+    isSharedRunner: runner.is_shared,
+    runnerType: runner.runner_type
+  }));
+}
+
 async function gitlabRequest(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<Response> {
   let response: Response;
   try {

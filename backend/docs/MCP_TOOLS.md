@@ -45,6 +45,8 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `git.credential_list`
 * `git.credential_delete`
 * `git.pipeline_status`
+* `git.job_trace`
+* `git.runners_status`
 
 ## General response format
 
@@ -160,7 +162,8 @@ docs/AUTH.md.
 | `artifact.read_text` | read | | `git.credential_list` | read |
 | `artifact.update_metadata` | write | | `git.credential_delete` | write |
 | `artifact.archive` | write | | `git.pipeline_status` | read |
-| `artifact.delete` | **admin** | | | |
+| `artifact.delete` | **admin** | | `git.job_trace` | read |
+| | | | `git.runners_status` | read |
 
 ## Gateway tools
 
@@ -3123,6 +3126,48 @@ your profile first") -- not a silent failure or an empty result. If GitLab
 itself rejects the stored token (expired/revoked), this fails with a
 distinct `UNAUTHORIZED` naming the host, rather than a generic network
 error.
+
+### `git.runners_status`
+
+Resolve the caller's own stored credential for `host` (same resolution as
+`git.pipeline_status`), then list the GitLab runners available to a
+project -- its own project runners plus any shared/group runners assigned
+to it. Useful for diagnosing a pipeline stuck in `created`/`pending`
+because no matching runner is online, which `git.pipeline_status` and
+`git.job_trace` alone can't explain.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project"
+}
+```
+
+Output:
+
+```json
+{
+  "runners": [
+    {
+      "id": 501,
+      "description": "shared-runner-1",
+      "ipAddress": "10.0.0.1",
+      "online": true,
+      "status": "online",
+      "isSharedRunner": true,
+      "runnerType": "instance_type"
+    }
+  ]
+}
+```
+
+`online`/`status` reflect GitLab's own heartbeat-based connectivity
+classification (`online`/`offline`/`stale`/`never_contacted`) -- there is
+no separate "currently running a job" flag in this endpoint's response, so
+this answers "is any runner even reachable" rather than "is a specific
+runner busy right now".
 
 ## Seed tools or scripts
 
