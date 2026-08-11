@@ -15,7 +15,7 @@ import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTi
 import { apolloClient } from '../../shared/api/apollo';
 import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
-import { rootKindEmptyHint, rootKindLabel, type RootKind } from './rootKind';
+import { kindHasMilestone, rootKindEmptyHint, rootKindLabel, type RootKind } from './rootKind';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -594,6 +594,15 @@ const EMPTY_MILESTONE_GROUPS: MilestoneGroup[] = [];
 // Sorted A-Z, with a trailing `{ milestone: null }` bucket for anything
 // ungrouped (only when non-empty) — mirrors shared/ui/MilestoneGroupedList's
 // grouping shape on the Tasks/Decisions list pages, so the two views agree.
+// Newest-first throughout, matching every other list in this app (see
+// buildBaselineRows' own note on this): each group's own members are
+// sorted by createdAt descending, and the groups themselves are ordered by
+// their most-recently-created member so a milestone someone is actively
+// working on surfaces at the top rather than wherever its name happens to
+// sort alphabetically. The "no milestone" bucket is the one exception --
+// pinned last regardless of recency, since it's the miscellaneous catch-all
+// rather than a real topic, and letting one fresh unlabeled task bump it to
+// the top would bury every organized group under it.
 function buildMilestoneGroups(nodes: GraphNode[]): MilestoneGroup[] {
   const byMilestone = new Map<string, GraphNode[]>();
   const ungrouped: GraphNode[] = [];
@@ -606,19 +615,16 @@ function buildMilestoneGroups(nodes: GraphNode[]): MilestoneGroup[] {
       ungrouped.push(node);
     }
   }
+  const byCreatedAtDesc = (a: GraphNode, b: GraphNode) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+  const mostRecent = (groupNodes: GraphNode[]) => groupNodes.reduce((max, n) => (n.createdAt ?? '') > max ? (n.createdAt ?? '') : max, '');
+
   const groups: MilestoneGroup[] = Array.from(byMilestone.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([milestone, groupNodes]) => ({ milestone, nodes: groupNodes }));
-  if (ungrouped.length > 0) groups.push({ milestone: null, nodes: ungrouped });
+    .map(([milestone, groupNodes]) => ({ milestone, nodes: [...groupNodes].sort(byCreatedAtDesc) }))
+    .sort((a, b) => mostRecent(b.nodes).localeCompare(mostRecent(a.nodes)));
+  if (ungrouped.length > 0) groups.push({ milestone: null, nodes: [...ungrouped].sort(byCreatedAtDesc) });
   return groups;
 }
 
-// Synthetic ids so a milestone group can flow through the exact same
-// `chain: string[]`/handleToggle mechanics as a real record id, with zero
-// changes to that machinery — only `validChain` and DrillColumn need to
-// recognize this shape (see their own comments). "::" can't appear in a
-// real record id (every id format in this app is `KIND-SLUG-NNN`), so a
-// plain prefix check is unambiguous.
 type DrillRow =
   | { kind: 'entry'; id: string; link: Link; node: GraphNode | null; headerIso: string | null }
   | { kind: 'gap'; label: string };
@@ -1082,11 +1088,14 @@ interface Props {
   showTasks: boolean;
   /** D-MEMORY-024: which kind the baseline ribbon lists — owned by the parent so the "Root:" dropdown can live in its header alongside "Show tasks"/"Link depth". */
   rootKind: RootKind;
-  /** Baseline column groups by milestone instead of chronological day-groups — owned by the parent (ProjectGraphView), already gated to TASK/DECISION roots there. */
-  groupByMilestone: boolean;
 }
 
-export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind, groupByMilestone }: Props) {
+export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind }: Props) {
+  // Owner's call: milestone grouping is always on for TASK/DECISION roots
+  // (the only kinds with a `milestone` field) -- no toggle, no separate
+  // chronological mode to opt out of. MEMORY/ARTIFACT roots keep the
+  // day-grouped baseline since they have nothing to group by.
+  const groupByMilestone = kindHasMilestone(rootKind);
   const { t } = useTranslation('decisions');
   const rowRef = useRef<HTMLDivElement>(null);
   // The one open Miller-column chain (D-MEMORY-021: linear, breadcrumb-
