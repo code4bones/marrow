@@ -455,6 +455,23 @@ const gitRunnersStatusSchema = z.object({
   project: z.string().min(1)
 });
 
+// D-MEMORY-037: gateway-only credits tools, same reasoning as the git.*
+// schemas above -- wallets/credit_transactions are keyed on the
+// hosted-gateway-only `users` table, no local-first (SQLite) counterpart.
+const creditBalanceSchema = z.object({
+  userId: z.string().min(1).optional()
+});
+const creditHistorySchema = z.object({
+  userId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  reason: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).optional()
+});
+const creditLeaderboardSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional()
+});
+
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
   code: z.string(),
@@ -1324,6 +1341,21 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
       "List the GitLab runners available to a project (its own runners plus any shared/group runners assigned to it), using the same stored credential as git.pipeline_status. Each entry reports online/status (GitLab's own heartbeat-based online/offline/stale/never_contacted classification) -- useful for diagnosing a pipeline stuck in created/pending because no matching runner is online, which git.pipeline_status/git.job_trace alone can't explain.",
     schema: gitRunnersStatusSchema,
     outputSchema: output(gitRunnersStatusOutSchema)
+  },
+  {
+    name: "credit.balance",
+    description: "Get a wallet balance plus streak info -- your own if userId is omitted and you have a logged-in session, otherwise userId is required.",
+    schema: creditBalanceSchema
+  },
+  {
+    name: "credit.history",
+    description: "List a user's credit_transactions ledger (own by default), newest first, optionally filtered by project or reason.",
+    schema: creditHistorySchema
+  },
+  {
+    name: "credit.leaderboard",
+    description: "Top N users by wallet balance, globally.",
+    schema: creditLeaderboardSchema
   }
 ];
 

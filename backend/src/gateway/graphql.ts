@@ -224,6 +224,10 @@ const typeDefs = `#graphql
     gitPipelineStatus(host: String!, project: String!, ref: String): JSON
     gitJobTrace(host: String!, project: String!, jobId: Int, ref: String, jobName: String, tailLines: Int, redact: Boolean): JSON
     gitRunnersStatus(host: String!, project: String!): JSON
+
+    creditBalance(userId: ID): CreditBalance!
+    creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
+    creditLeaderboard(limit: Int): [LeaderboardEntry!]!
   }
 
   type Mutation {
@@ -899,6 +903,36 @@ const typeDefs = `#graphql
     event: Event!
   }
 
+  type CreditBalance {
+    userId: ID!
+    balance: Int!
+    currentStreak: Int!
+    longestStreak: Int!
+    insuranceBanked: Int!
+    lastCreditedDate: String
+  }
+
+  type CreditTransaction {
+    id: ID!
+    userId: ID!
+    projectId: String
+    amount: Int!
+    balanceAfter: Int!
+    reason: String!
+    relatedType: String
+    relatedId: String
+    note: String
+    createdAt: String
+  }
+
+  type LeaderboardEntry {
+    userId: ID!
+    email: String
+    balance: Int!
+    currentStreak: Int!
+    longestStreak: Int!
+  }
+
   type NextCall {
     tool: String!
     input: JSON!
@@ -1015,7 +1049,13 @@ const resolvers = {
     gitJobTrace: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.job_trace", cleanInput(args)),
     gitRunnersStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      await callTool<Row>(context, "git.runners_status", cleanInput(args))
+      await callTool<Row>(context, "git.runners_status", cleanInput(args)),
+    creditBalance: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "credit.balance", cleanInput(args))).balance,
+    creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "credit.history", cleanInput(args))).transactions,
+    creditLeaderboard: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "credit.leaderboard", cleanInput(args))).leaderboard
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

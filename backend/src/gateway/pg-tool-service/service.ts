@@ -12,6 +12,7 @@ import { DecisionsMixin } from "./domains/decisions.mixin.js";
 import { EventsMixin } from "./domains/events.mixin.js";
 import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
+import { CreditsMixin } from "./domains/credits.mixin.js";
 import { GraphMixin } from "./domains/graph.mixin.js";
 import { GatewayOpsMixin } from "./domains/gateway-ops.mixin.js";
 import { TasksMixin } from "./domains/tasks.mixin.js";
@@ -43,13 +44,15 @@ const ComposedService = ProjectSummaryMixin(
             GatewayOpsMixin(
               GraphMixin(
                 GitCredentialsMixin(
-                  ClientsMixin(
-                    EventsMixin(
-                      DecisionsMixin(
-                        ArtifactsMixin(
-                          MemoryMixin(
-                            LinksCoreMixin(
-                              ProjectsCoreMixin(BaseService)
+                  CreditsMixin(
+                    ClientsMixin(
+                      EventsMixin(
+                        DecisionsMixin(
+                          ArtifactsMixin(
+                            MemoryMixin(
+                              LinksCoreMixin(
+                                ProjectsCoreMixin(BaseService)
+                              )
                             )
                           )
                         )
@@ -289,6 +292,12 @@ export class PgToolService extends ComposedService {
           return ok("Job trace loaded.", await this.gitJobTrace(parsed, requestContext));
         case "git.runners_status":
           return ok("Runners status loaded.", await this.gitRunnersStatus(parsed, requestContext));
+        case "credit.balance":
+          return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
+        case "credit.history":
+          return ok("Credit history loaded.", { transactions: await this.creditHistory(parsed, requestContext) });
+        case "credit.leaderboard":
+          return ok("Credit leaderboard loaded.", { leaderboard: await this.creditLeaderboard(parsed) });
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
