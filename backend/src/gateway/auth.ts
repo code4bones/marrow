@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import type { IncomingMessage } from "node:http";
 import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
+import { createCreditsFacade } from "./credits.js";
 import {
   base32Encode,
   buildOtpauthUrl,
@@ -68,6 +69,8 @@ type LoginResult =
 type SessionLoginResult = { status: "session"; token: string; user: { id: string; email: string; role: string } };
 
 export function createAuthFacade(db: Knex) {
+  const credits = createCreditsFacade(db);
+
   async function invite(email: string, invitedByUserId: string): Promise<{ token: string; email: string }> {
     const normalized = normalizeEmail(email);
     const existing = await db("users").where({ email: normalized }).first();
@@ -130,6 +133,7 @@ export function createAuthFacade(db: Knex) {
         created_at: now,
         updated_at: now
       });
+      await credits.grantSignupBonus(db, userId);
     } else {
       if (!userId) {
         throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
@@ -582,6 +586,7 @@ export function createAuthFacade(db: Knex) {
         created_at: now,
         updated_at: now
       });
+      await credits.grantSignupBonus(trx, userId);
       if (row.provider === "github") {
         await trx("github_identities").insert({
           id: randomUUID(),
