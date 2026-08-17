@@ -29,6 +29,11 @@ export const CREDIT_REASONS = [
 export type CreditReason = (typeof CREDIT_REASONS)[number];
 
 export const SIGNUP_BONUS_AMOUNT = 1000;
+export const TASK_COMPLETED_AWARD = 10;
+// Streak-day -> bonus. currentStreak only ever moves by +1 or resets to 1
+// (never jumps), so each threshold is crossed at most once per streak run --
+// no extra bookkeeping needed to avoid double-firing a bonus.
+const STREAK_BONUS_THRESHOLDS: Record<number, number> = { 3: 20, 7: 50, 30: 200 };
 
 export interface CreditTransactionInput {
   userId: string;
@@ -52,7 +57,27 @@ export interface WalletSnapshot {
 
 export type CreditExecutor = Knex | Knex.Transaction;
 
+export interface StreakUpdateResult {
+  currentStreak: number;
+  longestStreak: number;
+  insuranceConsumed: boolean;
+  streakBonusAwarded: number | null;
+}
+
 export type CreditsFacade = ReturnType<typeof createCreditsFacade>;
+
+function isoDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function dateOnlyUtcMs(dateStr: string): number {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
+function daysBetween(fromDateStr: string, toDateStr: string): number {
+  return Math.round((dateOnlyUtcMs(toDateStr) - dateOnlyUtcMs(fromDateStr)) / 86_400_000);
+}
 
 export function createCreditsFacade(db: Knex) {
   // Runs the ledger insert + balance update as one atomic step. `exec` may
@@ -129,5 +154,90 @@ export function createCreditsFacade(db: Knex) {
     return { userId, balance: wallet ? Number(wallet.balance) : 0 };
   }
 
-  return { award, spend, grantSignupBonus, getWallet };
+  // Streak day = "at least one task.complete credited today". Multiple
+  // completions on the same day never double-increment (last_credited_date
+  // already == today is a no-op). A gap of exactly one day extends the
+  // streak; a bigger gap resets it to 1 unless insurance_banked covers the
+  // gap, in which case one insurance charge is spent and the streak
+  // continues as if the gap were a single day.
+  async function updateStreak(exec: CreditExecutor, userId: string): Promise<StreakUpdateResult> {
+    return exec.transaction(async (trx) => {
+      const now = new Date();
+      const today = isoDateOnly(now);
+      await trx("streaks")
+        .insert({ user_id: userId, current_streak: 0, longest_streak: 0, insurance_banked: 0, updated_at: now })
+        .onConflict("user_id")
+        .ignore();
+      const streak = await trx("streaks").where({ user_id: userId }).first();
+
+      // last_credited_date comes back as a raw "YYYY-MM-DD" string (see
+      // shared/pg/knex.ts's DATE type-parser override) -- never re-wrap it
+      // in `new Date(...)`, which reintroduces the local-timezone shift
+      // that override exists to avoid.
+      const lastDate = typeof streak.last_credited_date === "string" ? streak.last_credited_date : null;
+      let currentStreak = Number(streak.current_streak ?? 0);
+      let insuranceBanked = Number(streak.insurance_banked ?? 0);
+      let insuranceConsumed = false;
+      let alreadyCreditedToday = false;
+
+      if (lastDate === today) {
+        alreadyCreditedToday = true;
+      } else {
+        const gap = lastDate ? daysBetween(lastDate, today) : null;
+        if (gap === null || gap === 1) {
+          currentStreak += 1;
+        } else if (gap > 1 && insuranceBanked > 0) {
+          insuranceBanked -= 1;
+          insuranceConsumed = true;
+          currentStreak += 1;
+        } else {
+          currentStreak = 1;
+        }
+      }
+      const longestStreak = Math.max(Number(streak.longest_streak ?? 0), currentStreak);
+
+      await trx("streaks").where({ user_id: userId }).update({
+        current_streak: currentStreak,
+        longest_streak: longestStreak,
+        insurance_banked: insuranceBanked,
+        last_credited_date: today,
+        updated_at: now
+      });
+
+      let streakBonusAwarded: number | null = null;
+      const bonus = STREAK_BONUS_THRESHOLDS[currentStreak];
+      if (!alreadyCreditedToday && bonus) {
+        await writeTransaction(trx, {
+          userId,
+          amount: bonus,
+          reason: "streak_bonus",
+          note: `${currentStreak}-day streak`
+        });
+        streakBonusAwarded = bonus;
+      }
+
+      return { currentStreak, longestStreak, insuranceConsumed, streakBonusAwarded };
+    });
+  }
+
+  async function awardTaskCompletion(
+    exec: CreditExecutor,
+    userId: string,
+    opts: { projectId?: string | null; taskId?: string | null } = {}
+  ): Promise<{ award: CreditTransactionResult; streak: StreakUpdateResult }> {
+    return exec.transaction(async (trx) => {
+      const awardResult = await writeTransaction(trx, {
+        userId,
+        amount: TASK_COMPLETED_AWARD,
+        reason: "task_completed",
+        projectId: opts.projectId ?? null,
+        relatedType: "task",
+        relatedId: opts.taskId ?? null
+      });
+      const streak = await updateStreak(trx, userId);
+      return { award: awardResult, streak };
+    });
+  }
+
+  return { award, spend, grantSignupBonus, getWallet, updateStreak, awardTaskCompletion };
 }

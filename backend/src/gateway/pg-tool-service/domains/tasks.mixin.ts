@@ -1,6 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
+import { createCreditsFacade } from "../../credits.js";
 import { jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
@@ -487,9 +488,29 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       }
     }
 
+    // D-MEMORY-037 / T-MEMORY-069: credits the completing human, if any --
+    // context.sessionUserId is unset for a bare static-token/anonymous
+    // caller (no one to credit), which is a normal, unremarkable case, not
+    // an error. A credits-subsystem failure is surfaced as a warning rather
+    // than blocking task completion itself, same reasoning as the
+    // never-claimed warning above: the task's own completion is the primary
+    // outcome and must not fail because of an additive side effect.
+    let creditWarning: string | undefined;
+    if (context.sessionUserId) {
+      try {
+        await createCreditsFacade(this.db).awardTaskCompletion(this.db, context.sessionUserId, {
+          projectId: stringOrNull(row.project_id),
+          taskId: id
+        });
+      } catch (error) {
+        creditWarning = `Task completed, but the credit award failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+    const combinedWarning = [warning, creditWarning].filter((value): value is string => Boolean(value)).join(" ");
+
     return {
       task: await this.getTask(id, context),
-      ...(warning ? { warning } : {}),
+      ...(combinedWarning ? { warning: combinedWarning } : {}),
       completedClaim,
       event
     };

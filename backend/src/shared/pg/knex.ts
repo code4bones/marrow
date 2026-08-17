@@ -1,7 +1,20 @@
 import knex, { type Knex } from "knex";
 import dotenv from "dotenv";
+import { types as pgTypes } from "pg";
 
 dotenv.config({ quiet: true });
+
+// node-postgres's default DATE (OID 1082) parser returns a JS Date built at
+// LOCAL midnight, not UTC -- round-tripping that through .toISOString()
+// (UTC-based) silently shifts the calendar day backward for any server
+// timezone east of UTC (D-MEMORY-037's streaks.last_credited_date hit this
+// exactly: a value written as "2026-08-17" came back as
+// "2026-08-16T21:00:00.000Z" on a UTC+3 host). Registering the raw-string
+// parser once here, globally, sidesteps the whole Date/timezone
+// round-trip -- every DATE column across the app gets back exactly the
+// "YYYY-MM-DD" string it was given, no matter what timezone the process
+// runs in.
+pgTypes.setTypeParser(1082, (value) => value);
 
 export function createPgKnex(): Knex {
   const sslValue = process.env.POSTGRES_SSL;
