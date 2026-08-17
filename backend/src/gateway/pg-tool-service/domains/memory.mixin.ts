@@ -1,5 +1,6 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
+import { createCreditsFacade } from "../../credits.js";
 import { commonItemPrefix, projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { combinedRankSql, jsonStringArray, kwicHeadlineSql, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { compactProject } from "../formatters/projects.js";
@@ -15,6 +16,9 @@ import {
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
 import { type Tier1Instance } from "../core/links-core.mixin.js";
+
+const FAILED_ATTEMPT_PENALTY = 5;
+const FAULT_FIXED_BONUS = 15;
 
 export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase) {
   return class extends Base {
@@ -134,11 +138,32 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       ? await this.createWarnsAgainstLink(item.id, String(input.relatedId), item.projectId, context)
       : null;
 
+    // D-MEMORY-037 / T-MEMORY-070: only a genuinely NEW failed attempt is a
+    // penalty -- upsertMemory can also just be re-recording/refreshing an
+    // existing one (action "updated"), which shouldn't multiply the penalty
+    // every time the same known issue gets re-documented.
+    let creditWarning: string | undefined;
+    if (upsert.action === "created" && context.sessionUserId) {
+      try {
+        await createCreditsFacade(this.db).award(this.db, {
+          userId: context.sessionUserId,
+          amount: -FAILED_ATTEMPT_PENALTY,
+          reason: "failed_attempt_penalty",
+          projectId: item.projectId,
+          relatedType: "item",
+          relatedId: item.id
+        });
+      } catch (error) {
+        creditWarning = `Failed attempt recorded, but the credit penalty failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
     return {
       action: upsert.action,
       attempt: item,
       event,
-      link
+      link,
+      ...(creditWarning ? { warning: creditWarning } : {})
     };
   }
 
@@ -388,10 +413,33 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       body: stringOrNull(input.reason),
       related_id: row.id
     }, context);
+
+    // D-MEMORY-037 / T-MEMORY-070: "known faults" (project.summary/preflight's
+    // knownFaults) ARE type=failed_attempt items with status="current" --
+    // there is no separate fault entity in this schema. Archiving one out of
+    // "current" is exactly "this fault no longer applies", so that's the
+    // fixed-fault bonus moment, not memory.update or any other status edit.
+    let creditWarning: string | undefined;
+    if (String(current.type) === "failed_attempt" && String(current.status) === "current" && context.sessionUserId) {
+      try {
+        await createCreditsFacade(this.db).award(this.db, {
+          userId: context.sessionUserId,
+          amount: FAULT_FIXED_BONUS,
+          reason: "fault_fixed_bonus",
+          projectId: stringOrNull(row.project_id),
+          relatedType: "item",
+          relatedId: row.id
+        });
+      } catch (error) {
+        creditWarning = `Fault archived, but the credit bonus failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
     return {
       action: "archived",
       memory: itemOut(row),
-      event
+      event,
+      ...(creditWarning ? { warning: creditWarning } : {})
     };
   }
 

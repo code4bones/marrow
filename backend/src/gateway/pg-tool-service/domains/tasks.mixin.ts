@@ -1,7 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { createCreditsFacade } from "../../credits.js";
+import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
@@ -30,6 +30,8 @@ import { type MemoryInstance } from "./memory.mixin.js";
 // that could mean "these two independent records are merely related"
 // (relates_to, derives_from, refines, supersedes, warns_against, ...) --
 // those must never trigger a cascade delete of the other side.
+const TASK_CANCELLED_PENALTY = 5;
+
 const OWNED_TASK_NOTE_RELATIONS = new Set([
   "annotates",
   "implementation_note_for",
@@ -217,7 +219,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     await this.assertProjectMember(String(current.project_id), context);
     if (String(input.status) === "done") {
-      return (await this.completeTask(
+      const completed = await this.completeTask(
         {
           id,
           acceptanceEvidence: stringOrNull(input.note) ?? undefined,
@@ -225,14 +227,16 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
           reason: input.reason
         },
         context
-      )).task;
+      );
+      return { task: completed.task, ...(completed.warning ? { warning: completed.warning } : {}) };
     }
     const note = stringOrNull(input.note);
     const notes = note ? (current.notes ? `${current.notes}\n\n${note}` : note) : current.notes;
+    const newStatus = String(input.status);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
-        status: String(input.status),
+        status: newStatus,
         notes,
         updated_by: context.clientId,
         source_instance_id: context.clientId,
@@ -241,12 +245,70 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       })
       .returning("*");
     await this.recordEventForProject(row.project_id, {
-      type: eventTypeForStatus(String(input.status)),
+      type: eventTypeForStatus(newStatus),
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id
     }, context);
-    return taskOut(row);
+
+    // D-MEMORY-037 / T-MEMORY-070: penalties, not gated behind a session --
+    // a reopen/cancel is a fact about the task regardless of who's calling
+    // right now. task_reopened_penalty reverses the exact task_completed
+    // award for THIS task (the specific person who was credited for
+    // finishing it, not whoever is reopening it now); task_cancelled_penalty
+    // has no prior award to reverse, so it targets whoever was actually
+    // doing the work (active claim's client_id, falling back to
+    // created_by), same "user:<id>" resolution as the T-MEMORY-081 overdue
+    // ticker will use. Never blocks the status change itself.
+    let creditWarning: string | undefined;
+    try {
+      if (String(current.status) === "done" && (newStatus === "todo" || newStatus === "doing")) {
+        await this.applyTaskReopenedPenalty(id, stringOrNull(row.project_id));
+      } else if (String(current.status) === "doing" && newStatus === "cancelled") {
+        await this.applyTaskCancelledPenalty(row);
+      }
+    } catch (error) {
+      creditWarning = `Task status changed, but the credit penalty failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    return { task: taskOut(row), ...(creditWarning ? { warning: creditWarning } : {}) };
+  }
+
+  protected async applyTaskReopenedPenalty(taskId: string, projectId: string | null): Promise<void> {
+    const lastAward = await this.db("credit_transactions")
+      .where({ related_type: "task", related_id: taskId, reason: "task_completed" })
+      .orderBy("created_at", "desc")
+      .first();
+    if (!lastAward) {
+      return;
+    }
+    await createCreditsFacade(this.db).award(this.db, {
+      userId: String(lastAward.user_id),
+      amount: -Math.abs(Number(lastAward.amount)),
+      reason: "task_reopened_penalty",
+      projectId,
+      relatedType: "task",
+      relatedId: taskId
+    });
+  }
+
+  protected async applyTaskCancelledPenalty(task: Row): Promise<void> {
+    const activeClaim = await this.db("task_claims")
+      .where({ task_id: task.id })
+      .orderBy("updated_at", "desc")
+      .first();
+    const userId = userIdFromClientId(activeClaim?.client_id) ?? userIdFromClientId(task.created_by);
+    if (!userId) {
+      return;
+    }
+    await createCreditsFacade(this.db).award(this.db, {
+      userId,
+      amount: -TASK_CANCELLED_PENALTY,
+      reason: "task_cancelled_penalty",
+      projectId: stringOrNull(task.project_id),
+      relatedType: "task",
+      relatedId: String(task.id)
+    });
   }
 
   // T-context (2026-08-11): task.create/milestone was write-once -- no way

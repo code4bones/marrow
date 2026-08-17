@@ -66,6 +66,17 @@ export interface StreakUpdateResult {
 
 export type CreditsFacade = ReturnType<typeof createCreditsFacade>;
 
+// A real logged-in session's clientId is "user:<id>" (see http-server.ts's
+// context normalization); a static token, agent-only, or anonymous caller's
+// clientId never has that shape. Used wherever a credit hook needs to
+// attribute a penalty/bonus to a human when there's no sessionUserId to
+// hand (e.g. resolving whose task_claims/created_by this is), same
+// "user:<id>" convention migration 023 already used to backfill project
+// owners.
+export function userIdFromClientId(clientId: unknown): string | null {
+  return typeof clientId === "string" && clientId.startsWith("user:") ? clientId.slice(5) : null;
+}
+
 function isoDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }

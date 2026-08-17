@@ -1,5 +1,6 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
+import { createCreditsFacade } from "../../credits.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { decisionOut } from "../formatters/decisions.js";
@@ -8,8 +9,37 @@ import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
 import { type Tier1Instance } from "../core/links-core.mixin.js";
 
+const DECISION_ACCEPTED_BONUS = 15;
+
 export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase) {
   return class extends Base {
+  // D-MEMORY-037 / T-MEMORY-070: shared by recordDecision (a decision
+  // created with -- or defaulting to -- status "accepted" is accepted from
+  // the start) and updateDecisionStatus (an explicit later transition into
+  // "accepted"). Never blocks the decision write itself; returns a warning
+  // string on failure for the caller to surface.
+  protected async awardDecisionAcceptedIfNeeded(
+    row: Row,
+    context: NormalizedGatewayRequestContext
+  ): Promise<string | undefined> {
+    if (String(row.status) !== "accepted" || !context.sessionUserId) {
+      return undefined;
+    }
+    try {
+      await createCreditsFacade(this.db).award(this.db, {
+        userId: context.sessionUserId,
+        amount: DECISION_ACCEPTED_BONUS,
+        reason: "decision_accepted_bonus",
+        projectId: stringOrNull(row.project_id),
+        relatedType: "decision",
+        relatedId: String(row.id)
+      });
+      return undefined;
+    } catch (error) {
+      return `Decision saved, but the credit bonus failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   protected async recordDecision(input: Row, context: NormalizedGatewayRequestContext) {
     const project = input.project === null ? null : await this.resolveProject(input.project, context);
     const now = nowIso();
@@ -40,7 +70,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       related_id: row.id
     }, context);
     const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
-    return { ...decisionOut(row), ...linkage };
+    const warning = await this.awardDecisionAcceptedIfNeeded(row, context);
+    return { decision: { ...decisionOut(row), ...linkage }, ...(warning ? { warning } : {}) };
   }
 
   protected async supersedeDecision(input: Row, context: NormalizedGatewayRequestContext) {
@@ -288,7 +319,11 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       body: stringOrNull(input.reason),
       related_id: row.id
     }, context);
-    return decisionOut(row);
+    // Only a genuine transition into "accepted" earns the bonus -- guards
+    // against re-awarding on a same-status no-op call.
+    const warning =
+      String(current.status) !== "accepted" ? await this.awardDecisionAcceptedIfNeeded(row, context) : undefined;
+    return { decision: decisionOut(row), ...(warning ? { warning } : {}) };
   }
 
   // Mirrors updateDecisionStatus's shape minus the superseded-status guard
