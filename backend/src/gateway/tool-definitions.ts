@@ -1094,7 +1094,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.create",
-    description: "Create a shared executable task for a project. If this task is one of a batch of related work created together (e.g. several tasks handed to agents for one refactor or feature), set milestone to a short, stable name -- git-commit-subject style, e.g. \"Refactor auth module\" -- and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline. Leave milestone unset for a standalone task with no siblings.",
+    description: "Create a shared executable task for a project. REQUIRED CHECK before every call: is this task part of a batch of related work -- several tasks for the same refactor/feature, or a follow-up to a task created earlier in this conversation? If yes, this is not optional: set milestone to a short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the task is genuinely standalone, with no siblings past or future.",
     schema: createTaskSchema,
     access: "write"
   },
@@ -1186,7 +1186,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "decision.record",
-    description: "Record a shared project or common decision. If this decision is one of a batch of related work (e.g. it belongs to the same refactor or feature as several tasks/decisions created together), set milestone to the exact same short, stable name -- git-commit-subject style, e.g. \"Refactor auth module\" -- used across that whole batch, so they group under one heading in the Decisions list and Timeline. Leave milestone unset for a standalone decision.",
+    description: "Record a shared project or common decision. REQUIRED CHECK before every call: does this decision belong to the same refactor/feature as other tasks/decisions created together, or is it a follow-up to one created earlier in this conversation? If yes, this is not optional: set milestone to the exact same short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") used across that whole batch, so they group under one heading in the Decisions list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the decision is genuinely standalone, with no siblings past or future.",
     schema: recordDecisionSchema,
     access: "write"
   },
