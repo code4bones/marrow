@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Input, List, Skeleton, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Input, List, Pagination, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -50,7 +50,7 @@ export function ProjectsPage() {
   }, [slug, setSelectedProject]);
 
   const [sort, setSort] = useUserPreference<'slug' | 'createdAt'>('projectsSortOrder', 'slug');
-  const { page, pageSize, offset, onChange } = usePage();
+  const { page, pageSize, offset, onChange } = usePage(20);
   // T-MEMORY-088: server-side full-text search (title/slug/description,
   // plus a plain match on the owner's email) -- transient UI state, not a
   // server-persisted preference like sort order, since there's no reason
@@ -106,6 +106,24 @@ export function ProjectsPage() {
           />
         </div>
 
+        {/* T-MEMORY-088 follow-up: owner explicitly wanted the pager right
+            under the search box, not List's own default bottom-of-list
+            placement (List has no built-in "pagination at top" option,
+            unlike Table's pagination.position) -- rendered as a standalone
+            Pagination here instead of passed to List's `pagination` prop. */}
+        <div style={{ padding: '0 16px 8px' }}>
+          <Pagination
+            size="small"
+            current={page}
+            pageSize={pageSize}
+            total={pageInfo?.totalCount}
+            onChange={onChange}
+            showSizeChanger
+            pageSizeOptions={['10', '20', '50']}
+            style={{ width: '100%' }}
+          />
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
           {loading && <Skeleton active style={{ padding: 8 }} />}
           {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
@@ -113,14 +131,6 @@ export function ProjectsPage() {
             <List<Project>
               dataSource={projects}
               rowKey="id"
-              pagination={{
-                current: page,
-                pageSize,
-                total: pageInfo?.totalCount,
-                onChange,
-                simple: true,
-                size: 'small',
-              }}
               renderItem={(p) => (
                 <List.Item
                   onClick={() => navigate(`/projects/${p.slug}`)}
