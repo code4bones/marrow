@@ -5,11 +5,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
-import { GET_PROJECTS, PIN_PROJECT } from '../../shared/api/queries';
+import { GET_PROJECTS_PAGE, PIN_PROJECT } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
+import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useUserPreference } from '../../shared/lib/useUserPreference';
-import type { Project } from '../../shared/model/types';
+import type { Paginated, Project } from '../../shared/model/types';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -49,19 +50,21 @@ export function ProjectsPage() {
   }, [slug, setSelectedProject]);
 
   const [sort, setSort] = useUserPreference<'slug' | 'createdAt'>('projectsSortOrder', 'slug');
-  const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS, { variables: { sort } });
+  const { page, pageSize, offset, onChange } = usePage();
+  // T-MEMORY-088: server-side full-text search (title/slug/description,
+  // plus a plain match on the owner's email) -- transient UI state, not a
+  // server-persisted preference like sort order, since there's no reason
+  // to remember a search string across visits. Every keystroke re-runs the
+  // query (same as the Faults page's search box), no debounce.
+  const [search, setSearch] = useState('');
+  const { data, loading, error, refetch } = useQuery<{ projectsPage: Paginated<Project> }>(GET_PROJECTS_PAGE, {
+    variables: { sort, search: search.trim() || undefined, limit: pageSize, offset },
+  });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
 
-  // T-MEMORY-087: filters the already-loaded, already-sorted (pinned-first)
-  // list in place -- no popup, no separate result set, no jump-to-project.
-  // Transient UI state (not a server-persisted preference like sort order)
-  // since there's no reason to remember a search string across visits.
-  const [search, setSearch] = useState('');
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredProjects = (data?.projects ?? []).filter(
-    (p) => !normalizedSearch || p.title.toLowerCase().includes(normalizedSearch) || p.slug.toLowerCase().includes(normalizedSearch),
-  );
-  const { labelFor } = useActorLabels(filteredProjects.map((p) => p.createdBy));
+  const projects = data?.projectsPage.items ?? [];
+  const pageInfo = data?.projectsPage.pageInfo;
+  const { labelFor } = useActorLabels(projects.map((p) => p.createdBy));
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -78,7 +81,7 @@ export function ProjectsPage() {
                 size="small"
                 type={sort === 'slug' ? 'primary' : 'text'}
                 icon={<SortAscendingOutlined />}
-                onClick={() => setSort('slug')}
+                onClick={() => { setSort('slug'); onChange(1, pageSize); }}
               />
             </Tooltip>
             <Tooltip title={t('sortNewestFirst')}>
@@ -86,7 +89,7 @@ export function ProjectsPage() {
                 size="small"
                 type={sort === 'createdAt' ? 'primary' : 'text'}
                 icon={<ClockCircleOutlined />}
-                onClick={() => setSort('createdAt')}
+                onClick={() => { setSort('createdAt'); onChange(1, pageSize); }}
               />
             </Tooltip>
           </div>
@@ -97,7 +100,7 @@ export function ProjectsPage() {
           <Input.Search
             placeholder={t('searchProjectsPlaceholder')}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); onChange(1, pageSize); }}
             allowClear
             size="small"
           />
@@ -108,8 +111,16 @@ export function ProjectsPage() {
           {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
           {data && (
             <List<Project>
-              dataSource={filteredProjects}
+              dataSource={projects}
               rowKey="id"
+              pagination={{
+                current: page,
+                pageSize,
+                total: pageInfo?.totalCount,
+                onChange,
+                simple: true,
+                size: 'small',
+              }}
               renderItem={(p) => (
                 <List.Item
                   onClick={() => navigate(`/projects/${p.slug}`)}

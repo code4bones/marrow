@@ -133,6 +133,13 @@ const updateProjectSchema = projectLookupSchema.extend({
 const pinProjectSchema = projectLookupSchema.extend({
   pinned: z.boolean()
 });
+// T-MEMORY-088: gateway-only extension of the shared listProjectsSchema --
+// full-text search only exists against the PostgreSQL projects.search_vector
+// column (migration 060), so it stays out of the schema local/SQLite mode
+// shares.
+const gatewayListProjectsSchema = listProjectsSchema.extend({
+  search: z.string().optional()
+});
 const userPreferenceSetSchema = z.object({
   key: z.string().min(1),
   value: z.unknown()
@@ -879,8 +886,8 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "project.list",
-    description: "List shared project scopes from the gateway database. Use compact=true for low-token project selection.",
-    schema: listProjectsSchema
+    description: "List shared project scopes from the gateway database. Use compact=true for low-token project selection. search full-text-matches title/slug/description (plus a plain substring match against the owner's email) -- gateway-only, ignored in local/SQLite mode.",
+    schema: gatewayListProjectsSchema
   },
   {
     name: "project.get",

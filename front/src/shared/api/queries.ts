@@ -1,9 +1,13 @@
 import { gql } from '@apollo/client/core';
 
-export const GET_PROJECTS = gql`
-  query GetProjects($status: String, $sort: String) {
-    projects(status: $status, sort: $sort) {
-      id slug title description status rootPath createdBy pinned updatedAt
+// T-MEMORY-088: server-side search (title/slug/description full-text, plus
+// owner email) + pagination for the Projects sidebar -- replaced the old
+// non-paginated GET_PROJECTS query entirely (nothing else used it).
+export const GET_PROJECTS_PAGE = gql`
+  query GetProjectsPage($status: String, $sort: String, $search: String, $limit: Int!, $offset: Int!) {
+    projectsPage(status: $status, sort: $sort, search: $search, pagination: { limit: $limit, offset: $offset }) {
+      items { id slug title description status rootPath createdBy pinned updatedAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
 `;

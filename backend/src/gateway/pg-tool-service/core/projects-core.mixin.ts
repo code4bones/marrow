@@ -60,37 +60,69 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return projectOut(row);
   }
 
-  // T-MEMORY-086: a pinned project sorts to the top regardless of the
-  // requested sort order -- the left join is scoped to the calling
-  // session's own user (an anonymous/static-token caller has no
-  // sessionUserId, so `pins.user_id = NULL` never matches any row and
-  // every project comes back unpinned, same as before this feature).
-  protected async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
+  // T-MEMORY-086/088: shared by listProjects and projectsPage -- a pinned
+  // project sorts to the top regardless of the requested sort order (the
+  // pins join is scoped to the calling session's own user; an anonymous/
+  // static-token caller has no sessionUserId, so `pins.user_id = NULL`
+  // never matches any row and every project comes back unpinned, same as
+  // before T-MEMORY-086). When `search` is given, it matches full-text
+  // against title/slug/description (projects.search_vector, migration 060)
+  // OR'd with a plain ILIKE on the owner's email -- a generated tsvector
+  // column can't reference another table, so owner matching can't be true
+  // FTS the way title/slug/description are.
+  protected buildProjectsQuery(input: Row, context?: NormalizedGatewayRequestContext): { query: Knex.QueryBuilder; searchText: string } {
     const db = this.db;
-    const sortColumn = input.sort === "createdAt" ? "projects.created_at" : "projects.slug";
-    const sortDirection = input.sort === "createdAt" ? "desc" : "asc";
+    const searchText = typeof input.search === "string" ? input.search.trim() : "";
     let query = db("projects")
-      .select("projects.*")
-      .select(db.raw("(pins.user_id is not null) as pinned"))
       .leftJoin("project_pins as pins", function joinPins() {
         this.on("pins.project_id", "=", "projects.id").andOn("pins.user_id", "=", db.raw("?", [context?.sessionUserId ?? null]));
       })
-      .orderByRaw("(pins.user_id is not null) desc")
-      .orderBy(sortColumn, sortDirection);
+      .leftJoin("users as owner", "owner.id", "projects.owner_user_id");
     if (input.status) {
       query = query.where("projects.status", String(input.status));
     }
+    if (searchText) {
+      query = query.andWhere((builder) => {
+        builder
+          .whereRaw(
+            "projects.search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))",
+            [searchText, searchText, searchText]
+          )
+          .orWhere("projects.slug", "ilike", `%${searchText}%`)
+          .orWhere("owner.email", "ilike", `%${searchText}%`);
+      });
+    }
     query = this.applyProjectMembershipFilter(query, context);
-    return (await query).map(input.compact === true ? compactProject : projectOut);
+    return { query, searchText };
+  }
+
+  protected projectsListShape(query: Knex.QueryBuilder, input: Row, searchText: string): Knex.QueryBuilder {
+    const db = this.db;
+    const sortColumn = input.sort === "createdAt" ? "projects.created_at" : "projects.slug";
+    const sortDirection = input.sort === "createdAt" ? "desc" : "asc";
+    query.select("projects.*").select(db.raw("(pins.user_id is not null) as pinned"));
+    query.orderByRaw("(pins.user_id is not null) desc");
+    if (searchText) {
+      query.select(
+        db.raw(
+          "ts_rank(projects.search_vector, (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))) as rank",
+          [searchText, searchText, searchText]
+        )
+      );
+      query.orderBy("rank", "desc");
+    }
+    return query.orderBy(sortColumn, sortDirection);
+  }
+
+  protected async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
+    const { query, searchText } = this.buildProjectsQuery(input, context);
+    const rows = await this.projectsListShape(query, input, searchText);
+    return rows.map(input.compact === true ? compactProject : projectOut);
   }
 
   protected async projectsPage(input: Row, context?: NormalizedGatewayRequestContext) {
-    const base = this.db("projects");
-    if (input.status) {
-      base.where("status", String(input.status));
-    }
-    this.applyProjectMembershipFilter(base, context);
-    return this.pageRows(base, input, (query) => query.select("*").orderBy("slug"), projectOut);
+    const { query: base, searchText } = this.buildProjectsQuery(input, context);
+    return this.pageRows(base, input, (query) => this.projectsListShape(query, input, searchText), projectOut);
   }
 
   protected async getProject(input: Row, context?: NormalizedGatewayRequestContext) {
