@@ -10,20 +10,39 @@ function fmt(raw: string | null | undefined): string {
   });
 }
 
+// Email local-part only ("code4bones", not "code4bones@gmail.com") -- the
+// full value is still in the tooltip. Non-email labels (a plain client
+// label with no "@") pass through unchanged.
+function shortAuthor(author: string): string {
+  const at = author.indexOf('@');
+  return at > 0 ? author.slice(0, at) : author;
+}
+
 /**
  * T-MEMORY-085: `author` is an already-resolved display label (email or
  * client label), not a raw clientId -- callers get it from useActorLabels
  * and pass it in, so this component stays a pure renderer with no query of
- * its own.
+ * its own. Stacked on two lines (author above, date below) rather than one
+ * "author · date" line -- a single line at a readable font size didn't fit
+ * the existing table column widths.
  */
 export function Timestamp({ value, author }: { value: string | null | undefined; author?: string | null }) {
   if (!value) return <Typography.Text type="secondary">—</Typography.Text>;
   return (
     <Tooltip title={author ? `${author} · ${value}` : value}>
-      <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-        {author && `${author} · `}
-        {fmt(value)}
-      </Typography.Text>
+      <div style={{ lineHeight: 1.35 }}>
+        {author && (
+          <Typography.Text
+            type="secondary"
+            style={{ fontSize: 10.5, whiteSpace: 'nowrap', display: 'block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}
+          >
+            {shortAuthor(author)}
+          </Typography.Text>
+        )}
+        <Typography.Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+          {fmt(value)}
+        </Typography.Text>
+      </div>
     </Tooltip>
   );
 }
