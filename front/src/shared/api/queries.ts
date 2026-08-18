@@ -557,6 +557,23 @@ export const GET_GIT_PIPELINE_STATUS = gql`
   }
 `;
 
+// T-MEMORY-084: global admin on/off switch for the credits economy.
+export const GET_CREDIT_SETTINGS = gql`
+  query GetCreditSettings {
+    creditSettings {
+      enabled
+    }
+  }
+`;
+
+export const UPDATE_CREDIT_SETTINGS = gql`
+  mutation UpdateCreditSettings($enabled: Boolean!) {
+    updateCreditSettings(enabled: $enabled) {
+      enabled
+    }
+  }
+`;
+
 // ── Subscriptions ─────────────────────────────────────────────────────────────
 
 export const ON_GATEWAY_EVENT = gql`

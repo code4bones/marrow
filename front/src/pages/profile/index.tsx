@@ -13,6 +13,7 @@ import {
   Popconfirm,
   Select,
   Spin,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -35,8 +36,10 @@ import { type GithubLinkStatus, type OAuthClient, type PersonalToken, useAuthSto
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
+  GET_CREDIT_SETTINGS,
   GET_GIT_CREDENTIALS,
   GET_GIT_PIPELINE_STATUS,
+  UPDATE_CREDIT_SETTINGS,
 } from '../../shared/api/queries';
 import type { GitCredential } from '../../shared/model/types';
 
@@ -943,13 +946,59 @@ function GitHostsSection() {
   );
 }
 
+/**
+ * T-MEMORY-084: the single global on/off switch for the whole credits
+ * economy (wallets, ledger, streaks, penalties/bonuses, and everything the
+ * spend catalog/wager tasks still to come will add). Read is open to any
+ * signed-in caller (GraphQL query has no admin gate), but this section only
+ * ever renders inside the role==='admin' tab below -- the write path
+ * (UPDATE_CREDIT_SETTINGS) is enforced admin-only server-side regardless.
+ */
+function CreditsAdminSection() {
+  const { t } = useTranslation('profile');
+  const { data, loading, error, refetch } = useQuery<{ creditSettings: { enabled: boolean } }>(GET_CREDIT_SETTINGS);
+  const [mutate, { loading: saving }] = useMutation(UPDATE_CREDIT_SETTINGS, {
+    onCompleted: () => {
+      message.success(t('creditsSettingsUpdated'));
+      void refetch();
+    },
+    onError: (err) => message.error(err.message),
+  });
+
+  const enabled = data?.creditSettings.enabled ?? false;
+
+  return (
+    <Card title={t('creditsEconomy')} size="small" style={{ marginBottom: 16 }}>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12.5 }}>
+        {t('creditsEconomyDescription')}
+      </Text>
+      {error && <Alert type="error" message={error.message} style={{ marginBottom: 16 }} showIcon />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Switch
+          checked={enabled}
+          loading={loading || saving}
+          checkedChildren={t('creditsEnabledOn')}
+          unCheckedChildren={t('creditsEnabledOff')}
+          onChange={(checked) => void mutate({ variables: { enabled: checked } })}
+        />
+        <Text type="secondary" style={{ fontSize: 12.5 }}>
+          {enabled ? t('creditsEnabledHint') : t('creditsDisabledHint')}
+        </Text>
+      </div>
+    </Card>
+  );
+}
+
 export function ProfilePage() {
   const { t } = useTranslation('profile');
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'admin';
   const sections = [
     { key: 'connect', label: t('connect'), children: <ConnectSection /> },
     { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
+    ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),
   ];
 
   return (
