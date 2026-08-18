@@ -95,7 +95,7 @@ export function MemoryPage() {
   return (
     <PageLayout
       title={t('memory')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Select

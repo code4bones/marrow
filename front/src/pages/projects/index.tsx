@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { Alert, Button, List, Skeleton, Tooltip, Typography } from 'antd';
+import { Alert, Button, List, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -87,7 +87,7 @@ export function ProjectsPage() {
                     </Typography.Text>
                     <StatusBadge status={p.status} />
                   </div>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{p.slug}</Typography.Text>
+                  <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
                   <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
                 </List.Item>
               )}

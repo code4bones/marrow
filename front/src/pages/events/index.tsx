@@ -51,7 +51,7 @@ export function EventsPage() {
   return (
     <PageLayout
       title={t('events')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={slug ? <RecordEventModal projectSlug={slug} onDone={() => refetch()} /> : undefined}
     >
       {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}

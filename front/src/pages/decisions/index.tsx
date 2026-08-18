@@ -102,7 +102,7 @@ export function DecisionsPage() {
   return (
     <PageLayout
       title={t('decisions')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={
         <div style={{ display: 'flex', gap: 8 }}>
           <Select

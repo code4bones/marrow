@@ -152,7 +152,7 @@ export function TasksPage() {
   );
 
   return (
-    <PageLayout title={t('tasks')} subtitle={slug} headerExtra={header} fill>
+    <PageLayout title={t('tasks')} slug={slug} headerExtra={header} fill>
       <Tabs
         defaultActiveKey="list"
         size="small"

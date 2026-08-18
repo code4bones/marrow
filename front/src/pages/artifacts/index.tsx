@@ -89,7 +89,7 @@ export function ArtifactsPage() {
   return (
     <PageLayout
       title={t('artifacts')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={slug ? (
         <div style={{ display: 'flex', gap: 8 }}>
           <PutTextArtifactDrawer projectSlug={slug} onDone={() => refetch()} />

@@ -219,7 +219,7 @@ function ProjectBody({ r }: { r: Project }) {
   const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
-      <Field label={t('slug')}><Text code>{r.slug}</Text></Field>
+      <Field label={t('slug')}><Tag color="orange" style={{ margin: 0, fontFamily: 'monospace' }}>{r.slug}</Tag></Field>
       <Field label={t('status')}><StatusBadge status={r.status} /></Field>
       {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
       {r.rootPath && <Field label={t('rootPath')}><Text code style={{ fontSize: 12 }}>{r.rootPath}</Text></Field>}

@@ -49,7 +49,7 @@ export function LinksPage() {
   return (
     <PageLayout
       title={t('links')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Input

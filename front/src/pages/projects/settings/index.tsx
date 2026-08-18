@@ -114,7 +114,7 @@ export function ProjectSettingsPage() {
   return (
     <PageLayout
       title={t('settings')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={isOwner ? <Tag color="blue">{t('youAreOwner')}</Tag> : undefined}
     >
       <RenameSection slug={slug} canManage={canManage} />

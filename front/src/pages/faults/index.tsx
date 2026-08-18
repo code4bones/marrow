@@ -53,7 +53,7 @@ export function FaultsPage() {
   return (
     <PageLayout
       title={t('knownFaults')}
-      subtitle={slug}
+      slug={slug}
       headerExtra={
         <Input.Search
           placeholder={t('searchFaultsPlaceholder')}
