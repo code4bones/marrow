@@ -102,17 +102,39 @@ agents and/or humans sharing one memory store instead.
   all of them.
 - **Memory** — free-text notes/knowledge with full-text search (SQLite FTS5
   locally, PostgreSQL full-text in gateway mode).
-- **Tasks** — create, claim, complete, with priorities and milestones.
+- **Tasks** — create, claim, complete, with priorities, milestones, claim
+  leases/heartbeats for multi-agent coordination, and completion notes.
 - **Decisions** — recorded with rationale, superseding chains, and typed
   links to other decisions/tasks/memory.
 - **Links & Events** — a queryable graph connecting records, plus an audit
   trail of what happened when.
 - **Artifacts** — text/binary storage for templates, checklists, and docs,
-  shared across projects or scoped to one.
+  shared across projects or scoped to one, with bulk upload/grouping in the
+  web UI.
 - **Handoffs** — structured session handoff notes for continuing work across
   agent sessions.
+- **Cross-project requests** — one project can ask another a question
+  (`request.create`), answered through a threaded reply chain, for
+  coordinating work that spans otherwise-isolated memory scopes.
 - **Preflight / context packing** — the retrieval layer that turns all of the
   above into what an agent actually needs before it starts editing.
+- **Per-user auth & collaboration** (gateway mode) — email/password login
+  with optional TOTP 2FA, admin/member roles, per-project membership,
+  shareable invite links, and OAuth login for Claude.ai/ChatGPT web
+  connectors alongside personal API tokens for CLI agents.
+- **Git integration** — store a git host credential per user and check CI
+  pipeline/job/runner status directly from an agent or the web UI
+  (`git.pipeline_status`, `git.job_trace`, `git.runners_status`).
+- **Credits economy** (gateway mode, admin-toggleable) — an optional wallet
+  + ledger + streak system that awards or penalizes based on task
+  completion and other project activity, with an admin on/off switch and a
+  leaderboard.
+- **Personal preferences** — server-side (never browser-local) per-user UI
+  preferences: pinned projects, list sort order, and per-project view
+  settings that follow the user across devices.
+- **Realtime, bilingual web UI** — the companion UI updates live over a
+  WebSocket subscription (no manual refresh) and ships in English and
+  Russian.
 
 ## CI/CD
 

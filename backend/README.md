@@ -10,12 +10,11 @@ commands, deploy paths, migrations, and implementation approaches.
 
 ## Current Status
 
-Implemented local/core MCP tools:
+Implemented local/core MCP tools (stdio, SQLite):
 
 - `project.create`
 - `project.list`
 - `project.get`
-- `project.delete`
 - `project.set_current`
 - `project.current`
 - `memory.create`
@@ -25,7 +24,6 @@ Implemented local/core MCP tools:
 - `task.create`
 - `task.list`
 - `task.get`
-- `task.delete`
 - `task.next`
 - `task.update_status`
 - `decision.record`
@@ -37,42 +35,53 @@ Implemented local/core MCP tools:
 - `link.list`
 - `preflight`
 
-Shared PostgreSQL gateway mode exposes the same core model plus gateway and
-collaboration tools. Current gateway smoke coverage expects 55 tools, including:
+Shared PostgreSQL gateway mode exposes the same core model plus everything
+that only makes sense for a shared, multi-user, per-project-membership
+deployment. As of this writing the gateway registers **96 tools**; run
+`gateway.diagnostics` on a live instance for the exact live count and
+migration state, or see `src/gateway/tool-definitions.ts` for the canonical
+source of truth. By domain:
 
-- `gateway.about`
-- `gateway.version`
-- `gateway.diagnostics`
-- `gateway.backup_manifest`
-- `gateway.manuals`
-- `gateway.status`
-- `gateway.clients`
-- `gateway.client_get`
-- `gateway.client_forget`
-- `gateway.client_prune`
-- `project.resolve`
-- `project.summary`
-- `project.delete`
-- `memory.upsert`
-- `memory.hygiene_report`
-- `failed_attempt.record`
-- `decision.supersede`
-- `artifact.put`
-- `artifact.put_text`
-- `artifact.search`
-- `artifact.list`
-- `artifact.peek`
-- `artifact.read_text`
-- `artifact.get`
-- `artifact.update_metadata`
-- `artifact.archive`
-- `task.delete`
-- `preflight.by_query`
-- `context.pack`
-- `context.changed_since`
-- `handoff.create`
-- `handoff.latest`
-- `handoff.search`
+- **gateway** (12) — `gateway.about`, `gateway.version`, `gateway.status`,
+  `gateway.diagnostics`, `gateway.connector_info`, `gateway.backup_manifest`,
+  `gateway.manuals`, `gateway.clients`, `gateway.client_get`,
+  `gateway.client_forget`, `gateway.client_prune`, `gateway.actor_labels`.
+- **project** (13) — `project.create/list/get/update/delete`,
+  `project.pin` (per-user, see below), `project.resolve/summary`,
+  `project.set_current/current`, `project.invite_link_get/regenerate`,
+  `project.invite_claim`.
+- **task** (14) — `task.create/list/get/delete`, `task.claim`,
+  `task.claim_heartbeat`, `task.claim_complete`, `task.release`,
+  `task.claims`, `task.complete`, `task.add_note`, `task.next`,
+  `task.update_status/update_milestone`.
+- **decision** (8) — `decision.record/list/get`, `decision.update_status`,
+  `decision.update_milestone`, `decision.supersede`, `decision.archive`,
+  `decision.delete`.
+- **memory** (8) — `memory.create/get/search/update`, `memory.upsert`,
+  `memory.archive`, `memory.delete`, `memory.hygiene_report`.
+- **artifact** (10) — `artifact.put/put_text/search/list/get/peek/read_text`,
+  `artifact.update_metadata`, `artifact.archive`, `artifact.delete`.
+- **event** (3) / **link** (3) — `event.record/list/delete`,
+  `link.create/list/delete`.
+- **failed_attempt** (1) — `failed_attempt.record` (known-fault tracking,
+  surfaced back through `preflight`/`project.summary`).
+- **handoff** (3) — `handoff.create/latest/search`.
+- **preflight** (2) / **context** (2) — `preflight`, `preflight.by_query`,
+  `context.pack`, `context.changed_since`.
+- **request** (3) / **reply** (1) — cross-project Q&A:
+  `request.create/list/get`, `reply.create` (threaded replies).
+- **git** (6) — per-user git host credentials plus CI status checks:
+  `git.credential_create/list/delete`, `git.pipeline_status`,
+  `git.job_trace`, `git.runners_status`.
+- **credit** (5) — the optional, admin-toggleable credits economy:
+  `credit.balance/history/leaderboard`, `credit.settings_get`,
+  `credit.settings_update` (admin-only).
+- **user** (2) — per-user server-side preferences (pinned projects, list
+  sort order, per-project view settings; never browser localStorage):
+  `user.preferences_get`, `user.preference_set`.
+
+Tools are also reachable one-to-one through the GraphQL API the web UI runs
+on -- see [docs/GRAPHQL_API.md](docs/GRAPHQL_API.md).
 
 New agents can request the compact first-run guide with
 `gateway.manuals(audience="onboarding", includeContent=true)`.
@@ -218,10 +227,18 @@ PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 
 The Node gateway listens on internal unprefixed routes such as `/mcp`, `/health`, and `/ready`; `API_ENDPOINT` is the public reverse-proxy prefix, for example `/api`.
 
-Gateway authorization is intentionally simple for trusted internal deployments:
-any client with the configured bearer token can use the shared gateway. Per-user
-roles, ACLs, and project permissions are not part of the current product stage.
-For ChatGPT Apps/custom MCP Apps, set `PROJECT_MEMORY_MAGIC_TOKEN` and
+A static `MCP_TOKEN` bearer is one valid way to reach the gateway (any client
+holding it authenticates as the fixed static-token identity -- see
+`docs/AUTH.md`), but it is not the primary access model any more: a full
+per-user account system now sits alongside it -- email/password login with
+optional TOTP 2FA, admin/member roles, per-project membership (an invite
+link or an admin add is required to see a project as `role=member`; `admin`
+sessions bypass membership checks), and OAuth login for Claude.ai/ChatGPT
+web connectors backed by each user's own personal API tokens and git host
+credentials. See `docs/AUTH.md` for the full users/sessions/tokens schema
+and the `pm3m admin create` bootstrap command for the first admin account.
+For ChatGPT Apps/custom MCP Apps that still use the older shared-secret
+flow instead of a real per-user OAuth login, set `PROJECT_MEMORY_MAGIC_TOKEN` and
 `PROJECT_MEMORY_PUBLIC_URL` to enable the minimal OAuth facade. The magic token
 is used only at `/oauth/authorize`; ChatGPT receives an OAuth bearer token and
 never sees `MCP_TOKEN`. The authorization code is short-lived and one-time-use,
@@ -367,33 +384,8 @@ codewhale-tui mcp validate
 codewhale-tui mcp tools project-memory
 ```
 
-Gateway-only MCP tools:
-
-- `gateway.about`
-- `gateway.version`
-- `gateway.diagnostics`
-- `gateway.backup_manifest`
-- `gateway.manuals`
-- `gateway.status`
-- `gateway.clients`
-- `gateway.client_get`
-- `gateway.client_forget`
-- `gateway.client_prune`
-- `project.resolve`
-- `memory.upsert`
-- `failed_attempt.record`
-- `decision.supersede`
-- `artifact.put`
-- `artifact.put_text`
-- `artifact.search`
-- `artifact.list`
-- `artifact.peek`
-- `artifact.read_text`
-- `artifact.get`
-- `artifact.update_metadata`
-- `artifact.archive`
-- `preflight.by_query`
-- `handoff.create`
+See [Current Status](#current-status) above for the full, categorized
+gateway-only tool list (everything beyond the local/core tools).
 
 Bundled gateway templates are seeded as common artifacts under:
 
