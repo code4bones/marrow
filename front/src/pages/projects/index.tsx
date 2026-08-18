@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, List, Skeleton, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Input, List, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
@@ -51,7 +51,17 @@ export function ProjectsPage() {
   const [sort, setSort] = useUserPreference<'slug' | 'createdAt'>('projectsSortOrder', 'slug');
   const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS, { variables: { sort } });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
-  const { labelFor } = useActorLabels((data?.projects ?? []).map((p) => p.createdBy));
+
+  // T-MEMORY-087: filters the already-loaded, already-sorted (pinned-first)
+  // list in place -- no popup, no separate result set, no jump-to-project.
+  // Transient UI state (not a server-persisted preference like sort order)
+  // since there's no reason to remember a search string across visits.
+  const [search, setSearch] = useState('');
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredProjects = (data?.projects ?? []).filter(
+    (p) => !normalizedSearch || p.title.toLowerCase().includes(normalizedSearch) || p.slug.toLowerCase().includes(normalizedSearch),
+  );
+  const { labelFor } = useActorLabels(filteredProjects.map((p) => p.createdBy));
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -83,12 +93,22 @@ export function ProjectsPage() {
           <CreateProjectModal onDone={() => refetch()} />
         </div>
 
+        <div style={{ padding: '0 16px 8px' }}>
+          <Input.Search
+            placeholder={t('searchProjectsPlaceholder')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+            size="small"
+          />
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
           {loading && <Skeleton active style={{ padding: 8 }} />}
           {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
           {data && (
             <List<Project>
-              dataSource={data.projects}
+              dataSource={filteredProjects}
               rowKey="id"
               renderItem={(p) => (
                 <List.Item

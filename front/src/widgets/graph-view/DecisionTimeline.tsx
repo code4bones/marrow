@@ -1,13 +1,13 @@
 import {
   CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
 } from '@ant-design/icons';
-import { AutoComplete, Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
-import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
+import { SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
@@ -106,15 +106,6 @@ const TITLE_PREFIX_RE = /^([^:]{2,40}):\s+(.+)$/s;
 function splitTitlePrefix(title: string): { prefix: string | null; rest: string } {
   const m = TITLE_PREFIX_RE.exec(title);
   return m ? { prefix: m[1], rest: m[2] } : { prefix: null, rest: title };
-}
-
-// Small kind-identity dot used in the root-search dropdown (id/title match
-// across all kinds) — reuses the app's one canonical kind→color mapping
-// (shared/lib/entityId.ts, the same one RecordLink chips use) rather than
-// SATELLITE_KIND_COLOR (also imported from entityId.ts), which only covers
-// non-decision satellite dots and doesn't include decision itself.
-function kindDotColor(kind: string): string {
-  return ENTITY_COLOR[kind.toLowerCase() as keyof typeof ENTITY_COLOR] ?? ENTITY_COLOR.unknown;
 }
 
 const MAX_SATELLITES_SHOWN = 8;
@@ -759,56 +750,24 @@ interface ColumnCommonProps {
   labelFor: LabelFor;
 }
 
-// Root-changing search (D-MEMORY-022 pt.2) — client-side substring match
-// over id/title across every kind in the already-loaded project graph (no
-// new backend query). Deliberately does NOT reach into the lazy per-node
-// resolver: a node absent from `nodes` can't be a search result in the
-// first place (nothing to match its title against), so there's no "type an
-// id, nothing found, silently fails to lazy-resolve" gap here — see the
-// task note on T-MEMORY-049 for why this is a moot case, not a cut corner.
-const MAX_SEARCH_RESULTS = 20;
-
-function RootSearch({ nodes, onSelect }: { nodes: GraphNode[]; onSelect: (id: string) => void }) {
+// T-MEMORY-087: in-place filter of the baseline ribbon/milestone groups --
+// deliberately NOT a search-and-jump popup (that was the previous
+// RootSearch behavior, D-MEMORY-022 pt.2, replaced per owner feedback: "не
+// рисовать поверх popup с найденными... нам нужно что бы это был фильтр").
+// State lives in DecisionTimeline itself (the filter has to reach
+// baselineNodes/milestoneGroups there), so this is a pure controlled input.
+function TimelineFilterInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation('decisions');
-  const [query, setQuery] = useState('');
-
-  const options = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return nodes
-      .filter((n) => n.id.toLowerCase().includes(q) || n.title.toLowerCase().includes(q))
-      .slice(0, MAX_SEARCH_RESULTS)
-      .map((n) => ({
-        value: n.id,
-        label: (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: kindDotColor(n.kind), flexShrink: 0 }} />
-            <span style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace', flexShrink: 0 }}>{n.id}</span>
-            <span style={{ fontSize: 12, color: '#d9d9d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {n.title}
-            </span>
-          </div>
-        ),
-      }));
-  }, [nodes, query]);
-
   return (
-    <AutoComplete
-      value={query}
-      options={options}
-      onSearch={setQuery}
-      onSelect={(id) => { onSelect(id as string); setQuery(''); }}
-      style={{ width: '100%' }}
-      popupMatchSelectWidth={300}
-    >
-      <Input
-        size="small"
-        placeholder={t('findAnyRecordPlaceholder')}
-        prefix={<SearchOutlined style={{ color: '#595959', fontSize: 11 }} />}
-        allowClear
-        onClick={(e) => e.stopPropagation()}
-      />
-    </AutoComplete>
+    <Input
+      size="small"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={t('filterTimelinePlaceholder')}
+      prefix={<SearchOutlined style={{ color: '#595959', fontSize: 11 }} />}
+      allowClear
+      onClick={(e) => e.stopPropagation()}
+    />
   );
 }
 
@@ -822,10 +781,10 @@ function milestoneGroupLabel(t: (key: string, options?: Record<string, unknown>)
   return `${name}: ${countLabel}`;
 }
 
-function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilestone, ...common }: {
+function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, ...common }: {
   rows: BaselineRow[];
-  allNodes: GraphNode[];
-  onSelectRoot: (id: string) => void;
+  filterQuery: string;
+  onFilterChange: (value: string) => void;
   rootKind: RootKind;
   groupByMilestone: boolean;
 } & ColumnCommonProps) {
@@ -838,10 +797,14 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilesto
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
           {rootKindLabel(t, rootKind)}
         </Typography.Text>
-        <RootSearch nodes={allNodes} onSelect={onSelectRoot} />
+        <TimelineFilterInput value={filterQuery} onChange={onFilterChange} />
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
-        {groupByMilestone
+        {groupByMilestone && milestoneGroups.length === 0 ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('noMatchesForFilter')}</Typography.Text>
+        ) : !groupByMilestone && rows.length === 0 ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('noMatchesForFilter')}</Typography.Text>
+        ) : groupByMilestone
           ? milestoneGroups.map((group) => {
             const label = milestoneGroupLabel(t, rootKind, group.milestone, group.nodes.length);
             const lastIdx = group.nodes.length - 1;
@@ -1195,19 +1158,35 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     return { baselineNodes, satellitesByRecord };
   }, [nodes, edges, nodeById, rootKind]);
 
+  // T-MEMORY-087: in-place filter of the baseline list (no popup, no
+  // jump-to-root) -- narrows both baselineNodes and the task-marker overlay
+  // by the same substring match RootSearch used to use only for its dropdown.
+  const [filterQuery, setFilterQuery] = useState('');
+  const normalizedFilter = filterQuery.trim().toLowerCase();
+  const filteredBaselineNodes = useMemo(() => {
+    if (!normalizedFilter) return baselineNodes;
+    return baselineNodes.filter(
+      (n) => n.id.toLowerCase().includes(normalizedFilter) || n.title.toLowerCase().includes(normalizedFilter),
+    );
+  }, [baselineNodes, normalizedFilter]);
+  const filteredTaskMarkers = useMemo(() => {
+    if (!normalizedFilter) return overlay.taskMarkers;
+    return overlay.taskMarkers.filter((m) => m.title.toLowerCase().includes(normalizedFilter));
+  }, [overlay.taskMarkers, normalizedFilter]);
+
   // Task-created/completed markers are a DECISION-timeline overlay concept
   // (T-MEMORY-045) — showing "when did this task happen relative to
   // decisions". They don't apply to a Tasks-rooted baseline (every task
   // already gets its own row there), so only merge them in when decisions
   // are actually the root.
   const baselineRows = useMemo(
-    () => buildBaselineRows(baselineNodes, rootKind === 'DECISION' ? overlay.taskMarkers : []),
-    [baselineNodes, rootKind, overlay.taskMarkers],
+    () => buildBaselineRows(filteredBaselineNodes, rootKind === 'DECISION' ? filteredTaskMarkers : []),
+    [filteredBaselineNodes, rootKind, filteredTaskMarkers],
   );
 
   const milestoneGroups = useMemo(
-    () => (groupByMilestone ? buildMilestoneGroups(baselineNodes) : EMPTY_MILESTONE_GROUPS),
-    [groupByMilestone, baselineNodes],
+    () => (groupByMilestone ? buildMilestoneGroups(filteredBaselineNodes) : EMPTY_MILESTONE_GROUPS),
+    [groupByMilestone, filteredBaselineNodes],
   );
 
   // Defensive: if a graph refetch drops an id mid-chain (rare — depth
@@ -1230,15 +1209,6 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // clicking anything else opens it here and drops everything past it.
   const handleToggle = useCallback((id: string, level: number) => {
     setChain((prev) => (prev[level] === id ? prev.slice(0, level) : [...prev.slice(0, level), id]));
-  }, []);
-
-  // D-MEMORY-022 pt.2: a search selection always opens as the new root,
-  // replacing whatever chain is currently open — unlike handleToggle above,
-  // this is never a toggle (re-selecting the same result can't collapse
-  // anything), so there's no "click something and it vanishes" ambiguity
-  // to worry about here.
-  const openAsRoot = useCallback((id: string) => {
-    setChain([id]);
   }, []);
 
   // Mirrors Finder auto-scrolling to reveal a freshly opened column instead
@@ -1373,7 +1343,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
-        <BaselineColumn rows={baselineRows} allNodes={nodes} onSelectRoot={openAsRoot} rootKind={rootKind} groupByMilestone={groupByMilestone} {...common} />
+        <BaselineColumn rows={baselineRows} filterQuery={filterQuery} onFilterChange={setFilterQuery} rootKind={rootKind} groupByMilestone={groupByMilestone} {...common} />
         {validChain.map((rootId, idx) => (
           <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
         ))}
