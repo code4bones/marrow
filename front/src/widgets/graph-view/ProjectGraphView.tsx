@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useUserPreference } from '../../shared/lib/useUserPreference';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
@@ -31,12 +32,6 @@ export function ProjectGraphView({ slug }: Props) {
   const { t } = useTranslation('projects');
   const [view, setView] = useState<ViewMode>('timeline');
   const depth = MAX_LINK_DEPTH;
-  // D-MEMORY-024: what the baseline ribbon lists — decisions by default
-  // (D-MEMORY-014's original quiet default), switchable to any kind.
-  // Timeline-only -- GraphTree's root is always the project itself, so this
-  // selection (and showTasks below) just sits unused-but-preserved while
-  // view === 'tree', per T-MEMORY-056's acceptance criteria.
-  const [rootKind, setRootKind] = useState<RootKind>('DECISION');
   // T-MEMORY-045: off by default — decisions-only stays the quiet default
   // view (D-MEMORY-014), tasks are opt-in noise the owner can turn on when
   // they specifically want the fuller activity picture. Only meaningful
@@ -49,6 +44,19 @@ export function ProjectGraphView({ slug }: Props) {
   );
 
   const projectId = projectData?.project.id;
+
+  // D-MEMORY-024: what the baseline ribbon lists — decisions by default
+  // (D-MEMORY-014's original quiet default), switchable to any kind.
+  // Timeline-only -- GraphTree's root is always the project itself, so this
+  // selection (and showTasks above) just sits unused-but-preserved while
+  // view === 'tree', per T-MEMORY-056's acceptance criteria. T-MEMORY-086:
+  // persisted server-side per (user, project) -- the key is null until
+  // projectId resolves, so the preference hook just returns the 'DECISION'
+  // fallback for that first render instead of persisting under a bogus key.
+  const [rootKind, setRootKind] = useUserPreference<RootKind>(
+    projectId ? `timelineRootKind:${projectId}` : null,
+    'DECISION',
+  );
 
   const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,

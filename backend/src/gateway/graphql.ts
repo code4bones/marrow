@@ -231,6 +231,10 @@ const typeDefs = `#graphql
     creditLeaderboard(limit: Int): [LeaderboardEntry!]!
     creditSettings: CreditSettings!
     actorLabels(ids: [String!]!): [ActorLabel!]!
+    # T-MEMORY-086: every stored key/value for the calling session's own
+    # user, flat -- see gateway.actor_labels' JSON usage above for the same
+    # "opaque object, no fixed schema" pattern.
+    userPreferences: JSON!
   }
 
   type Mutation {
@@ -239,6 +243,7 @@ const typeDefs = `#graphql
     regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
     claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
+    pinProject(id: ID, slug: String, pinned: Boolean!): Project!
 
     createMemory(input: CreateMemoryInput!): MemoryRecord!
     updateMemory(input: UpdateMemoryInput!): MemoryRecord!
@@ -289,6 +294,7 @@ const typeDefs = `#graphql
     deleteGitCredential(id: ID!): Boolean!
 
     updateCreditSettings(enabled: Boolean!): CreditSettings!
+    setUserPreference(key: String!, value: JSON!): JSON!
   }
 
   # T-MEMORY-042: single unified live-update channel over WS -- deliberately
@@ -485,6 +491,7 @@ const typeDefs = `#graphql
     rootPath: String
     ownerUserId: String
     createdBy: String
+    pinned: Boolean!
     createdAt: String
     updatedAt: String
   }
@@ -1087,7 +1094,9 @@ const resolvers = {
     creditSettings: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.settings_get", {})).settings,
     actorLabels: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "gateway.actor_labels", cleanInput(args))).labels
+      (await callTool<Row>(context, "gateway.actor_labels", cleanInput(args))).labels,
+    userPreferences: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "user.preferences_get", {})).preferences
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1100,6 +1109,8 @@ const resolvers = {
       await callTool<Row>(context, "project.invite_claim", cleanInput(args)),
     deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
+    pinProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.pin", requireOne(cleanInput(args), ["id", "slug"], "pinProject"))).project,
     createMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "memory.create", cleanInput(args.input as Row))).item,
     updateMemory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1163,7 +1174,9 @@ const resolvers = {
       return result.deleted === true;
     },
     updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings
+      (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings,
+    setUserPreference: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "user.preference_set", cleanInput(args))
   },
   Subscription: {
     gatewayEvents: {

@@ -23,6 +23,11 @@ export function projectOut(row: Row) {
     rootPath: stringOrNull(row.root_path),
     ownerUserId: stringOrNull(row.owner_user_id),
     createdBy: stringOrNull(row.created_by),
+    // T-MEMORY-086: only set on rows that came through listProjects' pin
+    // join -- every other caller's row simply lacks the column, so this
+    // defaults to false (a freshly created/fetched project reads as
+    // unpinned, which is correct) rather than needing a second query.
+    pinned: Boolean(row.pinned),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

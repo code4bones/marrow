@@ -60,12 +60,25 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return projectOut(row);
   }
 
+  // T-MEMORY-086: a pinned project sorts to the top regardless of the
+  // requested sort order -- the left join is scoped to the calling
+  // session's own user (an anonymous/static-token caller has no
+  // sessionUserId, so `pins.user_id = NULL` never matches any row and
+  // every project comes back unpinned, same as before this feature).
   protected async listProjects(input: Row, context?: NormalizedGatewayRequestContext) {
-    let query = input.sort === "createdAt"
-      ? this.db("projects").select("*").orderBy("created_at", "desc")
-      : this.db("projects").select("*").orderBy("slug");
+    const db = this.db;
+    const sortColumn = input.sort === "createdAt" ? "projects.created_at" : "projects.slug";
+    const sortDirection = input.sort === "createdAt" ? "desc" : "asc";
+    let query = db("projects")
+      .select("projects.*")
+      .select(db.raw("(pins.user_id is not null) as pinned"))
+      .leftJoin("project_pins as pins", function joinPins() {
+        this.on("pins.project_id", "=", "projects.id").andOn("pins.user_id", "=", db.raw("?", [context?.sessionUserId ?? null]));
+      })
+      .orderByRaw("(pins.user_id is not null) desc")
+      .orderBy(sortColumn, sortDirection);
     if (input.status) {
-      query = query.where("status", String(input.status));
+      query = query.where("projects.status", String(input.status));
     }
     query = this.applyProjectMembershipFilter(query, context);
     return (await query).map(input.compact === true ? compactProject : projectOut);

@@ -3,8 +3,32 @@ import { gql } from '@apollo/client/core';
 export const GET_PROJECTS = gql`
   query GetProjects($status: String, $sort: String) {
     projects(status: $status, sort: $sort) {
-      id slug title description status rootPath createdBy updatedAt
+      id slug title description status rootPath createdBy pinned updatedAt
     }
+  }
+`;
+
+export const PIN_PROJECT = gql`
+  mutation PinProject($id: ID, $slug: String, $pinned: Boolean!) {
+    pinProject(id: $id, slug: $slug, pinned: $pinned) {
+      id pinned
+    }
+  }
+`;
+
+// T-MEMORY-086: per-user server-side prefs (deliberately NOT localStorage)
+// -- projects-list sort order, and a per-project Timeline root-kind pref
+// keyed "timelineRootKind:<projectId>". userPreferences returns every
+// stored key flat, as JSON.
+export const GET_USER_PREFERENCES = gql`
+  query GetUserPreferences {
+    userPreferences
+  }
+`;
+
+export const SET_USER_PREFERENCE = gql`
+  mutation SetUserPreference($key: String!, $value: JSON!) {
+    setUserPreference(key: $key, value: $value)
   }
 `;
 

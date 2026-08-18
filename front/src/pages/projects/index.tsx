@@ -1,19 +1,42 @@
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, List, Skeleton, Tag, Tooltip, Typography } from 'antd';
-import { ClockCircleOutlined, SortAscendingOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
-import { GET_PROJECTS } from '../../shared/api/queries';
+import { GET_PROJECTS, PIN_PROJECT } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
+import { useUserPreference } from '../../shared/lib/useUserPreference';
 import type { Project } from '../../shared/model/types';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { ProjectOverview } from '../../widgets/project-overview';
+
+// T-MEMORY-086: pin toggle -- stops the click from also bubbling to the
+// List.Item's own onClick (navigate into the project), same as every other
+// per-row action button in this app (DeleteTaskButton etc).
+function PinButton({ project, onDone }: { project: Project; onDone: () => void }) {
+  const { t } = useTranslation('projects');
+  const [mutate, { loading }] = useMutation(PIN_PROJECT, { onCompleted: onDone });
+  return (
+    <Tooltip title={project.pinned ? t('unpin') : t('pin')}>
+      <Button
+        size="small"
+        type="text"
+        icon={project.pinned ? <PushpinFilled style={{ color: '#d89614' }} /> : <PushpinOutlined />}
+        loading={loading}
+        onClick={(e) => {
+          e.stopPropagation();
+          void mutate({ variables: { id: project.id, pinned: !project.pinned } });
+        }}
+      />
+    </Tooltip>
+  );
+}
 
 export function ProjectsPage() {
   const { t } = useTranslation('projects');
@@ -25,7 +48,7 @@ export function ProjectsPage() {
     if (slug) setSelectedProject(slug);
   }, [slug, setSelectedProject]);
 
-  const [sort, setSort] = useState<'slug' | 'createdAt'>('slug');
+  const [sort, setSort] = useUserPreference<'slug' | 'createdAt'>('projectsSortOrder', 'slug');
   const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS, { variables: { sort } });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
   const { labelFor } = useActorLabels((data?.projects ?? []).map((p) => p.createdBy));
@@ -86,6 +109,7 @@ export function ProjectsPage() {
                       {p.title}
                     </Typography.Text>
                     <StatusBadge status={p.status} />
+                    <PinButton project={p} onDone={() => refetch()} />
                   </div>
                   <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
                   <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />

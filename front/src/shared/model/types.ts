@@ -20,6 +20,7 @@ export interface Project {
   rootPath: string | null;
   ownerUserId: string | null;
   createdBy: string | null;
+  pinned: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }

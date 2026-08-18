@@ -127,6 +127,16 @@ const updateProjectSchema = projectLookupSchema.extend({
   // honored when the caller is a system admin; silently ignored otherwise.
   ownerUserId: z.string().optional()
 });
+// T-MEMORY-086: per-user server-side prefs -- pin state, and a generic
+// scalar key/value store (projects-list sort order, and a per-project
+// Timeline root-kind pref keyed "timelineRootKind:<projectId>").
+const pinProjectSchema = projectLookupSchema.extend({
+  pinned: z.boolean()
+});
+const userPreferenceSetSchema = z.object({
+  key: z.string().min(1),
+  value: z.unknown()
+});
 const projectInviteClaimSchema = z.object({
   code: z.string().min(1)
 });
@@ -848,6 +858,19 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: actorLabelsSchema
   },
   {
+    name: "user.preferences_get",
+    description:
+      "Get every server-side UI preference stored for the calling session's own user, as a flat key/value object (e.g. the projects-list sort order, or a per-project Timeline root-kind pref keyed \"timelineRootKind:<projectId>\"). Requires a logged-in session. Deliberately NOT localStorage -- these follow the user across devices/sessions.",
+    schema: emptySchema
+  },
+  {
+    name: "user.preference_set",
+    description:
+      "Set one server-side UI preference for the calling session's own user (upsert by key). Requires a logged-in session.",
+    schema: userPreferenceSetSchema,
+    access: "write"
+  },
+  {
     name: "project.create",
     description:
       "Create a durable shared project scope. In gateway mode this writes to PostgreSQL for all connected developers and agents.",
@@ -869,6 +892,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description:
       "Rename a shared project (title/description). Only this project's owner or a system admin can rename -- ownerUserId may also be set, but only takes effect for an admin caller (ownership reassignment).",
     schema: updateProjectSchema,
+    access: "write"
+  },
+  {
+    name: "project.pin",
+    description:
+      "Pin or unpin a project for the calling session's own user -- a pinned project always sorts to the top of project.list/projects regardless of the chosen sort order. Requires a logged-in session; purely a per-user display preference, no effect on the project itself or on other users.",
+    schema: pinProjectSchema,
     access: "write"
   },
   {

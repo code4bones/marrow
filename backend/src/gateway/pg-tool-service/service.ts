@@ -14,6 +14,7 @@ import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
 import { CreditsMixin } from "./domains/credits.mixin.js";
 import { GraphMixin } from "./domains/graph.mixin.js";
+import { UserPrefsMixin } from "./domains/user-prefs.mixin.js";
 import { GatewayOpsMixin } from "./domains/gateway-ops.mixin.js";
 import { TasksMixin } from "./domains/tasks.mixin.js";
 import { HandoffsMixin } from "./domains/handoffs.mixin.js";
@@ -42,16 +43,18 @@ const ComposedService = ProjectSummaryMixin(
         I18nMixin(
           TasksMixin(
             GatewayOpsMixin(
-              GraphMixin(
-                GitCredentialsMixin(
-                  CreditsMixin(
-                    ClientsMixin(
-                      EventsMixin(
-                        DecisionsMixin(
-                          ArtifactsMixin(
-                            MemoryMixin(
-                              LinksCoreMixin(
-                                ProjectsCoreMixin(BaseService)
+              UserPrefsMixin(
+                GraphMixin(
+                  GitCredentialsMixin(
+                    CreditsMixin(
+                      ClientsMixin(
+                        EventsMixin(
+                          DecisionsMixin(
+                            ArtifactsMixin(
+                              MemoryMixin(
+                                LinksCoreMixin(
+                                  ProjectsCoreMixin(BaseService)
+                                )
                               )
                             )
                           )
@@ -304,6 +307,12 @@ export class PgToolService extends ComposedService {
           return ok("Credit settings loaded.", { settings: await this.creditSettingsGet() });
         case "credit.settings_update":
           return ok("Credit settings updated.", { settings: await this.creditSettingsUpdate(parsed, requestContext) });
+        case "project.pin":
+          return ok("Project pin updated.", { project: await this.pinProject(parsed, requestContext) });
+        case "user.preferences_get":
+          return ok("User preferences loaded.", { preferences: await this.userPreferencesGet(requestContext) });
+        case "user.preference_set":
+          return ok("User preference updated.", await this.userPreferenceSet(parsed, requestContext));
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }
