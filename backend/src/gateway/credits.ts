@@ -66,6 +66,21 @@ export interface StreakUpdateResult {
 
 export type CreditsFacade = ReturnType<typeof createCreditsFacade>;
 
+const CREDITS_ENABLED_KEY = "credits_enabled";
+
+// Missing row (e.g. a pre-migration-055 install) must not silently disable a
+// feature that's already live -- fail open.
+async function isCreditsEnabled(exec: CreditExecutor): Promise<boolean> {
+  const row = await exec("system_settings").where({ key: CREDITS_ENABLED_KEY }).first();
+  return row ? Boolean(row.value) : true;
+}
+
+async function assertCreditsEnabled(exec: CreditExecutor): Promise<void> {
+  if (!(await isCreditsEnabled(exec))) {
+    throw new AppError("CREDITS_DISABLED", "The credits economy is currently disabled by an admin.");
+  }
+}
+
 // A real logged-in session's clientId is "user:<id>" (see http-server.ts's
 // context normalization); a static token, agent-only, or anonymous caller's
 // clientId never has that shape. Used wherever a credit hook needs to
@@ -101,6 +116,7 @@ export function createCreditsFacade(db: Knex) {
     input: CreditTransactionInput
   ): Promise<CreditTransactionResult> {
     return exec.transaction(async (trx) => {
+      await assertCreditsEnabled(trx);
       const now = new Date();
       await trx("wallets")
         .insert({ user_id: input.userId, balance: 0, updated_at: now })
@@ -173,6 +189,17 @@ export function createCreditsFacade(db: Knex) {
   // continues as if the gap were a single day.
   async function updateStreak(exec: CreditExecutor, userId: string): Promise<StreakUpdateResult> {
     return exec.transaction(async (trx) => {
+      if (!(await isCreditsEnabled(trx))) {
+        // Streak counters freeze (not just the bonus payout) while the
+        // feature is off -- read-only, no insert/update.
+        const existing = await trx("streaks").where({ user_id: userId }).first();
+        return {
+          currentStreak: Number(existing?.current_streak ?? 0),
+          longestStreak: Number(existing?.longest_streak ?? 0),
+          insuranceConsumed: false,
+          streakBonusAwarded: null
+        };
+      }
       const now = new Date();
       const today = isoDateOnly(now);
       await trx("streaks")
@@ -250,5 +277,21 @@ export function createCreditsFacade(db: Knex) {
     });
   }
 
-  return { award, spend, grantSignupBonus, getWallet, updateStreak, awardTaskCompletion };
+  async function getSettings(): Promise<{ enabled: boolean }> {
+    return { enabled: await isCreditsEnabled(db) };
+  }
+
+  // Admin-only write path (enforced by the caller's tool `access: "admin"`
+  // spec, not here) -- flips the single global switch every credit-writing
+  // path above checks before touching a wallet/ledger/streak row.
+  async function setEnabled(updatedBy: string | null, enabled: boolean): Promise<{ enabled: boolean }> {
+    const now = new Date();
+    await db("system_settings")
+      .insert({ key: CREDITS_ENABLED_KEY, value: JSON.stringify(enabled), updated_at: now, updated_by: updatedBy })
+      .onConflict("key")
+      .merge({ value: JSON.stringify(enabled), updated_at: now, updated_by: updatedBy });
+    return { enabled };
+  }
+
+  return { award, spend, grantSignupBonus, getWallet, updateStreak, awardTaskCompletion, getSettings, setEnabled };
 }

@@ -30,7 +30,8 @@ export const ADMIN_GRAPHQL_MUTATION_NAMES = [
   "deleteDecision",
   "deleteArtifact",
   "deleteEvent",
-  "deleteLink"
+  "deleteLink",
+  "updateCreditSettings"
 ] as const;
 
 export interface GatewayGraphqlToolService {
@@ -228,6 +229,7 @@ const typeDefs = `#graphql
     creditBalance(userId: ID): CreditBalance!
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
     creditLeaderboard(limit: Int): [LeaderboardEntry!]!
+    creditSettings: CreditSettings!
   }
 
   type Mutation {
@@ -284,6 +286,8 @@ const typeDefs = `#graphql
     # rationale.
     createGitCredential(host: String!, label: String!, token: String!): GitCredential!
     deleteGitCredential(id: ID!): Boolean!
+
+    updateCreditSettings(enabled: Boolean!): CreditSettings!
   }
 
   # T-MEMORY-042: single unified live-update channel over WS -- deliberately
@@ -933,6 +937,10 @@ const typeDefs = `#graphql
     longestStreak: Int!
   }
 
+  type CreditSettings {
+    enabled: Boolean!
+  }
+
   type NextCall {
     tool: String!
     input: JSON!
@@ -1055,7 +1063,9 @@ const resolvers = {
     creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.history", cleanInput(args))).transactions,
     creditLeaderboard: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "credit.leaderboard", cleanInput(args))).leaderboard
+      (await callTool<Row>(context, "credit.leaderboard", cleanInput(args))).leaderboard,
+    creditSettings: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "credit.settings_get", {})).settings
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1129,7 +1139,9 @@ const resolvers = {
     deleteGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
       const result = await callTool<Row>(context, "git.credential_delete", cleanInput(args));
       return result.deleted === true;
-    }
+    },
+    updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings
   },
   Subscription: {
     gatewayEvents: {

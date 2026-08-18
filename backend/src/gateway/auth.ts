@@ -133,7 +133,11 @@ export function createAuthFacade(db: Knex) {
         created_at: now,
         updated_at: now
       });
-      await credits.grantSignupBonus(db, userId);
+      try {
+        await credits.grantSignupBonus(db, userId);
+      } catch (error) {
+        if (!(error instanceof AppError) || error.code !== "CREDITS_DISABLED") throw error;
+      }
     } else {
       if (!userId) {
         throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
@@ -586,7 +590,11 @@ export function createAuthFacade(db: Knex) {
         created_at: now,
         updated_at: now
       });
-      await credits.grantSignupBonus(trx, userId);
+      try {
+        await credits.grantSignupBonus(trx, userId);
+      } catch (error) {
+        if (!(error instanceof AppError) || error.code !== "CREDITS_DISABLED") throw error;
+      }
       if (row.provider === "github") {
         await trx("github_identities").insert({
           id: randomUUID(),

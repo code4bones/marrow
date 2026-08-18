@@ -298,6 +298,10 @@ export class PgToolService extends ComposedService {
           return ok("Credit history loaded.", { transactions: await this.creditHistory(parsed, requestContext) });
         case "credit.leaderboard":
           return ok("Credit leaderboard loaded.", { leaderboard: await this.creditLeaderboard(parsed) });
+        case "credit.settings_get":
+          return ok("Credit settings loaded.", { settings: await this.creditSettingsGet() });
+        case "credit.settings_update":
+          return ok("Credit settings updated.", { settings: await this.creditSettingsUpdate(parsed, requestContext) });
         default:
           return fail(new AppError("VALIDATION_ERROR", `Tool ${toolName} is not implemented.`));
       }

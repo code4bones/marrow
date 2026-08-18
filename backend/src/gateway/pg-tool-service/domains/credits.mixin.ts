@@ -54,6 +54,20 @@ export function CreditsMixin<TBase extends Constructor<BaseService>>(Base: TBase
     return rows.map(creditTransactionOut);
   }
 
+  // Global on/off switch (T-MEMORY-084) -- read is open to anyone (the
+  // frontend needs it to decide whether to render credit UI at all); write
+  // is gated to admins via the tool's `access: "admin"` spec, enforced
+  // upstream in http-server.ts's scope-tier check before this ever runs.
+  protected async creditSettingsGet() {
+    return createCreditsFacade(this.db).getSettings();
+  }
+
+  protected async creditSettingsUpdate(input: Row, context: NormalizedGatewayRequestContext) {
+    const enabled = Boolean(input.enabled);
+    const updatedBy = context.sessionUserId ?? null;
+    return createCreditsFacade(this.db).setEnabled(updatedBy, enabled);
+  }
+
   protected async creditLeaderboard(input: Row) {
     const limit = boundedInteger(input.limit, 20, 1, 100);
     const rows = (await this.db("wallets")

@@ -471,6 +471,11 @@ const creditHistorySchema = z.object({
 const creditLeaderboardSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 });
+// T-MEMORY-084: global admin on/off switch for the whole credits economy.
+const creditSettingsGetSchema = z.object({});
+const creditSettingsUpdateSchema = z.object({
+  enabled: z.boolean()
+});
 
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
@@ -1356,6 +1361,17 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "credit.leaderboard",
     description: "Top N users by wallet balance, globally.",
     schema: creditLeaderboardSchema
+  },
+  {
+    name: "credit.settings_get",
+    description: "Get the global credits-economy on/off switch. Open to any caller -- clients use this to decide whether to render credit UI at all.",
+    schema: creditSettingsGetSchema
+  },
+  {
+    name: "credit.settings_update",
+    description: "Admin-only: turn the whole credits economy on or off. While off, every award/penalty hook (task completion, streaks, decisions, failed attempts, signup bonus) becomes a no-op instead of writing to the ledger; existing wallet/ledger/streak data is left untouched.",
+    schema: creditSettingsUpdateSchema,
+    access: "admin"
   }
 ];
 
