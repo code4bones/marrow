@@ -4,9 +4,13 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ENTITY_COLOR } from '../../shared/lib/entityId';
 import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
+import { shortAuthor } from '../../shared/lib/shortAuthor';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { STATUS_COLORS } from '../../shared/ui/statusColors';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode } from '../../shared/model/types';
+
+type LabelFor = (id: string | null | undefined) => string | null;
 
 interface TreeProjectRoot {
   id: string;
@@ -30,6 +34,7 @@ interface BuiltNode {
   title: string;
   status: string | null;
   createdAt: string | null;
+  createdBy: string | null;
   children: BuiltNode[];
 }
 
@@ -57,7 +62,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
   const neighborsOf = (id: string): GraphNode[] =>
     (adjacency.get(id) ?? []).map((nid) => byId.get(nid)!).sort(compareByCreatedThenId);
 
-  const root: BuiltNode = { id: project.id, kind: 'PROJECT', title: project.title, status: null, createdAt: null, children: [] };
+  const root: BuiltNode = { id: project.id, kind: 'PROJECT', title: project.title, status: null, createdAt: null, createdBy: null, children: [] };
   const builtById = new Map<string, BuiltNode>();
   const visited = new Set<string>();
 
@@ -65,7 +70,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
   for (const seed of order) {
     if (visited.has(seed.id)) continue;
     visited.add(seed.id);
-    const seedBuilt: BuiltNode = { id: seed.id, kind: seed.kind, title: seed.title, status: seed.status, createdAt: seed.createdAt, children: [] };
+    const seedBuilt: BuiltNode = { id: seed.id, kind: seed.kind, title: seed.title, status: seed.status, createdAt: seed.createdAt, createdBy: seed.createdBy, children: [] };
     builtById.set(seed.id, seedBuilt);
     root.children.push(seedBuilt);
 
@@ -77,7 +82,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
         if (visited.has(neighbor.id)) continue;
         visited.add(neighbor.id);
         const neighborBuilt: BuiltNode = {
-          id: neighbor.id, kind: neighbor.kind, title: neighbor.title, status: neighbor.status, createdAt: neighbor.createdAt, children: []
+          id: neighbor.id, kind: neighbor.kind, title: neighbor.title, status: neighbor.status, createdAt: neighbor.createdAt, createdBy: neighbor.createdBy, children: []
         };
         builtById.set(neighbor.id, neighborBuilt);
         currentBuilt.children.push(neighborBuilt);
@@ -93,10 +98,11 @@ function kindDotColor(kind: string): string {
   return ENTITY_COLOR[kind.toLowerCase() as keyof typeof ENTITY_COLOR] ?? ENTITY_COLOR.unknown;
 }
 
-function TreeRowTitle({ node }: { node: BuiltNode }) {
+function TreeRowTitle({ node, labelFor }: { node: BuiltNode; labelFor: LabelFor }) {
   const stamp = formatGraphTimestamp(node.createdAt);
+  const author = labelFor(node.createdBy);
   return (
-    <Tooltip title={`${node.kind} · ${node.id}`} placement="right" mouseEnterDelay={0.4}>
+    <Tooltip title={`${node.kind} · ${node.id}${author ? ` · ${author}` : ''}`} placement="right" mouseEnterDelay={0.4}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
         <span
           style={{
@@ -112,6 +118,11 @@ function TreeRowTitle({ node }: { node: BuiltNode }) {
             {node.status}
           </Tag>
         )}
+        {author && (
+          <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {shortAuthor(author)}
+          </Typography.Text>
+        )}
         {stamp && (
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace', flexShrink: 0 }}>
             {stamp}
@@ -122,12 +133,12 @@ function TreeRowTitle({ node }: { node: BuiltNode }) {
   );
 }
 
-function toDataNode(n: BuiltNode): DataNode {
+function toDataNode(n: BuiltNode, labelFor: LabelFor): DataNode {
   return {
     key: n.id,
-    title: <TreeRowTitle node={n} />,
+    title: <TreeRowTitle node={n} labelFor={labelFor} />,
     isLeaf: n.children.length === 0,
-    children: n.children.length > 0 ? n.children.map(toDataNode) : undefined,
+    children: n.children.length > 0 ? n.children.map((c) => toDataNode(c, labelFor)) : undefined,
   };
 }
 
@@ -147,7 +158,8 @@ export function GraphTree({ nodes, edges, loading, projectId, projectTitle }: Pr
 
   const project = useMemo<TreeProjectRoot>(() => ({ id: projectId, title: projectTitle }), [projectId, projectTitle]);
   const root = useMemo(() => buildForest(nodes, edges, project), [nodes, edges, project]);
-  const treeData = useMemo(() => [toDataNode(root)], [root]);
+  const { labelFor } = useActorLabels(nodes.map((n) => n.createdBy));
+  const treeData = useMemo(() => [toDataNode(root, labelFor)], [root, labelFor]);
   const kindById = useMemo(() => {
     const map = new Map<string, string>();
     const visit = (n: BuiltNode) => {

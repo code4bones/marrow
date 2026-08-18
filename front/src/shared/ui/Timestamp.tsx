@@ -1,4 +1,5 @@
 import { Tooltip, Typography } from 'antd';
+import { shortAuthor } from '../lib/shortAuthor';
 
 function fmt(raw: string | null | undefined): string {
   if (!raw) return '—';
@@ -8,14 +9,6 @@ function fmt(raw: string | null | undefined): string {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
-}
-
-// Email local-part only ("code4bones", not "code4bones@gmail.com") -- the
-// full value is still in the tooltip. Non-email labels (a plain client
-// label with no "@") pass through unchanged.
-function shortAuthor(author: string): string {
-  const at = author.indexOf('@');
-  return at > 0 ? author.slice(0, at) : author;
 }
 
 /**

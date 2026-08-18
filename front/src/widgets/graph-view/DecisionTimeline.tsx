@@ -9,6 +9,8 @@ import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
+import { shortAuthor } from '../../shared/lib/shortAuthor';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
 import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
@@ -18,6 +20,8 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { kindHasMilestone, rootKindEmptyHint, rootKindLabel, type RootKind } from './rootKind';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
+
+type LabelFor = (id: string | null | undefined) => string | null;
 
 // D-MEMORY-021 (supersedes D-MEMORY-020): vertical ribbon, chronological
 // top-to-bottom, native mouse-wheel scroll per column — no custom
@@ -330,6 +334,7 @@ interface RecordCardProps {
   // handler internally from these two instead.
   onToggle: (id: string, level: number) => void;
   toggleLevel: number;
+  labelFor: LabelFor;
   /**
    * False for the header card at the top of an already-open drill column —
    * that card IS the column (its own links are already showing right below
@@ -362,7 +367,7 @@ interface RecordCardProps {
 // and onToggle/toggleLevel are a stable callback + primitive instead of a
 // fresh closure per card (see RecordCardProps above) -- memo alone
 // without those two would've compared not-equal on every render anyway.
-const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggle, toggleLevel, interactive = true }: RecordCardProps) {
+const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggle, toggleLevel, labelFor, interactive = true }: RecordCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const status = node.status ?? 'active';
   const color = statusColorFor(node.kind, status);
@@ -374,6 +379,7 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
   const overflow = satellites.length - shown.length;
   const { prefix: titlePrefix, rest: titleRest } = splitTitlePrefix(node.title);
   const stamp = formatGraphTimestamp(node.createdAt);
+  const author = labelFor(node.createdBy);
 
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -464,14 +470,23 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
           {status}
         </Tag>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
             {node.id}
           </Typography.Text>
-          {stamp && (
-            <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
-              {stamp}
-            </Typography.Text>
+          {(author || stamp) && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 0 }}>
+              {author && (
+                <Typography.Text style={{ fontSize: 9, color: '#8c8c8c', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {shortAuthor(author)}
+                </Typography.Text>
+              )}
+              {stamp && (
+                <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
+                  {stamp}
+                </Typography.Text>
+              )}
+            </div>
           )}
         </div>
 
@@ -741,6 +756,7 @@ interface ColumnCommonProps {
   resolveNode: (id: string) => void;
   /** Only non-empty when the baseline is in milestone-grouped mode — lets a level-0 DrillColumn recognize/expand a milestone-group root id without a separate fetch (see parseMilestoneGroupId). */
   milestoneGroups: MilestoneGroup[];
+  labelFor: LabelFor;
 }
 
 // Root-changing search (D-MEMORY-022 pt.2) — client-side substring match
@@ -814,7 +830,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilesto
   groupByMilestone: boolean;
 } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
-  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups } = common;
+  const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups, labelFor } = common;
 
   return (
     <div style={COLUMN_OUTER_STYLE}>
@@ -842,6 +858,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilesto
                       isOpen={chain[0] === node.id}
                       onToggle={onToggle}
                       toggleLevel={0}
+                      labelFor={labelFor}
                     />
                   </TreeBranch>
                 ))}
@@ -862,6 +879,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilesto
                   isOpen={chain[0] === row.node.id}
                   onToggle={onToggle}
                   toggleLevel={0}
+                  labelFor={labelFor}
                 />
               );
             return (
@@ -878,7 +896,7 @@ function BaselineColumn({ rows, allNodes, onSelectRoot, rootKind, groupByMilesto
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
-  const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode } = common;
+  const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode, labelFor } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
 
@@ -952,6 +970,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             interactive={false}
             onToggle={onToggle}
             toggleLevel={level}
+            labelFor={labelFor}
           />
         </div>
         {/* Bridges the root card to the first branch's own trunk (TreeBranch
@@ -998,6 +1017,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
                   isOpen={activeChildId === row.node.id}
                   onToggle={onToggle}
                   toggleLevel={level + 1}
+                  labelFor={labelFor}
                 />
               )
               : <UnresolvedEntryRow id={row.id} />;
@@ -1026,6 +1046,7 @@ interface LazyRecordPayload {
   title?: string;
   status?: string | null;
   createdAt?: string | null;
+  createdBy?: string | null;
 }
 
 // D-MEMORY-022 pt.3: point-resolves a node missing from the depth-limited
@@ -1062,6 +1083,7 @@ function useLazyNodeResolver() {
           title: payload.title ?? rec.id,
           status: payload.status ?? null,
           createdAt: payload.createdAt ?? null,
+          createdBy: payload.createdBy ?? null,
           milestone: null,
         };
         setResolved((cur) => {
@@ -1138,6 +1160,10 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     for (const [id, node] of lazyResolved) if (!base.has(id)) base.set(id, node);
     return base;
   }, [nodes, lazyResolved]);
+
+  // One batched lookup covering every node currently known (batch-loaded +
+  // any lazily point-resolved drill target), not one per card.
+  const { labelFor } = useActorLabels(Array.from(nodeById.values(), (n) => n.createdBy));
 
   const { baselineNodes, satellitesByRecord } = useMemo(() => {
     const baselineNodes = nodes
@@ -1333,6 +1359,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     onToggle: handleToggle,
     resolveNode,
     milestoneGroups,
+    labelFor,
   };
 
   return (

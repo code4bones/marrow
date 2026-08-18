@@ -340,7 +340,7 @@ export const GET_PROJECT_SETTINGS = gql`
 export const GET_PROJECT_GRAPH = gql`
   query GetProjectGraph($projectId: ID!, $depth: Int, $maxPerType: Int) {
     projectGraph(projectId: $projectId, depth: $depth, maxPerType: $maxPerType) {
-      nodes { id kind title status createdAt milestone }
+      nodes { id kind title status createdBy createdAt milestone }
       edges { id from to relation }
     }
   }

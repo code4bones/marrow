@@ -565,6 +565,7 @@ const typeDefs = `#graphql
     title: String!
     status: String
     createdAt: String
+    createdBy: String
     milestone: String
   }
 

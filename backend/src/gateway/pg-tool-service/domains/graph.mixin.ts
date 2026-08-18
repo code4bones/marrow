@@ -38,22 +38,22 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
 
     const [items, tasks, decisions, artifacts] = await Promise.all([
       this.db("items")
-        .select("id", "title", "status", "type", "project_id", "created_at")
+        .select("id", "title", "status", "type", "project_id", "created_by", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("tasks")
-        .select("id", "title", "status", "project_id", "depends_on", "created_at", "milestone")
+        .select("id", "title", "status", "project_id", "depends_on", "created_by", "created_at", "milestone")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("decisions")
-        .select("id", "title", "status", "project_id", "supersedes_id", "created_at", "milestone")
+        .select("id", "title", "status", "project_id", "supersedes_id", "created_by", "created_at", "milestone")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("artifacts")
-        .select("id", "title", "status", "project_id", "path", "created_at")
+        .select("id", "title", "status", "project_id", "path", "created_by", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
         .limit(maxPerType)
@@ -146,11 +146,11 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     // projectGraph. Without this, a link that happened to reference an event
     // id could reintroduce event nodes through BFS expansion.
     const [projects, items, tasks, decisions, artifacts] = await Promise.all([
-      this.db("projects").select("id", "slug", "title", "status", "created_at").whereIn("id", uniqueIds),
-      this.db("items").select("id", "title", "status", "type", "project_id", "created_at").whereIn("id", uniqueIds),
-      this.db("tasks").select("id", "title", "status", "project_id", "created_at", "milestone").whereIn("id", uniqueIds),
-      this.db("decisions").select("id", "title", "status", "project_id", "created_at", "milestone").whereIn("id", uniqueIds),
-      this.db("artifacts").select("id", "title", "status", "project_id", "path", "created_at").whereIn("id", uniqueIds)
+      this.db("projects").select("id", "slug", "title", "status", "created_by", "created_at").whereIn("id", uniqueIds),
+      this.db("items").select("id", "title", "status", "type", "project_id", "created_by", "created_at").whereIn("id", uniqueIds),
+      this.db("tasks").select("id", "title", "status", "project_id", "created_by", "created_at", "milestone").whereIn("id", uniqueIds),
+      this.db("decisions").select("id", "title", "status", "project_id", "created_by", "created_at", "milestone").whereIn("id", uniqueIds),
+      this.db("artifacts").select("id", "title", "status", "project_id", "path", "created_by", "created_at").whereIn("id", uniqueIds)
     ]);
 
     return [

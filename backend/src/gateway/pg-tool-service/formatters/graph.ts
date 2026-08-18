@@ -8,11 +8,12 @@ export function graphNodeOut(kind: string, row: Row): GraphNode {
     title: graphNodeTitle(kind, row),
     status: stringOrNull(row.status),
     milestone: stringOrNull(row.milestone),
-    // Most callers pass a raw db row (snake_case created_at, a Date object),
-    // but the PROJECT node is built from resolveProject()'s already-
-    // transformed projectOut() shape (camelCase createdAt, already a
-    // string) — accept either.
-    createdAt: dateStringOrNull(row.created_at) ?? dateStringOrNull(row.createdAt)
+    // Most callers pass a raw db row (snake_case created_at/created_by, a
+    // Date object), but the PROJECT node is built from resolveProject()'s
+    // already-transformed projectOut() shape (camelCase createdAt/createdBy,
+    // already a string) — accept either.
+    createdAt: dateStringOrNull(row.created_at) ?? dateStringOrNull(row.createdAt),
+    createdBy: stringOrNull(row.created_by) ?? stringOrNull(row.createdBy)
   };
 }
 
