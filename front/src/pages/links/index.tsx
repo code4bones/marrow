@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import { CreateLinkModal } from '../../features/link/CreateLinkModal';
 import { DeleteLinkButton } from '../../features/link/DeleteLinkButton';
 import { GET_LINKS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
 import type { Link, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -25,6 +26,7 @@ export function LinksPage() {
   });
 
   const pageInfo = data?.linksPage.pageInfo;
+  const { labelFor } = useActorLabels((data?.linksPage.items ?? []).map((l) => l.createdBy));
 
   const columns: ColumnsType<Link> = [
     {
@@ -37,7 +39,7 @@ export function LinksPage() {
       render: (v) => <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontFamily: 'monospace' }}>{v}</span>,
     },
     { title: t('to'), dataIndex: 'toId', width: 160, render: (v) => <RecordLink id={v} /> },
-    { title: t('at'), dataIndex: 'createdAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('at'), dataIndex: 'createdAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
       render: (_, row) => <DeleteLinkButton id={row.id} onDone={() => refetch()} />,

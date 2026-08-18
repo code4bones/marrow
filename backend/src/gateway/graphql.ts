@@ -230,6 +230,7 @@ const typeDefs = `#graphql
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
     creditLeaderboard(limit: Int): [LeaderboardEntry!]!
     creditSettings: CreditSettings!
+    actorLabels(ids: [String!]!): [ActorLabel!]!
   }
 
   type Mutation {
@@ -483,6 +484,7 @@ const typeDefs = `#graphql
     status: String!
     rootPath: String
     ownerUserId: String
+    createdBy: String
     createdAt: String
     updatedAt: String
   }
@@ -620,6 +622,7 @@ const typeDefs = `#graphql
     tags: [String!]!
     summary: String
     rank: Float
+    createdBy: String
     createdAt: String
     updatedAt: String
     linksCreated: [Link!]
@@ -661,6 +664,7 @@ const typeDefs = `#graphql
     dependsOn: [String!]
     notes: String
     activeClaimCount: Int!
+    createdBy: String
     createdAt: String
     updatedAt: String
   }
@@ -724,6 +728,7 @@ const typeDefs = `#graphql
     supersedesId: String
     summary: String
     milestone: String
+    createdBy: String
     createdAt: String
     updatedAt: String
     linksCreated: [Link!]
@@ -770,6 +775,7 @@ const typeDefs = `#graphql
     archivedAt: String
     archivedBy: String
     archiveReason: String
+    createdBy: String
     createdAt: String
     updatedAt: String
   }
@@ -800,6 +806,7 @@ const typeDefs = `#graphql
     archivedAt: String
     archivedBy: String
     archiveReason: String
+    createdBy: String
     createdAt: String
     updatedAt: String
     rank: Float
@@ -894,6 +901,7 @@ const typeDefs = `#graphql
     fromId: String!
     toId: String!
     relation: String!
+    createdBy: String
     createdAt: String
   }
 
@@ -939,6 +947,17 @@ const typeDefs = `#graphql
 
   type CreditSettings {
     enabled: Boolean!
+  }
+
+  # T-MEMORY-085: batch-resolves the raw createdBy/credentialId values
+  # already on Task/Project/Decision/MemoryRecord/Artifact/Link/Event
+  # ("user:<id>" for a real login, or a plain gateway client id otherwise)
+  # into a human-readable label -- email for a user, the client's own label
+  # otherwise, falling back to the raw id when neither is found. One batched
+  # call per page instead of a resolver per row.
+  type ActorLabel {
+    id: ID!
+    label: String!
   }
 
   type NextCall {
@@ -1065,7 +1084,9 @@ const resolvers = {
     creditLeaderboard: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.leaderboard", cleanInput(args))).leaderboard,
     creditSettings: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "credit.settings_get", {})).settings
+      (await callTool<Row>(context, "credit.settings_get", {})).settings,
+    actorLabels: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "gateway.actor_labels", cleanInput(args))).labels
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

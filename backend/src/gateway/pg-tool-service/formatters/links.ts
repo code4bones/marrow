@@ -8,6 +8,7 @@ export function linkOut(row: Row) {
     fromId: String(row.from_id),
     toId: String(row.to_id),
     relation: String(row.relation),
+    createdBy: stringOrNull(row.created_by),
     createdAt: dateStringOrNull(row.created_at)
   };
 }

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { GET_FAULTS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
 import type { MemoryRecord, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
@@ -12,7 +13,7 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
-function buildColumns(t: (key: string) => string): ColumnsType<MemoryRecord> {
+function buildColumns(t: (key: string) => string, labelFor: (id: string | null | undefined) => string | null): ColumnsType<MemoryRecord> {
   return [
     {
       title: t('idCol'), dataIndex: 'id', width: 150, fixed: 'left',
@@ -31,7 +32,7 @@ function buildColumns(t: (key: string) => string): ColumnsType<MemoryRecord> {
           <Tag key={tag} color={tag === 'known-fault' ? 'red' : undefined} style={{ fontSize: 11 }}>{tag}</Tag>
         )),
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
   ];
 }
 
@@ -40,13 +41,14 @@ export function FaultsPage() {
   const { slug } = useParams<{ slug: string }>();
   const [search, setSearch] = useState('fault');
   const { page, pageSize, offset, onChange } = usePage();
-  const columns = buildColumns(t);
 
   const { data, loading, error } = useQuery<{ memorySearchPage: Paginated<MemoryRecord> }>(GET_FAULTS_PAGE, {
     variables: { project: slug, query: search || 'fault', limit: pageSize, offset },
   });
 
   const pageInfo = data?.memorySearchPage.pageInfo;
+  const { labelFor } = useActorLabels((data?.memorySearchPage.items ?? []).map((item) => item.createdBy));
+  const columns = buildColumns(t, labelFor);
 
   return (
     <PageLayout

@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import { DeleteEventButton } from '../../features/event/DeleteEventButton';
 import { RecordEventModal } from '../../features/event/RecordEventModal';
 import { GET_EVENTS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -31,9 +32,10 @@ export function EventsPage() {
   }, [slug, markSeen]);
 
   const pageInfo = data?.eventsPage.pageInfo;
+  const { labelFor } = useActorLabels((data?.eventsPage.items ?? []).map((e) => e.credentialId));
 
   const columns: ColumnsType<Event> = [
-    { title: t('at'), dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
+    { title: t('at'), dataIndex: 'createdAt', width: 160, fixed: 'left', render: (v, row) => <Timestamp value={v} author={labelFor(row.credentialId)} /> },
     { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
     { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
     {

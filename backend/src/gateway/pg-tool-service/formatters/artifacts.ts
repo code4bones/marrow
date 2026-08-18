@@ -27,6 +27,7 @@ export function artifactOut(row: Row) {
     archivedAt: dateStringOrNull(row.archived_at),
     archivedBy: stringOrNull(row.archived_by),
     archiveReason: stringOrNull(row.archive_reason),
+    createdBy: stringOrNull(row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

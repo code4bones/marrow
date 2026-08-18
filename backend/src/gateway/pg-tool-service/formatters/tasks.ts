@@ -39,6 +39,7 @@ export function taskOut(row: Row) {
     dependsOn: stringArray(row.depends_on),
     notes: stringOrNull(row.notes),
     activeClaimCount: Number(row.active_claim_count ?? 0),
+    createdBy: stringOrNull(row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

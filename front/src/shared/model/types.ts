@@ -19,6 +19,7 @@ export interface Project {
   status: string;
   rootPath: string | null;
   ownerUserId: string | null;
+  createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -47,6 +48,7 @@ export interface Task {
   dependsOn: string[];
   notes: string | null;
   activeClaimCount: number;
+  createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -123,6 +125,7 @@ export interface Decision {
   tags: string[];
   supersedesId: string | null;
   milestone: string | null;
+  createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -141,6 +144,7 @@ export interface Artifact {
   tags: string[];
   downloadPath: string | null;
   archivedAt: string | null;
+  createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -152,6 +156,7 @@ export interface Event {
   title: string;
   body: string | null;
   relatedId: string | null;
+  credentialId: string | null;
   createdAt: string | null;
 }
 
@@ -166,6 +171,7 @@ export interface MemoryRecord {
   status: string;
   tags: string[];
   rank: number | null;
+  createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -176,6 +182,7 @@ export interface Link {
   fromId: string;
   toId: string;
   relation: string;
+  createdBy: string | null;
   createdAt: string | null;
 }
 

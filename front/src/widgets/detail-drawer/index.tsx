@@ -6,6 +6,7 @@ import type {
   Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Task,
 } from '../../shared/model/types';
 import { ENTITY_COLOR, type EntityType } from '../../shared/lib/entityId';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
@@ -86,6 +87,7 @@ function ArtifactTextPreview({ id }: { id: string }) {
 
 function TaskBody({ r }: { r: Task }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
       <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
@@ -99,7 +101,7 @@ function TaskBody({ r }: { r: Task }) {
       {r.dependsOn.length > 0 && (
         <Field label={t('dependsOn')}>{r.dependsOn.map((d) => <RecordLink key={d} id={d} />)}</Field>
       )}
-      <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
       <TaskClaimsPanel taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
       <Divider style={{ margin: '8px 0 12px' }} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -113,6 +115,7 @@ function TaskBody({ r }: { r: Task }) {
 
 function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
       <Field label={t('status')}>
@@ -131,7 +134,7 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
       {r.rationale && <Field label={t('rationale')}><Markdown>{r.rationale}</Markdown></Field>}
       {r.consequences && <Field label={t('consequences')}><Markdown>{r.consequences}</Markdown></Field>}
       {r.supersedesId && <Field label={t('supersedes')}><RecordLink id={r.supersedesId} /></Field>}
-      <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
       <CreateConnectedDecisionButton currentId={r.id} projectId={projectId} />
     </>
   );
@@ -139,6 +142,7 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
 
 function ArtifactBody({ r }: { r: Artifact }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   const isText = r.contentType?.startsWith('text/') || r.contentType?.includes('json') || r.contentType?.includes('xml');
   return (
     <>
@@ -158,7 +162,7 @@ function ArtifactBody({ r }: { r: Artifact }) {
       {r.sizeBytes != null && <Field label={t('size')}><Text>{(r.sizeBytes / 1024).toFixed(1)} KB</Text></Field>}
       {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
-      <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
       {isText && <ArtifactTextPreview id={r.id} />}
     </>
   );
@@ -166,6 +170,7 @@ function ArtifactBody({ r }: { r: Artifact }) {
 
 function MemoryBody({ r }: { r: MemoryRecord }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
       <Field label={t('type')}><Tag style={{ fontSize: 11 }}>{r.type}</Tag></Field>
@@ -179,43 +184,46 @@ function MemoryBody({ r }: { r: MemoryRecord }) {
           </div>
         </Field>
       )}
-      <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
     </>
   );
 }
 
 function EventBody({ r }: { r: Event }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.credentialId]);
   return (
     <>
       <Field label={t('type')}><Tag style={{ fontSize: 11 }}>{r.type}</Tag></Field>
       {r.relatedId && <Field label={t('related')}><RecordLink id={r.relatedId} /></Field>}
-      <Field label={t('at')}><Timestamp value={r.createdAt} /></Field>
+      <Field label={t('at')}><Timestamp value={r.createdAt} author={labelFor(r.credentialId)} /></Field>
     </>
   );
 }
 
 function LinkBody({ r }: { r: Link }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
       <Field label={t('from')}><RecordLink id={r.fromId} /></Field>
       <Field label={t('relation')}><Tag style={{ fontSize: 11 }}>{r.relation}</Tag></Field>
       <Field label={t('to')}><RecordLink id={r.toId} /></Field>
-      <Field label={t('at')}><Timestamp value={r.createdAt} /></Field>
+      <Field label={t('at')}><Timestamp value={r.createdAt} author={labelFor(r.createdBy)} /></Field>
     </>
   );
 }
 
 function ProjectBody({ r }: { r: Project }) {
   const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
   return (
     <>
       <Field label={t('slug')}><Text code>{r.slug}</Text></Field>
       <Field label={t('status')}><StatusBadge status={r.status} /></Field>
       {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
       {r.rootPath && <Field label={t('rootPath')}><Text code style={{ fontSize: 12 }}>{r.rootPath}</Text></Field>}
-      <Field label={t('updated')}><Timestamp value={r.updatedAt} /></Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
     </>
   );
 }

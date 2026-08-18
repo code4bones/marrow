@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
 import { GET_PROJECTS } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import type { Project } from '../../shared/model/types';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -27,6 +28,7 @@ export function ProjectsPage() {
   const [sort, setSort] = useState<'slug' | 'createdAt'>('slug');
   const { data, loading, error, refetch } = useQuery<{ projects: Project[] }>(GET_PROJECTS, { variables: { sort } });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
+  const { labelFor } = useActorLabels((data?.projects ?? []).map((p) => p.createdBy));
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -86,7 +88,7 @@ export function ProjectsPage() {
                     <StatusBadge status={p.status} />
                   </div>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>{p.slug}</Typography.Text>
-                  <Timestamp value={p.updatedAt} />
+                  <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
                 </List.Item>
               )}
             />

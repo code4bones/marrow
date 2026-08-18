@@ -476,6 +476,12 @@ const creditSettingsGetSchema = z.object({});
 const creditSettingsUpdateSchema = z.object({
   enabled: z.boolean()
 });
+// T-MEMORY-085: batch-resolve raw created_by/credentialId clientId strings
+// into human-readable labels for the frontend's "authorship next to the
+// date" display.
+const actorLabelsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200)
+});
 
 const looseRecordSchema = z.object({}).catchall(z.unknown());
 const errorSchema = z.object({
@@ -834,6 +840,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
       "Prune stale gateway clients and matching current-project keys. Defaults to dry-run and anonymous-only cleanup.",
     schema: gatewayClientPruneSchema,
     access: "admin"
+  },
+  {
+    name: "gateway.actor_labels",
+    description:
+      "Resolve a batch of raw created_by/credentialId clientId strings (\"user:<id>\" for a real login, or a plain gateway client id otherwise) into human-readable labels -- a user's email, or the client's own label, falling back to the raw id when neither is found. One batched call for a whole page of rows instead of a lookup per row.",
+    schema: actorLabelsSchema
   },
   {
     name: "project.create",

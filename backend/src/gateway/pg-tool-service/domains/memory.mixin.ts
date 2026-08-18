@@ -341,6 +341,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
             "status",
             "tags",
             "summary",
+            "created_by",
+            "created_at",
+            "updated_at",
             this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]),
             this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText])
           )

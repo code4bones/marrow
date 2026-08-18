@@ -10,6 +10,7 @@ import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDr
 import { UpdateArtifactMetaModal } from '../../features/artifact/UpdateArtifactMetaModal';
 import { UploadArtifactsButton } from '../../features/artifact/UploadArtifactsButton';
 import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -47,6 +48,7 @@ export function ArtifactsPage() {
 
   const pageInfo = data?.artifactsPage.pageInfo;
   const existingGroups = Array.from(new Set((data?.artifactsPage.items ?? []).flatMap((a) => a.tags))).sort();
+  const { labelFor } = useActorLabels((data?.artifactsPage.items ?? []).map((a) => a.createdBy));
 
   const columns: ColumnsType<Artifact> = [
     {
@@ -71,7 +73,7 @@ export function ArtifactsPage() {
       title: t('tagsCol'), dataIndex: 'tags', minWidth: 160,
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
     {
       title: '', key: 'actions', width: 70, fixed: 'right',
       render: (_, row) => (

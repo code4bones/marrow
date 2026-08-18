@@ -1,6 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { currentProjectKey } from "../formatters/common.js";
+import { createActorLabelsFacade } from "../../actor-labels.js";
+import { currentProjectKey, stringArray } from "../formatters/common.js";
 import { anonymousClientTtlSeconds, clientOut, compactClient, cutoffFromSeconds } from "../formatters/clients.js";
 import { anonymousClientPrefix, staticTokenClientId, type Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
@@ -87,6 +88,11 @@ export function ClientsMixin<TBase extends Constructor<BaseService>>(Base: TBase
       pruned: dryRun ? 0 : rows.length,
       clients: rows.map(clientOut)
     };
+  }
+
+  protected async actorLabels(input: Row) {
+    const ids = stringArray(input.ids);
+    return createActorLabelsFacade(this.db).resolveLabels(ids);
   }
 
   protected async clientRow(id: string): Promise<Row> {

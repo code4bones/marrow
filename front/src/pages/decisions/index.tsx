@@ -8,6 +8,7 @@ import { ArchiveDecisionButton } from '../../features/decision/ArchiveDecisionBu
 import { DeleteDecisionButton } from '../../features/decision/DeleteDecisionButton';
 import { RecordDecisionDrawer } from '../../features/decision/RecordDecisionDrawer';
 import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -58,6 +59,10 @@ export function DecisionsPage() {
   }, [slug, markSeen]);
 
   const pageInfo = data?.decisionsPage.pageInfo;
+  const { labelFor } = useActorLabels([
+    ...(data?.decisionsPage.items ?? []).map((d) => d.createdBy),
+    ...(allData?.decisionsPage.items ?? []).map((d) => d.createdBy),
+  ]);
 
   const columns: ColumnsType<Decision> = [
     {
@@ -79,7 +84,7 @@ export function DecisionsPage() {
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
     { title: t('milestone'), dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
     {
       title: '', key: 'actions', width: 90, fixed: 'right',
       render: (_, row) => (

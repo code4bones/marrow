@@ -117,6 +117,8 @@ export class PgToolService extends ComposedService {
           return ok("Gateway client forgotten.", await this.forgetClient(parsed));
         case "gateway.client_prune":
           return ok("Gateway clients pruned.", await this.pruneClients(parsed));
+        case "gateway.actor_labels":
+          return ok("Actor labels resolved.", { labels: await this.actorLabels(parsed) });
         case "project.create":
           return ok("Project created.", { project: await this.createProject(parsed, requestContext) });
         case "project.list":

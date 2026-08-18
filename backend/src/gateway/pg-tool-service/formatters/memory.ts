@@ -16,6 +16,7 @@ export function itemOut(row: Row) {
     status: String(row.status),
     tags: stringArray(row.tags),
     summary: stringOrNull(row.summary),
+    createdBy: stringOrNull(row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };
@@ -34,7 +35,10 @@ export function searchOut(row: Row) {
     excerpt: stringOrNull(row.summary) ?? stringOrNull(row.headline) ?? excerpt(String(row.body ?? "")),
     status: String(row.status),
     tags: stringArray(row.tags),
-    rank: Number(row.rank ?? 0)
+    rank: Number(row.rank ?? 0),
+    createdBy: stringOrNull(row.created_by),
+    createdAt: dateStringOrNull(row.created_at),
+    updatedAt: dateStringOrNull(row.updated_at)
   };
 }
 

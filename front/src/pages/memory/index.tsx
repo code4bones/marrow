@@ -8,6 +8,7 @@ import { ArchiveMemoryButton } from '../../features/memory/ArchiveMemoryButton';
 import { CreateMemoryDrawer } from '../../features/memory/CreateMemoryDrawer';
 import { DeleteMemoryButton } from '../../features/memory/DeleteMemoryButton';
 import { GET_MEMORY_ITEMS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -51,6 +52,7 @@ export function MemoryPage() {
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
 
   const pageInfo = data?.memoryItemsPage.pageInfo;
+  const { labelFor } = useActorLabels((data?.memoryItemsPage.items ?? []).map((item) => item.createdBy));
 
   const columns: ColumnsType<MemoryRecord> = [
     {
@@ -78,7 +80,7 @@ export function MemoryPage() {
       title: t('tagsCol'), dataIndex: 'tags', minWidth: 180,
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
     {
       title: '', key: 'actions', width: 60, fixed: 'right',
       render: (_, row) => (

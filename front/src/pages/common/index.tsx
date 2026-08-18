@@ -4,12 +4,13 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { PutTextArtifactDrawer } from '../../features/artifact/PutTextArtifactDrawer';
 import { GET_ARTIFACTS, GET_DECISIONS } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import type { Artifact, Decision } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
-function artifactColumns(t: (key: string) => string): ColumnsType<Artifact> {
+function artifactColumns(t: (key: string) => string, labelFor: (id: string | null | undefined) => string | null): ColumnsType<Artifact> {
   return [
     {
       title: t('path'), dataIndex: 'path', minWidth: 220, fixed: 'left', ellipsis: true,
@@ -22,11 +23,11 @@ function artifactColumns(t: (key: string) => string): ColumnsType<Artifact> {
       title: t('tagsCol'), dataIndex: 'tags', minWidth: 160,
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
   ];
 }
 
-function decisionColumns(t: (key: string) => string): ColumnsType<Decision> {
+function decisionColumns(t: (key: string) => string, labelFor: (id: string | null | undefined) => string | null): ColumnsType<Decision> {
   return [
     {
       title: t('idCol'), dataIndex: 'id', width: 160, fixed: 'left',
@@ -38,7 +39,7 @@ function decisionColumns(t: (key: string) => string): ColumnsType<Decision> {
       title: t('tagsCol'), dataIndex: 'tags', minWidth: 180,
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
   ];
 }
 
@@ -69,6 +70,10 @@ export function CommonPage() {
   });
 
   const error = artifacts.error ?? decisions.error;
+  const { labelFor } = useActorLabels([
+    ...(artifacts.data?.artifacts ?? []).map((a) => a.createdBy),
+    ...(decisions.data?.decisions ?? []).map((d) => d.createdBy),
+  ]);
 
   return (
     <PageLayout title={t('common')} subtitle={t('sharedKnowledgeAcrossProjects')}>
@@ -80,7 +85,7 @@ export function CommonPage() {
       >
         <Table<Artifact>
           dataSource={artifacts.data?.artifacts}
-          columns={artifactColumns(t)}
+          columns={artifactColumns(t, labelFor)}
           rowKey="id"
           size="small"
           loading={artifacts.loading}
@@ -92,7 +97,7 @@ export function CommonPage() {
       <Section title={t('commonDecisions')}>
         <Table<Decision>
           dataSource={decisions.data?.decisions}
-          columns={decisionColumns(t)}
+          columns={decisionColumns(t, labelFor)}
           rowKey="id"
           size="small"
           loading={decisions.loading}

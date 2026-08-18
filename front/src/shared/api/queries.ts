@@ -3,7 +3,7 @@ import { gql } from '@apollo/client/core';
 export const GET_PROJECTS = gql`
   query GetProjects($status: String, $sort: String) {
     projects(status: $status, sort: $sort) {
-      id slug title description status rootPath updatedAt
+      id slug title description status rootPath createdBy updatedAt
     }
   }
 `;
@@ -44,7 +44,7 @@ export const GET_TASKS_PAGE = gql`
       sortDirection: $sortDirection
       pagination: { limit: $limit, offset: $offset }
     ) {
-      items { id title status priority milestone scope notes activeClaimCount createdAt updatedAt }
+      items { id title status priority milestone scope notes activeClaimCount createdBy createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -53,7 +53,7 @@ export const GET_TASKS_PAGE = gql`
 export const GET_DECISIONS_PAGE = gql`
   query GetDecisionsPage($project: String, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
     decisionsPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status context decision rationale tags milestone updatedAt }
+      items { id title status context decision rationale tags milestone createdBy updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -62,7 +62,7 @@ export const GET_DECISIONS_PAGE = gql`
 export const GET_ARTIFACTS_PAGE = gql`
   query GetArtifactsPage($project: String, $status: String, $limit: Int!, $offset: Int!) {
     artifactsPage(project: $project, status: $status, pagination: { limit: $limit, offset: $offset }) {
-      items { id path title scope contentType sizeBytes status tags updatedAt }
+      items { id path title scope contentType sizeBytes status tags createdBy updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -71,7 +71,7 @@ export const GET_ARTIFACTS_PAGE = gql`
 export const GET_EVENTS_PAGE = gql`
   query GetEventsPage($project: String, $limit: Int!, $offset: Int!) {
     eventsPage(project: $project, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title relatedId createdAt }
+      items { id type title relatedId credentialId createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -80,7 +80,7 @@ export const GET_EVENTS_PAGE = gql`
 export const GET_FAULTS_PAGE = gql`
   query GetFaultsPage($project: String, $query: String!, $limit: Int!, $offset: Int!) {
     memorySearchPage(project: $project, type: "failed_attempt", query: $query, pagination: { limit: $limit, offset: $offset }) {
-      items { id projectId type title status excerpt tags createdAt updatedAt }
+      items { id projectId type title status excerpt tags createdBy createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -200,27 +200,27 @@ export const GET_RECORD = gql`
         ... on Task {
           id title status priority milestone scope
           acceptance allowedFiles forbiddenFiles dependsOn notes
-          activeClaimCount createdAt updatedAt
+          activeClaimCount createdBy createdAt updatedAt
         }
         ... on Decision {
           id title status context decision rationale
-          consequences tags supersedesId createdAt updatedAt
+          consequences tags supersedesId createdBy createdAt updatedAt
         }
         ... on Artifact {
           id path title scope description status
-          contentType sizeBytes tags downloadPath createdAt updatedAt
+          contentType sizeBytes tags downloadPath createdBy createdAt updatedAt
         }
         ... on MemoryRecord {
-          id type title status excerpt body tags createdAt updatedAt
+          id type title status excerpt body tags createdBy createdAt updatedAt
         }
         ... on Event {
-          id type title relatedId createdAt
+          id type title relatedId credentialId createdAt
         }
         ... on Link {
-          id fromId toId relation createdAt
+          id fromId toId relation createdBy createdAt
         }
         ... on Project {
-          id slug title description status rootPath updatedAt
+          id slug title description status rootPath createdBy updatedAt
         }
       }
     }
@@ -246,7 +246,7 @@ export const GET_MEMORY = gql`
 export const GET_MEMORY_ITEMS_PAGE = gql`
   query GetMemoryItemsPage($project: String, $type: String, $status: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     memoryItemsPage(project: $project, type: $type, status: $status, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title status excerpt tags createdAt updatedAt }
+      items { id type title status excerpt tags createdBy createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -255,7 +255,7 @@ export const GET_MEMORY_ITEMS_PAGE = gql`
 export const GET_LINKS_PAGE = gql`
   query GetLinksPage($project: String, $relation: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     linksPage(project: $project, relation: $relation, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
-      items { id fromId toId relation createdAt }
+      items { id fromId toId relation createdBy createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -312,7 +312,7 @@ export const GET_GATEWAY_CONNECTOR_INFO = gql`
 export const GET_ARTIFACTS = gql`
   query GetArtifacts($project: String, $limit: Int) {
     artifacts(project: $project, limit: $limit) {
-      id path title scope contentType sizeBytes status tags updatedAt
+      id path title scope contentType sizeBytes status tags createdBy updatedAt
     }
   }
 `;
@@ -320,7 +320,7 @@ export const GET_ARTIFACTS = gql`
 export const GET_DECISIONS = gql`
   query GetDecisions($project: String, $status: String, $limit: Int) {
     decisions(project: $project, status: $status, limit: $limit) {
-      id title status context decision rationale tags updatedAt
+      id title status context decision rationale tags createdBy updatedAt
     }
   }
 `;
@@ -570,6 +570,17 @@ export const UPDATE_CREDIT_SETTINGS = gql`
   mutation UpdateCreditSettings($enabled: Boolean!) {
     updateCreditSettings(enabled: $enabled) {
       enabled
+    }
+  }
+`;
+
+// T-MEMORY-085: batch-resolve raw createdBy/credentialId clientId values
+// into display labels -- see useActorLabels for how this is called.
+export const GET_ACTOR_LABELS = gql`
+  query GetActorLabels($ids: [String!]!) {
+    actorLabels(ids: $ids) {
+      id
+      label
     }
   }
 `;

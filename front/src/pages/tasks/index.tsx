@@ -8,6 +8,7 @@ import { CreateTaskDrawer } from '../../features/task/CreateTaskDrawer';
 import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { GET_TASKS_PAGE } from '../../shared/api/queries';
+import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -64,6 +65,7 @@ export function TasksPage() {
     skip: !slug,
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
+  const { labelFor } = useActorLabels((data?.tasksPage.items ?? []).map((task) => task.createdBy));
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   // Owner's expectation: opening this section clears its own "new since
   // last viewed" badge on Project Overview, without a separate mark-as-read
@@ -115,7 +117,7 @@ export function TasksPage() {
       title: t('scope'), dataIndex: 'scope', width: 80,
       render: (v) => v ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : '—',
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 120, render: (v) => <Timestamp value={v} /> },
+    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
       render: (_, row) => <DeleteTaskButton id={row.id} onDone={() => refetch()} />,
