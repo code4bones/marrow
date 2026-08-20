@@ -233,7 +233,14 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     context?: NormalizedGatewayRequestContext
   ): T {
     if (context?.sessionRole === "member" && context.sessionUserId) {
-      query.whereIn("id", this.db("project_members").select("project_id").where({ user_id: context.sessionUserId }));
+      // T-MEMORY-088 regression: bare "id" was unambiguous back when every
+      // caller queried a bare `projects` table with no joins. buildProjectsQuery
+      // (listProjects/projectsPage) now left-joins `users as owner` for the
+      // owner-email search match -- `users` also has an `id` column, so an
+      // unqualified "id" here started throwing "column reference is ambiguous"
+      // for every role=member session (reported live: a.gromov@codup.pro got
+      // a raw Postgres error opening the Projects page). Always qualify.
+      query.whereIn("projects.id", this.db("project_members").select("project_id").where({ user_id: context.sessionUserId }));
     }
     return query;
   }
