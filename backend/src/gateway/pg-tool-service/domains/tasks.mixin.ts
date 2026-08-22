@@ -72,10 +72,30 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       updated_at: now
     };
     await this.db("tasks").insert(row);
+    // T-context (owner's ask, 2026-08-22): the Kanban board is now a
+    // multiplayer surface (see the pm/developer/tester role system) --
+    // someone other than the owner creating a task with no explicit
+    // assignee (it silently self-assigns, see resolveAssigneeUserId's
+    // undefined-input fallback above) previously notified nobody, since
+    // assigneeDiffersFromOwner below is false in that case. Deliberately a
+    // plain creator-vs-owner id comparison, NOT assigneeNotifyTarget's
+    // isInteractiveSelfAction nuance -- that nuance means "don't tell X they
+    // just assigned something to themselves in their own browser," which is
+    // the wrong question here (an agent acting as the owner still shouldn't
+    // notify the owner about their own task). Only fires when the caller
+    // left assignee untouched -- an explicit assignee (to anyone, including
+    // themselves) is already covered by the task.assigned branch below and
+    // shouldn't double-notify the owner too.
+    const creatorUserId = userIdFromClientId(context.clientId);
+    const ownerCreateNotifyTarget = input.assignee === undefined && project.ownerUserId && project.ownerUserId !== creatorUserId
+      ? project.ownerUserId
+      : undefined;
     await this.recordEventForProject(project.id, {
       type: "task.created",
       title: `Task created: ${row.title}`,
-      related_id: row.id
+      related_id: row.id,
+      target_user_ids: ownerCreateNotifyTarget ? [ownerCreateNotifyTarget] : [],
+      record_title: row.title
     }, context);
     const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
