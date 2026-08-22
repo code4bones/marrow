@@ -60,8 +60,8 @@ export function DecisionsPage() {
 
   const pageInfo = data?.decisionsPage.pageInfo;
   const { labelFor } = useActorLabels([
-    ...(data?.decisionsPage.items ?? []).map((d) => d.createdBy),
-    ...(allData?.decisionsPage.items ?? []).map((d) => d.createdBy),
+    ...(data?.decisionsPage.items ?? []).flatMap((d) => [d.createdBy, d.assigneeUserId ? `user:${d.assigneeUserId}` : null]),
+    ...(allData?.decisionsPage.items ?? []).flatMap((d) => [d.createdBy, d.assigneeUserId ? `user:${d.assigneeUserId}` : null]),
   ]);
 
   const columns: ColumnsType<Decision> = [
@@ -84,7 +84,19 @@ export function DecisionsPage() {
       render: (tags: string[]) => tags.map((tag) => <Tag key={tag} style={{ fontSize: 11 }}>{tag}</Tag>),
     },
     { title: t('milestone'), dataIndex: 'milestone', width: 130, ellipsis: true, render: (v) => v ?? <Typography.Text type="secondary">—</Typography.Text> },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
+    {
+      title: t('updated'), dataIndex: 'updatedAt', width: 150,
+      render: (v, row) => (
+        <span>
+          <Timestamp value={v} author={labelFor(row.createdBy)} />
+          {row.assigneeDiffersFromOwner && (
+            <Tag color="gold" style={{ fontSize: 10, marginLeft: 4 }}>
+              {'→'} {labelFor(`user:${row.assigneeUserId}`)}
+            </Tag>
+          )}
+        </span>
+      ),
+    },
     {
       title: '', key: 'actions', width: 90, fixed: 'right',
       render: (_, row) => (

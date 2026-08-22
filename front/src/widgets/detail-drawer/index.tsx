@@ -10,10 +10,12 @@ import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
+import { TaskAssigneeSelect } from '../../features/task/TaskAssigneeSelect';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
+import { DecisionAssigneeSelect } from '../../features/decision/DecisionAssigneeSelect';
 import { DecisionStatusSelect } from '../../features/decision/DecisionStatusSelect';
 import { MemoryStatusSelect } from '../../features/memory/MemoryStatusSelect';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
@@ -91,6 +93,7 @@ function TaskBody({ r }: { r: Task }) {
   return (
     <>
       <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
+      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={r.projectId} value={r.assigneeUserId} /></Field>
       {r.priority != null && <Field label={t('priority')}><Text>{r.priority}</Text></Field>}
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
@@ -128,6 +131,9 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
           ? <StatusBadge status={r.status} />
           : <DecisionStatusSelect id={r.id} value={r.status} />}
       </Field>
+      {r.projectId && (
+        <Field label={t('assignee')}><DecisionAssigneeSelect id={r.id} projectId={r.projectId} value={r.assigneeUserId} /></Field>
+      )}
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
       {r.context && <Field label={t('context')}><Markdown>{r.context}</Markdown></Field>}
       {r.decision && <Field label={t('decision')}><Markdown>{r.decision}</Markdown></Field>}

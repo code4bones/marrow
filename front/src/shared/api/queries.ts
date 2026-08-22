@@ -72,7 +72,7 @@ export const GET_TASKS_PAGE = gql`
       sortDirection: $sortDirection
       pagination: { limit: $limit, offset: $offset }
     ) {
-      items { id title status priority milestone scope notes activeClaimCount createdBy createdAt updatedAt }
+      items { id title status priority milestone scope notes activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -81,7 +81,7 @@ export const GET_TASKS_PAGE = gql`
 export const GET_DECISIONS_PAGE = gql`
   query GetDecisionsPage($project: String, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
     decisionsPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status context decision rationale tags milestone createdBy updatedAt }
+      items { id title status context decision rationale tags milestone createdBy assigneeUserId assigneeDiffersFromOwner updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -99,7 +99,7 @@ export const GET_ARTIFACTS_PAGE = gql`
 export const GET_EVENTS_PAGE = gql`
   query GetEventsPage($project: String, $limit: Int!, $offset: Int!) {
     eventsPage(project: $project, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title relatedId credentialId createdAt }
+      items { id type title relatedId credentialId targetUserId createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -127,7 +127,24 @@ export const UPDATE_TASK_STATUS = gql`
 export const CREATE_TASK = gql`
   mutation CreateTask($input: CreateTaskInput!) {
     createTask(input: $input) {
-      id title status priority milestone updatedAt
+      id title status priority milestone assigneeUserId assigneeDiffersFromOwner updatedAt
+    }
+  }
+`;
+
+export const UPDATE_TASK_ASSIGNEE = gql`
+  mutation UpdateTaskAssignee($id: ID!, $assignee: String) {
+    updateTaskAssignee(id: $id, assignee: $assignee) {
+      id assigneeUserId assigneeDiffersFromOwner updatedAt
+    }
+  }
+`;
+
+export const GET_PROJECT_MEMBERS = gql`
+  query GetProjectMembers($project: String) {
+    projectMembers(project: $project) {
+      userId
+      email
     }
   }
 `;
@@ -228,11 +245,11 @@ export const GET_RECORD = gql`
         ... on Task {
           id title status priority milestone scope
           acceptance allowedFiles forbiddenFiles dependsOn notes
-          activeClaimCount createdBy createdAt updatedAt
+          activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
         }
         ... on Decision {
           id title status context decision rationale
-          consequences tags supersedesId createdBy createdAt updatedAt
+          consequences tags supersedesId createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
         }
         ... on Artifact {
           id path title scope description status
@@ -368,7 +385,7 @@ export const GET_PROJECT_SETTINGS = gql`
 export const GET_PROJECT_GRAPH = gql`
   query GetProjectGraph($projectId: ID!, $depth: Int, $maxPerType: Int) {
     projectGraph(projectId: $projectId, depth: $depth, maxPerType: $maxPerType) {
-      nodes { id kind title status createdBy createdAt milestone }
+      nodes { id kind title status createdBy assigneeUserId assigneeDiffersFromOwner createdAt milestone }
       edges { id from to relation }
     }
   }
@@ -440,7 +457,15 @@ export const DELETE_MEMORY = gql`
 export const RECORD_DECISION = gql`
   mutation RecordDecision($input: RecordDecisionInput!) {
     recordDecision(input: $input) {
-      id title status tags milestone createdAt updatedAt
+      id title status tags milestone assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
+    }
+  }
+`;
+
+export const UPDATE_DECISION_ASSIGNEE = gql`
+  mutation UpdateDecisionAssignee($id: ID!, $assignee: String) {
+    updateDecisionAssignee(id: $id, assignee: $assignee) {
+      id assigneeUserId assigneeDiffersFromOwner updatedAt
     }
   }
 `;

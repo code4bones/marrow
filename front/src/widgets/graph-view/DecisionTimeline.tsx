@@ -371,6 +371,7 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
   const { prefix: titlePrefix, rest: titleRest } = splitTitlePrefix(node.title);
   const stamp = formatGraphTimestamp(node.createdAt);
   const author = labelFor(node.createdBy);
+  const assignee = node.assigneeDiffersFromOwner ? labelFor(`user:${node.assigneeUserId}`) : null;
 
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -465,11 +466,16 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
           <Typography.Text style={{ fontSize: 10, color: '#8c8c8c', fontFamily: 'monospace' }}>
             {node.id}
           </Typography.Text>
-          {(author || stamp) && (
+          {(author || assignee || stamp) && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 0 }}>
               {author && (
                 <Typography.Text style={{ fontSize: 9, color: '#8c8c8c', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {shortAuthor(author)}
+                </Typography.Text>
+              )}
+              {assignee && (
+                <Typography.Text style={{ fontSize: 9, color: '#d4b106', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {'→'} {shortAuthor(assignee)}
                 </Typography.Text>
               )}
               {stamp && (
@@ -1010,6 +1016,8 @@ interface LazyRecordPayload {
   status?: string | null;
   createdAt?: string | null;
   createdBy?: string | null;
+  assigneeUserId?: string | null;
+  assigneeDiffersFromOwner?: boolean;
 }
 
 // D-MEMORY-022 pt.3: point-resolves a node missing from the depth-limited
@@ -1047,6 +1055,8 @@ function useLazyNodeResolver() {
           status: payload.status ?? null,
           createdAt: payload.createdAt ?? null,
           createdBy: payload.createdBy ?? null,
+          assigneeUserId: payload.assigneeUserId ?? null,
+          assigneeDiffersFromOwner: payload.assigneeDiffersFromOwner ?? false,
           milestone: null,
         };
         setResolved((cur) => {
@@ -1126,7 +1136,9 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
 
   // One batched lookup covering every node currently known (batch-loaded +
   // any lazily point-resolved drill target), not one per card.
-  const { labelFor } = useActorLabels(Array.from(nodeById.values(), (n) => n.createdBy));
+  const { labelFor } = useActorLabels(
+    Array.from(nodeById.values()).flatMap((n) => [n.createdBy, n.assigneeUserId ? `user:${n.assigneeUserId}` : null])
+  );
 
   const { baselineNodes, satellitesByRecord } = useMemo(() => {
     const baselineNodes = nodes

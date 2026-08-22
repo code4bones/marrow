@@ -22,6 +22,7 @@ export function NotificationsPage() {
   const { t } = useTranslation('notifications');
   const { page, pageSize, offset, onChange } = usePage(100);
   const markNotificationsSeen = useAuthStore((s) => s.markNotificationsSeen);
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   const { data, loading, error, refetch } = useQuery<{ eventsPage: Paginated<Event> }>(GET_EVENTS_PAGE, {
     variables: { limit: pageSize, offset },
@@ -39,7 +40,17 @@ export function NotificationsPage() {
   const columns: ColumnsType<Event> = [
     { title: t('at'), dataIndex: 'createdAt', width: 130, fixed: 'left', render: (v) => <Timestamp value={v} /> },
     { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
-    { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
+    {
+      title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true,
+      render: (v, row) => (
+        <span>
+          {row.targetUserId && row.targetUserId === currentUserId && (
+            <Tag color="gold" style={{ fontSize: 10, marginRight: 6 }}>{t('assignedToYou')}</Tag>
+          )}
+          {v}
+        </span>
+      ),
+    },
     {
       title: t('related'), dataIndex: 'relatedId', width: 160,
       render: (v) => <RecordLink id={v} />,

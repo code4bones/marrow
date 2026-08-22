@@ -1,9 +1,10 @@
 import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
-import { AutoComplete, Button, Drawer, Form, Input, InputNumber, message } from 'antd';
+import { AutoComplete, Button, Drawer, Form, Input, InputNumber, Select, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CREATE_TASK } from '../../shared/api/queries';
+import { useProjectMembers } from '../../shared/lib/useProjectMembers';
 import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButton';
 
 interface Props {
@@ -17,6 +18,7 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
   const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
+  const { members } = useProjectMembers(projectSlug);
 
   const [mutate, { loading }] = useMutation(CREATE_TASK, {
     onCompleted: () => {
@@ -36,6 +38,7 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
             project: projectSlug,
             title: values.title,
             milestone: values.milestone || undefined,
+            assignee: values.assignee || undefined,
             priority: values.priority ?? undefined,
             scope: values.scope || undefined,
             acceptance: values.acceptance || undefined,
@@ -72,6 +75,13 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
           </Form.Item>
           <Form.Item name="priority" label={t('priority')}>
             <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="assignee" label={t('assignee')}>
+            <Select
+              allowClear
+              placeholder={t('unassigned')}
+              options={members.map((m) => ({ label: m.email, value: m.userId }))}
+            />
           </Form.Item>
           <Form.Item
             name="scope"

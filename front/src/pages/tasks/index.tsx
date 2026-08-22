@@ -65,7 +65,9 @@ export function TasksPage() {
     skip: !slug,
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
-  const { labelFor } = useActorLabels((data?.tasksPage.items ?? []).map((task) => task.createdBy));
+  const { labelFor } = useActorLabels(
+    (data?.tasksPage.items ?? []).flatMap((task) => [task.createdBy, task.assigneeUserId ? `user:${task.assigneeUserId}` : null])
+  );
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   // Owner's expectation: opening this section clears its own "new since
   // last viewed" badge on Project Overview, without a separate mark-as-read
@@ -117,7 +119,19 @@ export function TasksPage() {
       title: t('scope'), dataIndex: 'scope', width: 80,
       render: (v) => v ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : '—',
     },
-    { title: t('updated'), dataIndex: 'updatedAt', width: 150, render: (v, row) => <Timestamp value={v} author={labelFor(row.createdBy)} /> },
+    {
+      title: t('updated'), dataIndex: 'updatedAt', width: 150,
+      render: (v, row) => (
+        <span>
+          <Timestamp value={v} author={labelFor(row.createdBy)} />
+          {row.assigneeDiffersFromOwner && (
+            <Tag color="gold" style={{ fontSize: 10, marginLeft: 4 }}>
+              {'→'} {labelFor(`user:${row.assigneeUserId}`)}
+            </Tag>
+          )}
+        </span>
+      ),
+    },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
       render: (_, row) => <DeleteTaskButton id={row.id} onDone={() => refetch()} />,

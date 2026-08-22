@@ -1,9 +1,10 @@
 import { useMutation } from '@apollo/client/react';
 import { HistoryOutlined, PlusOutlined } from '@ant-design/icons';
-import { Button, Drawer, Form, Input, message } from 'antd';
+import { Button, Drawer, Form, Input, Select, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RECORD_DECISION } from '../../shared/api/queries';
+import { useProjectMembers } from '../../shared/lib/useProjectMembers';
 
 interface Props {
   projectSlug: string;
@@ -24,6 +25,7 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
   const { t } = useTranslation('decisions');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
+  const { members } = useProjectMembers(projectSlug);
   const [mutate, { loading }] = useMutation(RECORD_DECISION, {
     onCompleted: () => {
       message.success(supersedesId ? t('decisionSuperseded') : t('decisionRecorded'));
@@ -47,6 +49,7 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
           supersedesId: supersedesId ?? (values.supersedesId || undefined),
           tags: values.tags ? String(values.tags).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
           milestone: values.milestone || undefined,
+          assignee: values.assignee || undefined,
         },
       },
     });
@@ -103,6 +106,13 @@ export function RecordDecisionDrawer({ projectSlug, onDone, supersedesId }: Prop
           </Form.Item>
           <Form.Item name="milestone" label={t('milestone')}>
             <Input />
+          </Form.Item>
+          <Form.Item name="assignee" label={t('assignee')}>
+            <Select
+              allowClear
+              placeholder={t('unassigned')}
+              options={members.map((m) => ({ label: m.email, value: m.userId }))}
+            />
           </Form.Item>
         </Form>
       </Drawer>

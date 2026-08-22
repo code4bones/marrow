@@ -50,6 +50,8 @@ export interface Task {
   notes: string | null;
   activeClaimCount: number;
   createdBy: string | null;
+  assigneeUserId: string | null;
+  assigneeDiffersFromOwner: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -79,6 +81,8 @@ export interface GraphNode {
   createdAt: string | null;
   createdBy: string | null;
   milestone: string | null;
+  assigneeUserId: string | null;
+  assigneeDiffersFromOwner: boolean;
 }
 
 export interface GraphEdge {
@@ -128,6 +132,8 @@ export interface Decision {
   supersedesId: string | null;
   milestone: string | null;
   createdBy: string | null;
+  assigneeUserId: string | null;
+  assigneeDiffersFromOwner: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -159,7 +165,13 @@ export interface Event {
   body: string | null;
   relatedId: string | null;
   credentialId: string | null;
+  targetUserId: string | null;
   createdAt: string | null;
+}
+
+export interface ProjectMember {
+  userId: string;
+  email: string;
 }
 
 export interface MemoryRecord {
