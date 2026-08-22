@@ -1,9 +1,10 @@
 import { useMutation } from '@apollo/client/react';
-import { Card, Tag, Typography, message } from 'antd';
-import { useState, type DragEvent } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
+import { Button, Card, Input, Tag, Typography, message } from 'antd';
+import { useState, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
-import { UPDATE_TASK_STATUS } from '../../shared/api/queries';
+import { CREATE_TASK, UPDATE_TASK_PRIORITY, UPDATE_TASK_STATUS, UPDATE_TASK_TITLE } from '../../shared/api/queries';
 import { getEntityType } from '../../shared/lib/entityId';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import type { Task } from '../../shared/model/types';
@@ -12,24 +13,47 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 
 const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'done', 'cancelled'] as const;
 
+// T-MEMORY-105: priority only ever governs task.next's pick order among
+// open (todo) tasks -- reordering within Done/Cancelled has no operational
+// meaning and those columns can be huge (dozens of historical cards), so
+// drag-to-reorder (which renumbers the whole column) is scoped to the
+// columns where it's both meaningful and cheap.
+const REORDERABLE_STATUSES = new Set<string>(['todo', 'doing', 'blocked']);
+const PRIORITY_STEP = 10;
+
 interface Props {
   tasks: Task[];
-  /** Called after a drag-drop status change lands so the caller's own query refetches. */
+  projectSlug: string;
+  /** Called after a drag-drop status/priority change or a board-created task lands so the caller's own query refetches. */
   onChanged: () => void;
 }
 
 // Native HTML5 drag-and-drop -- no dnd library in this bundle yet, and a
-// 5-column task board doesn't need one (no reordering within a column, no
-// virtualization). draggable + dataTransfer carrying the task id is the
-// whole mechanism.
-export function TaskKanbanBoard({ tasks, onChanged }: Props) {
+// 5-column task board doesn't need one.
+export function TaskKanbanBoard({ tasks, projectSlug, onChanged }: Props) {
   const { t } = useTranslation('tasks');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { labelFor } = useActorLabels(tasks.map((task) => (task.assigneeUserId ? `user:${task.assigneeUserId}` : null)));
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
-  const [mutate] = useMutation(UPDATE_TASK_STATUS, {
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [addingStatus, setAddingStatus] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+
+  const [mutateStatus] = useMutation(UPDATE_TASK_STATUS, {
     onError: (e) => message.error(e.message),
     onCompleted: onChanged,
+  });
+  const [mutatePriority] = useMutation(UPDATE_TASK_PRIORITY, {
+    onError: (e) => message.error(e.message),
+  });
+  const [mutateTitle] = useMutation(UPDATE_TASK_TITLE, {
+    onError: (e) => message.error(e.message),
+    onCompleted: onChanged,
+  });
+  const [createTask, { loading: creating }] = useMutation(CREATE_TASK, {
+    onError: (e) => message.error(e.message),
   });
 
   const columnLabel: Record<(typeof COLUMN_STATUSES)[number], string> = {
@@ -43,7 +67,9 @@ export function TaskKanbanBoard({ tasks, onChanged }: Props) {
   const byStatus = (status: string) =>
     tasks.filter((task) => task.status === status).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
-  const handleDrop = (status: string, e: DragEvent) => {
+  const openRecord = (id: string) => setSelectedRecord(id, getEntityType(id));
+
+  const handleColumnDrop = (status: string, e: DragEvent) => {
     e.preventDefault();
     setDragOverStatus(null);
     const id = e.dataTransfer.getData('text/plain');
@@ -51,10 +77,89 @@ export function TaskKanbanBoard({ tasks, onChanged }: Props) {
     if (!task || task.status === status) {
       return;
     }
-    mutate({ variables: { id, status } });
+    mutateStatus({ variables: { id, status } });
   };
 
-  const openRecord = (id: string) => setSelectedRecord(id, getEntityType(id));
+  // Dropping directly onto a card either moves it into that card's column
+  // (same as dropping on the column body) or, if it's already in this
+  // column, reorders it next to the target -- the whole column is
+  // renumbered with a fresh 10/20/30... spacing so ties from historical
+  // data (a lot of tasks share the default priority 100) never block a
+  // reorder.
+  const handleCardDrop = (status: string, targetTask: Task, e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverStatus(null);
+    setDragOverTaskId(null);
+    const draggedId = e.dataTransfer.getData('text/plain');
+    if (!draggedId || draggedId === targetTask.id) {
+      return;
+    }
+    const draggedTask = tasks.find((candidate) => candidate.id === draggedId);
+    if (!draggedTask) {
+      return;
+    }
+    if (draggedTask.status !== status) {
+      mutateStatus({ variables: { id: draggedId, status } });
+      return;
+    }
+    if (!REORDERABLE_STATUSES.has(status)) {
+      return;
+    }
+    const withoutDragged = byStatus(status).filter((candidate) => candidate.id !== draggedId);
+    const targetIndex = withoutDragged.findIndex((candidate) => candidate.id === targetTask.id);
+    withoutDragged.splice(targetIndex, 0, draggedTask);
+    withoutDragged.forEach((candidate, index) => {
+      const newPriority = (index + 1) * PRIORITY_STEP;
+      if (candidate.priority !== newPriority) {
+        mutatePriority({ variables: { id: candidate.id, priority: newPriority } });
+      }
+    });
+    onChanged();
+  };
+
+  const startAdd = (status: string) => {
+    setAddingStatus(status);
+    setNewTitle('');
+  };
+  const submitAdd = async (status: string) => {
+    const title = newTitle.trim();
+    setAddingStatus(null);
+    if (!title) {
+      return;
+    }
+    try {
+      const result = await createTask({ variables: { input: { project: projectSlug, title } } });
+      const newId = (result.data as { createTask?: { id: string } } | undefined)?.createTask?.id;
+      if (newId && status !== 'todo') {
+        await mutateStatus({ variables: { id: newId, status } });
+      } else {
+        onChanged();
+      }
+    } finally {
+      setNewTitle('');
+    }
+  };
+  const handleAddKeyDown = (status: string, e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setAddingStatus(null);
+      setNewTitle('');
+    } else if (e.key === 'Enter') {
+      void submitAdd(status);
+    }
+  };
+
+  const startEditTitle = (task: Task) => {
+    setEditingId(task.id);
+    setEditTitle(task.title);
+  };
+  const commitEditTitle = (task: Task) => {
+    const title = editTitle.trim();
+    setEditingId(null);
+    if (title && title !== task.title) {
+      mutateTitle({ variables: { id: task.id, title } });
+    }
+  };
 
   return (
     <div style={{ display: 'flex', gap: 12, height: '100%', overflowX: 'auto', paddingBottom: 8 }}>
@@ -63,7 +168,7 @@ export function TaskKanbanBoard({ tasks, onChanged }: Props) {
           key={status}
           onDragOver={(e) => { e.preventDefault(); setDragOverStatus(status); }}
           onDragLeave={() => setDragOverStatus((current) => (current === status ? null : current))}
-          onDrop={(e) => handleDrop(status, e)}
+          onDrop={(e) => handleColumnDrop(status, e)}
           style={{
             display: 'flex',
             flexDirection: 'column',
@@ -94,13 +199,37 @@ export function TaskKanbanBoard({ tasks, onChanged }: Props) {
               <Card
                 key={task.id}
                 size="small"
-                draggable
+                draggable={editingId !== task.id}
                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
-                onClick={() => openRecord(task.id)}
-                style={{ cursor: 'grab' }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
+                onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
+                onDrop={(e) => handleCardDrop(status, task, e)}
+                onClick={() => { if (editingId !== task.id) openRecord(task.id); }}
+                style={{
+                  cursor: 'grab',
+                  borderColor: dragOverTaskId === task.id ? TASK_STATUS_COLOR[status] : undefined,
+                }}
                 styles={{ body: { padding: 10 } }}
               >
-                <Typography.Text style={{ fontSize: 13 }}>{task.title}</Typography.Text>
+                {editingId === task.id ? (
+                  <Input
+                    size="small"
+                    autoFocus
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onPressEnter={() => commitEditTitle(task)}
+                    onBlur={() => commitEditTitle(task)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setEditingId(null); }}
+                  />
+                ) : (
+                  <Typography.Text
+                    style={{ fontSize: 13, cursor: 'text' }}
+                    onClick={(e) => { e.stopPropagation(); startEditTitle(task); }}
+                  >
+                    {task.title}
+                  </Typography.Text>
+                )}
                 <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <RecordLink id={task.id} />
                   {task.milestone && <Tag style={{ fontSize: 10 }}>{task.milestone}</Tag>}
@@ -112,6 +241,28 @@ export function TaskKanbanBoard({ tasks, onChanged }: Props) {
                 </div>
               </Card>
             ))}
+            {addingStatus === status ? (
+              <Input
+                size="small"
+                autoFocus
+                placeholder={t('newTask')}
+                value={newTitle}
+                disabled={creating}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => handleAddKeyDown(status, e)}
+                onBlur={() => void submitAdd(status)}
+              />
+            ) : (
+              <Button
+                type="text"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => startAdd(status)}
+                style={{ color: '#8c8c8c', justifyContent: 'flex-start' }}
+              >
+                {t('newTask')}
+              </Button>
+            )}
           </div>
         </div>
       ))}

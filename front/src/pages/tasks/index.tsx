@@ -220,7 +220,7 @@ export function TasksPage() {
             label: t('kanban'),
             children: (
               <div style={{ height: '100%', minHeight: 400 }}>
-                <TaskKanbanBoard tasks={allTasks} onChanged={() => { refetch(); refetchAll(); }} />
+                <TaskKanbanBoard tasks={allTasks} projectSlug={slug} onChanged={() => { refetch(); refetchAll(); }} />
               </div>
             ),
           },

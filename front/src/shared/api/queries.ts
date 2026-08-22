@@ -140,6 +140,22 @@ export const UPDATE_TASK_ASSIGNEE = gql`
   }
 `;
 
+export const UPDATE_TASK_TITLE = gql`
+  mutation UpdateTaskTitle($id: ID!, $title: String!) {
+    updateTaskTitle(id: $id, title: $title) {
+      id title updatedAt
+    }
+  }
+`;
+
+export const UPDATE_TASK_PRIORITY = gql`
+  mutation UpdateTaskPriority($id: ID!, $priority: Int!) {
+    updateTaskPriority(id: $id, priority: $priority) {
+      id priority updatedAt
+    }
+  }
+`;
+
 export const GET_PROJECT_MEMBERS = gql`
   query GetProjectMembers($project: String) {
     projectMembers(project: $project) {
