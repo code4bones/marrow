@@ -21,16 +21,116 @@ const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'done', 'cancelled'] as con
 const REORDERABLE_STATUSES = new Set<string>(['todo', 'doing', 'blocked']);
 const PRIORITY_STEP = 10;
 
+interface MilestoneGroup {
+  milestone: string | null;
+  tasks: Task[];
+}
+
+// T-MEMORY-107: same milestone-grouping convention as MilestoneGroupedList
+// (List tab) and DecisionTimeline's baseline grouping (Timeline tab) --
+// alphabetical, "no milestone" bucket last -- so the same toggle reads the
+// same way everywhere it appears. Priority-based sort/reorder logic stays
+// flat underneath this; grouping is purely how cards are laid out inside a
+// column, not a second axis task.next or the drag logic needs to know about.
+function groupTasksByMilestone(list: Task[]): MilestoneGroup[] {
+  const groups = new Map<string, Task[]>();
+  const ungrouped: Task[] = [];
+  for (const task of list) {
+    if (task.milestone) {
+      const bucket = groups.get(task.milestone) ?? [];
+      bucket.push(task);
+      groups.set(task.milestone, bucket);
+    } else {
+      ungrouped.push(task);
+    }
+  }
+  const sorted: MilestoneGroup[] = Array.from(groups.keys())
+    .sort((a, b) => a.localeCompare(b))
+    .map((milestone) => ({ milestone, tasks: groups.get(milestone) as Task[] }));
+  if (ungrouped.length > 0) {
+    sorted.push({ milestone: null, tasks: ungrouped });
+  }
+  return sorted;
+}
+
+interface TaskCardProps {
+  task: Task;
+  status: string;
+  editing: boolean;
+  draggedOver: boolean;
+  editTitle: string;
+  labelFor: (id: string | null | undefined) => string | null;
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  onDragLeave: () => void;
+  onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  onOpen: () => void;
+  onStartEdit: () => void;
+  onEditChange: (value: string) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+}
+
+function TaskCard({
+  task, status, editing, draggedOver, editTitle, labelFor,
+  onDragStart, onDragOver, onDragLeave, onDrop, onOpen, onStartEdit, onEditChange, onCommitEdit, onCancelEdit,
+}: TaskCardProps) {
+  return (
+    <Card
+      size="small"
+      draggable={!editing}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onClick={onOpen}
+      style={{ cursor: 'grab', borderColor: draggedOver ? TASK_STATUS_COLOR[status] : undefined }}
+      styles={{ body: { padding: 10 } }}
+    >
+      {editing ? (
+        <Input
+          size="small"
+          autoFocus
+          value={editTitle}
+          onChange={(e) => onEditChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onPressEnter={onCommitEdit}
+          onBlur={onCommitEdit}
+          onKeyDown={(e) => { if (e.key === 'Escape') onCancelEdit(); }}
+        />
+      ) : (
+        <Typography.Text
+          style={{ fontSize: 13, cursor: 'text' }}
+          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+        >
+          {task.title}
+        </Typography.Text>
+      )}
+      <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <RecordLink id={task.id} />
+        {task.milestone && <Tag style={{ fontSize: 10 }}>{task.milestone}</Tag>}
+        {task.assigneeDiffersFromOwner && task.assigneeUserId && (
+          <Tag color="gold" style={{ fontSize: 10 }}>
+            {'→'} {labelFor(`user:${task.assigneeUserId}`)}
+          </Tag>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 interface Props {
   tasks: Task[];
   projectSlug: string;
+  /** Mirrors the Tasks page's own "Group by milestone" switch (List tab) so both views agree on the same grouping. */
+  groupByMilestone: boolean;
   /** Called after a drag-drop status/priority change or a board-created task lands so the caller's own query refetches. */
   onChanged: () => void;
 }
 
 // Native HTML5 drag-and-drop -- no dnd library in this bundle yet, and a
 // 5-column task board doesn't need one.
-export function TaskKanbanBoard({ tasks, projectSlug, onChanged }: Props) {
+export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChanged }: Props) {
   const { t } = useTranslation('tasks');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { labelFor } = useActorLabels(tasks.map((task) => (task.assigneeUserId ? `user:${task.assigneeUserId}` : null)));
@@ -195,52 +295,57 @@ export function TaskKanbanBoard({ tasks, projectSlug, onChanged }: Props) {
             <Tag style={{ margin: 0 }}>{byStatus(status).length}</Tag>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 80 }}>
-            {byStatus(status).map((task) => (
-              <Card
-                key={task.id}
-                size="small"
-                draggable={editingId !== task.id}
-                onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
-                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
-                onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
-                onDrop={(e) => handleCardDrop(status, task, e)}
-                onClick={() => { if (editingId !== task.id) openRecord(task.id); }}
-                style={{
-                  cursor: 'grab',
-                  borderColor: dragOverTaskId === task.id ? TASK_STATUS_COLOR[status] : undefined,
-                }}
-                styles={{ body: { padding: 10 } }}
-              >
-                {editingId === task.id ? (
-                  <Input
-                    size="small"
-                    autoFocus
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onPressEnter={() => commitEditTitle(task)}
-                    onBlur={() => commitEditTitle(task)}
-                    onKeyDown={(e) => { if (e.key === 'Escape') setEditingId(null); }}
-                  />
-                ) : (
+            {groupByMilestone
+              ? groupTasksByMilestone(byStatus(status)).map((group) => (
+                <div key={group.milestone ?? '__no_milestone__'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Typography.Text
-                    style={{ fontSize: 13, cursor: 'text' }}
-                    onClick={(e) => { e.stopPropagation(); startEditTitle(task); }}
+                    type="secondary"
+                    style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}
                   >
-                    {task.title}
+                    {group.milestone ?? t('noMilestone')} ({group.tasks.length})
                   </Typography.Text>
-                )}
-                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <RecordLink id={task.id} />
-                  {task.milestone && <Tag style={{ fontSize: 10 }}>{task.milestone}</Tag>}
-                  {task.assigneeDiffersFromOwner && task.assigneeUserId && (
-                    <Tag color="gold" style={{ fontSize: 10 }}>
-                      {'→'} {labelFor(`user:${task.assigneeUserId}`)}
-                    </Tag>
-                  )}
+                  {group.tasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      status={status}
+                      editing={editingId === task.id}
+                      draggedOver={dragOverTaskId === task.id}
+                      editTitle={editTitle}
+                      labelFor={labelFor}
+                      onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
+                      onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
+                      onDrop={(e) => handleCardDrop(status, task, e)}
+                      onOpen={() => { if (editingId !== task.id) openRecord(task.id); }}
+                      onStartEdit={() => startEditTitle(task)}
+                      onEditChange={setEditTitle}
+                      onCommitEdit={() => commitEditTitle(task)}
+                      onCancelEdit={() => setEditingId(null)}
+                    />
+                  ))}
                 </div>
-              </Card>
-            ))}
+              ))
+              : byStatus(status).map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  status={status}
+                  editing={editingId === task.id}
+                  draggedOver={dragOverTaskId === task.id}
+                  editTitle={editTitle}
+                  labelFor={labelFor}
+                  onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
+                  onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
+                  onDrop={(e) => handleCardDrop(status, task, e)}
+                  onOpen={() => { if (editingId !== task.id) openRecord(task.id); }}
+                  onStartEdit={() => startEditTitle(task)}
+                  onEditChange={setEditTitle}
+                  onCommitEdit={() => commitEditTitle(task)}
+                  onCancelEdit={() => setEditingId(null)}
+                />
+              ))}
             {addingStatus === status ? (
               <Input
                 size="small"
