@@ -1786,7 +1786,12 @@ async function handleAuthRoute(
   // the "Sign in with Telegram" widget before a session exists at all, same
   // as /auth/register/pending's pre-session reads above.
   if (request.method === "GET" && requestPath === "/auth/telegram/bot-username") {
-    send(200, { ok: true, data: { username: process.env.TELEGRAM_BOT_NAME?.trim() || null } });
+    // Telegram's widget wants the bare username in data-telegram-login --
+    // a leading "@" (however TELEGRAM_BOT_NAME happens to be set) makes it
+    // silently fail to render at all. Stripped here, once, rather than
+    // trusting every future consumer to remember to do it.
+    const rawName = process.env.TELEGRAM_BOT_NAME?.trim();
+    send(200, { ok: true, data: { username: rawName ? rawName.replace(/^@/, "") : null } });
     return true;
   }
 
