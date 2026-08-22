@@ -722,6 +722,91 @@ export function createAuthFacade(db: Knex) {
     return { linked: Boolean(row), githubLogin: row ? String(row.github_login) : null };
   }
 
+  // --- Telegram sign-in/link (T-MEMORY-093) ----------------------------------
+  //
+  // Link-only, unlike GitHub -- Telegram gives no email at all, and
+  // users.email is notNullable().unique(), so there is no registerViaTelegram
+  // counterpart. An unrecognized telegram_id at login time just gets pointed
+  // at "sign in normally and link Telegram from your profile", mirroring
+  // loginViaGithub's own not_linked branch.
+
+  async function loginViaTelegram(telegramId: string, meta: RequestMeta): Promise<LoginResult | { status: "not_linked" }> {
+    const identity = await db("telegram_identities").where({ telegram_id: telegramId }).first();
+    if (!identity) {
+      return { status: "not_linked" };
+    }
+    const user = await db("users").where({ id: identity.user_id }).first();
+    if (!user) {
+      return { status: "not_linked" };
+    }
+    if (user.status === "pending_approval") {
+      throw new AppError("UNAUTHORIZED", "Your account is waiting for admin approval.");
+    }
+    if (user.status !== "active") {
+      throw new AppError("UNAUTHORIZED", "This account has been disabled.");
+    }
+    const rawSessionToken = await issueSession(user.id, meta);
+    return { status: "session", token: rawSessionToken, user: { id: user.id, email: user.email, role: user.role } };
+  }
+
+  async function linkTelegramIdentity(
+    userId: string,
+    telegramId: string,
+    username: string | null,
+    firstName: string | null
+  ): Promise<void> {
+    const existing = await db("telegram_identities").where({ telegram_id: telegramId }).first();
+    if (existing) {
+      if (existing.user_id === userId) {
+        await db("telegram_identities")
+          .where({ user_id: userId })
+          .update({ telegram_username: username, telegram_first_name: firstName });
+        return;
+      }
+      throw new AppError("VALIDATION_ERROR", "This Telegram account is already linked to a different Marrow account.");
+    }
+    const ownAlready = await db("telegram_identities").where({ user_id: userId }).first();
+    if (ownAlready) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Your account is already linked to a different Telegram account. Unlink it first."
+      );
+    }
+    await db("telegram_identities").insert({
+      id: randomUUID(),
+      user_id: userId,
+      telegram_id: telegramId,
+      telegram_username: username,
+      telegram_first_name: firstName,
+      created_at: new Date()
+    });
+  }
+
+  async function unlinkTelegramIdentity(userId: string): Promise<void> {
+    const user = await db("users").where({ id: userId }).first();
+    if (!user) {
+      throw new AppError("VALIDATION_ERROR", "User not found.");
+    }
+    if (!user.password_hash) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Telegram is currently your only way to sign in -- set a password before unlinking it."
+      );
+    }
+    await db("telegram_identities").where({ user_id: userId }).del();
+  }
+
+  async function telegramLinkStatus(
+    userId: string
+  ): Promise<{ linked: boolean; telegramUsername: string | null; chatStarted: boolean }> {
+    const row = await db("telegram_identities").where({ user_id: userId }).first();
+    return {
+      linked: Boolean(row),
+      telegramUsername: row?.telegram_username ? String(row.telegram_username) : null,
+      chatStarted: Boolean(row?.chat_started_at)
+    };
+  }
+
   async function listPendingApprovals(): Promise<{ id: string; email: string; createdAt: Date }[]> {
     return db("users")
       .where({ status: "pending_approval" })
@@ -1380,7 +1465,11 @@ export function createAuthFacade(db: Knex) {
     loginViaGithub,
     linkGithubIdentity,
     unlinkGithubIdentity,
-    githubLinkStatus
+    githubLinkStatus,
+    loginViaTelegram,
+    linkTelegramIdentity,
+    unlinkTelegramIdentity,
+    telegramLinkStatus
   };
 }
 

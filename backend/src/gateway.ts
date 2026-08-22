@@ -5,6 +5,7 @@ import { startGatewayServer } from "./gateway/http-server.js";
 import { createAuthFacade } from "./gateway/auth.js";
 import { createOAuthFacadeFromEnv } from "./gateway/oauth.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
+import { startTelegramBot, type TelegramBotHandle } from "./gateway/telegram-bot.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 
@@ -45,8 +46,19 @@ async function main(): Promise<void> {
     "project memory gateway listening"
   );
 
+  // T-MEMORY-093: best-effort -- a Telegram outage/misconfiguration must
+  // never take the whole gateway down. Optional (null) when
+  // TELEGRAM_BOT_TOKEN isn't configured.
+  let telegramBot: TelegramBotHandle | null = null;
+  try {
+    telegramBot = await startTelegramBot(db, logger);
+  } catch (error) {
+    logger.warn({ error }, "telegram bot failed to start; continuing without it");
+  }
+
   const shutdown = async () => {
     logger.info("project memory gateway shutting down");
+    await telegramBot?.stop();
     await started.stop();
     await service.close();
     logger.flush();

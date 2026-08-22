@@ -6,6 +6,7 @@ import { projectKeyFromId } from "../../shared/ids/id.service.js";
 import { defaultGatewayOutputSchema, gatewayToolSpecs } from "../tool-definitions.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
+import { notifyTelegram } from "../telegram.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
 import { currentProjectKey, paginationInput } from "./formatters/common.js";
 import { itemOut } from "./formatters/memory.js";
@@ -135,6 +136,17 @@ export class BaseService {
       void gatewayEvents.publish(GATEWAY_EVENT_TOPIC, { event: String(row.type), payload: out });
     } catch {
       // Best-effort notification; the event row itself is already committed.
+    }
+    // T-MEMORY-093: same scope as the Notifications page's own "Assigned to
+    // you" badge -- only events with a target_user_id (task.assigned/
+    // decision.assigned) mirror out to Telegram. notifyTelegram is already
+    // fully best-effort internally (never throws), no try/catch needed here.
+    if (row.target_user_id) {
+      void notifyTelegram(this.db, String(row.target_user_id), {
+        title: String(row.title ?? row.type),
+        body: row.body ? String(row.body) : null,
+        relatedId: row.related_id ? String(row.related_id) : null
+      });
     }
     return out;
   }
