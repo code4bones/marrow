@@ -14,16 +14,19 @@ import { type Constructor, BaseService } from "../base.js";
 // below for how a caller's role is resolved and enforced.
 export type ProjectMemberRole = "pm" | "developer" | "tester";
 
-export type TaskPermissionAction = "create" | "delete" | "edit_title" | "reprioritize" | "assign" | "move" | "complete";
+export type TaskPermissionAction = "create" | "delete" | "edit_details" | "reprioritize" | "assign" | "move" | "complete";
 
-// pm: full control. developer: creates tasks, edits titles, moves between
-// every status except into done. tester: the only role that can move a
-// task into done (task.complete, directly or via updateTaskStatus's
-// status==='done' special case) -- no other task-mutating power.
+// pm: full control. developer: creates tasks, edits their descriptive
+// content (title/milestone/scope/acceptance/notes -- everything the full
+// edit form covers except priority, which stays reprioritize-gated even
+// inside that same form), moves between every status except into done.
+// tester: the only role that can move a task into done (task.complete,
+// directly or via updateTaskStatus's status==='done' special case) -- no
+// other task-mutating power.
 const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
   create: ["pm", "developer"],
   delete: ["pm"],
-  edit_title: ["pm", "developer"],
+  edit_details: ["pm", "developer"],
   reprioritize: ["pm"],
   assign: ["pm"],
   move: ["pm", "developer"],

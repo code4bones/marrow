@@ -59,3 +59,19 @@ export const updateTaskAssigneeSchema = z.object({
   id: z.string().min(1),
   assignee: z.string().nullable()
 });
+
+// T-MEMORY-110: backs the full task-editing form -- everything task.create
+// can set except assignee (which already has its own dedicated tool/UI).
+// Every field is optional and independently applied: omit a field to leave
+// it untouched, pass null to clear milestone/scope/acceptance/notes. Present
+// as one call so the form has a single Save action instead of firing one
+// mutation per changed field.
+export const updateTaskDetailsSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).optional(),
+  milestone: z.string().nullable().optional(),
+  priority: z.number().int().optional(),
+  scope: z.string().nullable().optional(),
+  acceptance: z.string().nullable().optional(),
+  notes: z.string().nullable().optional()
+});

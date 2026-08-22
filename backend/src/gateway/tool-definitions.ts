@@ -33,6 +33,7 @@ import {
   nextTaskSchema,
   updateTaskAssigneeSchema,
   updateTaskMilestoneSchema,
+  updateTaskDetailsSchema,
   updateTaskPrioritySchema,
   updateTaskStatusSchema,
   updateTaskTitleSchema
@@ -1242,6 +1243,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "task.update_priority",
     description: "Set an existing task's priority to an exact value -- task.create's own priority field can set it at creation but has no update path afterward. Lower numbers sort first (task.next picks the lowest-priority open task).",
     schema: updateTaskPrioritySchema,
+    access: "write"
+  },
+  {
+    name: "task.update_details",
+    description: "Update several of an existing task's descriptive fields in one call -- title, milestone, scope, acceptance criteria, notes, and priority. Backs a full task-editing form: only fields present in the input are changed, omit a field to leave it untouched, pass null to clear milestone/scope/acceptance/notes. Changing priority still requires the reprioritize permission even when it's submitted alongside other fields in the same call.",
+    schema: updateTaskDetailsSchema,
     access: "write"
   },
   {

@@ -372,7 +372,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
-    await this.assertTaskPermission(String(current.project_id), "edit_title", context);
+    await this.assertTaskPermission(String(current.project_id), "edit_details", context);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
@@ -383,6 +383,50 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
+    return taskOut(row);
+  }
+
+  // T-MEMORY-110: backs the full task-editing drawer -- whoever can create a
+  // task (pm/developer, see task.create's own "create" gate) gets the same
+  // reach to fully describe it afterward, not just rename it. priority is
+  // the one field in this form that stays behind its own stricter gate
+  // (reprioritize: pm only) -- checked only when priority is actually part
+  // of this call, so a developer submitting the rest of the form with
+  // priority left untouched never trips it.
+  protected async updateTaskDetails(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.assertProjectMember(String(current.project_id), context);
+    await this.assertTaskPermission(String(current.project_id), "edit_details", context);
+    const patch: Row = {
+      updated_by: context.clientId,
+      source_instance_id: context.clientId,
+      updated_at: nowIso(),
+      version: Number(current.version ?? 1) + 1
+    };
+    if (input.title !== undefined) {
+      patch.title = String(input.title);
+    }
+    if (input.milestone !== undefined) {
+      patch.milestone = stringOrNull(input.milestone);
+    }
+    if (input.scope !== undefined) {
+      patch.scope = stringOrNull(input.scope);
+    }
+    if (input.acceptance !== undefined) {
+      patch.acceptance = stringOrNull(input.acceptance);
+    }
+    if (input.notes !== undefined) {
+      patch.notes = stringOrNull(input.notes);
+    }
+    if (input.priority !== undefined) {
+      await this.assertTaskPermission(String(current.project_id), "reprioritize", context);
+      patch.priority = Number(input.priority);
+    }
+    const [row] = await this.db("tasks").where({ id }).update(patch).returning("*");
     return taskOut(row);
   }
 
