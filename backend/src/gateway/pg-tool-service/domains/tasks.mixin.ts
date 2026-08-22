@@ -258,7 +258,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
-    if (String(input.status) === "done") {
+    const newStatusValue = String(input.status);
+    if (newStatusValue === "done") {
       // completeTask itself asserts the "complete" permission (also the
       // entry point when task.complete is called directly, not just via
       // this status='done' path) -- no need to duplicate the check here.
@@ -273,14 +274,46 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       );
       return { task: completed.task, ...(completed.warning ? { warning: completed.warning } : {}) };
     }
+    // T-MEMORY-115: a reviewer's reject decision, not a plain move -- gated
+    // separately (review_decide: pm/tester) from every other status change
+    // (move: pm/developer). The note is mandatory here specifically because
+    // it becomes the new follow-up task's scope -- an empty one would leave
+    // that task saying nothing about what actually needs fixing.
+    if (newStatusValue === "changes_requested") {
+      await this.assertTaskPermission(String(current.project_id), "review_decide", context);
+      const reviewNote = stringOrNull(input.note);
+      if (!reviewNote) {
+        throw new AppError("VALIDATION_ERROR", "Requesting changes requires a note explaining what needs to change.", { id });
+      }
+      const [row] = await this.db("tasks")
+        .where({ id })
+        .update({
+          status: newStatusValue,
+          notes: appendText(stringOrNull(current.notes), reviewNote),
+          updated_by: context.clientId,
+          source_instance_id: context.clientId,
+          updated_at: nowIso(),
+          version: Number(current.version ?? 1) + 1
+        })
+        .returning("*");
+      const followUpTask = await this.createFollowUpTask(row, reviewNote, context);
+      await this.recordEventForProject(row.project_id, {
+        type: "task.changes_requested",
+        title: `Changes requested: ${row.title}`,
+        body: reviewNote,
+        related_id: row.id,
+        target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+        record_title: row.title
+      }, context);
+      return { task: taskOut(row), followUpTask };
+    }
     await this.assertTaskPermission(String(current.project_id), "move", context);
     const note = stringOrNull(input.note);
     const notes = note ? (current.notes ? `${current.notes}\n\n${note}` : note) : current.notes;
-    const newStatus = String(input.status);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
-        status: newStatus,
+        status: newStatusValue,
         notes,
         updated_by: context.clientId,
         source_instance_id: context.clientId,
@@ -289,7 +322,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       })
       .returning("*");
     await this.recordEventForProject(row.project_id, {
-      type: eventTypeForStatus(newStatus),
+      type: eventTypeForStatus(newStatusValue),
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id,
@@ -308,9 +341,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     // ticker will use. Never blocks the status change itself.
     let creditWarning: string | undefined;
     try {
-      if (String(current.status) === "done" && (newStatus === "todo" || newStatus === "doing")) {
+      if (String(current.status) === "done" && (newStatusValue === "todo" || newStatusValue === "doing")) {
         await this.applyTaskReopenedPenalty(id, stringOrNull(row.project_id));
-      } else if (String(current.status) === "doing" && newStatus === "cancelled") {
+      } else if (String(current.status) === "doing" && newStatusValue === "cancelled") {
         await this.applyTaskCancelledPenalty(row);
       }
     } catch (error) {
@@ -318,6 +351,46 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
 
     return { task: taskOut(row), ...(creditWarning ? { warning: creditWarning } : {}) };
+  }
+
+  // T-MEMORY-115: spawned by updateTaskStatus's changes_requested branch --
+  // deliberately bypasses createTask's own "create" permission gate (pm and
+  // developer only) since a Tester has review_decide but not "create", and
+  // this task is a side effect of an already-authorized review decision,
+  // not a fresh user-initiated create. Inherits the original's milestone
+  // (same work-process grouping, so the Tasks list/Timeline/Kanban's
+  // milestone view shows the whole chain together), priority, file scoping,
+  // and assignee (the same person who did the flawed work is who should fix
+  // it, by default -- reassignable afterward like any task). dependsOn
+  // links back to the rejected task so the Dependency Flowchart shows the
+  // relationship too.
+  protected async createFollowUpTask(original: Row, reviewNote: string, context: NormalizedGatewayRequestContext): Promise<Row> {
+    const now = nowIso();
+    const row = {
+      id: await this.nextId("tasks", `T-${projectKeyFromId(String(original.project_id))}`),
+      project_id: original.project_id,
+      title: `Fix: ${String(original.title)}`,
+      status: "todo",
+      milestone: original.milestone,
+      priority: original.priority,
+      scope: `Review of ${String(original.id)} requested changes:\n\n${reviewNote}`,
+      acceptance: null,
+      allowed_files: original.allowed_files,
+      forbidden_files: original.forbidden_files,
+      depends_on: jsonStringArray([String(original.id)]),
+      notes: null,
+      assignee_user_id: original.assignee_user_id,
+      ...writeActorFields(context),
+      created_at: now,
+      updated_at: now
+    };
+    await this.db("tasks").insert(row);
+    await this.recordEventForProject(String(original.project_id), {
+      type: "task.created",
+      title: `Task created: ${row.title}`,
+      related_id: row.id
+    }, context);
+    return taskOut(row);
   }
 
   protected async applyTaskReopenedPenalty(taskId: string, projectId: string | null): Promise<void> {

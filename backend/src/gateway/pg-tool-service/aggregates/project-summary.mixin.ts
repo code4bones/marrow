@@ -117,7 +117,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
   protected async listOpenProjectTasks(projectId: string, limit: number): Promise<Row[]> {
     const rows = await this.taskSelectWithActiveClaimCount(this.db("tasks"))
       .where("project_id", projectId)
-      .whereIn("status", ["doing", "todo", "blocked"])
+      .whereIn("status", ["doing", "todo", "blocked", "review"])
       .orderByRaw("case status when 'doing' then 0 when 'todo' then 1 when 'blocked' then 2 else 3 end")
       .orderBy("priority")
       .orderBy("created_at")
@@ -128,7 +128,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
   protected async projectSummaryCounts(projectId: string) {
     const [tasks, openTasks, items, decisions, links, artifacts, events] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
-      this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked"])),
+      this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked", "review"])),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
       this.countQueryRows(this.db("decisions").where("project_id", projectId)),
       this.countQueryRows(this.db("links").where("project_id", projectId)),

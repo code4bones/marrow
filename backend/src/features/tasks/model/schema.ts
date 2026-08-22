@@ -1,6 +1,11 @@
 import * as z from "zod/v4";
 
-export const taskStatusSchema = z.enum(["todo", "doing", "blocked", "done", "cancelled"]);
+// T-MEMORY-115: "review" (submitted, awaiting a pm/tester decision) and
+// "changes_requested" (reviewer rejected it -- terminal for THIS task, a
+// linked follow-up task carries the actual rework, see
+// TasksMixin.createFollowUpTask) sit between "doing" and "done" in the
+// normal flow but aren't mandatory -- "done" is still reachable directly.
+export const taskStatusSchema = z.enum(["todo", "doing", "blocked", "review", "changes_requested", "done", "cancelled"]);
 
 export const createTaskSchema = z.object({
   project: z.string().optional(),

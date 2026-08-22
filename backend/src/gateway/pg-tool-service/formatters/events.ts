@@ -45,6 +45,10 @@ export function eventTypeForStatus(status: string): string {
       return "task.blocked";
     case "cancelled":
       return "task.cancelled";
+    case "review":
+      return "task.review_requested";
+    case "changes_requested":
+      return "task.changes_requested";
     default:
       return "task.status_changed";
   }
