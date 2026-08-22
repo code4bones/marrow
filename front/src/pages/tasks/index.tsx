@@ -22,6 +22,7 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { TaskFlowchart } from '../../widgets/graph-view/TaskFlowchart';
+import { TaskKanbanBoard } from '../../widgets/kanban/TaskKanbanBoard';
 
 function statusOptions(t: (key: string) => string) {
   return [
@@ -54,8 +55,8 @@ export function TasksPage() {
   const { page, pageSize, offset, onChange } = usePage();
   const [sortField, sortDirection] = sort.split(':');
 
-  // Fetch all tasks (no status filter) for the flowchart
-  const { data: allData } = useQuery<{ tasksPage: Paginated<Task> }>(GET_TASKS_PAGE, {
+  // Fetch all tasks (no status filter) for the flowchart and the kanban board
+  const { data: allData, refetch: refetchAll } = useQuery<{ tasksPage: Paginated<Task> }>(GET_TASKS_PAGE, {
     variables: { project: slug, limit: 100, offset: 0 },
     skip: !slug,
   });
@@ -205,6 +206,15 @@ export function TasksPage() {
                     }}
                   />
                 )}
+              </div>
+            ),
+          },
+          {
+            key: 'kanban',
+            label: t('kanban'),
+            children: (
+              <div style={{ height: '100%', minHeight: 400 }}>
+                <TaskKanbanBoard tasks={allTasks} onChanged={() => { refetch(); refetchAll(); }} />
               </div>
             ),
           },
