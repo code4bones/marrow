@@ -1,6 +1,6 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { assigneeDiffersFromOwner, createAssigneesFacade } from "../../assignees.js";
+import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
@@ -94,12 +94,13 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision recorded: ${row.title}`,
       related_id: row.id
     }, context);
+    const recordNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(row.project_id, {
         type: "decision.assigned",
         title: `Decision assigned: ${row.title}`,
         related_id: row.id,
-        target_user_id: assigneeUserId
+        target_user_ids: recordNotifyTarget ? [recordNotifyTarget] : []
       }, context);
     }
     const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
@@ -304,7 +305,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       type: "decision.archived",
       title: `Decision archived: ${String(row.title)}`,
       body: stringOrNull(input.reason),
-      related_id: row.id
+      related_id: row.id,
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
     }, context);
     return {
       action: "archived",
@@ -350,7 +352,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       type: "decision.status_changed",
       title: `Decision status changed: ${String(row.title)}`,
       body: stringOrNull(input.reason),
-      related_id: row.id
+      related_id: row.id,
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
     }, context);
     // Only a genuine transition into "accepted" earns the bonus -- guards
     // against re-awarding on a same-status no-op call.
@@ -415,12 +418,13 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
+    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(projectId, {
         type: "decision.assigned",
         title: `Decision assigned: ${String(row.title)}`,
         related_id: id,
-        target_user_id: assigneeUserId
+        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : []
       }, context);
     }
     return decisionOut(row);

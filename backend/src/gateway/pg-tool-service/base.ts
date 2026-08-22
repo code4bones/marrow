@@ -8,7 +8,7 @@ import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
 import { notifyTelegram } from "../telegram.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
-import { currentProjectKey, paginationInput } from "./formatters/common.js";
+import { currentProjectKey, jsonStringArray, paginationInput, stringArray } from "./formatters/common.js";
 import { itemOut } from "./formatters/memory.js";
 import { eventOut } from "./formatters/events.js";
 import { recordLookupOut, recordLookupTables } from "./formatters/records.js";
@@ -111,6 +111,12 @@ export class BaseService {
     input: Row,
     context: NormalizedGatewayRequestContext
   ) {
+    // T-MEMORY-093 follow-up: a status change/completion on a task with a
+    // different owner and assignee notifies both, not just one -- callers
+    // pass target_user_ids (array); deduped here so a caller that happens
+    // to pass the same id twice (owner === assignee is already filtered
+    // upstream, but stay defensive) doesn't double-notify.
+    const targetUserIds = Array.from(new Set(stringArray(input.target_user_ids)));
     const row = {
       id: await this.nextId("events", `E-${projectId ? projectKeyFromId(projectId) : "COMMON"}`),
       project_id: projectId,
@@ -118,7 +124,7 @@ export class BaseService {
       title: input.title ?? null,
       body: input.body ?? null,
       related_id: input.related_id ?? null,
-      target_user_id: input.target_user_id ?? null,
+      target_user_ids: jsonStringArray(targetUserIds),
       created_by: context.clientId,
       source_instance_id: context.clientId,
       created_at: nowIso()
@@ -138,11 +144,12 @@ export class BaseService {
       // Best-effort notification; the event row itself is already committed.
     }
     // T-MEMORY-093: same scope as the Notifications page's own "Assigned to
-    // you" badge -- only events with a target_user_id (task.assigned/
-    // decision.assigned) mirror out to Telegram. notifyTelegram is already
-    // fully best-effort internally (never throws), no try/catch needed here.
-    if (row.target_user_id) {
-      void notifyTelegram(this.db, String(row.target_user_id), {
+    // you" badge -- only events with target_user_ids (task.assigned/
+    // decision.assigned, and now assignee-aware status changes/completion)
+    // mirror out to Telegram. notifyTelegram is already fully best-effort
+    // internally (never throws), no try/catch needed here.
+    for (const targetUserId of targetUserIds) {
+      void notifyTelegram(this.db, targetUserId, {
         title: String(row.title ?? row.type),
         body: row.body ? String(row.body) : null,
         relatedId: row.related_id ? String(row.related_id) : null

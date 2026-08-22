@@ -1,7 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { assigneeDiffersFromOwner, createAssigneesFacade } from "../../assignees.js";
+import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
@@ -76,12 +76,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task created: ${row.title}`,
       related_id: row.id
     }, context);
+    const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(project.id, {
         type: "task.assigned",
         title: `Task assigned: ${row.title}`,
         related_id: row.id,
-        target_user_id: assigneeUserId
+        target_user_ids: createNotifyTarget ? [createNotifyTarget] : []
       }, context);
     }
     return taskOut(row);
@@ -263,7 +264,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       type: eventTypeForStatus(newStatus),
       title: `Task status changed: ${row.title}`,
       body: note,
-      related_id: row.id
+      related_id: row.id,
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
     }, context);
 
     // D-MEMORY-037 / T-MEMORY-070: penalties, not gated behind a session --
@@ -377,12 +379,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
+    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(String(row.project_id), {
         type: "task.assigned",
         title: `Task assigned: ${String(row.title)}`,
         related_id: id,
-        target_user_id: assigneeUserId
+        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : []
       }, context);
     }
     return taskOut(row);
@@ -585,7 +588,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       ]
         .filter((value): value is string => Boolean(value))
         .join("\n"),
-      related_id: id
+      related_id: id,
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
     }, context);
 
     // I-MEMORY-065: a task can go straight from created to completed with no

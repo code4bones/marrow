@@ -1,4 +1,4 @@
-import { dateStringOrNull, shortText, stringOrNull } from "./common.js";
+import { dateStringOrNull, shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
 export function compactEventRecord(record: Row) {
@@ -25,10 +25,11 @@ export function eventOut(row: Row) {
     // wrote this into created_by (and mirrored it into source_instance_id)
     // on every event row -- this DTO just stops hiding it from callers.
     credentialId: stringOrNull(row.created_by),
-    // T-MEMORY-090: who this notification concerns, e.g. task.assigned/
-    // decision.assigned's new assignee -- distinct from credentialId
-    // (who performed the action). Null for every other event type.
-    targetUserId: stringOrNull(row.target_user_id),
+    // T-MEMORY-090/093: who this notification concerns -- e.g.
+    // task.assigned's new assignee, or a status-change/completion event's
+    // owner+assignee -- distinct from credentialId (who performed the
+    // action). Empty for every other event type.
+    targetUserIds: stringArray(row.target_user_ids),
     createdAt: dateStringOrNull(row.created_at)
   };
 }

@@ -74,3 +74,35 @@ export function assigneeDiffersFromOwner(assigneeUserId: string | null | undefin
   }
   return assigneeUserId !== userIdFromClientId(createdByClientId);
 }
+
+// T-MEMORY-093 follow-up: who a lifecycle event (status change, completion)
+// on an assigned task/decision should notify -- the assignee, but never the
+// person who just performed the action themselves (no point pinging
+// yourself for something you just did). Returns undefined (not null) so
+// callers can spread it straight into recordEventForProject's input without
+// an extra null-vs-undefined branch.
+export function assigneeNotifyTarget(assigneeUserId: string | null | undefined, actingClientId: unknown): string | undefined {
+  if (!assigneeUserId) {
+    return undefined;
+  }
+  return assigneeUserId !== userIdFromClientId(actingClientId) ? assigneeUserId : undefined;
+}
+
+// T-MEMORY-093 follow-up (owner's ask): "if the owner is one person and the
+// assignee is another, a lifecycle event notifies everyone involved" -- both
+// the creator and the assignee, deduped, minus whoever is performing the
+// action right now (no self-notify). Used for status-change/completion
+// events, as opposed to assigneeNotifyTarget above which is assignment-only
+// (create/reassign) and only ever targets the new assignee.
+export function lifecycleNotifyTargets(
+  createdByClientId: unknown,
+  assigneeUserId: string | null | undefined,
+  actingClientId: unknown
+): string[] {
+  const owner = userIdFromClientId(createdByClientId);
+  const acting = userIdFromClientId(actingClientId);
+  const candidates = [owner, assigneeUserId ?? null];
+  return Array.from(
+    new Set(candidates.filter((id): id is string => Boolean(id) && id !== acting))
+  );
+}

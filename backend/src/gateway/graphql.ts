@@ -908,10 +908,11 @@ const typeDefs = `#graphql
     # Which client credential performed the operation this event records
     # (T-MEMORY-029 / D-MEMORY-007 attribution).
     credentialId: String
-    # T-MEMORY-090: who this notification concerns (e.g. task.assigned's
-    # new assignee) -- distinct from credentialId, which is who performed
-    # the action. Null for every other event type.
-    targetUserId: String
+    # T-MEMORY-090/093: who this notification concerns -- e.g. task.assigned's
+    # new assignee, or a status-change/completion event's owner+assignee --
+    # distinct from credentialId, which is who performed the action. Empty
+    # for every other event type.
+    targetUserIds: [String!]!
     createdAt: String
   }
 
