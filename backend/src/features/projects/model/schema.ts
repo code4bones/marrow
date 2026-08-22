@@ -23,3 +23,7 @@ export const listProjectsSchema = z.object({
   compact: z.boolean().optional(),
   sort: z.enum(["slug", "createdAt"]).optional()
 });
+
+export const projectMembersSchema = z.object({
+  project: z.string().optional()
+});

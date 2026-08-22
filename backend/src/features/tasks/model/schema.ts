@@ -12,7 +12,8 @@ export const createTaskSchema = z.object({
   allowedFiles: z.array(z.string()).optional(),
   forbiddenFiles: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  assignee: z.string().nullable().optional()
 });
 
 export const listTasksSchema = z.object({
@@ -42,4 +43,9 @@ export const updateTaskStatusSchema = z.object({
 export const updateTaskMilestoneSchema = z.object({
   id: z.string().min(1),
   milestone: z.string().nullable()
+});
+
+export const updateTaskAssigneeSchema = z.object({
+  id: z.string().min(1),
+  assignee: z.string().nullable()
 });

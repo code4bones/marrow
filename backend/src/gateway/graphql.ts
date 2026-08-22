@@ -235,6 +235,8 @@ const typeDefs = `#graphql
     # user, flat -- see gateway.actor_labels' JSON usage above for the same
     # "opaque object, no fixed schema" pattern.
     userPreferences: JSON!
+    # T-MEMORY-090: powers the assignee picker on task/decision forms.
+    projectMembers(project: String): [ProjectMember!]!
   }
 
   type Mutation {
@@ -253,6 +255,7 @@ const typeDefs = `#graphql
     createTask(input: CreateTaskInput!): Task!
     updateTaskStatus(id: ID!, status: String!, note: String, force: Boolean, reason: String): Task!
     updateTaskMilestone(id: ID!, milestone: String): Task!
+    updateTaskAssignee(id: ID!, assignee: String): Task!
     claimTask(input: TaskClaimInput!): TaskClaimResult!
     heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
     completeTaskClaim(claimId: ID!, note: String): TaskClaimResult!
@@ -264,6 +267,7 @@ const typeDefs = `#graphql
     recordDecision(input: RecordDecisionInput!): Decision!
     updateDecisionStatus(id: ID!, status: String!, reason: String): Decision!
     updateDecisionMilestone(id: ID!, milestone: String): Decision!
+    updateDecisionAssignee(id: ID!, assignee: String): Decision!
     # Reuses RecordDecisionInput's schema shape; supersedesId/rationale are
     # required at runtime by decisionSupersedeSchema, not by this GraphQL
     # type — matches recordDecision's own pattern of leaning on the MCP
@@ -384,6 +388,7 @@ const typeDefs = `#graphql
     forbiddenFiles: [String!]
     dependsOn: [String!]
     notes: String
+    assignee: String
   }
 
   input TaskClaimInput {
@@ -442,6 +447,7 @@ const typeDefs = `#graphql
     supersedesId: String
     summary: String
     milestone: String
+    assignee: String
     links: [RecordLinkInput!]
   }
 
@@ -494,6 +500,11 @@ const typeDefs = `#graphql
     pinned: Boolean!
     createdAt: String
     updatedAt: String
+  }
+
+  type ProjectMember {
+    userId: ID!
+    email: String!
   }
 
   type PaginatedProjects {
@@ -673,6 +684,8 @@ const typeDefs = `#graphql
     notes: String
     activeClaimCount: Int!
     createdBy: String
+    assigneeUserId: String
+    assigneeDiffersFromOwner: Boolean!
     createdAt: String
     updatedAt: String
   }
@@ -737,6 +750,8 @@ const typeDefs = `#graphql
     summary: String
     milestone: String
     createdBy: String
+    assigneeUserId: String
+    assigneeDiffersFromOwner: Boolean!
     createdAt: String
     updatedAt: String
     linksCreated: [Link!]
@@ -891,6 +906,10 @@ const typeDefs = `#graphql
     # Which client credential performed the operation this event records
     # (T-MEMORY-029 / D-MEMORY-007 attribution).
     credentialId: String
+    # T-MEMORY-090: who this notification concerns (e.g. task.assigned's
+    # new assignee) -- distinct from credentialId, which is who performed
+    # the action. Null for every other event type.
+    targetUserId: String
     createdAt: String
   }
 
@@ -1096,7 +1115,9 @@ const resolvers = {
     actorLabels: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "gateway.actor_labels", cleanInput(args))).labels,
     userPreferences: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "user.preferences_get", {})).preferences
+      (await callTool<Row>(context, "user.preferences_get", {})).preferences,
+    projectMembers: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.members", cleanInput(args))).members
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1125,6 +1146,8 @@ const resolvers = {
       (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
     updateTaskMilestone: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_milestone", cleanInput(args))).task,
+    updateTaskAssignee: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.update_assignee", cleanInput(args))).task,
     claimTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "task.claim", cleanInput(args.input as Row)),
     heartbeatTaskClaim: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1145,6 +1168,8 @@ const resolvers = {
       (await callTool<Row>(context, "decision.update_status", cleanInput(args))).decision,
     updateDecisionMilestone: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.update_milestone", cleanInput(args))).decision,
+    updateDecisionAssignee: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "decision.update_assignee", cleanInput(args))).decision,
     supersedeDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "decision.supersede", cleanInput(args.input as Row)),
     archiveDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

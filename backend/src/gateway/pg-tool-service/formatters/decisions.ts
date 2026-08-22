@@ -1,3 +1,4 @@
+import { assigneeDiffersFromOwner } from "../../assignees.js";
 import { dateStringOrNull, shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
@@ -31,6 +32,8 @@ export function decisionOut(row: Row) {
     summary: stringOrNull(row.summary),
     milestone: stringOrNull(row.milestone),
     createdBy: stringOrNull(row.created_by),
+    assigneeUserId: stringOrNull(row.assignee_user_id),
+    assigneeDiffersFromOwner: assigneeDiffersFromOwner(stringOrNull(row.assignee_user_id), row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

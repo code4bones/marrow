@@ -1,6 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
+import { assigneeDiffersFromOwner, createAssigneesFacade } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
@@ -45,6 +46,11 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   return class extends Base {
   protected async createTask(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
+    const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
+      project.id,
+      input.assignee as string | null | undefined,
+      context.clientId
+    );
     const now = nowIso();
     const row = {
       id: await this.nextId("tasks", `T-${projectKeyFromId(project.id)}`),
@@ -59,6 +65,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       forbidden_files: jsonStringArray(input.forbiddenFiles),
       depends_on: jsonStringArray(input.dependsOn),
       notes: stringOrNull(input.notes),
+      assignee_user_id: assigneeUserId,
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -69,6 +76,14 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task created: ${row.title}`,
       related_id: row.id
     }, context);
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
+      await this.recordEventForProject(project.id, {
+        type: "task.assigned",
+        title: `Task assigned: ${row.title}`,
+        related_id: row.id,
+        target_user_id: assigneeUserId
+      }, context);
+    }
     return taskOut(row);
   }
 
@@ -333,6 +348,43 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
+    return taskOut(row);
+  }
+
+  // T-MEMORY-090: mirrors updateTaskMilestone's shape -- `assignee` is
+  // required-but-nullable (unlike task.create's optional `assignee`,
+  // there's no "unset" default to fall back on here; the caller must say
+  // either a member or null).
+  protected async updateTaskAssignee(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.assertProjectMember(String(current.project_id), context);
+    const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
+      String(current.project_id),
+      input.assignee as string | null,
+      undefined
+    );
+    const [row] = await this.db("tasks")
+      .where({ id })
+      .update({
+        assignee_user_id: assigneeUserId,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
+      await this.recordEventForProject(String(row.project_id), {
+        type: "task.assigned",
+        title: `Task assigned: ${String(row.title)}`,
+        related_id: id,
+        target_user_id: assigneeUserId
+      }, context);
+    }
     return taskOut(row);
   }
 

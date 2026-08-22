@@ -25,6 +25,10 @@ export function eventOut(row: Row) {
     // wrote this into created_by (and mirrored it into source_instance_id)
     // on every event row -- this DTO just stops hiding it from callers.
     credentialId: stringOrNull(row.created_by),
+    // T-MEMORY-090: who this notification concerns, e.g. task.assigned/
+    // decision.assigned's new assignee -- distinct from credentialId
+    // (who performed the action). Null for every other event type.
+    targetUserId: stringOrNull(row.target_user_id),
     createdAt: dateStringOrNull(row.created_at)
   };
 }

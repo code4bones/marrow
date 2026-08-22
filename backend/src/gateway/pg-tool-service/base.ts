@@ -117,6 +117,7 @@ export class BaseService {
       title: input.title ?? null,
       body: input.body ?? null,
       related_id: input.related_id ?? null,
+      target_user_id: input.target_user_id ?? null,
       created_by: context.clientId,
       source_instance_id: context.clientId,
       created_at: nowIso()

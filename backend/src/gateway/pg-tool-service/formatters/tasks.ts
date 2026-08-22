@@ -1,4 +1,5 @@
 import { taskClaimRoles, defaultTaskClaimLeaseSeconds } from "../types.js";
+import { assigneeDiffersFromOwner } from "../../assignees.js";
 import { boundedInteger, dateStringOrNull, shortText, stringArray, stringOrNull } from "./common.js";
 import type { Row } from "../types.js";
 
@@ -40,6 +41,8 @@ export function taskOut(row: Row) {
     notes: stringOrNull(row.notes),
     activeClaimCount: Number(row.active_claim_count ?? 0),
     createdBy: stringOrNull(row.created_by),
+    assigneeUserId: stringOrNull(row.assignee_user_id),
+    assigneeDiffersFromOwner: assigneeDiffersFromOwner(stringOrNull(row.assignee_user_id), row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

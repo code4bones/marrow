@@ -136,6 +136,20 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return projectOut(row);
   }
 
+  // T-MEMORY-090: powers the assignee picker (UI dropdown) and lets an
+  // agent enumerate members before assigning a task/decision by email.
+  // resolveProject -> getProject already gates visibility (a role=member
+  // caller must already be a member to see the roster at all).
+  protected async listProjectMembers(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    const rows = await this.db("project_members")
+      .join("users", "users.id", "project_members.user_id")
+      .where("project_members.project_id", project.id)
+      .orderBy("users.email")
+      .select<{ id: string; email: string }[]>("users.id", "users.email");
+    return { members: rows.map((row) => ({ userId: row.id, email: row.email })) };
+  }
+
   // Only the project's owner or a system admin can rename/re-slug it --
   // reuses getProject()'s existing membership gate rather than duplicating
   // it, so a role=member session with no project_members row still gets

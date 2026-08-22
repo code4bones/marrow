@@ -128,6 +128,8 @@ export class PgToolService extends ComposedService {
           return ok("Projects listed.", { projects: await this.listProjects(parsed, requestContext) });
         case "project.get":
           return ok("Project loaded.", { project: await this.getProject(parsed, requestContext) });
+        case "project.members":
+          return ok("Project members listed.", await this.listProjectMembers(parsed, requestContext));
         case "project.update":
           return ok("Project updated.", { project: await this.updateProject(parsed, requestContext) });
         case "project.invite_link_get":
@@ -235,12 +237,16 @@ export class PgToolService extends ComposedService {
           return ok("Task status updated.", await this.updateTaskStatus(parsed, requestContext));
         case "task.update_milestone":
           return ok("Task milestone updated.", { task: await this.updateTaskMilestone(parsed, requestContext) });
+        case "task.update_assignee":
+          return ok("Task assignee updated.", { task: await this.updateTaskAssignee(parsed, requestContext) });
         case "decision.record":
           return ok("Decision recorded.", await this.recordDecision(parsed, requestContext));
         case "decision.update_status":
           return ok("Decision status updated.", await this.updateDecisionStatus(parsed, requestContext));
         case "decision.update_milestone":
           return ok("Decision milestone updated.", { decision: await this.updateDecisionMilestone(parsed, requestContext) });
+        case "decision.update_assignee":
+          return ok("Decision assignee updated.", { decision: await this.updateDecisionAssignee(parsed, requestContext) });
         case "decision.supersede":
           return ok("Decision superseded.", await this.supersedeDecision(parsed, requestContext));
         case "decision.archive":

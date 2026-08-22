@@ -3,6 +3,7 @@ import {
   getDecisionSchema,
   listDecisionsSchema,
   recordDecisionSchema,
+  updateDecisionAssigneeSchema,
   updateDecisionMilestoneSchema,
   updateDecisionStatusSchema
 } from "../features/decisions/model/schema.js";
@@ -15,12 +16,18 @@ import {
   updateMemorySchema
 } from "../features/memory/model/schema.js";
 import { preflightSchema } from "../features/preflight/model/schema.js";
-import { createProjectSchema, listProjectsSchema, projectLookupSchema } from "../features/projects/model/schema.js";
+import {
+  createProjectSchema,
+  listProjectsSchema,
+  projectLookupSchema,
+  projectMembersSchema
+} from "../features/projects/model/schema.js";
 import {
   createTaskSchema,
   getTaskSchema,
   listTasksSchema,
   nextTaskSchema,
+  updateTaskAssigneeSchema,
   updateTaskMilestoneSchema,
   updateTaskStatusSchema
 } from "../features/tasks/model/schema.js";
@@ -895,6 +902,11 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     schema: projectLookupSchema
   },
   {
+    name: "project.members",
+    description: "List a project's members (userId + email) -- gateway-only. Use to see who is assignable before setting assignee on task.create/decision.record/task.update_assignee/decision.update_assignee, or to answer \"who is on this project\".",
+    schema: projectMembersSchema
+  },
+  {
     name: "project.update",
     description:
       "Rename a shared project (title/description). Only this project's owner or a system admin can rename -- ownerUserId may also be set, but only takes effect for an admin caller (ownership reassignment).",
@@ -1094,7 +1106,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.create",
-    description: "Create a shared executable task for a project. REQUIRED CHECK before every call: is this task part of a batch of related work -- several tasks for the same refactor/feature, or a follow-up to a task created earlier in this conversation? If yes, this is not optional: set milestone to a short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the task is genuinely standalone, with no siblings past or future.",
+    description: "Create a shared executable task for a project. REQUIRED CHECK before every call: is this task part of a batch of related work -- several tasks for the same refactor/feature, or a follow-up to a task created earlier in this conversation? If yes, this is not optional: set milestone to a short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the task is genuinely standalone, with no siblings past or future. assignee hands this task to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username), and it resolves against current project members; omit it to default to the creator, or pass null to explicitly leave it unassigned. When the user says something like \"assign this to X\" / \"назначь на X\", set assignee to X.",
     schema: createTaskSchema,
     access: "write"
   },
@@ -1185,8 +1197,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "write"
   },
   {
+    name: "task.update_assignee",
+    description: "Reassign an existing task to a different project member, or clear it back to unassigned (assignee: null). assignee accepts a member's email or a distinguishing fragment of it (e.g. a username), resolved against current project members. Use when the user says something like \"assign this to X\" / \"назначь на X\" / \"поставь эту задачу на X\" about an already-created task.",
+    schema: updateTaskAssigneeSchema,
+    access: "write"
+  },
+  {
     name: "decision.record",
-    description: "Record a shared project or common decision. REQUIRED CHECK before every call: does this decision belong to the same refactor/feature as other tasks/decisions created together, or is it a follow-up to one created earlier in this conversation? If yes, this is not optional: set milestone to the exact same short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") used across that whole batch, so they group under one heading in the Decisions list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the decision is genuinely standalone, with no siblings past or future.",
+    description: "Record a shared project or common decision. REQUIRED CHECK before every call: does this decision belong to the same refactor/feature as other tasks/decisions created together, or is it a follow-up to one created earlier in this conversation? If yes, this is not optional: set milestone to the exact same short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") used across that whole batch, so they group under one heading in the Decisions list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the decision is genuinely standalone, with no siblings past or future. assignee hands this decision to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username); omit it to default to the creator, or pass null to explicitly leave it unassigned. Requires a project-scoped decision (not a common one).",
     schema: recordDecisionSchema,
     access: "write"
   },
@@ -1200,6 +1218,12 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "decision.update_milestone",
     description: "Set or clear (milestone: null) an existing decision's milestone -- the work-process grouping that decision.record's own milestone field can set at creation but has no update path afterward.",
     schema: updateDecisionMilestoneSchema,
+    access: "write"
+  },
+  {
+    name: "decision.update_assignee",
+    description: "Reassign an existing project-scoped decision to a different project member, or clear it back to unassigned (assignee: null). assignee accepts a member's email or a distinguishing fragment of it (e.g. a username), resolved against current project members. Use when the user says something like \"assign this to X\" / \"назначь на X\" about an already-recorded decision.",
+    schema: updateDecisionAssigneeSchema,
     access: "write"
   },
   {

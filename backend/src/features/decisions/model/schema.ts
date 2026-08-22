@@ -15,6 +15,7 @@ export const recordDecisionSchema = z.object({
   supersedesId: z.string().nullable().optional(),
   summary: z.string().optional(),
   milestone: z.string().optional(),
+  assignee: z.string().nullable().optional(),
   links: recordLinksInputSchema
 });
 
@@ -42,4 +43,9 @@ export const updateDecisionStatusSchema = z.object({
 export const updateDecisionMilestoneSchema = z.object({
   id: z.string().min(1),
   milestone: z.string().nullable()
+});
+
+export const updateDecisionAssigneeSchema = z.object({
+  id: z.string().min(1),
+  assignee: z.string().nullable()
 });

@@ -1,6 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { createCreditsFacade } from "../../credits.js";
+import { assigneeDiffersFromOwner, createAssigneesFacade } from "../../assignees.js";
+import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { decisionOut } from "../formatters/decisions.js";
@@ -40,8 +41,31 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     }
   }
 
+  // T-MEMORY-090: assignee resolution against project members needs a real
+  // project -- a "common" decision (project: null, no project scope) has no
+  // membership pool to validate an explicit assignee against, so that case
+  // is rejected rather than silently ignored. The default-to-creator path
+  // doesn't need a project at all, so it's handled the same either way.
+  protected async resolveDecisionAssigneeUserId(
+    projectId: string | null,
+    assigneeInput: unknown,
+    context: NormalizedGatewayRequestContext
+  ): Promise<string | null> {
+    if (assigneeInput === undefined) {
+      return userIdFromClientId(context.clientId);
+    }
+    if (projectId === null) {
+      if (assigneeInput === null) {
+        return null;
+      }
+      throw new AppError("VALIDATION_ERROR", "assignee requires a project-scoped decision -- common decisions have no member pool to assign from.");
+    }
+    return createAssigneesFacade(this.db).resolveAssigneeUserId(projectId, assigneeInput as string | null, undefined);
+  }
+
   protected async recordDecision(input: Row, context: NormalizedGatewayRequestContext) {
     const project = input.project === null ? null : await this.resolveProject(input.project, context);
+    const assigneeUserId = await this.resolveDecisionAssigneeUserId(project?.id ?? null, input.assignee, context);
     const now = nowIso();
     const row = {
       id: await this.nextId("decisions", project ? `D-${projectKeyFromId(project.id)}` : "D-COMMON"),
@@ -56,6 +80,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       supersedes_id: stringOrNull(input.supersedesId),
       summary: stringOrNull(input.summary),
       milestone: stringOrNull(input.milestone),
+      assignee_user_id: assigneeUserId,
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -69,6 +94,14 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision recorded: ${row.title}`,
       related_id: row.id
     }, context);
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
+      await this.recordEventForProject(row.project_id, {
+        type: "decision.assigned",
+        title: `Decision assigned: ${row.title}`,
+        related_id: row.id,
+        target_user_id: assigneeUserId
+      }, context);
+    }
     const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
     const warning = await this.awardDecisionAcceptedIfNeeded(row, context);
     return { decision: { ...decisionOut(row), ...linkage }, ...(warning ? { warning } : {}) };
@@ -348,6 +381,48 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
+    return decisionOut(row);
+  }
+
+  // T-MEMORY-090: mirrors updateDecisionMilestone's shape; `assignee` is
+  // required-but-nullable here, unlike recordDecision's optional field.
+  protected async updateDecisionAssignee(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("decisions").where({ id }).first();
+    if (!current) {
+      throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
+    }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
+    const projectId = stringOrNull(current.project_id);
+    let assigneeUserId: string | null;
+    if (projectId === null) {
+      if (input.assignee !== null) {
+        throw new AppError("VALIDATION_ERROR", "assignee requires a project-scoped decision -- common decisions have no member pool to assign from.");
+      }
+      assigneeUserId = null;
+    } else {
+      assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(projectId, input.assignee as string | null, undefined);
+    }
+    const [row] = await this.db("decisions")
+      .where({ id })
+      .update({
+        assignee_user_id: assigneeUserId,
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
+      await this.recordEventForProject(projectId, {
+        type: "decision.assigned",
+        title: `Decision assigned: ${String(row.title)}`,
+        related_id: id,
+        target_user_id: assigneeUserId
+      }, context);
+    }
     return decisionOut(row);
   }
 
