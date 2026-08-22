@@ -34,6 +34,17 @@ const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const PENDING_REGISTRATION_TTL_MS = 30 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const RECOVERY_CODE_COUNT = 10;
+// T-MEMORY-101: some countries block oauth.telegram.org outright, so the
+// OIDC-based linking flow (loginViaTelegram/linkTelegramIdentity above) is
+// not reachable for everyone -- this is a second, code-based path to the
+// same telegram_identities row. Short-lived on purpose: the code is only
+// ever meant to be typed into Telegram within a few minutes of requesting
+// it, not saved/reused later.
+const TELEGRAM_LINK_CODE_TTL_MS = 10 * 60 * 1000;
+// Excludes visually-ambiguous characters (0/O, 1/I/L) since this code is
+// meant to be read off a screen and typed into a phone keyboard.
+const TELEGRAM_LINK_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const TELEGRAM_LINK_CODE_LENGTH = 6;
 // T-MEMORY-041 / D-MEMORY-019: how long a step-up elevation grant is good
 // for if it's minted but never redeemed. Deliberately short -- this is a
 // "confirm this one action right now" prompt, not a session. A grant is
@@ -760,14 +771,22 @@ export function createAuthFacade(db: Knex) {
     userId: string,
     telegramId: string,
     username: string | null,
-    firstName: string | null
+    firstName: string | null,
+    // T-MEMORY-101: the code-based link path (consumeTelegramLinkCode below)
+    // proves chat access in the same message that proves ownership -- the
+    // sender just messaged the bot directly, so there's no separate "press
+    // Start" step to wait for the way the OIDC/widget path needs. The OIDC
+    // caller (http-server.ts callback route) omits this, same as before.
+    chatStarted = false
   ): Promise<void> {
     const existing = await db("telegram_identities").where({ telegram_id: telegramId }).first();
     if (existing) {
       if (existing.user_id === userId) {
-        await db("telegram_identities")
-          .where({ user_id: userId })
-          .update({ telegram_username: username, telegram_first_name: firstName });
+        const patch: Record<string, unknown> = { telegram_username: username, telegram_first_name: firstName };
+        if (chatStarted) {
+          patch.chat_started_at = new Date();
+        }
+        await db("telegram_identities").where({ user_id: userId }).update(patch);
         return;
       }
       throw new AppError("VALIDATION_ERROR", "This Telegram account is already linked to a different Marrow account.");
@@ -785,8 +804,81 @@ export function createAuthFacade(db: Knex) {
       telegram_id: telegramId,
       telegram_username: username,
       telegram_first_name: firstName,
+      chat_started_at: chatStarted ? new Date() : null,
       created_at: new Date()
     });
+  }
+
+  // --- Telegram code-based linking (T-MEMORY-101) -----------------------
+  // Fallback for users whose country blocks oauth.telegram.org outright:
+  // request a short code from the profile page, then send it as a plain
+  // message to the bot (no /command) within TELEGRAM_LINK_CODE_TTL_MS.
+
+  function generateTelegramLinkCode(): string {
+    const bytes = randomBytes(TELEGRAM_LINK_CODE_LENGTH);
+    let code = "";
+    for (let index = 0; index < TELEGRAM_LINK_CODE_LENGTH; index += 1) {
+      code += TELEGRAM_LINK_CODE_ALPHABET[bytes[index] % TELEGRAM_LINK_CODE_ALPHABET.length];
+    }
+    return code;
+  }
+
+  async function createTelegramLinkCode(userId: string): Promise<{ code: string; expiresAt: Date }> {
+    const now = new Date();
+    // A fresh request supersedes any earlier unconsumed code for this user --
+    // only the most recently displayed code should ever work.
+    await db("telegram_link_codes").where({ user_id: userId }).whereNull("consumed_at").del();
+    const expiresAt = new Date(now.getTime() + TELEGRAM_LINK_CODE_TTL_MS);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = generateTelegramLinkCode();
+      try {
+        await db("telegram_link_codes").insert({
+          id: randomUUID(),
+          user_id: userId,
+          code,
+          expires_at: expiresAt,
+          consumed_at: null,
+          created_at: now
+        });
+        return { code, expiresAt };
+      } catch (error) {
+        if (attempt === 4) {
+          throw error;
+        }
+      }
+    }
+    throw new AppError("GATEWAY_ERROR", "Could not generate a unique linking code.");
+  }
+
+  /**
+   * Called from the bot's message handler with whatever text a Telegram
+   * user just sent. Atomic claim (UPDATE ... WHERE consumed_at IS NULL AND
+   * expires_at > now RETURNING), same single-use pattern as consumeElevation
+   * above, so a code can't be raced/reused. Returns `{ ok: false }` for
+   * plain conversational text as much as for an actually-expired code --
+   * the bot handler treats both the same way (fall through to its normal
+   * "not linked yet" reply).
+   */
+  async function consumeTelegramLinkCode(
+    rawCode: string,
+    telegramId: string,
+    username: string | null,
+    firstName: string | null
+  ): Promise<{ ok: true; userId: string } | { ok: false }> {
+    const code = rawCode.trim().toUpperCase();
+    const now = new Date();
+    const rows = await db("telegram_link_codes")
+      .where({ code })
+      .whereNull("consumed_at")
+      .andWhere("expires_at", ">", now)
+      .update({ consumed_at: now })
+      .returning(["user_id"]);
+    if (!rows.length) {
+      return { ok: false };
+    }
+    const userId = rows[0].user_id as string;
+    await linkTelegramIdentity(userId, telegramId, username, firstName, true);
+    return { ok: true, userId };
   }
 
   async function unlinkTelegramIdentity(userId: string): Promise<void> {
@@ -1476,7 +1568,9 @@ export function createAuthFacade(db: Knex) {
     loginViaTelegram,
     linkTelegramIdentity,
     unlinkTelegramIdentity,
-    telegramLinkStatus
+    telegramLinkStatus,
+    createTelegramLinkCode,
+    consumeTelegramLinkCode
   };
 }
 

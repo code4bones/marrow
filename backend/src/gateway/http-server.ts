@@ -1834,6 +1834,19 @@ async function handleAuthRoute(
     return true;
   }
 
+  // T-MEMORY-101: fallback for users whose country blocks
+  // oauth.telegram.org outright -- a short code to type into a plain
+  // message to the bot instead of going through OIDC at all.
+  if (request.method === "POST" && requestPath === "/auth/profile/telegram/code") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "A session is required.")));
+      return true;
+    }
+    const result = await auth.createTelegramLinkCode(sessionAuth.userId);
+    send(200, { ok: true, data: { code: result.code, expiresAt: result.expiresAt.toISOString() } });
+    return true;
+  }
+
   // Public/unauthenticated -- the login page needs this to render (or hide)
   // the "Sign in with Telegram" widget before a session exists at all, same
   // as /auth/register/pending's pre-session reads above.
