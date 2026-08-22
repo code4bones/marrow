@@ -27,4 +27,18 @@ const splitLink = split(
 export const apolloClient = new ApolloClient({
   link: splitLink,
   cache: new InMemoryCache(),
+  // Without this, every useQuery defaults to cache-first: once a (query,
+  // variables) pair is cached, remounting it -- e.g. switching project away
+  // and back -- replays the stale snapshot with no network request at all.
+  // The realtime WS subscription (useRefetchOnVersion) is meant to be the
+  // safety net for "data changed while cached", but it only helps if the
+  // event actually arrives AND the consuming component is mounted at that
+  // exact moment -- one missed event (reconnect gap, proxy buffering, a
+  // backgrounded tab) leaves no way to self-heal short of a hard reload.
+  // cache-and-network still paints instantly from cache but always fires a
+  // background network request on every mount, so any page self-heals on
+  // its own next visit regardless of whether the WS event was ever seen.
+  defaultOptions: {
+    watchQuery: { fetchPolicy: 'cache-and-network' },
+  },
 });
