@@ -40,6 +40,21 @@ export function kindHasMilestone(kind: RootKind): boolean {
   return kind === 'TASK' || kind === 'DECISION';
 }
 
+// T-MEMORY-092: status filter toggles under the Timeline's baseline filter
+// row -- the exact status enums live in the backend's check constraints
+// (tasks/decisions/items/artifacts), duplicated here as plain data since
+// there's no tool that returns them and StatusBadge already renders the
+// raw status string verbatim (uppercased), not a translated label, so no
+// i18n lookup is needed for these either.
+export function rootKindStatuses(kind: RootKind): string[] {
+  switch (kind) {
+    case 'TASK': return ['todo', 'doing', 'blocked', 'done', 'cancelled'];
+    case 'DECISION': return ['draft', 'accepted', 'superseded', 'rejected', 'archived'];
+    case 'MEMORY': return ['current', 'draft', 'open', 'answered', 'superseded', 'rejected', 'archived'];
+    case 'ARTIFACT': return ['current', 'archived'];
+  }
+}
+
 // Empty-state hint shown under the baseline ribbon when no records of this
 // kind exist yet — DecisionTimeline is the sole consumer, so these live in
 // the 'decisions' namespace it already loads.

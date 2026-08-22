@@ -17,7 +17,7 @@ import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTi
 import { apolloClient } from '../../shared/api/apollo';
 import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
-import { kindHasMilestone, rootKindEmptyHint, rootKindLabel, type RootKind } from './rootKind';
+import { kindHasMilestone, rootKindEmptyHint, rootKindLabel, rootKindStatuses, type RootKind } from './rootKind';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -777,6 +777,40 @@ function TimelineFilterInput({ value, onChange }: { value: string; onChange: (va
   );
 }
 
+// T-MEMORY-092: status filter toggles directly under the baseline filter
+// input -- owner's ask: "не чек боксы, а аккуратные бэджи-тогглы". Reuses
+// the same STATUS_COLORS mapping every status <Tag> in this file already
+// draws from; a hidden status just loses its color and dims, rather than
+// a separate on/off visual language.
+function StatusToggleBadges({ statuses, hidden, onToggle }: { statuses: string[]; hidden: Set<string>; onToggle: (status: string) => void }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {statuses.map((status) => {
+        const active = !hidden.has(status);
+        return (
+          <Tag
+            key={status}
+            color={active ? (GENERIC_STATUS_COLORS[status] ?? 'default') : undefined}
+            style={{
+              margin: 0,
+              cursor: 'pointer',
+              fontSize: 10,
+              lineHeight: '15px',
+              padding: '0 6px',
+              textTransform: 'uppercase',
+              opacity: active ? 1 : 0.45,
+              userSelect: 'none',
+            }}
+            onClick={(e) => { e.stopPropagation(); onToggle(status); }}
+          >
+            {status}
+          </Tag>
+        );
+      })}
+    </div>
+  );
+}
+
 // "[milestone]: N tasks" / "[milestone]: N decisions" — count phrasing
 // borrows the already-seeded tasksCount/decisionsCount keys (Tasks/
 // Decisions list pages' own pagination footers), cross-namespace the same
@@ -787,12 +821,14 @@ function milestoneGroupLabel(t: (key: string, options?: Record<string, unknown>)
   return `${name}: ${countLabel}`;
 }
 
-function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, ...common }: {
+function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, hiddenStatuses, onToggleStatus, ...common }: {
   rows: BaselineRow[];
   filterQuery: string;
   onFilterChange: (value: string) => void;
   rootKind: RootKind;
   groupByMilestone: boolean;
+  hiddenStatuses: Set<string>;
+  onToggleStatus: (status: string) => void;
 } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
   const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups, labelFor } = common;
@@ -804,6 +840,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
           {rootKindLabel(t, rootKind)}
         </Typography.Text>
         <TimelineFilterInput value={filterQuery} onChange={onFilterChange} />
+        <StatusToggleBadges statuses={rootKindStatuses(rootKind)} hidden={hiddenStatuses} onToggle={onToggleStatus} />
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
         {groupByMilestone && milestoneGroups.length === 0 ? (
@@ -1106,10 +1143,23 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // instead of an effect, which the react-hooks/set-state-in-effect rule
   // flags as cascading-render-prone — this still only re-renders once, the
   // `rootKindAtLastChain !== rootKind` guard makes it self-limiting.
+  // T-MEMORY-092: which statuses are hidden from the baseline ribbon --
+  // empty by default (everything shown), same "show everything until the
+  // user opts out" convention as the text filter above it.
+  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(new Set());
+  const toggleStatus = useCallback((status: string) => {
+    setHiddenStatuses((cur) => {
+      const next = new Set(cur);
+      if (next.has(status)) next.delete(status); else next.add(status);
+      return next;
+    });
+  }, []);
+
   const [rootKindAtLastChain, setRootKindAtLastChain] = useState(rootKind);
   if (rootKindAtLastChain !== rootKind) {
     setRootKindAtLastChain(rootKind);
     setChain([]);
+    setHiddenStatuses(new Set());
   }
 
   // Collapsed by default — the expanded panel was covering the columns
@@ -1176,11 +1226,12 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   const [filterQuery, setFilterQuery] = useState('');
   const normalizedFilter = filterQuery.trim().toLowerCase();
   const filteredBaselineNodes = useMemo(() => {
-    if (!normalizedFilter) return baselineNodes;
-    return baselineNodes.filter(
-      (n) => n.id.toLowerCase().includes(normalizedFilter) || n.title.toLowerCase().includes(normalizedFilter),
-    );
-  }, [baselineNodes, normalizedFilter]);
+    return baselineNodes.filter((n) => {
+      if (hiddenStatuses.has(n.status ?? '')) return false;
+      if (!normalizedFilter) return true;
+      return n.id.toLowerCase().includes(normalizedFilter) || n.title.toLowerCase().includes(normalizedFilter);
+    });
+  }, [baselineNodes, normalizedFilter, hiddenStatuses]);
   const filteredTaskMarkers = useMemo(() => {
     if (!normalizedFilter) return overlay.taskMarkers;
     return overlay.taskMarkers.filter((m) => m.title.toLowerCase().includes(normalizedFilter));
@@ -1355,7 +1406,16 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           cursor: isPanning ? 'grabbing' : 'grab',
         }}
       >
-        <BaselineColumn rows={baselineRows} filterQuery={filterQuery} onFilterChange={setFilterQuery} rootKind={rootKind} groupByMilestone={groupByMilestone} {...common} />
+        <BaselineColumn
+          rows={baselineRows}
+          filterQuery={filterQuery}
+          onFilterChange={setFilterQuery}
+          rootKind={rootKind}
+          groupByMilestone={groupByMilestone}
+          hiddenStatuses={hiddenStatuses}
+          onToggleStatus={toggleStatus}
+          {...common}
+        />
         {validChain.map((rootId, idx) => (
           <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
         ))}
