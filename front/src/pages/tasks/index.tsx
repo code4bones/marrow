@@ -3,7 +3,7 @@ import { Alert, Badge, Select, Switch, Table, Tabs, Tag, Typography } from 'antd
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { CreateTaskDrawer } from '../../features/task/CreateTaskDrawer';
 import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
@@ -49,6 +49,12 @@ const DEFAULT_SORT = 'UPDATED_AT:DESC';
 export function TasksPage() {
   const { t } = useTranslation('tasks');
   const { slug } = useParams<{ slug: string }>();
+  // T-MEMORY-103: Project Overview's Timeline/Kanban/Summary row links
+  // straight into this tab (?tab=kanban) since there was previously no way
+  // to find the Kanban view except opening Tasks and noticing the tab
+  // yourself. Read once on mount only -- Tabs below is otherwise uncontrolled.
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'kanban' ? 'kanban' : 'list';
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [groupByMilestone, setGroupByMilestone] = useState(false);
@@ -169,7 +175,7 @@ export function TasksPage() {
   return (
     <PageLayout title={t('tasks')} slug={slug} headerExtra={header} fill>
       <Tabs
-        defaultActiveKey="list"
+        defaultActiveKey={initialTab}
         size="small"
         className="tabs-fill"
         tabBarStyle={{ marginBottom: 8, flexShrink: 0, paddingLeft: 0 }}

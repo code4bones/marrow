@@ -2,7 +2,7 @@ import {
   CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, UIEvent as ReactUIEvent } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
@@ -172,6 +172,17 @@ const COLUMN_SCROLL_STYLE: CSSProperties = {
   flexDirection: 'column',
   alignItems: 'center',
 };
+
+// T-MEMORY-103: a project with 100+ baseline records rendered every one of
+// them (full RecordCard, satellites, remark preview) into the DOM on open,
+// reported live as a multi-second freeze. Rather than paginating the
+// backend query (projectGraph is one depth-limited traversal shared by both
+// Timeline and Tree, not a per-kind paged list -- see ProjectGraphView),
+// the baseline ribbon reveals nodes progressively as the column is
+// scrolled, same "load on scroll" shape as a classic infinite list.
+const BASELINE_INITIAL_REVEAL = 40;
+const BASELINE_REVEAL_STEP = 40;
+const BASELINE_REVEAL_THRESHOLD_PX = 200;
 
 // Bottom remarks indicator (D-MEMORY-015 feature, reused): read-only preview
 // of the same tone-colored cards RemarkPanel renders in the drawer, minus
@@ -821,7 +832,7 @@ function milestoneGroupLabel(t: (key: string, options?: Record<string, unknown>)
   return `${name}: ${countLabel}`;
 }
 
-function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, hiddenStatuses, onToggleStatus, ...common }: {
+function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, hiddenStatuses, onToggleStatus, onScroll, hasMore, ...common }: {
   rows: BaselineRow[];
   filterQuery: string;
   onFilterChange: (value: string) => void;
@@ -829,6 +840,8 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
   groupByMilestone: boolean;
   hiddenStatuses: Set<string>;
   onToggleStatus: (status: string) => void;
+  onScroll: (e: ReactUIEvent<HTMLDivElement>) => void;
+  hasMore: boolean;
 } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
   const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups, labelFor } = common;
@@ -842,7 +855,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
         <TimelineFilterInput value={filterQuery} onChange={onFilterChange} />
         <StatusToggleBadges statuses={rootKindStatuses(rootKind)} hidden={hiddenStatuses} onToggle={onToggleStatus} />
       </div>
-      <div style={COLUMN_SCROLL_STYLE}>
+      <div style={COLUMN_SCROLL_STYLE} onScroll={onScroll}>
         {groupByMilestone && milestoneGroups.length === 0 ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('noMatchesForFilter')}</Typography.Text>
         ) : !groupByMilestone && rows.length === 0 ? (
@@ -895,6 +908,11 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
               </div>
             );
           })}
+        {hasMore && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+            <Spin size="small" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1237,19 +1255,44 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     return overlay.taskMarkers.filter((m) => m.title.toLowerCase().includes(normalizedFilter));
   }, [overlay.taskMarkers, normalizedFilter]);
 
+  // T-MEMORY-103: how many of filteredBaselineNodes are actually turned
+  // into DOM cards right now -- resets to the initial page whenever the
+  // underlying filtered set changes (new filter text, a status toggled,
+  // switching root kind), same "start from the top" expectation a search
+  // box already implies. React's own "adjusting state when a prop changes"
+  // pattern (react.dev) -- comparing+resetting during render instead of in
+  // an effect avoids an extra discarded paint on every filter keystroke.
+  const [revealCount, setRevealCount] = useState(BASELINE_INITIAL_REVEAL);
+  const [revealTrackedNodes, setRevealTrackedNodes] = useState(filteredBaselineNodes);
+  if (filteredBaselineNodes !== revealTrackedNodes) {
+    setRevealTrackedNodes(filteredBaselineNodes);
+    setRevealCount(BASELINE_INITIAL_REVEAL);
+  }
+  const visibleBaselineNodes = useMemo(
+    () => filteredBaselineNodes.slice(0, revealCount),
+    [filteredBaselineNodes, revealCount],
+  );
+  const hasMoreBaseline = revealCount < filteredBaselineNodes.length;
+  const handleBaselineScroll = useCallback((e: ReactUIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < BASELINE_REVEAL_THRESHOLD_PX) {
+      setRevealCount((c) => c + BASELINE_REVEAL_STEP);
+    }
+  }, []);
+
   // Task-created/completed markers are a DECISION-timeline overlay concept
   // (T-MEMORY-045) — showing "when did this task happen relative to
   // decisions". They don't apply to a Tasks-rooted baseline (every task
   // already gets its own row there), so only merge them in when decisions
   // are actually the root.
   const baselineRows = useMemo(
-    () => buildBaselineRows(filteredBaselineNodes, rootKind === 'DECISION' ? filteredTaskMarkers : []),
-    [filteredBaselineNodes, rootKind, filteredTaskMarkers],
+    () => buildBaselineRows(visibleBaselineNodes, rootKind === 'DECISION' ? filteredTaskMarkers : []),
+    [visibleBaselineNodes, rootKind, filteredTaskMarkers],
   );
 
   const milestoneGroups = useMemo(
-    () => (groupByMilestone ? buildMilestoneGroups(filteredBaselineNodes) : EMPTY_MILESTONE_GROUPS),
-    [groupByMilestone, filteredBaselineNodes],
+    () => (groupByMilestone ? buildMilestoneGroups(visibleBaselineNodes) : EMPTY_MILESTONE_GROUPS),
+    [groupByMilestone, visibleBaselineNodes],
   );
 
   // Defensive: if a graph refetch drops an id mid-chain (rare — depth
@@ -1414,6 +1457,8 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
           groupByMilestone={groupByMilestone}
           hiddenStatuses={hiddenStatuses}
           onToggleStatus={toggleStatus}
+          onScroll={handleBaselineScroll}
+          hasMore={hasMoreBaseline}
           {...common}
         />
         {validChain.map((rootId, idx) => (

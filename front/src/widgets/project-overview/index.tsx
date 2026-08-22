@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
@@ -174,6 +175,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export function ProjectOverview({ slug }: { slug: string }) {
   const { t } = useTranslation('projects');
+  const navigate = useNavigate();
+  const [overviewTab, setOverviewTab] = useState('timeline');
   const { data, loading, error, refetch } = useQuery<{ projectSummary: ProjectSummary }>(
     GET_PROJECT_SUMMARY,
     { variables: { project: slug } },
@@ -348,10 +351,22 @@ export function ProjectOverview({ slug }: { slug: string }) {
         </Row>
       </div>
 
-      {/* Tabs: Timeline | Summary — timeline first (I-PMEM-011): it's the
-          entry point into a project's history, tables are the reference view */}
+      {/* Tabs: Timeline | Kanban | Summary — timeline first (I-PMEM-011):
+          it's the entry point into a project's history, tables are the
+          reference view. Kanban isn't a real inline panel here (it lives on
+          the Tasks page, T-MEMORY-102) -- owner asked for a direct shortcut
+          because nothing else pointed at it ("канбан не зная где он - не
+          найдешь"), so its onChange below intercepts that one key and
+          navigates instead of switching panels. */}
       <Tabs
-        defaultActiveKey="timeline"
+        activeKey={overviewTab}
+        onChange={(key) => {
+          if (key === 'kanban') {
+            navigate(`/projects/${slug}/tasks?tab=kanban`);
+            return;
+          }
+          setOverviewTab(key);
+        }}
         size="small"
         className="tabs-fill"
         tabBarStyle={{ paddingLeft: 24, marginBottom: 0, flexShrink: 0 }}
@@ -364,6 +379,11 @@ export function ProjectOverview({ slug }: { slug: string }) {
                 <ProjectGraphView slug={slug} />
               </div>
             ),
+          },
+          {
+            key: 'kanban',
+            label: t('kanban'),
+            children: null,
           },
           {
             key: 'summary',
