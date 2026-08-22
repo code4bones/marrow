@@ -178,7 +178,7 @@ export function TasksPage() {
         defaultActiveKey={initialTab}
         size="small"
         className="tabs-fill"
-        tabBarStyle={{ marginBottom: 8, flexShrink: 0, paddingLeft: 0 }}
+        tabBarStyle={{ marginBottom: 8, flexShrink: 0, paddingLeft: 24 }}
         items={[
           {
             key: 'list',
