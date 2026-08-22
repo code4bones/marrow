@@ -150,6 +150,7 @@ export class BaseService {
     // internally (never throws), no try/catch needed here.
     for (const targetUserId of targetUserIds) {
       void notifyTelegram(this.db, targetUserId, {
+        type: String(row.type),
         title: String(row.title ?? row.type),
         body: row.body ? String(row.body) : null,
         relatedId: row.related_id ? String(row.related_id) : null
