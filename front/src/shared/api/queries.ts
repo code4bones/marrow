@@ -99,7 +99,7 @@ export const GET_ARTIFACTS_PAGE = gql`
 export const GET_EVENTS_PAGE = gql`
   query GetEventsPage($project: String, $limit: Int!, $offset: Int!) {
     eventsPage(project: $project, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title relatedId credentialId targetUserId createdAt }
+      items { id type title relatedId credentialId targetUserIds createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }

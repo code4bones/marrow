@@ -44,7 +44,7 @@ export function NotificationsPage() {
       title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true,
       render: (v, row) => (
         <span>
-          {row.targetUserId && row.targetUserId === currentUserId && (
+          {currentUserId && row.targetUserIds.includes(currentUserId) && (
             <Tag color="gold" style={{ fontSize: 10, marginRight: 6 }}>{t('assignedToYou')}</Tag>
           )}
           {v}

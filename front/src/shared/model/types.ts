@@ -165,7 +165,7 @@ export interface Event {
   body: string | null;
   relatedId: string | null;
   credentialId: string | null;
-  targetUserId: string | null;
+  targetUserIds: string[];
   createdAt: string | null;
 }
 
