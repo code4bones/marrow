@@ -100,7 +100,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         type: "decision.assigned",
         title: `Decision assigned: ${row.title}`,
         related_id: row.id,
-        target_user_ids: recordNotifyTarget ? [recordNotifyTarget] : []
+        target_user_ids: recordNotifyTarget ? [recordNotifyTarget] : [],
+        record_title: row.title
       }, context);
     }
     const linkage = await this.applyRecordLinkage(row.id, row.project_id, input.tags, input.links, context);
@@ -306,7 +307,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision archived: ${String(row.title)}`,
       body: stringOrNull(input.reason),
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      record_title: row.title
     }, context);
     return {
       action: "archived",
@@ -353,7 +355,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision status changed: ${String(row.title)}`,
       body: stringOrNull(input.reason),
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      record_title: row.title
     }, context);
     // Only a genuine transition into "accepted" earns the bonus -- guards
     // against re-awarding on a same-status no-op call.
@@ -424,7 +427,8 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         type: "decision.assigned",
         title: `Decision assigned: ${String(row.title)}`,
         related_id: id,
-        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : []
+        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : [],
+        record_title: row.title
       }, context);
     }
     return decisionOut(row);

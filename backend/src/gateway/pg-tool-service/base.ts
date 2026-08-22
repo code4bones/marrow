@@ -153,7 +153,14 @@ export class BaseService {
         type: String(row.type),
         title: String(row.title ?? row.type),
         body: row.body ? String(row.body) : null,
-        relatedId: row.related_id ? String(row.related_id) : null
+        relatedId: row.related_id ? String(row.related_id) : null,
+        // T-MEMORY-093 follow-up: neither persisted on the events row nor
+        // exposed via GraphQL -- notify-only context so the Telegram
+        // message can show the record's own bare title (not "Task
+        // completed: X") and who actually performed the action.
+        recordTitle: input.record_title ? String(input.record_title) : null,
+        actorClientId: context.clientId,
+        projectId
       });
     }
     return out;

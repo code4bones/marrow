@@ -1,6 +1,7 @@
 import { Api, type ApiClientOptions } from "grammy";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { Knex } from "knex";
+import { createActorLabelsFacade } from "./actor-labels.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 
 function botToken(): string | null {
@@ -48,21 +49,46 @@ export interface TelegramNotifyInput {
   title: string;
   body?: string | null;
   relatedId?: string | null;
+  recordTitle?: string | null;
+  actorClientId?: string | null;
+  projectId?: string | null;
 }
 
-// One glance icon per event kind -- matches eventTypeForStatus's actual
-// output strings (formatters/events.ts) plus the assignment/record types
-// the mixins emit directly, suffix-matched so new statuses degrade to the
-// generic bell instead of needing this list kept in lockstep.
-function iconForEventType(type: string): string {
-  if (type.endsWith(".assigned")) return "📌";
-  if (type.endsWith(".completed")) return "✅";
-  if (type.endsWith(".started")) return "▶️";
-  if (type.endsWith(".blocked")) return "🚫";
-  if (type.endsWith(".cancelled")) return "❌";
-  if (type.endsWith(".archived")) return "🗄️";
-  if (type.endsWith(".created") || type.endsWith(".recorded")) return "🆕";
-  return "🔔";
+// One glance icon + short Russian label per event kind -- matches
+// eventTypeForStatus's actual output strings (formatters/events.ts) plus
+// the assignment/record types the mixins emit directly. Falls back to the
+// raw event type for anything not in this list rather than needing it kept
+// in lockstep with every new event type.
+const EVENT_LABELS: Record<string, [icon: string, label: string]> = {
+  "task.created": ["🆕", "Новая задача"],
+  "task.assigned": ["📌", "Назначена задача"],
+  "task.started": ["▶️", "Задача взята в работу"],
+  "task.completed": ["✅", "Задача завершена"],
+  "task.blocked": ["🚫", "Задача заблокирована"],
+  "task.cancelled": ["❌", "Задача отменена"],
+  "task.status_changed": ["🔄", "Статус задачи изменён"],
+  "decision.recorded": ["🆕", "Новое решение"],
+  "decision.assigned": ["📌", "Назначено решение"],
+  "decision.status_changed": ["🔄", "Статус решения изменён"],
+  "decision.archived": ["🗄️", "Решение архивировано"]
+};
+
+function eventHeading(type: string): string {
+  const [icon, label] = EVENT_LABELS[type] ?? ["🔔", type];
+  return `${icon} ${label}`;
+}
+
+function marrowWebUrl(): string | null {
+  const explicit = process.env.MARROW_WEB_URL?.trim().replace(/\/+$/, "");
+  if (explicit) {
+    return explicit;
+  }
+  // PROJECT_MEMORY_PUBLIC_URL, when set, is the API origin (includes /api
+  // -- see githubRedirectUri()/telegramRedirectUri() in http-server.ts) not
+  // the web app's own origin, but stripping that suffix recovers it for
+  // deployments that never bothered with a separate MARROW_WEB_URL.
+  const apiUrl = process.env.PROJECT_MEMORY_PUBLIC_URL?.trim().replace(/\/+$/, "");
+  return apiUrl ? apiUrl.replace(/\/api$/, "") : null;
 }
 
 // T-MEMORY-093: fire-and-forget, same "a live-update side effect must never
@@ -93,18 +119,34 @@ export async function notifyTelegram(
     if (!identity || !identity.chat_started_at) {
       return;
     }
-    const icon = iconForEventType(input.type);
     const cell = (text: string, isHeader = false) => ({ text, is_header: isHeader ? (true as const) : undefined, align: "left" as const, valign: "middle" as const });
     const rows: ReturnType<typeof cell>[][] = [];
+    if (input.recordTitle) {
+      rows.push([cell("Задача", true), cell(input.recordTitle)]);
+    }
     if (input.relatedId) {
       rows.push([cell("ID", true), cell(input.relatedId)]);
     }
-    rows.push([cell("Событие", true), cell(input.type)]);
+    if (input.actorClientId) {
+      const [actor] = await createActorLabelsFacade(db).resolveLabels([input.actorClientId]);
+      if (actor?.label) {
+        rows.push([cell("Кем", true), cell(actor.label)]);
+      }
+    }
+
+    let projectSlug: string | null = null;
+    if (input.projectId) {
+      const project = await db("projects").where({ id: input.projectId }).select("slug").first();
+      projectSlug = project ? String(project.slug) : null;
+    }
+    const webUrl = marrowWebUrl();
+    const linkUrl = webUrl && projectSlug ? `${webUrl}/projects/${projectSlug}` : webUrl;
 
     const blocks = [
-      { type: "heading" as const, size: 3 as const, text: `${icon} ${input.title}` },
+      { type: "heading" as const, size: 3 as const, text: eventHeading(input.type) },
       ...(input.body ? [{ type: "paragraph" as const, text: input.body }] : []),
-      { type: "table" as const, cells: rows, is_bordered: true as const }
+      ...(rows.length > 0 ? [{ type: "table" as const, cells: rows, is_bordered: true as const }] : []),
+      ...(linkUrl ? [{ type: "paragraph" as const, text: { type: "url" as const, text: "Открыть в Marrow →", url: linkUrl } }] : [])
     ];
     await api.sendRichMessage(String(identity.telegram_id), { blocks });
   } catch (error) {

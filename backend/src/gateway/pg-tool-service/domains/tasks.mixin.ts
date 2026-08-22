@@ -82,7 +82,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         type: "task.assigned",
         title: `Task assigned: ${row.title}`,
         related_id: row.id,
-        target_user_ids: createNotifyTarget ? [createNotifyTarget] : []
+        target_user_ids: createNotifyTarget ? [createNotifyTarget] : [],
+        record_title: row.title
       }, context);
     }
     return taskOut(row);
@@ -265,7 +266,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      record_title: row.title
     }, context);
 
     // D-MEMORY-037 / T-MEMORY-070: penalties, not gated behind a session --
@@ -385,7 +387,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         type: "task.assigned",
         title: `Task assigned: ${String(row.title)}`,
         related_id: id,
-        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : []
+        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : [],
+        record_title: row.title
       }, context);
     }
     return taskOut(row);
@@ -589,7 +592,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         .filter((value): value is string => Boolean(value))
         .join("\n"),
       related_id: id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      record_title: row.title
     }, context);
 
     // I-MEMORY-065: a task can go straight from created to completed with no
