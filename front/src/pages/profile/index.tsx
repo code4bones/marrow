@@ -40,7 +40,6 @@ import {
   useAuthStore
 } from '../../shared/model/auth.store';
 import { useTelegramBotUsername } from '../../shared/lib/useTelegramBotUsername';
-import { TelegramLoginButton } from '../../shared/ui/TelegramLoginButton';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -751,10 +750,6 @@ function TelegramSection() {
     }
   };
 
-  if (!botUsername) {
-    return null;
-  }
-
   return (
     <Card title="Telegram" size="small" style={{ marginBottom: 16 }}>
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
@@ -775,7 +770,7 @@ function TelegramSection() {
               <Button size="small">{t('unlinkTelegram')}</Button>
             </Popconfirm>
           </div>
-          {!status.chatStarted && (
+          {!status.chatStarted && botUsername && (
             <Text type="warning" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
               {t('pressStartHint', { bot: `@${botUsername}` })}
             </Text>
@@ -784,11 +779,9 @@ function TelegramSection() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Text type="secondary">{t('telegramNotConnected')}</Text>
-          <TelegramLoginButton
-            botUsername={botUsername}
-            authUrl={`${API_BASE_URL}/auth/oauth/telegram/callback?intent=link`}
-            size="medium"
-          />
+          <Button icon={<SendOutlined />} href={`${API_BASE_URL}/auth/oauth/telegram/start?intent=link`}>
+            {t('connectTelegram')}
+          </Button>
         </div>
       )}
     </Card>

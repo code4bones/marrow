@@ -1,4 +1,4 @@
-import { GithubOutlined } from '@ant-design/icons';
+import { GithubOutlined, SendOutlined } from '@ant-design/icons';
 import { Alert, Button, Divider, Form, Input, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +6,8 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { TotpLoginStep } from '../../features/auth/TotpLoginStep';
 import { API_BASE_URL } from '../../shared/config/env';
-import { useTelegramBotUsername } from '../../shared/lib/useTelegramBotUsername';
 import { CenteredCard } from '../../shared/ui/CenteredCard';
 import { LanguagePicker } from '../../shared/ui/LanguagePicker';
-import { TelegramLoginButton } from '../../shared/ui/TelegramLoginButton';
 import { useAuthStore } from '../../shared/model/auth.store';
 
 const { Title, Text } = Typography;
@@ -35,7 +33,6 @@ export function LoginPage() {
   const [form] = Form.useForm<CredentialsFormValues>();
   const [error, setError] = useState<string | null>(searchParams.get('error'));
   const [submitting, setSubmitting] = useState(false);
-  const telegramBotUsername = useTelegramBotUsername();
 
   // Landed here from GET /auth/oauth/github/callback, which can't set React
   // Router state (it's a full page navigation, not an SPA one) -- carries
@@ -126,14 +123,14 @@ export function LoginPage() {
       >
         {t('signInWithGithub')}
       </Button>
-      {telegramBotUsername && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-          <TelegramLoginButton
-            botUsername={telegramBotUsername}
-            authUrl={`${API_BASE_URL}/auth/oauth/telegram/callback?intent=login`}
-          />
-        </div>
-      )}
+      <Button
+        icon={<SendOutlined />}
+        block
+        href={`${API_BASE_URL}/auth/oauth/telegram/start?intent=login`}
+        style={{ marginBottom: 8 }}
+      >
+        {t('signInWithTelegram')}
+      </Button>
       <Divider style={{ margin: '8px 0 16px' }}>{t('orDivider')}</Divider>
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
         <Form.Item name="email" label={t('email')} rules={[{ required: true, message: t('emailRequired') }]}>
