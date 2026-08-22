@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
-import { DeleteOutlined, GithubOutlined } from '@ant-design/icons';
+import { DeleteOutlined, GithubOutlined, SendOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -32,7 +32,15 @@ import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
-import { type GithubLinkStatus, type OAuthClient, type PersonalToken, useAuthStore } from '../../shared/model/auth.store';
+import {
+  type GithubLinkStatus,
+  type OAuthClient,
+  type PersonalToken,
+  type TelegramLinkStatus,
+  useAuthStore
+} from '../../shared/model/auth.store';
+import { useTelegramBotUsername } from '../../shared/lib/useTelegramBotUsername';
+import { TelegramLoginButton } from '../../shared/ui/TelegramLoginButton';
 import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
@@ -675,6 +683,118 @@ function GithubSection() {
   );
 }
 
+// T-MEMORY-093/094: structural copy of GithubSection above, plus the one
+// genuinely new piece GitHub's flow doesn't need -- a "press Start on the
+// bot" hint. Telegram forbids a bot from messaging someone who's never
+// opened a chat with it, so Login-Widget linking alone (telegramUsername
+// known) isn't enough for notifications to actually arrive.
+function TelegramSection() {
+  const { t } = useTranslation('profile');
+  const fetchTelegramStatus = useAuthStore((s) => s.fetchTelegramStatus);
+  const unlinkTelegram = useAuthStore((s) => s.unlinkTelegram);
+  const botUsername = useTelegramBotUsername();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [status, setStatus] = useState<TelegramLinkStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(searchParams.get('telegramError'));
+
+  const load = async () => {
+    try {
+      const result = await fetchTelegramStatus();
+      setStatus(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('couldNotLoadTelegramStatus'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const linked = searchParams.get('telegramLinked');
+    const linkError = searchParams.get('telegramError');
+    if (!linked && !linkError) {
+      return;
+    }
+    void (async () => {
+      if (linked) {
+        message.success(t('telegramLinked'));
+        await load();
+      }
+      setSearchParams((params) => {
+        params.delete('telegramLinked');
+        params.delete('telegramError');
+        return params;
+      }, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unlink = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await unlinkTelegram();
+      message.success(t('telegramUnlinked'));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('couldNotUnlinkTelegram'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!botUsername) {
+    return null;
+  }
+
+  return (
+    <Card title="Telegram" size="small" style={{ marginBottom: 16 }}>
+      {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
+      {loading ? (
+        <Spin size="small" />
+      ) : status?.linked ? (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SendOutlined style={{ fontSize: 18 }} />
+            <Text>{status.telegramUsername ? t('telegramConnectedAs', { username: status.telegramUsername }) : t('telegramConnected')}</Text>
+            <Popconfirm
+              title={t('unlinkTelegramConfirmTitle')}
+              description={t('unlinkTelegramDescription')}
+              okText={t('unlinkTelegram')}
+              okButtonProps={{ danger: true, loading: busy }}
+              onConfirm={unlink}
+            >
+              <Button size="small">{t('unlinkTelegram')}</Button>
+            </Popconfirm>
+          </div>
+          {!status.chatStarted && (
+            <Text type="warning" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+              {t('pressStartHint', { bot: `@${botUsername}` })}
+            </Text>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Text type="secondary">{t('telegramNotConnected')}</Text>
+          <TelegramLoginButton
+            botUsername={botUsername}
+            authUrl={`${API_BASE_URL}/auth/oauth/telegram/callback?intent=link`}
+            size="medium"
+          />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TwoFactorSection() {
   const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
@@ -995,7 +1115,7 @@ export function ProfilePage() {
   const isAdmin = user?.role === 'admin';
   const sections = [
     { key: 'connect', label: t('connect'), children: <ConnectSection /> },
-    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><LanguageSection /></> },
+    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),

@@ -98,6 +98,13 @@ export interface GithubLinkStatus {
   githubLogin: string | null;
 }
 
+export interface TelegramLinkStatus {
+  linked: boolean;
+  telegramUsername: string | null;
+  /** True once the bot has actually seen a message from this account -- linking alone isn't enough, Telegram forbids a bot from messaging someone who never opened a chat with it. */
+  chatStarted: boolean;
+}
+
 interface ClaimResult {
   email: string;
   emailVerified: boolean;
@@ -131,6 +138,12 @@ interface AuthState {
   /** GitHub account link status for the profile page's Connect section. */
   fetchGithubStatus: () => Promise<GithubLinkStatus>;
   unlinkGithub: () => Promise<void>;
+
+  /** Telegram account link status for the profile page's Connect section. */
+  fetchTelegramStatus: () => Promise<TelegramLinkStatus>;
+  unlinkTelegram: () => Promise<void>;
+  /** Public/unauthenticated -- null if TELEGRAM_BOT_TOKEN isn't configured (feature disabled). */
+  fetchTelegramBotUsername: () => Promise<string | null>;
 
   /** Invite-claim flow (admin-issued invite, or a password-reset link — same token/password shape). */
   claimContext: (token: string) => Promise<ClaimContextResult>;
@@ -372,6 +385,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   unlinkGithub: () => postJson('/auth/profile/github/unlink', {}, 'Could not unlink GitHub.'),
+
+  fetchTelegramStatus: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/telegram`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load Telegram link status.');
+    }
+    return body.data as TelegramLinkStatus;
+  },
+
+  unlinkTelegram: () => postJson('/auth/profile/telegram/unlink', {}, 'Could not unlink Telegram.'),
+
+  fetchTelegramBotUsername: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/telegram/bot-username`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      return null;
+    }
+    return (body.data as { username: string | null }).username;
+  },
 
   claimContext: async (token) => {
     const response = await fetch(`${API_BASE_URL}/auth/claim?token=${encodeURIComponent(token)}`, {
