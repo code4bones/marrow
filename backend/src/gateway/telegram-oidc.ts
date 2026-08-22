@@ -109,13 +109,20 @@ export async function resolveTelegramUser(
   }
 
   const { payload } = await jwtVerify(body.id_token, jwks, { audience: clientId });
-  if (!payload.sub) {
-    throw new AppError("VALIDATION_ERROR", "Telegram id_token is missing sub.");
+  // `sub` is a separate, long OIDC subject identifier -- NOT the raw
+  // Telegram user id (confirmed live: it doesn't match message.from.id from
+  // the Bot API, so the bot could never find the identity this created).
+  // `id` (added by the `profile` scope) is the actual numeric Telegram user
+  // id, the same one the Bot API uses -- that's what's needed both to
+  // recognize a /start sender and to sendMessage() them later.
+  const idClaim = payload.id;
+  if (typeof idClaim !== "number" && typeof idClaim !== "string") {
+    throw new AppError("VALIDATION_ERROR", "Telegram id_token is missing the numeric id claim.");
   }
   return {
-    telegramId: String(payload.sub),
-    username: firstStringClaim(payload, ["username", "preferred_username"]),
-    firstName: firstStringClaim(payload, ["given_name", "first_name", "name"])
+    telegramId: String(idClaim),
+    username: firstStringClaim(payload, ["preferred_username"]),
+    firstName: firstStringClaim(payload, ["given_name", "name"])
   };
 }
 
