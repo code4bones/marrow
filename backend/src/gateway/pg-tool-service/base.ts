@@ -6,7 +6,8 @@ import { projectKeyFromId } from "../../shared/ids/id.service.js";
 import { defaultGatewayOutputSchema, gatewayToolSpecs } from "../tool-definitions.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
-import { notifyTelegram } from "../telegram.js";
+import { isDefaultNotifyEventType, notifyTelegram } from "../telegram.js";
+import { userIdFromClientId } from "../credits.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
 import { currentProjectKey, jsonStringArray, paginationInput, stringArray } from "./formatters/common.js";
 import { itemOut } from "./formatters/memory.js";
@@ -116,7 +117,29 @@ export class BaseService {
     // pass target_user_ids (array); deduped here so a caller that happens
     // to pass the same id twice (owner === assignee is already filtered
     // upstream, but stay defensive) doesn't double-notify.
-    const targetUserIds = Array.from(new Set(stringArray(input.target_user_ids)));
+    //
+    // T-context (owner's ask, 2026-08-22): a caller that never set
+    // target_user_ids at all (`undefined`, not an explicitly computed `[]`
+    // -- the two are deliberately distinct) gets a default fallback of "the
+    // project owner, unless they're the one who just did this" for every
+    // event type curated as notify-worthy (see isDefaultNotifyEventType).
+    // This is what makes new call sites (and existing ones that never got
+    // around to it, like decision.recorded) notify-worthy for free, with no
+    // further wiring, instead of every domain needing its own bespoke
+    // target_user_ids expression the way task.created/task.assigned/etc.
+    // used to before this. Explicit `[]` (a caller that computed "nobody,
+    // on purpose" -- e.g. a self-action already excluded) is left alone.
+    let targetUserIds: string[];
+    if (input.target_user_ids !== undefined) {
+      targetUserIds = Array.from(new Set(stringArray(input.target_user_ids)));
+    } else if (projectId && isDefaultNotifyEventType(String(input.type))) {
+      const project = await this.db("projects").where({ id: projectId }).select("owner_user_id").first();
+      const ownerUserId = project?.owner_user_id ? String(project.owner_user_id) : null;
+      const actorUserId = userIdFromClientId(context.clientId);
+      targetUserIds = ownerUserId && ownerUserId !== actorUserId ? [ownerUserId] : [];
+    } else {
+      targetUserIds = [];
+    }
     const row = {
       id: await this.nextId("events", `E-${projectId ? projectKeyFromId(projectId) : "COMMON"}`),
       project_id: projectId,

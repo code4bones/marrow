@@ -94,6 +94,23 @@ function eventHeading(type: string): string {
   return `${icon} ${label}`;
 }
 
+// T-context (owner's ask, 2026-08-22): "event -> Telegram, as a general
+// mechanism, so we stop coming back to wire this per call site" -- but a
+// truly blanket default (every recordEventForProject call with no explicit
+// target_user_ids falls back to notifying the owner) would spam the owner
+// on routine bookkeeping that already fires very frequently and was never
+// meant to be notification-worthy: task.claimed/claim_completed/
+// claim_released, task.note_added, every memory item save, every artifact
+// put, claim heartbeats, etc. EVENT_LABELS above is already the curated
+// list of "this event kind matters enough to earn its own icon/label" --
+// reusing it as the SAME gate for the default-owner-notify fallback
+// (recordEventForProject in base.ts) means one curated list drives both
+// decisions, and a new lifecycle event type becomes notify-worthy the
+// moment it's added to EVENT_LABELS, with no other code to touch.
+export function isDefaultNotifyEventType(type: string): boolean {
+  return type in EVENT_LABELS;
+}
+
 function marrowWebUrl(): string | null {
   const explicit = process.env.MARROW_WEB_URL?.trim().replace(/\/+$/, "");
   if (explicit) {
