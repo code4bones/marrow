@@ -123,17 +123,11 @@ export async function notifyTelegram(
     const rows: ReturnType<typeof cell>[][] = [];
 
     let projectSlug: string | null = null;
+    let projectTitle: string | null = null;
     if (input.projectId) {
       const project = await db("projects").where({ id: input.projectId }).select("slug", "title").first();
       projectSlug = project ? String(project.slug) : null;
-      // T-MEMORY-106: the message centered event type + record title but
-      // dropped which project it was even in -- the slug (visible in the
-      // "Открыть в Marrow" link below) is not the same thing as the
-      // project's own display title, and a user in several projects can't
-      // tell them apart from the slug alone.
-      if (project?.title) {
-        rows.push([cell("Проект", true), cell(String(project.title))]);
-      }
+      projectTitle = project?.title ? String(project.title) : null;
     }
     if (input.recordTitle) {
       rows.push([cell("Задача", true), cell(input.recordTitle)]);
@@ -150,8 +144,13 @@ export async function notifyTelegram(
     const webUrl = marrowWebUrl();
     const linkUrl = webUrl && projectSlug ? `${webUrl}/projects/${projectSlug}` : webUrl;
 
+    // T-MEMORY-109 follow-up: putting the project title only in the table
+    // (T-MEMORY-106) still meant scanning the whole message to find it --
+    // owner wants it visible without hunting, so it rides in the heading
+    // itself now, right next to the event status.
+    const headingText = projectTitle ? `${eventHeading(input.type)} — ${projectTitle}` : eventHeading(input.type);
     const blocks = [
-      { type: "heading" as const, size: 3 as const, text: eventHeading(input.type) },
+      { type: "heading" as const, size: 3 as const, text: headingText },
       ...(input.body ? [{ type: "paragraph" as const, text: input.body }] : []),
       ...(rows.length > 0 ? [{ type: "table" as const, cells: rows, is_bordered: true as const }] : []),
       ...(linkUrl ? [{ type: "paragraph" as const, text: { type: "url" as const, text: "Открыть в Marrow →", url: linkUrl } }] : [])
