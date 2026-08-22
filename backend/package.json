@@ -1,6 +1,6 @@
 {
   "name": "@deadragdoll/marrow-back",
-  "version": "1.94.2",
+  "version": "1.94.3",
   "description": "Shared MCP memory gateway and local-first project memory server for coding agents.",
   "type": "module",
   "engines": {

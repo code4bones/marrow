@@ -157,8 +157,17 @@ export async function notifyTelegram(
         rows.push([cell("Кем", true), cell(actor.label)]);
       }
     }
+    // T-context (owner's ask, 2026-08-22): the link previously only ever
+    // landed on the project's Overview page -- the owner still had to hunt
+    // down which task/decision the notification was actually about.
+    // AppShell reads this ?record= param once on mount (any authenticated
+    // route, not just a specific project section) and opens that record
+    // straight into the detail drawer.
     const webUrl = marrowWebUrl();
-    const linkUrl = webUrl && projectSlug ? `${webUrl}/projects/${projectSlug}` : webUrl;
+    const projectPath = webUrl && projectSlug ? `${webUrl}/projects/${projectSlug}` : webUrl;
+    const linkUrl = projectPath && input.relatedId
+      ? `${projectPath}?record=${encodeURIComponent(input.relatedId)}`
+      : projectPath;
 
     // T-MEMORY-109 follow-up: putting the project title only in the table
     // (T-MEMORY-106) still meant scanning the whole message to find it --
