@@ -91,7 +91,7 @@ function TaskCard({
       onDrop={onDrop}
       onClick={onOpen}
       style={{ cursor: 'grab', borderColor: draggedOver ? TASK_STATUS_COLOR[status] : undefined, position: 'relative' }}
-      styles={{ body: { padding: 10 } }}
+      styles={{ body: { padding: 8 } }}
     >
       <div
         style={{ position: 'absolute', top: 4, right: 4 }}
@@ -292,7 +292,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
   };
 
   return (
-    <div style={{ display: 'flex', gap: 12, height: '100%', overflowX: 'auto', paddingBottom: 8 }}>
+    <div style={{ display: 'flex', gap: 8, height: '100%', overflowX: 'auto', paddingBottom: 8 }}>
       {COLUMN_STATUSES.map((status) => (
         <div
           key={status}
@@ -302,8 +302,8 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
           style={{
             display: 'flex',
             flexDirection: 'column',
-            flex: '1 1 260px',
-            minWidth: 260,
+            flex: '1 1 190px',
+            minWidth: 190,
             background: dragOverStatus === status ? 'rgba(255,255,255,0.04)' : 'transparent',
             border: '1px solid #303030',
             borderRadius: 8,
@@ -311,20 +311,32 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
         >
           <div
             style={{
-              padding: '10px 12px',
+              padding: '8px',
               borderBottom: '1px solid #303030',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 4,
               flexShrink: 0,
             }}
           >
-            <Typography.Text strong style={{ color: TASK_STATUS_COLOR[status] }}>
+            <Typography.Text
+              strong
+              title={columnLabel[status]}
+              style={{
+                color: TASK_STATUS_COLOR[status],
+                fontSize: 13,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                minWidth: 0,
+              }}
+            >
               {columnLabel[status]}
             </Typography.Text>
-            <Tag style={{ margin: 0 }}>{byStatus(status).length}</Tag>
+            <Tag style={{ margin: 0, flexShrink: 0 }}>{byStatus(status).length}</Tag>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 80 }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 80 }}>
             {groupByMilestone
               ? groupTasksByMilestone(byStatus(status)).map((group) => (
                 <div key={group.milestone ?? '__no_milestone__'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
