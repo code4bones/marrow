@@ -121,6 +121,20 @@ export async function notifyTelegram(
     }
     const cell = (text: string, isHeader = false) => ({ text, is_header: isHeader ? (true as const) : undefined, align: "left" as const, valign: "middle" as const });
     const rows: ReturnType<typeof cell>[][] = [];
+
+    let projectSlug: string | null = null;
+    if (input.projectId) {
+      const project = await db("projects").where({ id: input.projectId }).select("slug", "title").first();
+      projectSlug = project ? String(project.slug) : null;
+      // T-MEMORY-106: the message centered event type + record title but
+      // dropped which project it was even in -- the slug (visible in the
+      // "Открыть в Marrow" link below) is not the same thing as the
+      // project's own display title, and a user in several projects can't
+      // tell them apart from the slug alone.
+      if (project?.title) {
+        rows.push([cell("Проект", true), cell(String(project.title))]);
+      }
+    }
     if (input.recordTitle) {
       rows.push([cell("Задача", true), cell(input.recordTitle)]);
     }
@@ -132,12 +146,6 @@ export async function notifyTelegram(
       if (actor?.label) {
         rows.push([cell("Кем", true), cell(actor.label)]);
       }
-    }
-
-    let projectSlug: string | null = null;
-    if (input.projectId) {
-      const project = await db("projects").where({ id: input.projectId }).select("slug").first();
-      projectSlug = project ? String(project.slug) : null;
     }
     const webUrl = marrowWebUrl();
     const linkUrl = webUrl && projectSlug ? `${webUrl}/projects/${projectSlug}` : webUrl;
