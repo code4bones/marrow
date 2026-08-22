@@ -161,6 +161,49 @@ export const GET_PROJECT_MEMBERS = gql`
     projectMembers(project: $project) {
       userId
       email
+      role
+    }
+  }
+`;
+
+export const GET_PENDING_PROJECT_MEMBERS = gql`
+  query GetPendingProjectMembers($project: String) {
+    pendingProjectMembers(project: $project) {
+      userId
+      email
+      requestedAt
+    }
+  }
+`;
+
+export const GET_MY_PROJECT_ROLE = gql`
+  query GetMyProjectRole($project: String!) {
+    myProjectRole(project: $project)
+  }
+`;
+
+export const APPROVE_PROJECT_MEMBER = gql`
+  mutation ApproveProjectMember($project: String, $userId: ID!, $role: String!) {
+    approveProjectMember(project: $project, userId: $userId, role: $role) {
+      userId
+      email
+      role
+    }
+  }
+`;
+
+export const REJECT_PROJECT_MEMBER = gql`
+  mutation RejectProjectMember($project: String, $userId: ID!) {
+    rejectProjectMember(project: $project, userId: $userId)
+  }
+`;
+
+export const UPDATE_PROJECT_MEMBER_ROLE = gql`
+  mutation UpdateProjectMemberRole($project: String, $userId: ID!, $role: String!) {
+    updateProjectMemberRole(project: $project, userId: $userId, role: $role) {
+      userId
+      email
+      role
     }
   }
 `;

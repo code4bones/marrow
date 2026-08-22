@@ -169,9 +169,21 @@ export interface Event {
   createdAt: string | null;
 }
 
+// T-MEMORY-110: pm/developer/tester, or null on the rare transient row that
+// hasn't been approved into a role yet (shouldn't normally be visible --
+// listProjectMembers only returns status='active' rows).
+export type ProjectMemberRole = 'pm' | 'developer' | 'tester';
+
 export interface ProjectMember {
   userId: string;
   email: string;
+  role: ProjectMemberRole | null;
+}
+
+export interface PendingProjectMember {
+  userId: string;
+  email: string;
+  requestedAt: string | null;
 }
 
 export interface MemoryRecord {
