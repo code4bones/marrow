@@ -62,6 +62,13 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
         forbiddenFiles: task.forbiddenFiles,
         dependsOn: task.dependsOn
       },
+      // T-context (owner's ask, 2026-08-22): knownFaults comes right after
+      // project/task identity, before decisions/related items -- "learn
+      // what already went wrong here before reading what's left to do."
+      // Field order in the serialized JSON is what an agent actually reads
+      // first.
+      failedAttempts,
+      knownFaults: failedAttempts,
       relevantDecisions: await this.listDecisions({
         project: project.id,
         includeCommon: input.includeCommon !== false,
@@ -82,8 +89,6 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
         status: "current",
         limit: limits.items ?? 10
       }),
-      failedAttempts,
-      knownFaults: failedAttempts,
       recentEvents: await this.listEvents({
         project: project.id,
         limit: limits.events ?? 10
@@ -113,6 +118,10 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
     return {
       project: project ?? null,
       query,
+      // See preflight()'s own comment -- same "learn what went wrong before
+      // reading the rest" field ordering.
+      failedAttempts,
+      knownFaults: failedAttempts,
       relevantDecisions: await this.listDecisions({
         project: project?.id,
         includeCommon,
@@ -133,8 +142,6 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
         status: "current",
         limit: limits.items ?? 10
       }),
-      failedAttempts,
-      knownFaults: failedAttempts,
       artifacts: await this.searchArtifacts({
         query,
         project: project?.id,
@@ -202,9 +209,9 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       task: task ? compactTask(task) : null,
       query,
       mustRead: mustReadPointers((source.knownFaults ?? []) as Row[]),
+      knownFaults: ((source.knownFaults ?? []) as Row[]).map(compactSearchRecord),
       handoffs: handoffs.map(compactHandoffRecord),
       decisions: ((source.relevantDecisions ?? []) as Row[]).map(compactDecisionRecord),
-      knownFaults: ((source.knownFaults ?? []) as Row[]).map(compactSearchRecord),
       memory: ((source.relatedItems ?? []) as Row[]).map(compactSearchRecord),
       artifacts: (artifacts ?? []).map(compactArtifactRecord),
       recentEvents: ((source.recentEvents ?? []) as Row[]).map(compactEventRecord),

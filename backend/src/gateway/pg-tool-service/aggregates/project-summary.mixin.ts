@@ -94,10 +94,16 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       query,
       includeCommon,
       counts,
+      // T-context (owner's ask, 2026-08-22): knownFaults deliberately comes
+      // first among the record sections, before openTasks/decisions/etc --
+      // "learn what already went wrong here before reading what's left to
+      // do." Field order in the serialized JSON is what an agent actually
+      // reads first; burying it after task/decision lists meant it competed
+      // for attention with everything else instead of priming the read.
+      knownFaults: knownFaults.map(compactSearchRecord),
       openTasks: openTasks.map(compactTask),
       handoffs: handoffs.map(compactHandoffRecord),
       decisions: decisions.map(compactDecisionRecord),
-      knownFaults: knownFaults.map(compactSearchRecord),
       artifacts: artifacts.map(compactArtifactRecord),
       memory: memory.map(compactSearchRecord),
       recentEvents: recentEvents.map(compactEventRecord),
