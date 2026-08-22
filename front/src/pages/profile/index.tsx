@@ -36,6 +36,7 @@ import {
   type GithubLinkStatus,
   type OAuthClient,
   type PersonalToken,
+  type TelegramLinkCode,
   type TelegramLinkStatus,
   useAuthStore
 } from '../../shared/model/auth.store';
@@ -691,12 +692,21 @@ function TelegramSection() {
   const { t } = useTranslation('profile');
   const fetchTelegramStatus = useAuthStore((s) => s.fetchTelegramStatus);
   const unlinkTelegram = useAuthStore((s) => s.unlinkTelegram);
+  const requestTelegramLinkCode = useAuthStore((s) => s.requestTelegramLinkCode);
   const botUsername = useTelegramBotUsername();
+  const botLink = botUsername ? `https://t.me/${botUsername}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState<TelegramLinkStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(searchParams.get('telegramError'));
+
+  // T-MEMORY-101: fallback for OAuth-restricted countries -- a short code
+  // the user types straight into the bot as a plain message instead of
+  // going through oauth.telegram.org at all.
+  const [linkCode, setLinkCode] = useState<TelegramLinkCode | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -750,8 +760,63 @@ function TelegramSection() {
     }
   };
 
+  const requestCode = async () => {
+    setCodeBusy(true);
+    setCodeError(null);
+    try {
+      const result = await requestTelegramLinkCode();
+      setLinkCode(result);
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : t('couldNotGetTelegramCode'));
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
+  // While a code is on screen, poll for the moment the user actually sends
+  // it to the bot -- the bot links the account itself server-side, this tab
+  // just needs to notice and swap to the connected view. Stops on its own
+  // once the code's TTL passes (auth.ts enforces the real expiry either way).
+  useEffect(() => {
+    if (!linkCode) {
+      return;
+    }
+    const expiresAtMs = new Date(linkCode.expiresAt).getTime();
+    const interval = setInterval(() => {
+      if (Date.now() > expiresAtMs) {
+        clearInterval(interval);
+        return;
+      }
+      void fetchTelegramStatus()
+        .then((result) => {
+          if (result.linked) {
+            setStatus(result);
+            setLinkCode(null);
+            message.success(t('telegramLinked'));
+            clearInterval(interval);
+          }
+        })
+        .catch(() => {
+          // Best-effort poll; a transient failure just tries again next tick.
+        });
+    }, 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkCode]);
+
   return (
-    <Card title="Telegram" size="small" style={{ marginBottom: 16 }}>
+    <Card
+      title="Telegram"
+      size="small"
+      style={{ marginBottom: 16 }}
+      extra={
+        botLink ? (
+          <a href={botLink} target="_blank" rel="noreferrer">
+            {t('openTelegramBot')}
+          </a>
+        ) : null
+      }
+    >
       {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
       {loading ? (
         <Spin size="small" />
@@ -777,11 +842,36 @@ function TelegramSection() {
           )}
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Text type="secondary">{t('telegramNotConnected')}</Text>
-          <Button icon={<SendOutlined />} href={`${API_BASE_URL}/auth/oauth/telegram/start?intent=link`}>
-            {t('connectTelegram')}
-          </Button>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Text type="secondary">{t('telegramNotConnected')}</Text>
+            <Button icon={<SendOutlined />} href={`${API_BASE_URL}/auth/oauth/telegram/start?intent=link`}>
+              {t('connectTelegram')}
+            </Button>
+          </div>
+          {botUsername && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(128,128,128,0.2)' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {t('telegramCodeIntro')}
+              </Text>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Button size="small" loading={codeBusy} onClick={requestCode}>
+                  {t('getTelegramCode')}
+                </Button>
+                {linkCode && (
+                  <Text code style={{ fontSize: 16, letterSpacing: 2 }}>
+                    {linkCode.code}
+                  </Text>
+                )}
+              </div>
+              {linkCode && (
+                <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+                  {t('telegramCodeHint', { bot: `@${botUsername}`, minutes: 10 })}
+                </Text>
+              )}
+              {codeError && <Alert type="error" message={codeError} style={{ marginTop: 8 }} showIcon />}
+            </div>
+          )}
         </div>
       )}
     </Card>

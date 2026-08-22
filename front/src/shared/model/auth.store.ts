@@ -105,6 +105,11 @@ export interface TelegramLinkStatus {
   chatStarted: boolean;
 }
 
+export interface TelegramLinkCode {
+  code: string;
+  expiresAt: string;
+}
+
 interface ClaimResult {
   email: string;
   emailVerified: boolean;
@@ -144,6 +149,8 @@ interface AuthState {
   unlinkTelegram: () => Promise<void>;
   /** Public/unauthenticated -- null if TELEGRAM_BOT_TOKEN isn't configured (feature disabled). */
   fetchTelegramBotUsername: () => Promise<string | null>;
+  /** T-MEMORY-101: fallback linking path for OAuth-restricted countries -- a short code to send the bot as a plain message. */
+  requestTelegramLinkCode: () => Promise<TelegramLinkCode>;
 
   /** Invite-claim flow (admin-issued invite, or a password-reset link — same token/password shape). */
   claimContext: (token: string) => Promise<ClaimContextResult>;
@@ -405,6 +412,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     return (body.data as { username: string | null }).username;
   },
+
+  requestTelegramLinkCode: () => postJson('/auth/profile/telegram/code', {}, 'Could not generate a Telegram linking code.'),
 
   claimContext: async (token) => {
     const response = await fetch(`${API_BASE_URL}/auth/claim?token=${encodeURIComponent(token)}`, {
