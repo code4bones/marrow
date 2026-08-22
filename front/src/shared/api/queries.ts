@@ -72,7 +72,7 @@ export const GET_TASKS_PAGE = gql`
       sortDirection: $sortDirection
       pagination: { limit: $limit, offset: $offset }
     ) {
-      items { id title status priority milestone scope notes activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt }
+      items { id title status priority milestone scope notes dependsOn activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
