@@ -612,7 +612,12 @@ export function createAuthFacade(db: Knex) {
 
   // --- GitHub sign-in/link (option 2, owner-approved) -----------------------
 
-  async function mintOAuthState(intent: "login" | "link", userId: string | null, returnTo: string | null = null): Promise<string> {
+  async function mintOAuthState(
+    intent: "login" | "link",
+    userId: string | null,
+    returnTo: string | null = null,
+    codeVerifier: string | null = null
+  ): Promise<string> {
     const rawToken = newOpaqueToken();
     const now = new Date();
     await db("oauth_login_states").insert({
@@ -621,6 +626,7 @@ export function createAuthFacade(db: Knex) {
       intent,
       user_id: userId,
       return_to: returnTo,
+      code_verifier: codeVerifier,
       created_at: now,
       expires_at: new Date(now.getTime() + OAUTH_STATE_TTL_MS)
     });
@@ -629,7 +635,7 @@ export function createAuthFacade(db: Knex) {
 
   async function consumeOAuthState(
     rawToken: string
-  ): Promise<{ intent: "login" | "link"; userId: string | null; returnTo: string | null }> {
+  ): Promise<{ intent: "login" | "link"; userId: string | null; returnTo: string | null; codeVerifier: string | null }> {
     const now = new Date();
     const row = await db("oauth_login_states").where({ token_hash: hashToken(rawToken) }).first();
     if (row) {
@@ -641,7 +647,8 @@ export function createAuthFacade(db: Knex) {
     return {
       intent: row.intent as "login" | "link",
       userId: row.user_id ? String(row.user_id) : null,
-      returnTo: row.return_to ? String(row.return_to) : null
+      returnTo: row.return_to ? String(row.return_to) : null,
+      codeVerifier: row.code_verifier ? String(row.code_verifier) : null
     };
   }
 

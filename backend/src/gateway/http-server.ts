@@ -23,7 +23,7 @@ import {
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
-import { verifyTelegramLoginPayload, type TelegramLoginPayload } from "./telegram.js";
+import { generatePkce, telegramAuthorizeUrl, resolveTelegramUser, type TelegramOidcUser } from "./telegram-oidc.js";
 import {
   ADMIN_GRAPHQL_MUTATION_NAMES,
   createGatewayGraphqlServer,
@@ -1674,52 +1674,104 @@ async function handleAuthRoute(
     return true;
   }
 
-  // --- Telegram Login Widget (T-MEMORY-093) -----------------------------
+  // --- Telegram Login (T-MEMORY-093 correction) --------------------------
   //
-  // Unlike GitHub, there is no /start round-trip: the widget itself is
-  // rendered client-side with data-auth-url already pointing straight at
-  // this callback (intent/returnTo baked in as ordinary query params the
-  // widget's own fields get appended alongside, not into -- see
-  // verifyTelegramLoginPayload's field allowlist). safeGithubReturnTo's
-  // "/oauth/authorize?" prefix check is provider-agnostic, reused as-is.
+  // The old HMAC-signed widget is dead -- Telegram now serves "deprecated"
+  // for oauth.telegram.org/auth's classic embed. Replaced with a real
+  // OpenID Connect Authorization Code + PKCE flow, same shape as GitHub's
+  // /start + /callback pair (TELEGRAM_OAUTH_CLIENT_ID/_SECRET, distinct
+  // from the bot token, from BotFather's own "Login Widget" panel).
+  function telegramRedirectUri(): string {
+    const explicit = process.env.TELEGRAM_OAUTH_CALLBACK?.trim();
+    if (explicit) {
+      return explicit;
+    }
+    const publicUrl = process.env.PROJECT_MEMORY_PUBLIC_URL?.trim().replace(/\/+$/, "");
+    if (!publicUrl) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "TELEGRAM_OAUTH_CALLBACK or PROJECT_MEMORY_PUBLIC_URL must be set to enable Telegram sign-in."
+      );
+    }
+    return `${publicUrl}/auth/oauth/telegram/callback`;
+  }
+
+  if (request.method === "GET" && requestPath === "/auth/oauth/telegram/start") {
+    const intentParam = queryString(requestUrl, "intent");
+    const intent = intentParam === "link" ? "link" : "login";
+    if (intent === "link" && !sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "A session is required to link a Telegram account.")));
+      return true;
+    }
+    const returnTo = intent === "login" ? safeGithubReturnTo(queryString(requestUrl, "returnTo")) : null;
+    const { verifier, challenge } = generatePkce();
+    let authorizeUrl: string;
+    try {
+      const redirectUri = telegramRedirectUri();
+      const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo, verifier);
+      authorizeUrl = telegramAuthorizeUrl(state, challenge, redirectUri);
+      logTelegramOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri, returnTo });
+    } catch (error) {
+      logTelegramOauth("start", { intent, outcome: "config_missing", error: error instanceof Error ? error.message : String(error) });
+      send(400, fail(error));
+      return true;
+    }
+    response.writeHead(302, { location: authorizeUrl });
+    response.end();
+    return true;
+  }
+
   if (request.method === "GET" && requestPath === "/auth/oauth/telegram/callback") {
     const redirectTo = (path: string) => {
       response.writeHead(302, { location: path });
       response.end();
     };
-    const intent = queryString(requestUrl, "intent") === "link" ? "link" : "login";
-    const returnTo = intent === "login" ? safeGithubReturnTo(queryString(requestUrl, "returnTo")) : null;
 
-    const query: Record<string, string | undefined> = {};
-    for (const [key, value] of requestUrl.searchParams) {
-      query[key] = value;
+    const code = queryString(requestUrl, "code");
+    const state = queryString(requestUrl, "state");
+    if (!code || !state) {
+      logTelegramOauth("callback", { outcome: "missing_code_or_state", hasCode: Boolean(code), hasState: Boolean(state) });
+      redirectTo(`/login?error=${encodeURIComponent("Telegram sign-in was cancelled or is missing parameters.")}`);
+      return true;
     }
 
-    let payload: TelegramLoginPayload;
+    let intent: "login" | "link";
+    let linkUserId: string | null;
+    let returnTo: string | null;
+    let codeVerifier: string | null;
     try {
-      payload = verifyTelegramLoginPayload(query);
+      ({ intent, userId: linkUserId, returnTo, codeVerifier } = await auth.consumeOAuthState(state));
     } catch (error) {
-      logTelegramOauth("callback", { intent, outcome: "verify_failed", error: error instanceof Error ? error.message : String(error) });
+      logTelegramOauth("callback", { outcome: "invalid_state", error: error instanceof Error ? error.message : String(error) });
+      redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "Telegram sign-in failed.")}`);
+      return true;
+    }
+    if (!codeVerifier) {
+      redirectTo(`/login?error=${encodeURIComponent("Telegram sign-in failed (missing PKCE verifier). Please try again.")}`);
+      return true;
+    }
+
+    let telegramUser: TelegramOidcUser;
+    try {
+      telegramUser = await resolveTelegramUser(code, telegramRedirectUri(), codeVerifier);
+    } catch (error) {
+      logTelegramOauth("callback", { intent, outcome: "resolve_user_failed", error: error instanceof Error ? error.message : String(error) });
       const message = error instanceof Error ? error.message : "Telegram sign-in failed.";
       redirectTo(returnTo ? `${returnTo}&error=${encodeURIComponent(message)}` : `/login?error=${encodeURIComponent(message)}`);
       return true;
     }
 
     if (intent === "link") {
-      if (!sessionAuth) {
-        send(401, fail(new AppError("UNAUTHORIZED", "A session is required to link a Telegram account.")));
-        return true;
-      }
       try {
-        await auth.linkTelegramIdentity(sessionAuth.userId, payload.telegramId, payload.username, payload.firstName);
-        logTelegramOauth("callback", { intent, outcome: "linked", telegramId: payload.telegramId, userId: sessionAuth.userId });
+        await auth.linkTelegramIdentity(linkUserId!, telegramUser.telegramId, telegramUser.username, telegramUser.firstName);
+        logTelegramOauth("callback", { intent, outcome: "linked", telegramId: telegramUser.telegramId, userId: linkUserId });
         redirectTo("/profile?telegramLinked=1");
       } catch (error) {
         logTelegramOauth("callback", {
           intent,
           outcome: "link_failed",
-          telegramId: payload.telegramId,
-          userId: sessionAuth.userId,
+          telegramId: telegramUser.telegramId,
+          userId: linkUserId,
           error: error instanceof Error ? error.message : String(error)
         });
         redirectTo(`/profile?telegramError=${encodeURIComponent(error instanceof Error ? error.message : "Could not link Telegram.")}`);
@@ -1728,12 +1780,12 @@ async function handleAuthRoute(
     }
 
     try {
-      const result = await auth.loginViaTelegram(payload.telegramId, {
+      const result = await auth.loginViaTelegram(telegramUser.telegramId, {
         userAgent: headerString(request, "user-agent"),
         ip: clientIp(request)
       });
       if (result.status === "not_linked") {
-        logTelegramOauth("callback", { intent, outcome: "not_linked", telegramId: payload.telegramId });
+        logTelegramOauth("callback", { intent, outcome: "not_linked", telegramId: telegramUser.telegramId });
         const message = "This Telegram account isn't linked to any Marrow account yet. Sign in normally and link Telegram from your profile.";
         redirectTo(returnTo ? `${returnTo}&error=${encodeURIComponent(message)}` : `/login?error=${encodeURIComponent(message)}`);
         return true;
@@ -1741,11 +1793,11 @@ async function handleAuthRoute(
       if (result.status === "pending_totp") {
         // loginViaTelegram never actually returns this branch (no password
         // step to re-challenge) -- handled only for LoginResult exhaustiveness.
-        logTelegramOauth("callback", { intent, outcome: "pending_totp", telegramId: payload.telegramId, userId: result.userId });
+        logTelegramOauth("callback", { intent, outcome: "pending_totp", telegramId: telegramUser.telegramId, userId: result.userId });
         redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
         return true;
       }
-      logTelegramOauth("callback", { intent, outcome: "session", telegramId: payload.telegramId, userId: result.user.id, returnTo });
+      logTelegramOauth("callback", { intent, outcome: "session", telegramId: telegramUser.telegramId, userId: result.user.id, returnTo });
       response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
       redirectTo(safeGithubReturnTo(returnTo) ?? "/projects");
       return true;
@@ -1753,7 +1805,7 @@ async function handleAuthRoute(
       logTelegramOauth("callback", {
         intent,
         outcome: "login_failed",
-        telegramId: payload.telegramId,
+        telegramId: telegramUser.telegramId,
         error: error instanceof Error ? error.message : String(error)
       });
       const message = error instanceof Error ? error.message : "Telegram sign-in failed.";
@@ -2083,7 +2135,7 @@ function logGithubOauth(step: "start" | "callback", fields: Record<string, unkno
   console.log(JSON.stringify({ time: new Date().toISOString(), scope: "github-oauth", step, ...fields }));
 }
 
-function logTelegramOauth(step: "callback", fields: Record<string, unknown>): void {
+function logTelegramOauth(step: "start" | "callback", fields: Record<string, unknown>): void {
   console.log(JSON.stringify({ time: new Date().toISOString(), scope: "telegram-oauth", step, ...fields }));
 }
 
