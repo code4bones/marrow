@@ -3,6 +3,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { Button, Card, Input, Tag, Typography, message } from 'antd';
 import { useState, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { CREATE_TASK, UPDATE_TASK_PRIORITY, UPDATE_TASK_STATUS, UPDATE_TASK_TITLE } from '../../shared/api/queries';
 import { getEntityType } from '../../shared/lib/entityId';
@@ -69,11 +70,12 @@ interface TaskCardProps {
   onEditChange: (value: string) => void;
   onCommitEdit: () => void;
   onCancelEdit: () => void;
+  onDeleted: () => void;
 }
 
 function TaskCard({
   task, status, editing, draggedOver, editTitle, labelFor,
-  onDragStart, onDragOver, onDragLeave, onDrop, onOpen, onStartEdit, onEditChange, onCommitEdit, onCancelEdit,
+  onDragStart, onDragOver, onDragLeave, onDrop, onOpen, onStartEdit, onEditChange, onCommitEdit, onCancelEdit, onDeleted,
 }: TaskCardProps) {
   return (
     <Card
@@ -84,9 +86,15 @@ function TaskCard({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onClick={onOpen}
-      style={{ cursor: 'grab', borderColor: draggedOver ? TASK_STATUS_COLOR[status] : undefined }}
+      style={{ cursor: 'grab', borderColor: draggedOver ? TASK_STATUS_COLOR[status] : undefined, position: 'relative' }}
       styles={{ body: { padding: 10 } }}
     >
+      <div
+        style={{ position: 'absolute', top: 4, right: 4 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DeleteTaskButton id={task.id} onDone={onDeleted} />
+      </div>
       {editing ? (
         <Input
           size="small"
@@ -100,7 +108,7 @@ function TaskCard({
         />
       ) : (
         <Typography.Text
-          style={{ fontSize: 13, cursor: 'text' }}
+          style={{ fontSize: 13, cursor: 'text', display: 'block', paddingRight: 22 }}
           onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
         >
           {task.title}
@@ -272,8 +280,8 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
           style={{
             display: 'flex',
             flexDirection: 'column',
-            width: 260,
-            flexShrink: 0,
+            flex: '1 1 260px',
+            minWidth: 260,
             background: dragOverStatus === status ? 'rgba(255,255,255,0.04)' : 'transparent',
             border: '1px solid #303030',
             borderRadius: 8,
@@ -322,6 +330,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                       onEditChange={setEditTitle}
                       onCommitEdit={() => commitEditTitle(task)}
                       onCancelEdit={() => setEditingId(null)}
+                      onDeleted={onChanged}
                     />
                   ))}
                 </div>
@@ -344,6 +353,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                   onEditChange={setEditTitle}
                   onCommitEdit={() => commitEditTitle(task)}
                   onCancelEdit={() => setEditingId(null)}
+                  onDeleted={onChanged}
                 />
               ))}
             {addingStatus === status ? (

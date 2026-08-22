@@ -10,6 +10,7 @@ import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
+import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { EditTaskDrawer } from '../../features/task/EditTaskDrawer';
 import { TaskAssigneeSelect } from '../../features/task/TaskAssigneeSelect';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
@@ -89,13 +90,14 @@ function ArtifactTextPreview({ id }: { id: string }) {
   );
 }
 
-function TaskBody({ r }: { r: Task }) {
+function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
   const { t } = useTranslation('common');
   const { labelFor } = useActorLabels([r.createdBy]);
+  const closeDetailDrawer = useWorkspaceStore((s) => s.closeDetailDrawer);
   return (
     <>
       <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
-      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={r.projectId} value={r.assigneeUserId} /></Field>
+      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserId} /></Field>
       <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} /></Field>
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
@@ -114,6 +116,7 @@ function TaskBody({ r }: { r: Task }) {
         <AddTaskNoteButton taskId={r.id} />
         <CompleteTaskButton taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
         <EditTaskDrawer task={r} />
+        <DeleteTaskButton id={r.id} onDone={closeDetailDrawer} />
       </div>
     </>
   );
@@ -242,7 +245,7 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
   const r = wrapper.record;
   if (!r) return <Alert type="warning" message={t('recordPayloadEmpty')} />;
   switch (r.__typename) {
-    case 'Task':        return <TaskBody r={r} />;
+    case 'Task':        return <TaskBody r={r} projectId={wrapper.projectId} />;
     case 'Decision':    return <DecisionBody r={r} projectId={wrapper.projectId} />;
     case 'Artifact':    return <ArtifactBody r={r} />;
     case 'MemoryRecord': return <MemoryBody r={r} />;
