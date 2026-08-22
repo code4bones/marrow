@@ -46,6 +46,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   return class extends Base {
   protected async createTask(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
+    await this.assertTaskPermission(project.id, "create", context);
     const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
       project.id,
       input.assignee as string | null | undefined,
@@ -198,6 +199,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
+    await this.assertProjectMember(String(current.project_id), context);
+    await this.assertTaskPermission(String(current.project_id), "delete", context);
     const deletedNoteIds = await this.deleteOwnedTaskNotes(id, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
@@ -236,6 +239,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     await this.assertProjectMember(String(current.project_id), context);
     if (String(input.status) === "done") {
+      // completeTask itself asserts the "complete" permission (also the
+      // entry point when task.complete is called directly, not just via
+      // this status='done' path) -- no need to duplicate the check here.
       const completed = await this.completeTask(
         {
           id,
@@ -247,6 +253,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       );
       return { task: completed.task, ...(completed.warning ? { warning: completed.warning } : {}) };
     }
+    await this.assertTaskPermission(String(current.project_id), "move", context);
     const note = stringOrNull(input.note);
     const notes = note ? (current.notes ? `${current.notes}\n\n${note}` : note) : current.notes;
     const newStatus = String(input.status);
@@ -365,6 +372,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
+    await this.assertTaskPermission(String(current.project_id), "edit_title", context);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
@@ -389,6 +397,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
+    await this.assertTaskPermission(String(current.project_id), "reprioritize", context);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
@@ -413,6 +422,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
+    await this.assertTaskPermission(String(current.project_id), "assign", context);
     const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
       String(current.project_id),
       input.assignee as string | null,
@@ -575,6 +585,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   protected async completeTask(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.taskRow(id, context);
+    await this.assertTaskPermission(String(current.project_id), "complete", context);
     let completedClaim: Row | null = null;
 
     if (input.claimId) {

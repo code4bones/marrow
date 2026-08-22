@@ -138,6 +138,16 @@ export class PgToolService extends ComposedService {
           return ok("Project invite link regenerated.", await this.regenerateProjectInviteLink(parsed, requestContext));
         case "project.invite_claim":
           return ok("Project joined.", await this.claimProjectInviteLink(parsed, requestContext));
+        case "project.my_role":
+          return ok("Project role resolved.", await this.myProjectRole(parsed, requestContext));
+        case "project.pending_members":
+          return ok("Pending project members listed.", await this.pendingProjectMembers(parsed, requestContext));
+        case "project.approve_member":
+          return ok("Project member approved.", await this.approveProjectMember(parsed, requestContext));
+        case "project.reject_member":
+          return ok("Project member rejected.", await this.rejectProjectMember(parsed, requestContext));
+        case "project.update_member_role":
+          return ok("Project member role updated.", await this.updateProjectMemberRole(parsed, requestContext));
         case "project.delete":
           return ok("Project deleted.", await this.deleteProject(parsed, requestContext));
         case "project.resolve":

@@ -17,10 +17,14 @@ import {
 } from "../features/memory/model/schema.js";
 import { preflightSchema } from "../features/preflight/model/schema.js";
 import {
+  approveProjectMemberSchema,
   createProjectSchema,
   listProjectsSchema,
+  pendingProjectMembersSchema,
   projectLookupSchema,
-  projectMembersSchema
+  projectMembersSchema,
+  rejectProjectMemberSchema,
+  updateProjectMemberRoleSchema
 } from "../features/projects/model/schema.js";
 import {
   createTaskSchema,
@@ -941,9 +945,39 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.invite_claim",
     description:
-      "Join a project by its invite code. Requires a logged-in session or personal API token; idempotent -- claiming an already-joined project is a no-op, not an error.",
+      "Request to join a project by its invite code. Requires a logged-in session or personal API token. T-MEMORY-110: no longer instant -- lands as a pending membership request (pendingApproval: true) that the project's owner must approve (with a role) before it grants any access. Idempotent -- re-claiming while already active or already pending is a no-op, not an error.",
     schema: projectInviteClaimSchema,
-    outputSchema: output(z.object({ project: looseRecordSchema, joined: z.boolean() })),
+    outputSchema: output(z.object({ project: looseRecordSchema, joined: z.boolean(), pendingApproval: z.boolean() })),
+    access: "write"
+  },
+  {
+    name: "project.my_role",
+    description: "Return the calling session's own effective role on this project (pm/developer/tester) -- pm if they're the project's owner or an admin/agent-style caller with no per-project role concept. Powers permission-aware UI and lets an agent check before attempting an action its human's role might not allow.",
+    schema: projectMembersSchema,
+    outputSchema: output(z.object({ role: z.string() }))
+  },
+  {
+    name: "project.pending_members",
+    description: "List membership requests awaiting the owner's approval on this project. Only this project's owner or a system admin can see this.",
+    schema: pendingProjectMembersSchema,
+    access: "write"
+  },
+  {
+    name: "project.approve_member",
+    description: "Approve a pending membership request and assign it a role (pm/developer/tester -- see project.approve_member's role matrix in docs/task tool descriptions). Only this project's owner or a system admin can do this.",
+    schema: approveProjectMemberSchema,
+    access: "write"
+  },
+  {
+    name: "project.reject_member",
+    description: "Reject a pending membership request outright (the row is deleted, not just left pending). Only this project's owner or a system admin can do this.",
+    schema: rejectProjectMemberSchema,
+    access: "write"
+  },
+  {
+    name: "project.update_member_role",
+    description: "Change an already-active member's role (pm/developer/tester). Only this project's owner or a system admin can do this.",
+    schema: updateProjectMemberRoleSchema,
     access: "write"
   },
   {

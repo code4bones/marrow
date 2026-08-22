@@ -27,3 +27,30 @@ export const listProjectsSchema = z.object({
 export const projectMembersSchema = z.object({
   project: z.string().optional()
 });
+
+// T-MEMORY-110: per-project roles -- pm has full control, developer can
+// create tasks and move them through everything except Done, tester's only
+// power is moving a task to Done (task.complete). See assertTaskPermission
+// (projects-core.mixin.ts) for the actual per-action matrix.
+export const projectMemberRoleSchema = z.enum(["pm", "developer", "tester"]);
+
+export const pendingProjectMembersSchema = z.object({
+  project: z.string().optional()
+});
+
+export const approveProjectMemberSchema = z.object({
+  project: z.string().optional(),
+  userId: z.string().min(1),
+  role: projectMemberRoleSchema
+});
+
+export const rejectProjectMemberSchema = z.object({
+  project: z.string().optional(),
+  userId: z.string().min(1)
+});
+
+export const updateProjectMemberRoleSchema = z.object({
+  project: z.string().optional(),
+  userId: z.string().min(1),
+  role: projectMemberRoleSchema
+});

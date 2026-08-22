@@ -237,6 +237,12 @@ const typeDefs = `#graphql
     userPreferences: JSON!
     # T-MEMORY-090: powers the assignee picker on task/decision forms.
     projectMembers(project: String): [ProjectMember!]!
+    # T-MEMORY-110: owner-only -- membership requests awaiting approval.
+    pendingProjectMembers(project: String): [PendingProjectMember!]!
+    # T-MEMORY-110: the calling session's own role on this project (pm if
+    # they're the owner or an admin/agent caller) -- powers the frontend's
+    # permission-aware Kanban controls (hide/disable what the role can't do).
+    myProjectRole(project: String!): String!
   }
 
   type Mutation {
@@ -244,6 +250,9 @@ const typeDefs = `#graphql
     updateProject(id: ID, slug: String, title: String, description: String, rootPath: String, ownerUserId: String): Project!
     regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
     claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
+    approveProjectMember(project: String, userId: ID!, role: String!): [ProjectMember!]!
+    rejectProjectMember(project: String, userId: ID!): Boolean!
+    updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
     pinProject(id: ID, slug: String, pinned: Boolean!): Project!
 
@@ -507,6 +516,16 @@ const typeDefs = `#graphql
   type ProjectMember {
     userId: ID!
     email: String!
+    # T-MEMORY-110: pm/developer/tester -- null only transiently (an active
+    # row should always have one post-approval).
+    role: String
+  }
+
+  # T-MEMORY-110: a membership request awaiting the owner's approval.
+  type PendingProjectMember {
+    userId: ID!
+    email: String!
+    requestedAt: String
   }
 
   type PaginatedProjects {
@@ -524,6 +543,7 @@ const typeDefs = `#graphql
   type ClaimProjectInviteLinkResult {
     project: Project!
     joined: Boolean!
+    pendingApproval: Boolean!
   }
 
   type GatewayClient {
@@ -1122,7 +1142,11 @@ const resolvers = {
     userPreferences: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "user.preferences_get", {})).preferences,
     projectMembers: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "project.members", cleanInput(args))).members
+      (await callTool<Row>(context, "project.members", cleanInput(args))).members,
+    pendingProjectMembers: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.pending_members", cleanInput(args))).members,
+    myProjectRole: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.my_role", cleanInput(args))).role
   },
   Mutation: {
     createProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1133,6 +1157,14 @@ const resolvers = {
       await callTool<Row>(context, "project.invite_link_regenerate", requireOne(cleanInput(args), ["id", "slug"], "regenerateProjectInviteLink")),
     claimProjectInviteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.invite_claim", cleanInput(args)),
+    approveProjectMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.approve_member", cleanInput(args))).members,
+    rejectProjectMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      await callTool<Row>(context, "project.reject_member", cleanInput(args));
+      return true;
+    },
+    updateProjectMemberRole: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.update_member_role", cleanInput(args))).members,
     deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
     pinProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

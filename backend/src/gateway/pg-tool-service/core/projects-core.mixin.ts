@@ -10,6 +10,26 @@ import { compactProject, projectInviteLinkOut, projectOut, scoreProjectCandidate
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
 
+// T-MEMORY-110: per-project role. See resolveProjectRole/assertTaskPermission
+// below for how a caller's role is resolved and enforced.
+export type ProjectMemberRole = "pm" | "developer" | "tester";
+
+export type TaskPermissionAction = "create" | "delete" | "edit_title" | "reprioritize" | "assign" | "move" | "complete";
+
+// pm: full control. developer: creates tasks, edits titles, moves between
+// every status except into done. tester: the only role that can move a
+// task into done (task.complete, directly or via updateTaskStatus's
+// status==='done' special case) -- no other task-mutating power.
+const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
+  create: ["pm", "developer"],
+  delete: ["pm"],
+  edit_title: ["pm", "developer"],
+  reprioritize: ["pm"],
+  assign: ["pm"],
+  move: ["pm", "developer"],
+  complete: ["pm", "tester"]
+};
+
 // Project sharing: URL-safe random invite codes -- same base64url shape as
 // oauth.ts's randomToken()/base64url() (24 raw bytes, base64url-encoded, no
 // padding), reimplemented here as a small local equivalent since those two
@@ -145,9 +165,10 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     const rows = await this.db("project_members")
       .join("users", "users.id", "project_members.user_id")
       .where("project_members.project_id", project.id)
+      .andWhere("project_members.status", "active")
       .orderBy("users.email")
-      .select<{ id: string; email: string }[]>("users.id", "users.email");
-    return { members: rows.map((row) => ({ userId: row.id, email: row.email })) };
+      .select<{ id: string; email: string; role: string | null }[]>("users.id", "users.email", "project_members.role");
+    return { members: rows.map((row) => ({ userId: row.id, email: row.email, role: row.role ?? null })) };
   }
 
   // Only the project's owner or a system admin can rename/re-slug it --
@@ -230,12 +251,148 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     throw new AppError("UNAUTHORIZED", "Only the project owner or a system admin can do this.");
   }
 
+  // T-MEMORY-110: what a project_members row grants -- the project's own
+  // owner (projects.owner_user_id) always resolves to "pm" regardless of
+  // whether they even have a project_members row, same "owner is
+  // effectively a super-member" precedent assertProjectOwnerOrAdmin already
+  // established for rename/delete/invite management. Every caller that
+  // assertProjectMember itself doesn't gate (admin, static token, OAuth
+  // service, anonymous) resolves to "pm" too -- same bypass rule, so an
+  // agent acting on the owner's/admin's behalf is never blocked by a role
+  // the human caller never configured for it.
+  protected async resolveProjectRole(
+    projectId: string,
+    context?: NormalizedGatewayRequestContext
+  ): Promise<ProjectMemberRole> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return "pm";
+    }
+    const project = await this.db("projects").select("owner_user_id").where({ id: projectId }).first();
+    if (project && project.owner_user_id === context.sessionUserId) {
+      return "pm";
+    }
+    const membership = await this.db("project_members")
+      .where({ project_id: projectId, user_id: context.sessionUserId, status: "active" })
+      .first();
+    return (membership?.role as ProjectMemberRole | null) ?? "developer";
+  }
+
+  // Real per-action enforcement (owner's explicit call: badges plus actual
+  // rights, not just labels). "move" covers every status transition except
+  // the one into done -- that one routes through completeTask (directly or
+  // via updateTaskStatus's own done special-case) and needs the separate
+  // "complete" grant instead, matching the owner's own example ("тестировщик
+  // — только двигать в Done").
+  protected async assertTaskPermission(
+    projectId: string,
+    action: TaskPermissionAction,
+    context: NormalizedGatewayRequestContext
+  ): Promise<void> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return;
+    }
+    const role = await this.resolveProjectRole(projectId, context);
+    if (!TASK_ACTION_ROLES[action].includes(role)) {
+      throw new AppError(
+        "UNAUTHORIZED",
+        `Your role on this project (${role}) can't do that.`,
+        { projectId, action, role }
+      );
+    }
+  }
+
+  // T-MEMORY-110: lets a caller introspect their own effective role --
+  // powers the frontend's permission-aware Kanban controls, and gives an
+  // agent a way to check before attempting an action its human's role
+  // might not allow.
+  protected async myProjectRole(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    return { role: await this.resolveProjectRole(project.id, context) };
+  }
+
+  // --- Membership approval (T-MEMORY-110) -------------------------------
+  // Claiming an invite link no longer grants instant access -- it creates a
+  // pending_approval row with no role, and only the project owner (or a
+  // system admin) can approve it into an active member with an assigned
+  // role, or reject it outright. These four take the same `project`
+  // lookup shape as listProjectMembers/myProjectRole (project.ts by id,
+  // slug, or current-project fallback), so they go through resolveProject
+  // -- NOT getProject, which expects the differently-shaped {id, slug}
+  // input the rename/delete/invite-link tools use.
+
+  protected async pendingProjectMembers(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
+    const rows = await this.db("project_members")
+      .join("users", "users.id", "project_members.user_id")
+      .where("project_members.project_id", project.id)
+      .andWhere("project_members.status", "pending_approval")
+      .orderBy("project_members.created_at")
+      .select<{ id: string; email: string; createdAt: string }[]>(
+        "users.id",
+        "users.email",
+        "project_members.created_at as createdAt"
+      );
+    return { members: rows.map((row) => ({ userId: row.id, email: row.email, requestedAt: row.createdAt })) };
+  }
+
+  protected async approveProjectMember(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
+    const userId = String(input.userId);
+    const role = String(input.role) as ProjectMemberRole;
+    const updated = await this.db("project_members")
+      .where({ project_id: project.id, user_id: userId, status: "pending_approval" })
+      .update({ status: "active", role });
+    if (!updated) {
+      throw new AppError("NOT_FOUND", "No pending membership request for this user on this project.", { projectId: project.id, userId });
+    }
+    await this.recordEventForProject(project.id, {
+      type: "project.member_approved",
+      title: `Project member approved: ${userId}`,
+      related_id: project.id,
+      target_user_ids: [userId]
+    }, context);
+    return this.listProjectMembers({ project: project.id }, context);
+  }
+
+  protected async rejectProjectMember(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
+    const userId = String(input.userId);
+    const deleted = await this.db("project_members")
+      .where({ project_id: project.id, user_id: userId, status: "pending_approval" })
+      .del();
+    if (!deleted) {
+      throw new AppError("NOT_FOUND", "No pending membership request for this user on this project.", { projectId: project.id, userId });
+    }
+    return { rejected: true };
+  }
+
+  protected async updateProjectMemberRole(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
+    const userId = String(input.userId);
+    const role = String(input.role) as ProjectMemberRole;
+    const updated = await this.db("project_members")
+      .where({ project_id: project.id, user_id: userId, status: "active" })
+      .update({ role });
+    if (!updated) {
+      throw new AppError("NOT_FOUND", "This user is not an active member of this project.", { projectId: project.id, userId });
+    }
+    return this.listProjectMembers({ project: project.id }, context);
+  }
+
   // Shared single-row membership query, used by both assertProjectMember
   // above (REST/MCP/GraphQL request path) and isProjectVisibleToSession below
   // (WS subscription event filtering, T-MEMORY-042) -- one query, two
   // call sites, instead of duplicating the project_members lookup.
+  // T-MEMORY-110: status='active' only -- a pending-approval row (see
+  // claimProjectInviteLink below) is not membership yet, it's a request.
   protected async isMemberOfProject(projectId: string, userId: string): Promise<boolean> {
-    const membership = await this.db("project_members").where({ project_id: projectId, user_id: userId }).first();
+    const membership = await this.db("project_members")
+      .where({ project_id: projectId, user_id: userId, status: "active" })
+      .first();
     return Boolean(membership);
   }
 
@@ -254,7 +411,10 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       // unqualified "id" here started throwing "column reference is ambiguous"
       // for every role=member session (reported live: a.gromov@codup.pro got
       // a raw Postgres error opening the Projects page). Always qualify.
-      query.whereIn("projects.id", this.db("project_members").select("project_id").where({ user_id: context.sessionUserId }));
+      query.whereIn(
+        "projects.id",
+        this.db("project_members").select("project_id").where({ user_id: context.sessionUserId, status: "active" })
+      );
     }
     return query;
   }
@@ -426,22 +586,34 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (!projectRow) {
       throw new AppError("PROJECT_INVITE_NOT_FOUND", "This invite link is no longer valid.", { code });
     }
-    // Idempotent: re-claiming an already-joined project is a friendly
-    // no-op, not an error (this task's explicit acceptance criteria).
+    // T-MEMORY-110: idempotent, but "already claimed" now has two flavors --
+    // already an active member (joined=true, unchanged from before), or
+    // already sitting in pending_approval from an earlier claim (no new row,
+    // still waiting). Only a genuinely first-time claim inserts anything.
     const alreadyMember = await this.isMemberOfProject(String(projectRow.id), context.sessionUserId);
-    if (!alreadyMember) {
+    const existingRow = alreadyMember
+      ? null
+      : await this.db("project_members")
+          .where({ project_id: projectRow.id, user_id: context.sessionUserId })
+          .first();
+    if (!alreadyMember && !existingRow) {
       await this.db("project_members").insert({
         project_id: projectRow.id,
         user_id: context.sessionUserId,
+        status: "pending_approval",
         created_at: nowIso()
       });
       await this.recordEventForProject(String(projectRow.id), {
-        type: "project.member_joined",
-        title: `Project joined via invite link: ${String(projectRow.title)}`,
+        type: "project.member_requested",
+        title: `Membership requested via invite link: ${String(projectRow.title)}`,
         related_id: String(projectRow.id)
       }, context);
     }
-    return { project: projectOut(projectRow), joined: !alreadyMember };
+    return {
+      project: projectOut(projectRow),
+      joined: alreadyMember,
+      pendingApproval: !alreadyMember
+    };
   }
 
   protected async resolveProjectCandidates(input: Row, context?: NormalizedGatewayRequestContext) {
