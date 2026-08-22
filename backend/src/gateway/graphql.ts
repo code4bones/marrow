@@ -585,6 +585,8 @@ const typeDefs = `#graphql
     createdAt: String
     createdBy: String
     milestone: String
+    assigneeUserId: String
+    assigneeDiffersFromOwner: Boolean!
   }
 
   type GraphEdge {

@@ -1,7 +1,10 @@
+import { assigneeDiffersFromOwner } from "../../assignees.js";
 import { dateStringOrNull, stringOrNull } from "./common.js";
 import type { GraphEdge, GraphNode, Row } from "../types.js";
 
 export function graphNodeOut(kind: string, row: Row): GraphNode {
+  const createdBy = stringOrNull(row.created_by) ?? stringOrNull(row.createdBy);
+  const assigneeUserId = stringOrNull(row.assignee_user_id) ?? stringOrNull(row.assigneeUserId);
   return {
     id: String(row.id),
     kind,
@@ -13,7 +16,9 @@ export function graphNodeOut(kind: string, row: Row): GraphNode {
     // already-transformed projectOut() shape (camelCase createdAt/createdBy,
     // already a string) — accept either.
     createdAt: dateStringOrNull(row.created_at) ?? dateStringOrNull(row.createdAt),
-    createdBy: stringOrNull(row.created_by) ?? stringOrNull(row.createdBy)
+    createdBy,
+    assigneeUserId,
+    assigneeDiffersFromOwner: assigneeDiffersFromOwner(assigneeUserId, createdBy)
   };
 }
 

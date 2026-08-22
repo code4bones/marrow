@@ -8,6 +8,11 @@ export type GraphNode = {
   createdAt: string | null;
   createdBy: string | null;
   milestone: string | null;
+  // T-MEMORY-090: only TASK/DECISION nodes ever carry a real value here --
+  // every other kind's row has no assignee_user_id column, so this is
+  // simply null/false for them.
+  assigneeUserId: string | null;
+  assigneeDiffersFromOwner: boolean;
 };
 
 export type GraphEdge = {
