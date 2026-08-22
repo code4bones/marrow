@@ -4,6 +4,7 @@ import { Button, Card, Input, Tag, Typography, message } from 'antd';
 import { useState, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
+import { RequestChangesModal } from '../../features/task/RequestChangesModal';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { CREATE_TASK, UPDATE_TASK_PRIORITY, UPDATE_TASK_STATUS, UPDATE_TASK_TITLE } from '../../shared/api/queries';
 import { getEntityType } from '../../shared/lib/entityId';
@@ -12,7 +13,10 @@ import type { Task } from '../../shared/model/types';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { RecordLink } from '../../shared/ui/RecordLink';
 
-const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'done', 'cancelled'] as const;
+// T-MEMORY-115: review (submitted, awaiting a pm/tester decision) and
+// changes_requested (rejected -- terminal for this card, a linked follow-up
+// task carries the rework) sit between doing/blocked and done.
+const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'review', 'changes_requested', 'done', 'cancelled'] as const;
 
 // T-MEMORY-105: priority only ever governs task.next's pick order among
 // open (todo) tasks -- reordering within Done/Cancelled has no operational
@@ -148,11 +152,27 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
   const [newTitle, setNewTitle] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  // T-MEMORY-115: moving a card into Changes Requested needs a mandatory
+  // reason (it seeds the auto-created follow-up task's scope) -- holds the
+  // task id awaiting that reason instead of firing the mutation immediately.
+  const [pendingChangesRequestId, setPendingChangesRequestId] = useState<string | null>(null);
 
   const [mutateStatus] = useMutation(UPDATE_TASK_STATUS, {
     onError: (e) => message.error(e.message),
     onCompleted: onChanged,
   });
+  const [mutateChangesRequested, { loading: requestingChanges }] = useMutation(UPDATE_TASK_STATUS, {
+    onError: (e) => message.error(e.message),
+    onCompleted: () => { message.success(t('followUpTaskCreated')); onChanged(); },
+  });
+
+  const moveTask = (id: string, status: string) => {
+    if (status === 'changes_requested') {
+      setPendingChangesRequestId(id);
+      return;
+    }
+    mutateStatus({ variables: { id, status } });
+  };
   const [mutatePriority] = useMutation(UPDATE_TASK_PRIORITY, {
     onError: (e) => message.error(e.message),
   });
@@ -168,6 +188,8 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
     todo: t('statusTodo'),
     doing: t('statusDoing'),
     blocked: t('statusBlocked'),
+    review: t('statusReview'),
+    changes_requested: t('statusChangesRequested'),
     done: t('statusDone'),
     cancelled: t('statusCancelled'),
   };
@@ -185,7 +207,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
     if (!task || task.status === status) {
       return;
     }
-    mutateStatus({ variables: { id, status } });
+    moveTask(id, status);
   };
 
   // Dropping directly onto a card either moves it into that card's column
@@ -208,7 +230,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
       return;
     }
     if (draggedTask.status !== status) {
-      mutateStatus({ variables: { id: draggedId, status } });
+      moveTask(draggedId, status);
       return;
     }
     if (!REORDERABLE_STATUSES.has(status)) {
@@ -240,7 +262,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
       const result = await createTask({ variables: { input: { project: projectSlug, title } } });
       const newId = (result.data as { createTask?: { id: string } } | undefined)?.createTask?.id;
       if (newId && status !== 'todo') {
-        await mutateStatus({ variables: { id: newId, status } });
+        moveTask(newId, status);
       } else {
         onChanged();
       }
@@ -356,7 +378,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                   onDeleted={onChanged}
                 />
               ))}
-            {addingStatus === status ? (
+            {status === 'changes_requested' ? null : addingStatus === status ? (
               <Input
                 size="small"
                 autoFocus
@@ -381,6 +403,17 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
           </div>
         </div>
       ))}
+      <RequestChangesModal
+        open={pendingChangesRequestId !== null}
+        loading={requestingChanges}
+        onCancel={() => setPendingChangesRequestId(null)}
+        onSubmit={(note) => {
+          if (pendingChangesRequestId) {
+            mutateChangesRequested({ variables: { id: pendingChangesRequestId, status: 'changes_requested', note } });
+          }
+          setPendingChangesRequestId(null);
+        }}
+      />
     </div>
   );
 }

@@ -18,11 +18,13 @@ import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { Task } from '../../shared/model/types';
 
 const STATUS_COLOR: Record<string, string> = {
-  todo:      '#595959',
-  doing:     '#177ddc',
-  blocked:   '#a61d24',
-  done:      '#389e0d',
-  cancelled: '#303030',
+  todo:              '#595959',
+  doing:             '#177ddc',
+  blocked:           '#a61d24',
+  review:            '#9254de',
+  changes_requested: '#f5222d',
+  done:              '#389e0d',
+  cancelled:         '#303030',
 };
 
 function statusLabels(translate: (key: string) => string): Record<string, string> {
@@ -30,6 +32,8 @@ function statusLabels(translate: (key: string) => string): Record<string, string
     todo: translate('statusTodo'),
     doing: translate('statusDoing'),
     blocked: translate('statusBlocked'),
+    review: translate('statusReview'),
+    changes_requested: translate('statusChangesRequested'),
     done: translate('statusDone'),
     cancelled: translate('statusCancelled'),
   };

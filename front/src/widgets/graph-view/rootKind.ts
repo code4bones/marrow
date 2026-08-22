@@ -48,7 +48,7 @@ export function kindHasMilestone(kind: RootKind): boolean {
 // i18n lookup is needed for these either.
 export function rootKindStatuses(kind: RootKind): string[] {
   switch (kind) {
-    case 'TASK': return ['todo', 'doing', 'blocked', 'done', 'cancelled'];
+    case 'TASK': return ['todo', 'doing', 'blocked', 'review', 'changes_requested', 'done', 'cancelled'];
     case 'DECISION': return ['draft', 'accepted', 'superseded', 'rejected', 'archived'];
     case 'MEMORY': return ['current', 'draft', 'open', 'answered', 'superseded', 'rejected', 'archived'];
     case 'ARTIFACT': return ['current', 'archived'];

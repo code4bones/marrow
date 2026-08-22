@@ -31,6 +31,8 @@ function statusOptions(t: (key: string) => string) {
     { label: t('statusTodo'), value: 'todo' },
     { label: t('statusDoing'), value: 'doing' },
     { label: t('statusBlocked'), value: 'blocked' },
+    { label: t('statusReview'), value: 'review' },
+    { label: t('statusChangesRequested'), value: 'changes_requested' },
     { label: t('statusDone'), value: 'done' },
     { label: t('statusCancelled'), value: 'cancelled' },
   ];
@@ -114,7 +116,7 @@ export function TasksPage() {
       ),
     },
     {
-      title: t('status'), dataIndex: 'status', width: 120,
+      title: t('status'), dataIndex: 'status', width: 160,
       render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
     },
     {

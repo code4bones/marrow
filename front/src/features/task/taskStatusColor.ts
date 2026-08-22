@@ -8,5 +8,6 @@
 // second copy that could drift from it.
 export const TASK_STATUS_COLOR: Record<string, string> = {
   todo: '#595959', doing: '#177ddc', blocked: '#d89614',
+  review: '#9254de', changes_requested: '#f5222d',
   done: '#52c41a', cancelled: '#434343',
 };
