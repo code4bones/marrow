@@ -76,7 +76,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task created: ${row.title}`,
       related_id: row.id
     }, context);
-    const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
+    const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(project.id, {
         type: "task.assigned",
@@ -265,7 +265,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
     }, context);
 
     // D-MEMORY-037 / T-MEMORY-070: penalties, not gated behind a session --
@@ -379,7 +379,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
+    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(String(row.project_id), {
         type: "task.assigned",
@@ -589,7 +589,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         .filter((value): value is string => Boolean(value))
         .join("\n"),
       related_id: id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
     }, context);
 
     // I-MEMORY-065: a task can go straight from created to completed with no

@@ -1,6 +1,7 @@
 import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
 import { userIdFromClientId } from "./credits.js";
+import type { NormalizedGatewayRequestContext } from "./pg-tool-service/types.js";
 
 // T-MEMORY-090: `assignee` on task.create/decision.record (and the
 // task.update_assignee/decision.update_assignee tools) is a loose text
@@ -75,34 +76,52 @@ export function assigneeDiffersFromOwner(assigneeUserId: string | null | undefin
   return assigneeUserId !== userIdFromClientId(createdByClientId);
 }
 
+// T-MEMORY-095: "self-notify" only means something for a real interactive
+// browser click -- context.sessionSource === "cookie". An agent session
+// (Claude Code, Codex, ...) connected over OAuth or a personal token
+// resolves to the exact same clientId ("user:<id>") as that person's own
+// browser session, but the owner isn't the one physically watching it
+// happen -- in practice, per the owner, almost everything in this app is
+// agent-driven ("браузер чисто для красоты"), so excluding by clientId
+// alone would have made this notify path silent almost always. Only a real
+// cookie session for that same user counts as "they just watched this
+// happen themselves, no need to also ping their phone."
+function isInteractiveSelfAction(context: NormalizedGatewayRequestContext, candidateUserId: string): boolean {
+  return context.sessionSource === "cookie" && context.sessionUserId === candidateUserId;
+}
+
 // T-MEMORY-093 follow-up: who a lifecycle event (status change, completion)
-// on an assigned task/decision should notify -- the assignee, but never the
-// person who just performed the action themselves (no point pinging
-// yourself for something you just did). Returns undefined (not null) so
-// callers can spread it straight into recordEventForProject's input without
-// an extra null-vs-undefined branch.
-export function assigneeNotifyTarget(assigneeUserId: string | null | undefined, actingClientId: unknown): string | undefined {
+// on an assigned task/decision should notify -- the assignee, but not the
+// assignee themselves if they're the one who just clicked it in their own
+// browser (see isInteractiveSelfAction above -- an agent acting "as" them
+// still notifies). Returns undefined (not null) so callers can spread it
+// straight into recordEventForProject's input without an extra
+// null-vs-undefined branch.
+export function assigneeNotifyTarget(
+  assigneeUserId: string | null | undefined,
+  context: NormalizedGatewayRequestContext
+): string | undefined {
   if (!assigneeUserId) {
     return undefined;
   }
-  return assigneeUserId !== userIdFromClientId(actingClientId) ? assigneeUserId : undefined;
+  return isInteractiveSelfAction(context, assigneeUserId) ? undefined : assigneeUserId;
 }
 
 // T-MEMORY-093 follow-up (owner's ask): "if the owner is one person and the
 // assignee is another, a lifecycle event notifies everyone involved" -- both
-// the creator and the assignee, deduped, minus whoever is performing the
-// action right now (no self-notify). Used for status-change/completion
-// events, as opposed to assigneeNotifyTarget above which is assignment-only
-// (create/reassign) and only ever targets the new assignee.
+// the creator and the assignee, deduped, minus whoever is watching it happen
+// live in their own browser right now (see isInteractiveSelfAction). Used
+// for status-change/completion events, as opposed to assigneeNotifyTarget
+// above which is assignment-only (create/reassign) and only ever targets
+// the new assignee.
 export function lifecycleNotifyTargets(
   createdByClientId: unknown,
   assigneeUserId: string | null | undefined,
-  actingClientId: unknown
+  context: NormalizedGatewayRequestContext
 ): string[] {
   const owner = userIdFromClientId(createdByClientId);
-  const acting = userIdFromClientId(actingClientId);
   const candidates = [owner, assigneeUserId ?? null];
   return Array.from(
-    new Set(candidates.filter((id): id is string => Boolean(id) && id !== acting))
+    new Set(candidates.filter((id): id is string => id !== null && !isInteractiveSelfAction(context, id)))
   );
 }

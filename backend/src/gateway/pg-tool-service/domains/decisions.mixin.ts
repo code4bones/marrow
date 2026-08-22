@@ -94,7 +94,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision recorded: ${row.title}`,
       related_id: row.id
     }, context);
-    const recordNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
+    const recordNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(row.project_id, {
         type: "decision.assigned",
@@ -306,7 +306,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision archived: ${String(row.title)}`,
       body: stringOrNull(input.reason),
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
     }, context);
     return {
       action: "archived",
@@ -353,7 +353,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       title: `Decision status changed: ${String(row.title)}`,
       body: stringOrNull(input.reason),
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context.clientId)
+      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context)
     }, context);
     // Only a genuine transition into "accepted" earns the bonus -- guards
     // against re-awarding on a same-status no-op call.
@@ -418,7 +418,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context.clientId);
+    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
     if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
       await this.recordEventForProject(projectId, {
         type: "decision.assigned",
