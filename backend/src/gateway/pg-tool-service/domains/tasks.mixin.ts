@@ -355,6 +355,53 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return taskOut(row);
   }
 
+  // T-MEMORY-105: mirrors updateTaskMilestone's shape -- a plain field edit,
+  // not a lifecycle transition, so no recordEventForProject call. Backs the
+  // Kanban board's inline title rename.
+  protected async updateTaskTitle(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.assertProjectMember(String(current.project_id), context);
+    const [row] = await this.db("tasks")
+      .where({ id })
+      .update({
+        title: String(input.title),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    return taskOut(row);
+  }
+
+  // T-MEMORY-105: same shape again. Backs the Kanban board's drag-to-reorder
+  // within a column -- the board renumbers the affected column client-side
+  // (10/20/30... spacing) and calls this once per task whose priority
+  // actually changed, never introducing a new ordering column of its own.
+  protected async updateTaskPriority(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const current = await this.db("tasks").where({ id }).first();
+    if (!current) {
+      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
+    }
+    await this.assertProjectMember(String(current.project_id), context);
+    const [row] = await this.db("tasks")
+      .where({ id })
+      .update({
+        priority: Number(input.priority),
+        updated_by: context.clientId,
+        source_instance_id: context.clientId,
+        updated_at: nowIso(),
+        version: Number(current.version ?? 1) + 1
+      })
+      .returning("*");
+    return taskOut(row);
+  }
+
   // T-MEMORY-090: mirrors updateTaskMilestone's shape -- `assignee` is
   // required-but-nullable (unlike task.create's optional `assignee`,
   // there's no "unset" default to fall back on here; the caller must say

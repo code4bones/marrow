@@ -237,6 +237,10 @@ export class PgToolService extends ComposedService {
           return ok("Task status updated.", await this.updateTaskStatus(parsed, requestContext));
         case "task.update_milestone":
           return ok("Task milestone updated.", { task: await this.updateTaskMilestone(parsed, requestContext) });
+        case "task.update_title":
+          return ok("Task title updated.", { task: await this.updateTaskTitle(parsed, requestContext) });
+        case "task.update_priority":
+          return ok("Task priority updated.", { task: await this.updateTaskPriority(parsed, requestContext) });
         case "task.update_assignee":
           return ok("Task assignee updated.", { task: await this.updateTaskAssignee(parsed, requestContext) });
         case "decision.record":

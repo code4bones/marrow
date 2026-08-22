@@ -29,7 +29,9 @@ import {
   nextTaskSchema,
   updateTaskAssigneeSchema,
   updateTaskMilestoneSchema,
-  updateTaskStatusSchema
+  updateTaskPrioritySchema,
+  updateTaskStatusSchema,
+  updateTaskTitleSchema
 } from "../features/tasks/model/schema.js";
 
 export interface GatewayToolSpec {
@@ -1194,6 +1196,18 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     name: "task.update_milestone",
     description: "Set or clear (milestone: null) an existing task's milestone -- the work-process grouping that task.create's own milestone field can set at creation but has no update path afterward.",
     schema: updateTaskMilestoneSchema,
+    access: "write"
+  },
+  {
+    name: "task.update_title",
+    description: "Rename an existing task's title in place.",
+    schema: updateTaskTitleSchema,
+    access: "write"
+  },
+  {
+    name: "task.update_priority",
+    description: "Set an existing task's priority to an exact value -- task.create's own priority field can set it at creation but has no update path afterward. Lower numbers sort first (task.next picks the lowest-priority open task).",
+    schema: updateTaskPrioritySchema,
     access: "write"
   },
   {

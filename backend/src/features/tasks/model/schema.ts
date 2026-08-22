@@ -45,6 +45,16 @@ export const updateTaskMilestoneSchema = z.object({
   milestone: z.string().nullable()
 });
 
+export const updateTaskTitleSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1)
+});
+
+export const updateTaskPrioritySchema = z.object({
+  id: z.string().min(1),
+  priority: z.number().int()
+});
+
 export const updateTaskAssigneeSchema = z.object({
   id: z.string().min(1),
   assignee: z.string().nullable()
