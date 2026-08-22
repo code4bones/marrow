@@ -10,8 +10,10 @@ import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
+import { EditTaskDrawer } from '../../features/task/EditTaskDrawer';
 import { TaskAssigneeSelect } from '../../features/task/TaskAssigneeSelect';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
+import { TaskPrioritySelect } from '../../features/task/TaskPrioritySelect';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
@@ -94,7 +96,7 @@ function TaskBody({ r }: { r: Task }) {
     <>
       <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
       <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={r.projectId} value={r.assigneeUserId} /></Field>
-      {r.priority != null && <Field label={t('priority')}><Text>{r.priority}</Text></Field>}
+      <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} /></Field>
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
       {r.acceptance && <Field label={t('acceptanceCriteria')}><Markdown>{r.acceptance}</Markdown></Field>}
@@ -111,6 +113,7 @@ function TaskBody({ r }: { r: Task }) {
         <ClaimTaskButton taskId={r.id} />
         <AddTaskNoteButton taskId={r.id} />
         <CompleteTaskButton taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
+        <EditTaskDrawer task={r} />
       </div>
     </>
   );

@@ -1,9 +1,10 @@
 import { useMutation } from '@apollo/client/react';
 import { PlusOutlined } from '@ant-design/icons';
-import { AutoComplete, Button, Drawer, Form, Input, InputNumber, Select, message } from 'antd';
+import { AutoComplete, Button, Drawer, Form, Input, Select, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CREATE_TASK } from '../../shared/api/queries';
+import { priorityTierOptions, PRIORITY_TIER_VALUE, type PriorityTier } from '../../shared/lib/taskPriority';
 import { useProjectMembers } from '../../shared/lib/useProjectMembers';
 import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButton';
 
@@ -39,7 +40,7 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
             title: values.title,
             milestone: values.milestone || undefined,
             assignee: values.assignee || undefined,
-            priority: values.priority ?? undefined,
+            priority: values.priority ? PRIORITY_TIER_VALUE[values.priority as PriorityTier] : undefined,
             scope: values.scope || undefined,
             acceptance: values.acceptance || undefined,
             notes: values.notes || undefined,
@@ -74,7 +75,7 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
             </AutoComplete>
           </Form.Item>
           <Form.Item name="priority" label={t('priority')}>
-            <InputNumber style={{ width: '100%' }} />
+            <Select allowClear placeholder={t('priorityLow')} options={priorityTierOptions(t)} />
           </Form.Item>
           <Form.Item name="assignee" label={t('assignee')}>
             <Select

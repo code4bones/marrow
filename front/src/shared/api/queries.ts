@@ -156,6 +156,14 @@ export const UPDATE_TASK_PRIORITY = gql`
   }
 `;
 
+export const UPDATE_TASK_DETAILS = gql`
+  mutation UpdateTaskDetails($id: ID!, $title: String, $milestone: String, $priority: Int, $scope: String, $acceptance: String, $notes: String) {
+    updateTaskDetails(id: $id, title: $title, milestone: $milestone, priority: $priority, scope: $scope, acceptance: $acceptance, notes: $notes) {
+      id title priority milestone scope acceptance notes updatedAt
+    }
+  }
+`;
+
 export const GET_PROJECT_MEMBERS = gql`
   query GetProjectMembers($project: String) {
     projectMembers(project: $project) {

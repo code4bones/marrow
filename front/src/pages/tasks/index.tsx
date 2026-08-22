@@ -19,6 +19,7 @@ import type { Paginated, Task } from '../../shared/model/types';
 import { MilestoneGroupedList } from '../../shared/ui/MilestoneGroupedList';
 import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
+import { PriorityTag } from '../../shared/ui/PriorityTag';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { TaskFlowchart } from '../../widgets/graph-view/TaskFlowchart';
@@ -116,7 +117,11 @@ export function TasksPage() {
       title: t('status'), dataIndex: 'status', width: 120,
       render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
     },
-    { title: t('priorityShort'), dataIndex: 'priority', width: 55, align: 'center', sorter: (a, b) => (a.priority ?? 0) - (b.priority ?? 0) },
+    {
+      title: t('priorityShort'), dataIndex: 'priority', width: 68, align: 'center',
+      sorter: (a, b) => (a.priority ?? 0) - (b.priority ?? 0),
+      render: (v) => <PriorityTag priority={v} />,
+    },
     {
       title: t('claims'), dataIndex: 'activeClaimCount', width: 68, align: 'center',
       render: (v: number) => v > 0 ? <Badge count={v} color="#1668dc" /> : null,
