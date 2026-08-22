@@ -73,6 +73,22 @@ const EVENT_LABELS: Record<string, [icon: string, label: string]> = {
   "decision.archived": ["🗄️", "Решение архивировано"]
 };
 
+// T-MEMORY-111 follow-up: completeTask/updateTaskStatus pass acceptance
+// evidence / status-change notes straight through as the event body with no
+// length cap -- fine for the task's own `notes` column (an audit trail
+// that's supposed to hold the full text) but wrong for a push notification,
+// which owners read on a phone. The "Открыть в Marrow →" link block already
+// takes them to the full text, so a hard cutoff here loses nothing but
+// screen space.
+const TELEGRAM_BODY_MAX_LENGTH = 400;
+
+function truncateForTelegram(body: string): string {
+  if (body.length <= TELEGRAM_BODY_MAX_LENGTH) {
+    return body;
+  }
+  return `${body.slice(0, TELEGRAM_BODY_MAX_LENGTH).trimEnd()}…`;
+}
+
 function eventHeading(type: string): string {
   const [icon, label] = EVENT_LABELS[type] ?? ["🔔", type];
   return `${icon} ${label}`;
@@ -151,7 +167,7 @@ export async function notifyTelegram(
     const headingText = projectTitle ? `${eventHeading(input.type)} — ${projectTitle}` : eventHeading(input.type);
     const blocks = [
       { type: "heading" as const, size: 3 as const, text: headingText },
-      ...(input.body ? [{ type: "paragraph" as const, text: input.body }] : []),
+      ...(input.body ? [{ type: "paragraph" as const, text: truncateForTelegram(input.body) }] : []),
       ...(rows.length > 0 ? [{ type: "table" as const, cells: rows, is_bordered: true as const }] : []),
       ...(linkUrl ? [{ type: "paragraph" as const, text: { type: "url" as const, text: "Открыть в Marrow →", url: linkUrl } }] : [])
     ];
