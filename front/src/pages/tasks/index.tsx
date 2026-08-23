@@ -10,7 +10,9 @@ import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { GET_TASKS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
+import { canPerform } from '../../shared/lib/taskPermissions';
 import { usePage } from '../../shared/lib/usePage';
+import { useMyProjectRole } from '../../shared/lib/useMyProjectRole';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -21,6 +23,7 @@ import { NewTag } from '../../shared/ui/NewTag';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { PriorityTag } from '../../shared/ui/PriorityTag';
 import { RecordLink } from '../../shared/ui/RecordLink';
+import { RoleBadge } from '../../shared/ui/RoleBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { TaskFlowchart } from '../../widgets/graph-view/TaskFlowchart';
 import { TaskKanbanBoard } from '../../widgets/kanban/TaskKanbanBoard';
@@ -63,6 +66,7 @@ export function TasksPage() {
   const [groupByMilestone, setGroupByMilestone] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();
   const [sortField, sortDirection] = sort.split(':');
+  const { role } = useMyProjectRole(slug);
 
   // Fetch all tasks (no status filter) for the flowchart and the kanban board
   const { data: allData, refetch: refetchAll } = useQuery<{ tasksPage: Paginated<Task> }>(GET_TASKS_PAGE, {
@@ -117,7 +121,7 @@ export function TasksPage() {
     },
     {
       title: t('status'), dataIndex: 'status', width: 160,
-      render: (v, row) => <TaskStatusSelect id={row.id} value={v} onDone={() => refetch()} />,
+      render: (v, row) => <TaskStatusSelect id={row.id} value={v} role={role} onDone={() => refetch()} />,
     },
     {
       title: t('priorityShort'), dataIndex: 'priority', width: 68, align: 'center',
@@ -148,12 +152,13 @@ export function TasksPage() {
     },
     {
       title: '', key: 'actions', width: 40, fixed: 'right',
-      render: (_, row) => <DeleteTaskButton id={row.id} onDone={() => refetch()} />,
+      render: (_, row) => canPerform(role, 'delete') ? <DeleteTaskButton id={row.id} onDone={() => refetch()} /> : null,
     },
   ];
 
   const header = (
-    <div style={{ display: 'flex', gap: 8 }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <RoleBadge role={role} />
       <Select
         value={status}
         onChange={(v) => { setStatus(v); onChange(1, pageSize); }}
@@ -175,7 +180,9 @@ export function TasksPage() {
         checkedChildren={t('groupByMilestone')}
         unCheckedChildren={t('groupByMilestone')}
       />
-      <CreateTaskDrawer projectSlug={slug} onDone={() => refetch()} milestoneSuggestions={milestoneSuggestions} />
+      {canPerform(role, 'create') && (
+        <CreateTaskDrawer projectSlug={slug} onDone={() => refetch()} milestoneSuggestions={milestoneSuggestions} />
+      )}
     </div>
   );
 
@@ -227,7 +234,7 @@ export function TasksPage() {
             label: t('kanban'),
             children: (
               <div style={{ height: '100%', minHeight: 400 }}>
-                <TaskKanbanBoard tasks={allTasks} projectSlug={slug} groupByMilestone={groupByMilestone} onChanged={() => { refetch(); refetchAll(); }} />
+                <TaskKanbanBoard tasks={allTasks} projectSlug={slug} groupByMilestone={groupByMilestone} role={role} onChanged={() => { refetch(); refetchAll(); }} />
               </div>
             ),
           },

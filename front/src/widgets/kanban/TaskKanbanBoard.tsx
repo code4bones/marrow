@@ -8,8 +8,9 @@ import { RequestChangesModal } from '../../features/task/RequestChangesModal';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
 import { CREATE_TASK, UPDATE_TASK_PRIORITY, UPDATE_TASK_STATUS, UPDATE_TASK_TITLE } from '../../shared/api/queries';
 import { getEntityType } from '../../shared/lib/entityId';
+import { actionForStatus, canPerform } from '../../shared/lib/taskPermissions';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
-import type { Task } from '../../shared/model/types';
+import type { ProjectMemberRole, Task } from '../../shared/model/types';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { RecordLink } from '../../shared/ui/RecordLink';
 
@@ -65,6 +66,8 @@ interface TaskCardProps {
   draggedOver: boolean;
   editTitle: string;
   labelFor: (id: string | null | undefined) => string | null;
+  canEdit: boolean;
+  canDelete: boolean;
   onDragStart: (e: DragEvent<HTMLDivElement>) => void;
   onDragOver: (e: DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
@@ -78,7 +81,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({
-  task, status, editing, draggedOver, editTitle, labelFor,
+  task, status, editing, draggedOver, editTitle, labelFor, canEdit, canDelete,
   onDragStart, onDragOver, onDragLeave, onDrop, onOpen, onStartEdit, onEditChange, onCommitEdit, onCancelEdit, onDeleted,
 }: TaskCardProps) {
   return (
@@ -93,12 +96,14 @@ function TaskCard({
       style={{ cursor: 'grab', borderColor: draggedOver ? TASK_STATUS_COLOR[status] : undefined, position: 'relative' }}
       styles={{ body: { padding: 8 } }}
     >
-      <div
-        style={{ position: 'absolute', top: 4, right: 4 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <DeleteTaskButton id={task.id} onDone={onDeleted} />
-      </div>
+      {canDelete && (
+        <div
+          style={{ position: 'absolute', top: 4, right: 4 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DeleteTaskButton id={task.id} onDone={onDeleted} />
+        </div>
+      )}
       {editing ? (
         <Input
           size="small"
@@ -112,8 +117,8 @@ function TaskCard({
         />
       ) : (
         <Typography.Text
-          style={{ fontSize: 13, cursor: 'text', display: 'block', paddingRight: 22 }}
-          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+          style={{ fontSize: 13, cursor: canEdit ? 'text' : 'default', display: 'block', paddingRight: canDelete ? 22 : 0 }}
+          onClick={(e) => { if (canEdit) { e.stopPropagation(); onStartEdit(); } }}
         >
           {task.title}
         </Typography.Text>
@@ -136,14 +141,19 @@ interface Props {
   projectSlug: string;
   /** Mirrors the Tasks page's own "Group by milestone" switch (List tab) so both views agree on the same grouping. */
   groupByMilestone: boolean;
+  /** The viewer's own resolved role on this project -- gates create/edit/delete/move affordances. */
+  role?: ProjectMemberRole | null;
   /** Called after a drag-drop status/priority change or a board-created task lands so the caller's own query refetches. */
   onChanged: () => void;
 }
 
 // Native HTML5 drag-and-drop -- no dnd library in this bundle yet, and a
 // 5-column task board doesn't need one.
-export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChanged }: Props) {
+export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, onChanged }: Props) {
   const { t } = useTranslation('tasks');
+  const canCreate = canPerform(role, 'create');
+  const canEdit = canPerform(role, 'edit_details');
+  const canDelete = canPerform(role, 'delete');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const { labelFor } = useActorLabels(tasks.map((task) => (task.assigneeUserId ? `user:${task.assigneeUserId}` : null)));
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
@@ -167,6 +177,14 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
   });
 
   const moveTask = (id: string, status: string) => {
+    // T-context: the action a target status requires only depends on that
+    // target (done -> complete, changes_requested -> review_decide, else
+    // move), same as the backend's own updateTaskStatus branching -- so a
+    // single check here covers every call site (drag, quick-add-into-column).
+    if (!canPerform(role, actionForStatus(status))) {
+      message.error(t('actionNotAllowed'));
+      return;
+    }
     if (status === 'changes_requested') {
       setPendingChangesRequestId(id);
       return;
@@ -234,6 +252,13 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
       return;
     }
     if (!REORDERABLE_STATUSES.has(status)) {
+      return;
+    }
+    // T-context: reordering within a column renumbers priority, gated the
+    // same as any other priority change (pm-only) -- a Developer/Tester can
+    // still drop a card back where it started, just can't reshuffle order.
+    if (!canPerform(role, 'reprioritize')) {
+      message.error(t('actionNotAllowed'));
       return;
     }
     const withoutDragged = byStatus(status).filter((candidate) => candidate.id !== draggedId);
@@ -355,6 +380,8 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                       draggedOver={dragOverTaskId === task.id}
                       editTitle={editTitle}
                       labelFor={labelFor}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
                       onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
@@ -378,6 +405,8 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                   draggedOver={dragOverTaskId === task.id}
                   editTitle={editTitle}
                   labelFor={labelFor}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                   onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverTaskId(task.id); }}
                   onDragLeave={() => setDragOverTaskId((current) => (current === task.id ? null : current))}
@@ -390,7 +419,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, onChange
                   onDeleted={onChanged}
                 />
               ))}
-            {status === 'changes_requested' ? null : addingStatus === status ? (
+            {status === 'changes_requested' || !canCreate ? null : addingStatus === status ? (
               <Input
                 size="small"
                 autoFocus

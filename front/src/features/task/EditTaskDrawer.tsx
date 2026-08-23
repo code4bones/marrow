@@ -4,8 +4,9 @@ import { Button, Drawer, Form, Input, Select, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UPDATE_TASK_DETAILS } from '../../shared/api/queries';
+import { canPerform } from '../../shared/lib/taskPermissions';
 import { priorityTierOf, priorityTierOptions, PRIORITY_TIER_VALUE, type PriorityTier } from '../../shared/lib/taskPriority';
-import type { Task } from '../../shared/model/types';
+import type { ProjectMemberRole, Task } from '../../shared/model/types';
 import { ImportTextFromFileButton } from '../../shared/ui/ImportTextFromFileButton';
 
 interface FormValues {
@@ -27,11 +28,12 @@ interface FormValues {
 // carries a stricter permission (reprioritize) than the rest of the form --
 // submitting it unchanged would risk failing the whole save for a developer
 // who only touched the other fields.
-export function EditTaskDrawer({ task }: { task: Task }) {
+export function EditTaskDrawer({ task, role }: { task: Task; role?: ProjectMemberRole | null }) {
   const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<FormValues>();
   const initialTier = priorityTierOf(task.priority);
+  const canReprioritize = canPerform(role, 'reprioritize');
 
   const [mutate, { loading }] = useMutation(UPDATE_TASK_DETAILS, {
     onCompleted: () => { message.success(t('taskUpdated')); setOpen(false); },
@@ -90,7 +92,7 @@ export function EditTaskDrawer({ task }: { task: Task }) {
             <Input />
           </Form.Item>
           <Form.Item name="priority" label={t('priority')}>
-            <Select options={priorityTierOptions(t)} />
+            <Select options={priorityTierOptions(t)} disabled={!canReprioritize} />
           </Form.Item>
           <Form.Item
             name="scope"

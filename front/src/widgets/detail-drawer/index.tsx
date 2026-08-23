@@ -22,8 +22,11 @@ import { DecisionAssigneeSelect } from '../../features/decision/DecisionAssignee
 import { DecisionStatusSelect } from '../../features/decision/DecisionStatusSelect';
 import { MemoryStatusSelect } from '../../features/memory/MemoryStatusSelect';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
+import { canPerform } from '../../shared/lib/taskPermissions';
+import { useMyProjectRole } from '../../shared/lib/useMyProjectRole';
 import { Markdown } from '../../shared/ui/Markdown';
 import { RecordLink } from '../../shared/ui/RecordLink';
+import { RoleBadge } from '../../shared/ui/RoleBadge';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
@@ -94,11 +97,13 @@ function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
   const { t } = useTranslation('common');
   const { labelFor } = useActorLabels([r.createdBy]);
   const closeDetailDrawer = useWorkspaceStore((s) => s.closeDetailDrawer);
+  const { role } = useMyProjectRole(projectId);
   return (
     <>
-      <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} /></Field>
-      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserId} /></Field>
-      <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} /></Field>
+      <div style={{ marginBottom: 14 }}><RoleBadge role={role} /></div>
+      <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} role={role} /></Field>
+      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserId} role={role} /></Field>
+      <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} role={role} /></Field>
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
       {r.acceptance && <Field label={t('acceptanceCriteria')}><Markdown>{r.acceptance}</Markdown></Field>}
@@ -114,9 +119,9 @@ function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <ClaimTaskButton taskId={r.id} />
         <AddTaskNoteButton taskId={r.id} />
-        <CompleteTaskButton taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
-        <EditTaskDrawer task={r} />
-        <DeleteTaskButton id={r.id} onDone={closeDetailDrawer} />
+        {canPerform(role, 'complete') && <CompleteTaskButton taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />}
+        {canPerform(role, 'edit_details') && <EditTaskDrawer task={r} role={role} />}
+        {canPerform(role, 'delete') && <DeleteTaskButton id={r.id} onDone={closeDetailDrawer} />}
       </div>
     </>
   );
