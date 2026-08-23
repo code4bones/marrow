@@ -25,6 +25,13 @@ export const listTasksSchema = z.object({
   project: z.string().nullable().optional(),
   status: taskStatusSchema.optional(),
   milestone: z.string().optional(),
+  // T-context (owner's ask, 2026-08-23): answers "do I have any tasks?" --
+  // "me" resolves to the caller's own identity (context.sessionUserId),
+  // same as any other agent connection authenticated as a real person
+  // (personal token, OAuth, or browser session). A member email/fragment
+  // also works, same resolution task.create's own assignee field already
+  // uses.
+  assignee: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional(),
   compact: z.boolean().optional()
 });

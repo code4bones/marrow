@@ -110,6 +110,36 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return taskOut(row);
   }
 
+  // T-context (owner's ask, 2026-08-23): "me" resolves to whoever this
+  // connection is actually authenticated as (context.sessionUserId) --
+  // works identically whether that's a browser session, a personal token,
+  // or an OAuth-connected agent (Claude/ChatGPT/Codex) acting on a real
+  // person's behalf. Anything else is resolved the same way task.create's
+  // own assignee field already resolves a member (email, username
+  // fragment, or raw id).
+  protected async resolveAssigneeFilter(projectId: string, assignee: string, context?: NormalizedGatewayRequestContext): Promise<string> {
+    if (assignee.trim().toLowerCase() === "me") {
+      const me = context?.sessionUserId;
+      if (!me) {
+        throw new AppError(
+          "VALIDATION_ERROR",
+          "assignee=\"me\" requires a real signed-in caller (a session, personal token, or OAuth-connected identity) -- an anonymous or static-token connection has no \"me\" to resolve.",
+          { assignee }
+        );
+      }
+      return me;
+    }
+    // resolveAssigneeUserId only ever returns null when its `input` param is
+    // literally null -- unreachable here since `assignee` is always a
+    // non-null string by this point (guaranteed by the input.assignee
+    // truthiness check at both call sites).
+    const resolved = await createAssigneesFacade(this.db).resolveAssigneeUserId(projectId, assignee, undefined);
+    if (!resolved) {
+      throw new AppError("NOT_FOUND", `No project member matches assignee "${assignee}".`, { assignee });
+    }
+    return resolved;
+  }
+
   protected async listTasks(input: Row, context?: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
     let query = this.taskSelectWithActiveClaimCount(this.db("tasks")).where("project_id", project.id);
@@ -118,6 +148,10 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     if (input.milestone) {
       query = query.andWhere("milestone", String(input.milestone));
+    }
+    if (input.assignee) {
+      const assigneeUserId = await this.resolveAssigneeFilter(project.id, String(input.assignee), context);
+      query = query.andWhere("assignee_user_id", assigneeUserId);
     }
     const tasks = (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
     return input.compact === true ? tasks.map(compactTask) : tasks;
@@ -131,6 +165,10 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     if (input.milestone) {
       base.andWhere("milestone", String(input.milestone));
+    }
+    if (input.assignee) {
+      const assigneeUserId = await this.resolveAssigneeFilter(project.id, String(input.assignee), context);
+      base.andWhere("assignee_user_id", assigneeUserId);
     }
     // T-MEMORY-051 follow-up: server-driven sort (default updated_at desc).
     // Trailing `id` tiebreaker keeps offset pagination stable when many rows

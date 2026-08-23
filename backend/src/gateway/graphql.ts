@@ -125,7 +125,7 @@ const typeDefs = `#graphql
       pagination: PaginationInput
     ): PaginatedMemoryRecords!
 
-    tasks(project: String!, status: String, milestone: String, limit: Int): [Task!]!
+    tasks(project: String!, status: String, milestone: String, assignee: String, limit: Int): [Task!]!
     # T-MEMORY-051 follow-up: server-driven sort for the Tasks list.
     # sortField/sortDirection default to updated_at desc; GraphQL enums (not
     # free-text) make invalid values impossible -- the schema rejects them
@@ -134,6 +134,7 @@ const typeDefs = `#graphql
       project: String!
       status: String
       milestone: String
+      assignee: String
       sortField: TaskSortField = UPDATED_AT
       sortDirection: SortDirection = DESC
       pagination: PaginationInput

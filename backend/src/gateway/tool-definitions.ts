@@ -1149,7 +1149,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.list",
-    description: "List shared tasks for a project. Use compact=true for low-token task selection before task.get/preflight.",
+    description: "List shared tasks for a project. Use compact=true for low-token task selection before task.get/preflight. Pass assignee=\"me\" to answer \"do I have any tasks?\" -- resolves to whichever real person this connection is authenticated as; a member's email or a distinguishing fragment of it also works, same resolution task.create's own assignee field uses.",
     schema: listTasksSchema
   },
   {
