@@ -3,7 +3,7 @@ import {
 } from '@ant-design/icons';
 import { Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, UIEvent as ReactUIEvent } from 'react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TONE_META } from '../../features/remark/tone';
 import { TASK_STATUS_COLOR } from '../../features/task/taskStatusColor';
@@ -126,6 +126,26 @@ const TASK_MARKER_COLOR = '#177ddc';
 
 const COLUMN_CARD_W = 240;
 const COLUMN_OUTER_W = 278;
+
+// T-context (2026-08-26, owner's ask: mobile PWA layout follow-up --
+// "не растянул карточки под экран мобилки... Tasks (и другие домены) -
+// уже должны занимать весь экран, а не столбец"): the fixed 240/278px
+// column width is right for desktop's side-by-side Miller columns, but on
+// mobile there's only ever one column on screen (T-MEMORY-131) and it
+// should fill the viewport. Threaded via context rather than a new prop on
+// every one of the ~10 call sites below (TreeBranch, GapRow,
+// TaskMarkerRow, StickyDayLabel/StickyGroupLabel, BaselineColumn,
+// DrillColumn) -- the default value here is exactly the old desktop
+// constants, so anything that doesn't consume the context (there is
+// nothing left that doesn't) would be unaffected anyway.
+const ColumnWidthContext = createContext<{ cardWidth: number | string; outerWidth: number | string; isMobile: boolean }>({
+  cardWidth: COLUMN_CARD_W,
+  outerWidth: COLUMN_OUTER_W,
+  isMobile: false,
+});
+function useColumnWidth() {
+  return useContext(ColumnWidthContext);
+}
 
 // Branch-line geometry for a drill column's link list — a persistent trunk
 // down the gutter with a stub connecting to each card, not a flat row of
@@ -300,8 +320,9 @@ function DetailsTrigger({ onClick }: { onClick: () => void }) {
 // a direction arrow at the junction -- owner: neither helped read the
 // structure, just noise -- so this is purely the line + stub + card now.
 function TreeBranch({ isLast, children }: { isLast: boolean; children: ReactNode }) {
+  const { cardWidth } = useColumnWidth();
   return (
-    <div style={{ display: 'flex', width: COLUMN_CARD_W, marginBottom: 10 }}>
+    <div style={{ display: 'flex', width: cardWidth, marginBottom: 10 }}>
       <div style={{ width: GUTTER_W, position: 'relative', flexShrink: 0, alignSelf: 'stretch' }}>
         {/* Same marginBottom: 10 gap as the root-card bridge above -- this
             row's own gutter only stretches to match its own content height
@@ -541,10 +562,11 @@ function UnresolvedEntryRow({ id }: { id: string }) {
 function TaskMarkerRow({ marker }: { marker: TaskMarker }) {
   const { t } = useTranslation('decisions');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
+  const { cardWidth } = useColumnWidth();
   const Icon = marker.kind === 'done' ? CheckCircleOutlined : PlusCircleOutlined;
   const label = marker.kind === 'done' ? t('completed') : t('createdLabel');
   return (
-    <div style={{ width: COLUMN_CARD_W, marginBottom: 10 }}>
+    <div style={{ width: cardWidth, marginBottom: 10 }}>
       <div
         onClick={() => setSelectedRecord(marker.taskId, 'task')}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', border: `1px dashed ${TASK_MARKER_COLOR}66`, borderRadius: 14, cursor: 'pointer' }}
@@ -562,8 +584,9 @@ function TaskMarkerRow({ marker }: { marker: TaskMarker }) {
 // Big time gap between consecutive entries — the vertical-axis analog of
 // the old "⋯Nd⋯" horizontal compression break.
 function GapRow({ label }: { label: string }) {
+  const { cardWidth } = useColumnWidth();
   return (
-    <div style={{ width: COLUMN_CARD_W, marginBottom: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+    <div style={{ width: cardWidth, marginBottom: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
       <div style={{ width: 1, height: 14, borderLeft: '1px dashed #595959' }} />
       <Typography.Text type="secondary" style={{ fontSize: 10, fontStyle: 'italic' }}>{label}</Typography.Text>
       <div style={{ width: 1, height: 14, borderLeft: '1px dashed #595959' }} />
@@ -728,8 +751,9 @@ const STICKY_DAY_STYLE: CSSProperties = {
 };
 
 function StickyDayLabel({ iso }: { iso: string }) {
+  const { cardWidth } = useColumnWidth();
   return (
-    <div style={STICKY_DAY_STYLE}>
+    <div style={{ ...STICKY_DAY_STYLE, width: cardWidth }}>
       <Typography.Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.4 }}>
         {formatDayLabel(iso)}
       </Typography.Text>
@@ -740,8 +764,9 @@ function StickyDayLabel({ iso }: { iso: string }) {
 // Same sticky treatment as StickyDayLabel, generalized to arbitrary text —
 // the milestone-group baseline uses this in place of day headers ("[milestone]: N tasks").
 function StickyGroupLabel({ text }: { text: string }) {
+  const { cardWidth } = useColumnWidth();
   return (
-    <div style={STICKY_DAY_STYLE}>
+    <div style={{ ...STICKY_DAY_STYLE, width: cardWidth }}>
       <Typography.Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.4 }} ellipsis={{ tooltip: text }}>
         {text}
       </Typography.Text>
@@ -846,9 +871,10 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
 } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
   const { satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, milestoneGroups, labelFor } = common;
+  const { cardWidth, outerWidth, isMobile } = useColumnWidth();
 
   return (
-    <div style={COLUMN_OUTER_STYLE}>
+    <div style={{ ...COLUMN_OUTER_STYLE, width: outerWidth, borderRight: isMobile ? 'none' : COLUMN_OUTER_STYLE.borderRight }}>
       <div style={COLUMN_TITLE_STYLE}>
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
           {rootKindLabel(t, rootKind)}
@@ -866,7 +892,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
             const label = milestoneGroupLabel(t, rootKind, group.milestone, group.nodes.length);
             const lastIdx = group.nodes.length - 1;
             return (
-              <div key={group.milestone ?? '__no_milestone__'} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
+              <div key={group.milestone ?? '__no_milestone__'} style={{ display: 'flex', flexDirection: 'column', width: cardWidth }}>
                 <StickyGroupLabel text={label} />
                 {group.nodes.map((node, i) => (
                   <TreeBranch key={node.id} isLast={i === lastIdx}>
@@ -903,7 +929,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
                 />
               );
             return (
-              <div key={rowKey} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
+              <div key={rowKey} style={{ display: 'flex', flexDirection: 'column', width: cardWidth }}>
                 {row.headerIso && <StickyDayLabel iso={row.headerIso} />}
                 {body}
               </div>
@@ -921,7 +947,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
-  const isMobile = useIsMobile();
+  const { cardWidth, outerWidth, isMobile } = useColumnWidth();
   const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode, labelFor } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
@@ -952,7 +978,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
 
   if (!rootNode) {
     return (
-      <div style={COLUMN_OUTER_STYLE}>
+      <div style={{ ...COLUMN_OUTER_STYLE, width: outerWidth, borderRight: isMobile ? 'none' : COLUMN_OUTER_STYLE.borderRight }}>
         <div style={COLUMN_TITLE_STYLE}>
           <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
             {t('loadingEllipsis')}
@@ -967,7 +993,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
   const activeChildId = chain[level + 1];
 
   return (
-    <div style={COLUMN_OUTER_STYLE}>
+    <div style={{ ...COLUMN_OUTER_STYLE, width: outerWidth, borderRight: isMobile ? 'none' : COLUMN_OUTER_STYLE.borderRight }}>
       <div style={{ ...COLUMN_TITLE_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 600, flex: 1, minWidth: 0 }} ellipsis={{ tooltip: t('linksOf', { id: rootId }) }}>
           {t('linksOf', { id: rootId })}
@@ -989,7 +1015,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         </Tooltip>
       </div>
       <div style={COLUMN_SCROLL_STYLE}>
-        <div style={{ width: COLUMN_CARD_W }}>
+        <div style={{ width: cardWidth }}>
           <RecordCard
             node={rootNode}
             satellites={satellitesByRecord.get(rootId) ?? EMPTY_SATELLITES}
@@ -1013,7 +1039,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
             card's real bottom edge, and its height (10 + the original
             13px gap = 23) is the entire distance from there to where
             TreeBranch's own trunk begins drawing. */}
-        <div style={{ width: COLUMN_CARD_W, position: 'relative', height: 23, marginTop: -10 }}>
+        <div style={{ width: cardWidth, position: 'relative', height: 23, marginTop: -10 }}>
           {rows.length > 0 && (
             <div style={{ position: 'absolute', left: GUTTER_W / 2, top: 0, bottom: 0, width: 1, background: TRUNK_COLOR }} />
           )}
@@ -1052,7 +1078,7 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
               : <UnresolvedEntryRow id={row.id} />;
 
             return (
-              <div key={row.link.id} style={{ display: 'flex', flexDirection: 'column', width: COLUMN_CARD_W }}>
+              <div key={row.link.id} style={{ display: 'flex', flexDirection: 'column', width: cardWidth }}>
                 {header}
                 <TreeBranch isLast={isLast}>
                   {inner}
@@ -1459,7 +1485,17 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     />
   );
 
+  // T-MEMORY-131 follow-up (owner: "не растянул карточки под экран
+  // мобилки... Tasks (и другие домены) - уже должны занимать весь экран, а
+  // не столбец"): the fixed desktop column width only makes sense with
+  // several columns side by side -- mobile has exactly one, so it should
+  // fill the viewport instead of hugging the left edge.
+  const columnWidth = isMobile
+    ? { cardWidth: '100%' as const, outerWidth: '100%' as const, isMobile: true }
+    : { cardWidth: COLUMN_CARD_W, outerWidth: COLUMN_OUTER_W, isMobile: false };
+
   return (
+    <ColumnWidthContext.Provider value={columnWidth}>
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
       {isMobile ? (
         // T-MEMORY-131: exactly one Miller-column visible at a time --
@@ -1573,5 +1609,6 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
         )}
       </div>
     </div>
+    </ColumnWidthContext.Provider>
   );
 }
