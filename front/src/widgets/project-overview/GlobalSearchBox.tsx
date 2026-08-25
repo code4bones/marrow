@@ -39,6 +39,11 @@ function ResultRow({ result, kindLabel, onSelect }: { result: GlobalSearchResult
         <Tag style={{ margin: 0, fontSize: 10, borderColor: KIND_COLOR[result.kind], color: KIND_COLOR[result.kind], background: 'transparent' }}>
           {kindLabel}
         </Tag>
+        <Typography.Text
+          style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#8c8c8c', flexShrink: 0 }}
+        >
+          {result.id}
+        </Typography.Text>
         <Typography.Text style={{ fontSize: 13, flex: 1 }} ellipsis>
           {result.title}
         </Typography.Text>
@@ -80,7 +85,7 @@ export function GlobalSearchBox({ slug }: { slug: string }) {
       open={open}
       placement="bottom"
       trigger={[]}
-      styles={{ content: { padding: 6, width: 380 } }}
+      styles={{ content: { padding: 6, width: 420 } }}
       content={
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           <style>{'.global-search-row:hover { background: rgba(255, 255, 255, 0.06); }'}</style>
@@ -100,11 +105,11 @@ export function GlobalSearchBox({ slug }: { slug: string }) {
                 key={r.id}
                 result={r}
                 kindLabel={kindLabel[r.kind]}
-                onSelect={(id) => {
-                  setSelectedRecord(id, getEntityType(id));
-                  setQuery('');
-                  setFocused(false);
-                }}
+                // T-context (owner's ask): opening a result must NOT clear
+                // the search -- closing the DetailDrawer should land the
+                // user back on the same results, not an empty box, so they
+                // can pick another match without retyping.
+                onSelect={(id) => setSelectedRecord(id, getEntityType(id))}
               />
             ))}
         </div>
