@@ -174,7 +174,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
         hasFilter = true;
         query = query
           .select(this.db.raw(`${prefixRankSql("artifacts")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
-          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+          .where((builder) => builder.whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]).orWhereRaw("id ilike ?", [`%${queryText}%`]));
       }
     } else if (queryText) {
       hasFilter = true;

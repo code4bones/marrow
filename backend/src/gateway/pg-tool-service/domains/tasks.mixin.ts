@@ -173,7 +173,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         hasFilter = true;
         query = query
           .select(this.db.raw(`${prefixRankSql("tasks")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
-          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+          // T-context (2026-08-25, live-caught): searching "070" for
+          // T-MEMORY-070 found nothing -- FTS only ever looked at content
+          // columns (title/scope/...), never the record's own visible id.
+          // OR in a plain substring match against id alongside the FTS
+          // match so typing part of an id (with or without its T-/D-/I-/A-
+          // prefix or project key) jumps straight to it too.
+          .where((builder) => builder.whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]).orWhereRaw("id ilike ?", [`%${queryText}%`]));
       }
     } else if (queryText) {
       hasFilter = true;

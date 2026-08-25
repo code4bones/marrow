@@ -298,7 +298,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         hasFilter = true;
         query = query
           .select(this.db.raw(`${prefixRankSql("items")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
-          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+          .where((builder) => builder.whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]).orWhereRaw("id ilike ?", [`%${queryText}%`]));
       }
     } else if (queryText) {
       hasFilter = true;
