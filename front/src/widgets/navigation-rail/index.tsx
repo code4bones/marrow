@@ -81,7 +81,7 @@ function buildProjectSections(t: (key: string) => string, counts?: ProjectCounts
     { key: 'overview',   icon: <HomeOutlined />,        label: t('overview') },
     { key: 'tasks',      icon: <AuditOutlined />,       label: sectionLabel(t('tasks'), counts?.tasks) },
     { key: 'decisions',  icon: <PartitionOutlined />,   label: sectionLabel(t('decisions'), counts?.decisions) },
-    { key: 'faults',     icon: <BugOutlined />,         label: t('faults') },
+    { key: 'faults',     icon: <BugOutlined />,         label: sectionLabel(t('faults'), counts?.faults) },
     { key: 'artifacts',  icon: <DatabaseOutlined />,    label: sectionLabel(t('artifacts'), counts?.artifacts) },
     { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel(t('events'), counts?.events) },
     { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel(t('memory'), counts?.items) },

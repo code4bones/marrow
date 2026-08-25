@@ -142,14 +142,17 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
   }
 
   protected async projectSummaryCounts(projectId: string) {
-    const [tasks, openTasks, items, decisions, links, artifacts, events] = await Promise.all([
+    const [tasks, openTasks, items, decisions, links, artifacts, events, faults] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
       this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked", "review"])),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
       this.countQueryRows(this.db("decisions").where("project_id", projectId)),
       this.countQueryRows(this.db("links").where("project_id", projectId)),
       this.countQueryRows(this.db("artifacts").where("project_id", projectId)),
-      this.countQueryRows(this.db("events").where("project_id", projectId))
+      this.countQueryRows(this.db("events").where("project_id", projectId)),
+      // T-context (2026-08-25): the frontend's "Faults" stat/nav badge was a
+      // hardcoded 0 -- this count backs both now that a real number exists.
+      this.countQueryRows(this.db("items").where({ project_id: projectId, type: "failed_attempt", status: "current" }))
     ]);
     return {
       tasks,
@@ -158,7 +161,8 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       decisions,
       links,
       artifacts,
-      events
+      events,
+      faults
     };
   }
 

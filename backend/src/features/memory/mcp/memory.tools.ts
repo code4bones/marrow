@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as z from "zod/v4";
 import { fail, ok, asMcpResult } from "../../../shared/mcp/tool-response.js";
 import {
   createMemorySchema,
@@ -44,16 +45,24 @@ export function registerMemoryTools(server: McpServer, memory: MemoryService): v
     }
   );
 
+  // T-context (2026-08-25): the gateway/Postgres path relaxed
+  // searchMemorySchema's query to optional (browse-by-type when omitted),
+  // but this local SQLite service's FTS5 index has no such browse mode --
+  // buildFtsQuery requires at least one real token. Re-tighten just for this
+  // local tool rather than changing the shared schema's strictness for the
+  // gateway.
+  const localSearchMemorySchema = searchMemorySchema.extend({ query: z.string().min(1) });
+
   server.registerTool(
     "memory.search",
     {
       description:
         "Search typed memory items with FTS5. Default workflow is current project plus common knowledge. Use before planning or editing when you need relevant rules, notes, failed attempts, patterns, or project facts.",
-      inputSchema: searchMemorySchema.shape
+      inputSchema: localSearchMemorySchema.shape
     },
     async (input) => {
       try {
-        const results = memory.search(searchMemorySchema.parse(input));
+        const results = memory.search(localSearchMemorySchema.parse(input));
         return asMcpResult(ok(`${results.length} memory result(s) found.`, { results }));
       } catch (error) {
         return asMcpResult(fail(error));

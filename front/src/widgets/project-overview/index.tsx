@@ -336,18 +336,16 @@ export function ProjectOverview({ slug }: { slug: string }) {
               />
             </ClickableStat>
           </Col>
-          {counts.openTasks > 0 && (
-            <Col>
-              <ClickableStat to={`/projects/${slug}/faults`}>
-                <Statistic
-                  title={t('faults')}
-                  value={0}
-                  prefix={<BugOutlined />}
-                  valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
-                />
-              </ClickableStat>
-            </Col>
-          )}
+          <Col>
+            <ClickableStat to={`/projects/${slug}/faults`}>
+              <Statistic
+                title={t('faults')}
+                value={counts.faults}
+                prefix={<BugOutlined />}
+                valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
+              />
+            </ClickableStat>
+          </Col>
         </Row>
       </div>
 

@@ -40,7 +40,7 @@ export const GET_PROJECT_SUMMARY = gql`
   query GetProjectSummary($project: String!) {
     projectSummary(project: $project) {
       summary
-      counts { tasks openTasks items decisions artifacts events links }
+      counts { tasks openTasks items decisions artifacts events links faults }
       project { id slug title description status rootPath updatedAt }
       openTasks { id title status priority milestone updatedAt }
       decisions { id title status tags updatedAt }

@@ -135,7 +135,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       related_id: item.id
     }, context);
     const link = input.relatedId
-      ? await this.createWarnsAgainstLink(item.id, String(input.relatedId), item.projectId, context)
+      ? await this.createRecordLink(item.id, String(input.relatedId), "warns_against", item.projectId, context)
       : null;
 
     // D-MEMORY-037 / T-MEMORY-070: only a genuinely NEW failed attempt is a
@@ -167,15 +167,20 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     };
   }
 
-  protected async createWarnsAgainstLink(
+  // Generalized from what was createWarnsAgainstLink (originally only
+  // failed_attempt.record's "this warns against that" case) -- archiveMemory
+  // now reuses it for "resolved_by" so a fixed fault points at what fixed it
+  // instead of becoming a dead end.
+  protected async createRecordLink(
     fromId: string,
     toId: string,
+    relation: string,
     projectId: string | null,
     context: NormalizedGatewayRequestContext
   ) {
     await this.assertRecordExists(toId);
     const existing = await this.db("links")
-      .where({ from_id: fromId, to_id: toId, relation: "warns_against" })
+      .where({ from_id: fromId, to_id: toId, relation })
       .first();
     if (existing) {
       return linkOut(existing);
@@ -186,7 +191,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       project_id: projectId,
       from_id: fromId,
       to_id: toId,
-      relation: "warns_against",
+      relation,
       created_by: context.clientId,
       source_instance_id: context.clientId,
       created_at: nowIso()
@@ -194,7 +199,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     await this.db("links").insert(row);
     await this.recordEventForProject(projectId, {
       type: "link.created",
-      title: `Link created: ${fromId} warns_against ${toId}`,
+      title: `Link created: ${fromId} ${relation} ${toId}`,
       related_id: row.id
     }, context);
     return linkOut(row);
@@ -213,7 +218,16 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     if (row.project_id) {
       await this.assertProjectMember(String(row.project_id), context);
     }
-    return itemOut(row);
+    // T-context (2026-08-25): a fault otherwise reads as a dead end -- what
+    // actually fixed it is a link (relation "resolved_by", created via
+    // archiveMemory's resolvedBy input), but links are a wholly separate
+    // table nothing else in memory.get joins against. Surface it here so an
+    // agent reading a fault can see what resolved it without a second call.
+    const resolvedBy =
+      String(row.type) === "failed_attempt"
+        ? (await this.db("links").where({ from_id: id, relation: "resolved_by" }).orderBy("created_at", "desc")).map(linkOut)
+        : undefined;
+    return { ...itemOut(row), ...(resolvedBy && resolvedBy.length > 0 ? { resolvedBy } : {}) };
   }
 
   protected async memoryItemsPage(input: Row, context?: NormalizedGatewayRequestContext) {
@@ -438,10 +452,20 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       }
     }
 
+    // T-context (2026-08-25): "линковать к ним решения/попытки, которые
+    // привели к удаче" -- without this, an archived fault has no trace of
+    // what actually fixed it. Only meaningful for failed_attempt; silently
+    // ignored (not an error) for any other record type someone archives.
+    let resolvedByLink: unknown;
+    if (String(current.type) === "failed_attempt" && typeof input.resolvedBy === "string" && input.resolvedBy.trim()) {
+      resolvedByLink = await this.createRecordLink(row.id, input.resolvedBy.trim(), "resolved_by", stringOrNull(row.project_id), context);
+    }
+
     return {
       action: "archived",
       memory: itemOut(row),
       event,
+      ...(resolvedByLink ? { resolvedByLink } : {}),
       ...(creditWarning ? { warning: creditWarning } : {})
     };
   }

@@ -33,6 +33,7 @@ export interface ProjectCounts {
   artifacts: number;
   events: number;
   links: number;
+  faults: number;
 }
 
 export interface Task {

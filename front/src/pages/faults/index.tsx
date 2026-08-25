@@ -39,11 +39,11 @@ function buildColumns(t: (key: string) => string, labelFor: (id: string | null |
 export function FaultsPage() {
   const { t } = useTranslation('faults');
   const { slug } = useParams<{ slug: string }>();
-  const [search, setSearch] = useState('fault');
+  const [search, setSearch] = useState('');
   const { page, pageSize, offset, onChange } = usePage();
 
   const { data, loading, error } = useQuery<{ memorySearchPage: Paginated<MemoryRecord> }>(GET_FAULTS_PAGE, {
-    variables: { project: slug, query: search || 'fault', limit: pageSize, offset },
+    variables: { project: slug, query: search, limit: pageSize, offset },
   });
 
   const pageInfo = data?.memorySearchPage.pageInfo;
@@ -62,7 +62,6 @@ export function FaultsPage() {
           style={{ width: 220 }}
           size="small"
           allowClear
-          onClear={() => setSearch('fault')}
         />
       }
     >

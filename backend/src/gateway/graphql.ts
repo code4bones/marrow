@@ -111,7 +111,7 @@ const typeDefs = `#graphql
     memory(id: ID!): MemoryRecord!
     memorySearch(
       project: String
-      query: String!
+      query: String
       includeCommon: Boolean
       type: String
       status: String
@@ -119,7 +119,7 @@ const typeDefs = `#graphql
     ): [MemoryRecord!]!
     memorySearchPage(
       project: String
-      query: String!
+      query: String
       includeCommon: Boolean
       type: String
       status: String
@@ -269,7 +269,7 @@ const typeDefs = `#graphql
 
     createMemory(input: CreateMemoryInput!): MemoryRecord!
     updateMemory(input: UpdateMemoryInput!): MemoryRecord!
-    archiveMemory(id: ID!, reason: String): ArchiveMemoryResult!
+    archiveMemory(id: ID!, reason: String, resolvedBy: String): ArchiveMemoryResult!
     deleteMemory(id: ID!, reason: String): DeleteMemoryResult!
 
     createTask(input: CreateTaskInput!): Task!
@@ -609,6 +609,7 @@ const typeDefs = `#graphql
     links: Int!
     artifacts: Int!
     events: Int!
+    faults: Int!
   }
 
   type GraphNode {

@@ -222,7 +222,13 @@ const idReasonSchema = z.object({
   id: z.string().min(1),
   reason: z.string().optional()
 });
-const memoryArchiveSchema = idReasonSchema;
+// T-context (2026-08-25): resolvedBy links this fault (relation
+// "resolved_by") to the decision/task/note that actually fixed it, at the
+// exact moment it's archived -- otherwise a fixed fault is a dead end with
+// no trace of what the fix was. Ignored for any other record type.
+const memoryArchiveSchema = idReasonSchema.extend({
+  resolvedBy: z.string().min(1).optional()
+});
 const memoryDeleteSchema = idReasonSchema;
 const decisionArchiveSchema = idReasonSchema;
 const decisionDeleteSchema = idReasonSchema;
@@ -1040,7 +1046,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "memory.search",
-    description: "Search shared memory using PostgreSQL full-text search across project and common records.",
+    description: "Search shared memory using PostgreSQL full-text search across project and common records. Omit query to browse by type/status only, most-recent-first.",
     schema: searchMemorySchema
   },
   {
@@ -1051,7 +1057,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "memory.archive",
-    description: "Archive a shared memory item without deleting it. Prefer this before hard delete for durable project knowledge.",
+    description: "Archive a shared memory item without deleting it. Prefer this before hard delete for durable project knowledge. Archiving a failed_attempt fault: pass resolvedBy (the id of the decision/task/note that actually fixed it) to link the fault to its resolution instead of leaving it a dead end.",
     schema: memoryArchiveSchema,
     outputSchema: output(archiveRecordSchema.extend({ memory: looseRecordSchema })),
     access: "write"

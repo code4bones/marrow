@@ -40,7 +40,16 @@ export const getMemorySchema = z.object({
 });
 
 export const searchMemorySchema = z.object({
-  query: z.string().min(1),
+  // T-context (2026-08-25): was z.string().min(1) -- the handler
+  // (memory.mixin.ts searchMemory) already treated a missing/blank query as
+  // "browse by type/status, most-recent-first" rather than a hard error
+  // (project.summary's own knownFaults call relies on exactly that), but the
+  // public schema didn't allow the empty case, so a type-only browse (e.g.
+  // the Faults page listing failed_attempt records with no search term) had
+  // to fake a query string, which then silently hid any real record whose
+  // text didn't happen to match it. Optional now to match what the handler
+  // already does.
+  query: z.string().optional(),
   project: z.string().nullable().optional(),
   includeCommon: z.boolean().optional(),
   type: z.string().optional(),
