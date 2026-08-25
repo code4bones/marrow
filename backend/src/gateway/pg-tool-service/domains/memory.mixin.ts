@@ -324,8 +324,18 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       throw new AppError("CURRENT_PROJECT_NOT_SET", "Search requires a project or includeCommon=true.");
     }
 
-    const queryText = String(input.query);
-    const base = this.db("items").whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
+    // T-context (2026-08-25): was `String(input.query)` unconditionally fed
+    // into plainto_tsquery, which for an empty string produces an EMPTY
+    // tsquery -- `search_vector @@ <empty tsquery>` matches ZERO rows in
+    // Postgres, not "everything". That silently broke the Faults page's new
+    // browse-by-type-only mode (empty search box) the moment searchMemory's
+    // sibling optional-query handling was relied on here too -- this method
+    // never had it. Mirrors searchMemory's own queryText-truthy branching.
+    const queryText = typeof input.query === "string" && input.query.trim() ? input.query : null;
+    const base = this.db("items");
+    if (queryText) {
+      base.whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
+    }
     base.andWhere((builder) => {
       if (project) {
         builder.orWhere("project_id", project.id);
@@ -344,25 +354,21 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     return this.pageRows(
       base,
       input,
-      (query) =>
-        query
-          .select(
-            "id",
-            "project_id",
-            "type",
-            "title",
-            "body",
-            "status",
-            "tags",
-            "summary",
-            "created_by",
-            "created_at",
-            "updated_at",
-            this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]),
-            this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText])
-          )
-          .orderByRaw("case when project_id is null then 1 else 0 end asc")
-          .orderBy("rank", "desc"),
+      (query) => {
+        query.select("id", "project_id", "type", "title", "body", "status", "tags", "summary", "created_by", "created_at", "updated_at");
+        if (queryText) {
+          query
+            .select(
+              this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]),
+              this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText])
+            )
+            .orderByRaw("case when project_id is null then 1 else 0 end asc")
+            .orderBy("rank", "desc");
+        } else {
+          query.orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("created_at", "desc");
+        }
+        return query;
+      },
       searchOut
     );
   }
