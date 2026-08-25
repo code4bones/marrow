@@ -5,6 +5,7 @@ import { getEntityType } from '../shared/lib/entityId';
 import { useWorkspaceStore } from '../shared/model/workspace.store';
 import { DetailDrawer } from '../widgets/detail-drawer';
 import { NavigationRail } from '../widgets/navigation-rail';
+import { UpdateAnnouncementModal } from '../widgets/update-announcement';
 
 const { Sider, Content } = Layout;
 
@@ -47,6 +48,7 @@ export function AppShell() {
         </Content>
       </Layout>
       <DetailDrawer />
+      <UpdateAnnouncementModal />
     </Layout>
   );
 }

@@ -106,10 +106,14 @@ function getSelectedKey(pathname: string): string {
   return segs[0] ?? '';
 }
 
-function buildAccountMenuItems(t: (key: string) => string, isAdmin: boolean, pendingApprovals: number): MenuProps['items'] {
+function buildAccountMenuItems(t: (key: string) => string, isAdmin: boolean, pendingApprovals: number, unreadCount: number): MenuProps['items'] {
   return [
     { key: 'profile', icon: <UserOutlined />, label: t('profile') },
-    { key: 'notifications', icon: <BellOutlined />, label: t('notifications') },
+    // T-context (owner's ask): the avatar badge is unreadCount + pendingApprovals
+    // combined with no breakdown -- "50, а 50 чего?". Approvals already had its
+    // own count here; Notifications didn't, so there was no way to tell the two
+    // apart without opening each page. Both menu items now show their own share.
+    { key: 'notifications', icon: <BellOutlined />, label: sectionLabel(t('notifications'), unreadCount) },
     ...(isAdmin ? [{ key: 'approvals', icon: <UserAddOutlined />, label: sectionLabel(t('approvals'), pendingApprovals) }] : []),
     ...(isAdmin ? [{ key: 'users', icon: <TeamOutlined />, label: t('users') }] : []),
     { type: 'divider' as const },
@@ -300,7 +304,7 @@ export function NavigationRail() {
         <Dropdown
           trigger={['click']}
           placement="top"
-          menu={{ items: buildAccountMenuItems(t, isAdmin, pendingApprovals), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
+          menu={{ items: buildAccountMenuItems(t, isAdmin, pendingApprovals, unreadCount), onClick: handleAccountMenuClick, selectedKeys: [selectedKey] }}
         >
           <div
             style={{
@@ -313,9 +317,11 @@ export function NavigationRail() {
               background: ['profile', 'notifications', 'approvals', 'users'].includes(selectedKey) ? 'rgba(255,255,255,0.08)' : 'transparent',
             }}
           >
-            <Badge count={unreadCount + pendingApprovals} size="small" overflowCount={99}>
-              <Avatar size={24} icon={<UserOutlined />} />
-            </Badge>
+            <Tooltip title={t('accountBadgeHint', { unread: unreadCount, approvals: pendingApprovals })}>
+              <Badge count={unreadCount + pendingApprovals} size="small" overflowCount={99}>
+                <Avatar size={24} icon={<UserOutlined />} />
+              </Badge>
+            </Tooltip>
             <Typography.Text
               style={{
                 flex: 1,
