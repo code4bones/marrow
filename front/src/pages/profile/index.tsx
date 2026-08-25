@@ -42,6 +42,13 @@ import {
 } from '../../shared/model/auth.store';
 import { useTelegramBotUsername } from '../../shared/lib/useTelegramBotUsername';
 import {
+  disableDesktopNotifications,
+  enableDesktopNotifications,
+  getDesktopNotificationsEnabled,
+  getDesktopNotificationsPermission,
+  isDesktopNotificationsSupported,
+} from '../../shared/lib/desktopNotifications';
+import {
   CREATE_GIT_CREDENTIAL,
   DELETE_GIT_CREDENTIAL,
   GET_CREDIT_SETTINGS,
@@ -878,6 +885,55 @@ function TelegramSection() {
   );
 }
 
+// T-context (2026-08-25, owner's ask: "пуш уведомления в браузере, не
+// APN/GCM а человеческие"): plain Web Notification API toggle, no push
+// subscription infra -- fires only while a Marrow tab is open, same trigger
+// scope as TelegramSection above (events targeting the current user).
+function DesktopNotificationsSection() {
+  const { t } = useTranslation('profile');
+  const supported = isDesktopNotificationsSupported();
+  const [permission, setPermission] = useState(getDesktopNotificationsPermission());
+  const [enabled, setEnabled] = useState(getDesktopNotificationsEnabled());
+
+  if (!supported) {
+    return (
+      <Card title={t('desktopNotifications')} size="small" style={{ marginBottom: 16 }}>
+        <Text type="secondary">{t('desktopNotificationsUnsupported')}</Text>
+      </Card>
+    );
+  }
+
+  const toggle = async (checked: boolean) => {
+    if (!checked) {
+      disableDesktopNotifications();
+      setEnabled(false);
+      return;
+    }
+    const result = await enableDesktopNotifications();
+    setPermission(result);
+    if (result === 'granted') {
+      setEnabled(true);
+      new Notification(t('desktopNotificationsTestTitle'), { body: t('desktopNotificationsTestBody') });
+    } else {
+      setEnabled(false);
+      if (result === 'denied') {
+        message.error(t('desktopNotificationsDenied'));
+      }
+    }
+  };
+
+  return (
+    <Card title={t('desktopNotifications')} size="small" style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Switch checked={enabled} onChange={(checked) => void toggle(checked)} disabled={permission === 'denied'} />
+        <Text type="secondary" style={{ fontSize: 12.5 }}>
+          {permission === 'denied' ? t('desktopNotificationsBlockedHint') : t('desktopNotificationsHint')}
+        </Text>
+      </div>
+    </Card>
+  );
+}
+
 function TwoFactorSection() {
   const { t } = useTranslation('profile');
   const user = useAuthStore((s) => s.user);
@@ -1198,7 +1254,7 @@ export function ProfilePage() {
   const isAdmin = user?.role === 'admin';
   const sections = [
     { key: 'connect', label: t('connect'), children: <ConnectSection /> },
-    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><LanguageSection /></> },
+    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><DesktopNotificationsSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),

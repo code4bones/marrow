@@ -1,5 +1,6 @@
 import { useSubscription } from '@apollo/client/react';
 import { ON_GATEWAY_EVENT } from '../../shared/api/queries';
+import { notifyIfTargeted } from '../../shared/lib/desktopNotifications';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 
@@ -26,6 +27,7 @@ export function RealtimeProvider() {
       const event = data.data?.gatewayEvents;
       if (event) {
         useRealtimeStore.getState().handleGatewayEvent(event.event, event.payload);
+        notifyIfTargeted(event.payload, useAuthStore.getState().user?.id);
       }
     },
   });
