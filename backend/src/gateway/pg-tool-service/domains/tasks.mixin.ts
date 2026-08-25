@@ -3,7 +3,7 @@ import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
-import { jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
+import { combinedRankSql, jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
   appendText,
@@ -16,6 +16,7 @@ import {
   taskNoteDefaultRelation,
   taskNoteTypeTitle,
   taskOut,
+  taskSearchOut,
   taskSortColumn,
   taskSortDirection
 } from "../formatters/tasks.js";
@@ -155,6 +156,25 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     const tasks = (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
     return input.compact === true ? tasks.map(compactTask) : tasks;
+  }
+
+  // T-context (2026-08-25, global quick-search): tasks had no free-text
+  // search before migration 079 added search_vector. Mirrors searchArtifacts'
+  // shape (queryText optional -- falsy skips the FTS filter and ranks by
+  // recency instead, same as every other search* method in this codebase).
+  protected async searchTasks(input: Row, context?: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    let query = this.db("tasks").select("*").where("project_id", project.id);
+    const queryText = typeof input.query === "string" ? input.query : null;
+    if (queryText) {
+      query = query
+        .select(this.db.raw(`${combinedRankSql("tasks")} as rank`, [queryText, queryText, queryText]))
+        .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
+    }
+    const rows = await query
+      .orderBy(queryText ? "rank" : "updated_at", "desc")
+      .limit(Number(input.limit ?? 10));
+    return rows.map(taskSearchOut);
   }
 
   protected async tasksPage(input: Row, context?: NormalizedGatewayRequestContext) {

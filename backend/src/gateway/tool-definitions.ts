@@ -161,6 +161,27 @@ const userPreferenceSetSchema = z.object({
 const projectInviteClaimSchema = z.object({
   code: z.string().min(1)
 });
+// T-context (2026-08-25, omni search): project-scoped quick search fanning
+// out across tasks/decisions/memory/faults/artifacts in parallel.
+const projectSearchSchema = z.object({
+  project: z.string().min(1),
+  query: z.string().min(1),
+  limit: z.number().int().min(1).max(20).optional()
+});
+const projectSearchDataSchema = z
+  .object({
+    results: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["task", "decision", "memory", "fault", "artifact"]),
+        title: z.string(),
+        excerpt: z.string().nullable(),
+        status: z.string(),
+        updatedAt: z.string().nullable()
+      })
+    )
+  })
+  .catchall(z.unknown());
 const projectSummarySchema = z.object({
   project: z.string().nullable().optional(),
   query: z.string().min(1).optional(),
@@ -1007,6 +1028,13 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
       "Return a compact token-conscious project state card: open tasks, recent handoffs, decisions, known faults, artifacts, memory, events, and next calls.",
     schema: projectSummarySchema,
     outputSchema: output(projectSummaryDataSchema)
+  },
+  {
+    name: "project.search",
+    description:
+      "Omni search across a project's tasks, decisions, memory, faults, and artifacts in one call. Each kind is ranked/capped independently (default 5 each) and returned as compact {id, kind, title, excerpt, status, updatedAt} cards.",
+    schema: projectSearchSchema,
+    outputSchema: output(projectSearchDataSchema)
   },
   {
     name: "project.set_current",

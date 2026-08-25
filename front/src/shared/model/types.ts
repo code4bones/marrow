@@ -36,6 +36,17 @@ export interface ProjectCounts {
   faults: number;
 }
 
+export type GlobalSearchKind = 'task' | 'decision' | 'memory' | 'fault' | 'artifact';
+
+export interface GlobalSearchResult {
+  id: string;
+  kind: GlobalSearchKind;
+  title: string;
+  excerpt: string | null;
+  status: string;
+  updatedAt: string | null;
+}
+
 export interface Task {
   id: string;
   projectId: string | null;

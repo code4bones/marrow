@@ -51,6 +51,22 @@ export const GET_PROJECT_SUMMARY = gql`
   }
 `;
 
+// T-context (2026-08-25, owner's ask: omni search across task/decisions/
+// mem/faults/artifacts): Overview's quick-search box, one call fanning out
+// server-side across all five kinds, capped per kind.
+export const GET_PROJECT_SEARCH = gql`
+  query GetProjectSearch($project: String!, $query: String!, $limit: Int) {
+    projectSearch(project: $project, query: $query, limit: $limit) {
+      id
+      kind
+      title
+      excerpt
+      status
+      updatedAt
+    }
+  }
+`;
+
 // T-MEMORY-051 follow-up: sortField/sortDirection are optional -- omitting
 // them (undefined) falls through to the schema's own defaults (updated_at
 // desc), same as every other optional filter here.

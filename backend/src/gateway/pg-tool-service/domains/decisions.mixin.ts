@@ -3,8 +3,8 @@ import { AppError } from "../../../shared/errors.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
-import { decisionOut } from "../formatters/decisions.js";
+import { combinedRankSql, jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
+import { decisionOut, decisionSearchOut } from "../formatters/decisions.js";
 import { linkOut } from "../formatters/links.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
@@ -234,6 +234,40 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     }
     const rows = await query.orderByRaw("case when project_id is null then 1 else 0 end asc").orderBy("created_at", "desc").limit(Number(input.limit ?? 20));
     return rows.map(decisionOut);
+  }
+
+  // T-context (2026-08-25, global quick-search): decisions had no free-text
+  // search before migration 079 added search_vector. Mirrors searchArtifacts'
+  // shape (queryText optional -- falsy skips the FTS filter and ranks by
+  // recency instead, same as every other search* method in this codebase).
+  // includeCommon since decisions can be common-scope (project_id null),
+  // same default every other search*/list* method here already applies.
+  protected async searchDecisions(input: Row, context?: NormalizedGatewayRequestContext) {
+    const includeCommon = input.includeCommon !== false;
+    const project = input.project ? await this.resolveProject(input.project, context) : await this.tryCurrentProject(context);
+    if (!project && !includeCommon) {
+      throw new AppError("CURRENT_PROJECT_NOT_SET", "Decision search requires a project or includeCommon=true.");
+    }
+    let query = this.db("decisions").select("*");
+    const queryText = typeof input.query === "string" ? input.query : null;
+    if (queryText) {
+      query = query
+        .select(this.db.raw(`${combinedRankSql("decisions")} as rank`, [queryText, queryText, queryText]))
+        .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
+    }
+    query = query.andWhere((builder) => {
+      if (project) {
+        builder.orWhere("project_id", project.id);
+      }
+      if (includeCommon) {
+        builder.orWhereNull("project_id");
+      }
+    });
+    const rows = await query
+      .orderByRaw("case when project_id is null then 1 else 0 end asc")
+      .orderBy(queryText ? "rank" : "updated_at", "desc")
+      .limit(Number(input.limit ?? 10));
+    return rows.map(decisionSearchOut);
   }
 
   protected async decisionsPage(input: Row, context?: NormalizedGatewayRequestContext) {

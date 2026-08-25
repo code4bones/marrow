@@ -49,6 +49,20 @@ export function taskOut(row: Row) {
 }
 
 
+// T-context (2026-08-25, global quick-search): a uniform compact card
+// shared across task/decision/memory/fault/artifact search results --
+// {id, kind, title, excerpt, status, updatedAt}, see globalSearch.mixin.ts.
+export function taskSearchOut(row: Row) {
+  return {
+    id: String(row.id),
+    kind: "task",
+    title: String(row.title),
+    excerpt: shortText(String(row.scope ?? row.acceptance ?? ""), 200),
+    status: String(row.status),
+    updatedAt: dateStringOrNull(row.updated_at)
+  };
+}
+
 export function taskClaimOut(row: Row) {
   return {
     id: String(row.id),

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ShareProjectButton } from '../../features/project/ShareProjectButton';
+import { GlobalSearchBox } from './GlobalSearchBox';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
 import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { isNewSince } from '../../shared/lib/isNewSince';
@@ -260,10 +261,13 @@ export function ProjectOverview({ slug }: { slug: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Fixed header */}
       <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-          <Typography.Title level={4} style={{ marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <Typography.Title level={4} style={{ marginBottom: 4, flexShrink: 0 }}>
             {s.project.title}
           </Typography.Title>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <GlobalSearchBox slug={slug} />
+          </div>
           <ShareProjectButton slug={slug} />
         </div>
         {s.project.description && (

@@ -105,6 +105,7 @@ const typeDefs = `#graphql
     # project member (or admin) may call this.
     projectInviteLink(id: ID, slug: String): ProjectInviteLink!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
+    projectSearch(project: String!, query: String!, limit: Int): [GlobalSearchResult!]!
     projectGraph(projectId: ID!, depth: Int = 2, maxPerType: Int = 60): ProjectGraph!
     record(id: ID!): RecordLookup!
 
@@ -612,6 +613,15 @@ const typeDefs = `#graphql
     faults: Int!
   }
 
+  type GlobalSearchResult {
+    id: ID!
+    kind: String!
+    title: String!
+    excerpt: String
+    status: String!
+    updatedAt: String
+  }
+
   type GraphNode {
     id: ID!
     kind: String!
@@ -1070,6 +1080,8 @@ const resolvers = {
       await callTool<Row>(context, "project.invite_link_get", requireOne(cleanInput(args), ["id", "slug"], "projectInviteLink")),
     projectSummary: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.summary", cleanInput(args)),
+    projectSearch: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<{ results: unknown[] }>(context, "project.search", cleanInput(args))).results,
     projectGraph: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await projectGraphQuery(context, cleanInput(args)),
     record: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

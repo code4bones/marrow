@@ -20,6 +20,7 @@ import { TasksMixin } from "./domains/tasks.mixin.js";
 import { HandoffsMixin } from "./domains/handoffs.mixin.js";
 import { RequestsMixin } from "./domains/requests.mixin.js";
 import { I18nMixin } from "./domains/i18n.mixin.js";
+import { GlobalSearchMixin } from "./aggregates/global-search.mixin.js";
 import { PreflightContextMixin } from "./aggregates/preflight-context.mixin.js";
 import { ProjectSummaryMixin } from "./aggregates/project-summary.mixin.js";
 import { normalizeContext } from "./formatters/common.js";
@@ -36,24 +37,26 @@ import {
 } from "./formatters/artifacts.js";
 import type { GatewayRequestContext, Row } from "./types.js";
 
-const ComposedService = ProjectSummaryMixin(
-  PreflightContextMixin(
-    RequestsMixin(
-      HandoffsMixin(
-        I18nMixin(
-          TasksMixin(
-            GatewayOpsMixin(
-              UserPrefsMixin(
-                GraphMixin(
-                  GitCredentialsMixin(
-                    CreditsMixin(
-                      ClientsMixin(
-                        EventsMixin(
-                          DecisionsMixin(
-                            ArtifactsMixin(
-                              MemoryMixin(
-                                LinksCoreMixin(
-                                  ProjectsCoreMixin(BaseService)
+const ComposedService = GlobalSearchMixin(
+  ProjectSummaryMixin(
+    PreflightContextMixin(
+      RequestsMixin(
+        HandoffsMixin(
+          I18nMixin(
+            TasksMixin(
+              GatewayOpsMixin(
+                UserPrefsMixin(
+                  GraphMixin(
+                    GitCredentialsMixin(
+                      CreditsMixin(
+                        ClientsMixin(
+                          EventsMixin(
+                            DecisionsMixin(
+                              ArtifactsMixin(
+                                MemoryMixin(
+                                  LinksCoreMixin(
+                                    ProjectsCoreMixin(BaseService)
+                                  )
                                 )
                               )
                             )
@@ -154,6 +157,8 @@ export class PgToolService extends ComposedService {
           return ok("Project candidates resolved.", await this.resolveProjectCandidates(parsed, requestContext));
         case "project.summary":
           return ok("Project summary loaded.", await this.projectSummary(parsed, requestContext));
+        case "project.search":
+          return ok("Project searched.", await this.globalSearch(parsed, requestContext));
         case "project.set_current":
           return ok("Current project set.", { currentProject: await this.setCurrentProject(parsed, requestContext) });
         case "project.current":
