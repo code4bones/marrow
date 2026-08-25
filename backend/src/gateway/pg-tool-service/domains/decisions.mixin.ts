@@ -440,6 +440,9 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (!current) {
       throw new AppError("DECISION_NOT_FOUND", `Decision ${id} does not exist.`, { id });
     }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
 
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {

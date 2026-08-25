@@ -1061,7 +1061,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared memory item and cleanup links that point to it. Use only after an explicit user request.",
     schema: memoryDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedMemory: looseRecordSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "memory.hygiene_report",
@@ -1139,7 +1139,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete an artifact metadata row and remove its stored bytes. Use only after an explicit user request.",
     schema: artifactDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedArtifact: artifactSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "task.create",
@@ -1162,7 +1162,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared task by id. Use only after an explicit user request or smoke-test cleanup.",
     schema: taskDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedTask: looseRecordSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "task.claim",
@@ -1300,7 +1300,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete a shared decision and cleanup links that point to it. Use only after an explicit user request.",
     schema: decisionDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedDecision: looseRecordSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "decision.list",
@@ -1328,7 +1328,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete one event from the timeline. Use only for explicit cleanup or test data removal.",
     schema: eventDeleteSchema,
     outputSchema: output(z.object({ deletedEvent: looseRecordSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "link.create",
@@ -1346,7 +1346,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete one shared relationship link. Use only after an explicit user request.",
     schema: linkDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedLink: looseRecordSchema })),
-    access: "admin"
+    access: "write"
   },
   {
     name: "preflight",

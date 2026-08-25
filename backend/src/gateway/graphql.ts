@@ -11,26 +11,36 @@ import { GATEWAY_EVENT_TOPIC, gatewayEvents, type GatewayEventEnvelope } from ".
 type Row = Record<string, unknown>;
 
 // T-MEMORY-029 / D-MEMORY-007: GraphQL mutation field names whose REST/MCP
-// tool equivalent was reclassified from access:"write" to access:"admin" in
-// tool-definitions.ts (the *.delete tools). http-server.ts's
-// graphqlRequiredScopes() matches these against the raw query text -- the
-// generic `/\bmutation\b/i` check there can't tell a delete apart from a
-// create/update by text alone, so this list is the second, more specific
-// check. Keep it in sync with tool-definitions.ts's admin-tier tool list.
+// tool equivalent is classified access:"admin" in tool-definitions.ts.
+// http-server.ts's graphqlRequiredScopes() matches these against the raw
+// query text -- the generic `/\bmutation\b/i` check there can't tell an
+// admin-tier mutation apart from a plain create/update by text alone, so
+// this list is the second, more specific check. Keep it in sync with
+// tool-definitions.ts's admin-tier tool list.
 // gateway.client_forget / gateway.client_prune are also admin-tier tools but
 // have no GraphQL mutation counterpart -- the Mutation type below has no
 // forgetClient/pruneClients field, so there is nothing to list for them.
+// deleteMemory/deleteTask/deleteDecision/deleteArtifact/deleteEvent/deleteLink
+// were REMOVED from this list (T-context, 2026-08-25): they'd been left on
+// access:"admin" (system-wide users.role="admin") since before the
+// per-project owner/pm-developer-tester model existed (T-MEMORY-109/110),
+// and were never reconciled with it -- a project's own owner/pm, who is
+// almost never also a system admin, could never delete a task/decision/
+// memory/artifact/event/link, hitting a 403 on a scope check that ran
+// before the record-level permission check ever got a chance to run. Now
+// access:"write", same tier as every other create/update tool; the
+// project-scoped guard lives in the handler itself (deleteTask's existing
+// assertProjectMember+assertTaskPermission("delete") pm-only check;
+// deleteDecision/deleteMemory/deleteLink/deleteEvent gained a plain
+// assertProjectMember call -- any active project member may delete these,
+// no per-role restriction, since they have no pm/developer/tester action
+// matrix of their own the way tasks do). deleteArtifact was already safe
+// (artifactRowById/artifactRowByPath both already call assertProjectMember).
 // deleteProject is deliberately NOT here (as of the per-project owner
 // concept, project.delete moved to access:"write" -- the fine-grained
 // owner-or-admin check now lives inside deleteProject itself, same as
 // updateProject/regenerateProjectInviteLink below it).
 export const ADMIN_GRAPHQL_MUTATION_NAMES = [
-  "deleteMemory",
-  "deleteTask",
-  "deleteDecision",
-  "deleteArtifact",
-  "deleteEvent",
-  "deleteLink",
   "updateCreditSettings"
 ] as const;
 

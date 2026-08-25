@@ -452,6 +452,9 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     if (!current) {
       throw new AppError("ITEM_NOT_FOUND", `Memory item ${id} does not exist.`, { id });
     }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
 
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {

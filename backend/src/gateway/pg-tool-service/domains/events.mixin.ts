@@ -70,6 +70,9 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     if (!current) {
       throw new AppError("NOT_FOUND", `Event ${id} does not exist.`, { id });
     }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
     await this.db("events").where({ id }).del();
     await this.recordEventForProject(current.project_id, {
       type: "event.deleted",

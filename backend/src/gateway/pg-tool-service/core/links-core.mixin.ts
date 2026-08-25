@@ -143,6 +143,9 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
     if (!current) {
       throw new AppError("LINK_NOT_FOUND", `Link ${id} does not exist.`, { id });
     }
+    if (current.project_id) {
+      await this.assertProjectMember(String(current.project_id), context);
+    }
     await this.db("links").where({ id }).del();
     const event = await this.recordEventForProject(stringOrNull(current.project_id), {
       type: "link.deleted",
