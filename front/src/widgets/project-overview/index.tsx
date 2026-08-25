@@ -261,8 +261,8 @@ export function ProjectOverview({ slug }: { slug: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Fixed header */}
       <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <Typography.Title level={4} style={{ marginBottom: 4, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <Typography.Title level={4} style={{ marginBottom: 0, flexShrink: 0 }}>
             {s.project.title}
           </Typography.Title>
           <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
@@ -270,11 +270,6 @@ export function ProjectOverview({ slug }: { slug: string }) {
           </div>
           <ShareProjectButton slug={slug} />
         </div>
-        {s.project.description && (
-          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-            {s.project.description}
-          </Typography.Text>
-        )}
         <style>{`.project-overview-stat:hover { background: rgba(255, 255, 255, 0.06); }`}</style>
         <Row gutter={24}>
           <Col>
