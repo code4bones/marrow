@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Input, List, Pagination, Skeleton, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Card, Col, Input, List, Pagination, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
 import { GET_PROJECTS_PAGE, PIN_PROJECT } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { usePage } from '../../shared/lib/usePage';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useUserPreference } from '../../shared/lib/useUserPreference';
@@ -18,7 +19,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 import { ProjectOverview } from '../../widgets/project-overview';
 
 // T-MEMORY-086: pin toggle -- stops the click from also bubbling to the
-// List.Item's own onClick (navigate into the project), same as every other
+// row/card's own onClick (navigate into the project), same as every other
 // per-row action button in this app (DeleteTaskButton etc).
 function PinButton({ project, onDone }: { project: Project; onDone: () => void }) {
   const { t } = useTranslation('projects');
@@ -43,6 +44,7 @@ export function ProjectsPage() {
   const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
 
   useEffect(() => {
@@ -65,6 +67,86 @@ export function ProjectsPage() {
   const projects = data?.projectsPage.items ?? [];
   const pageInfo = data?.projectsPage.pageInfo;
   const { labelFor } = useActorLabels(projects.map((p) => p.createdBy));
+
+  // T-context (2026-08-26, owner's ask: mobile PWA layout, "на стартовом
+  // экране плитки проектов, все идет через проваливание в них"): mobile
+  // never shows list+detail side by side -- a project selected on a phone
+  // means the tile grid gets out of the way entirely and MobileHeader's
+  // back button (AppShell) returns here by clearing the route, not by any
+  // state this page owns.
+  if (isMobile) {
+    if (slug) {
+      return <ProjectOverview slug={slug} />;
+    }
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', padding: '12px 12px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Input.Search
+            placeholder={t('searchProjectsPlaceholder')}
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); onChange(1, pageSize); }}
+            allowClear
+            style={{ flex: 1 }}
+          />
+          <CreateProjectModal onDone={() => refetch()} />
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <Button
+            size="small"
+            type={sort === 'slug' ? 'primary' : 'default'}
+            icon={<SortAscendingOutlined />}
+            onClick={() => { setSort('slug'); onChange(1, pageSize); }}
+          >
+            {t('sortAlphabetical')}
+          </Button>
+          <Button
+            size="small"
+            type={sort === 'createdAt' ? 'primary' : 'default'}
+            icon={<ClockCircleOutlined />}
+            onClick={() => { setSort('createdAt'); onChange(1, pageSize); }}
+          >
+            {t('sortNewestFirst')}
+          </Button>
+        </div>
+
+        {loading && <Skeleton active />}
+        {error && <Alert type="error" message={error.message} style={{ marginBottom: 12 }} />}
+        {data && (
+          <>
+            <Row gutter={[8, 8]}>
+              {projects.map((p) => (
+                <Col xs={12} key={p.id}>
+                  <Card size="small" hoverable onClick={() => navigate(`/projects/${p.slug}`)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Typography.Text strong ellipsis style={{ flex: 1, fontSize: 13 }}>
+                        {p.title}
+                      </Typography.Text>
+                      <StatusBadge status={p.status} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
+                      <PinButton project={p} onDone={() => refetch()} />
+                    </div>
+                    <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+            <Pagination
+              size="small"
+              current={page}
+              pageSize={pageSize}
+              total={pageInfo?.totalCount}
+              onChange={onChange}
+              showSizeChanger
+              pageSizeOptions={['10', '20', '50']}
+              style={{ marginTop: 16, textAlign: 'center' }}
+            />
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>

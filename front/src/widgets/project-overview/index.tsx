@@ -17,6 +17,7 @@ import { GlobalSearchBox } from './GlobalSearchBox';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
 import { ENTITY_COLOR, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { isNewSince } from '../../shared/lib/isNewSince';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { PREFIX_MAP, useRealtimeStore, type VersionKey } from '../../shared/model/realtime.store';
@@ -177,6 +178,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function ProjectOverview({ slug }: { slug: string }) {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [overviewTab, setOverviewTab] = useState('timeline');
   const { data, loading, error, refetch } = useQuery<{ projectSummary: ProjectSummary }>(
     GET_PROJECT_SUMMARY,
@@ -259,19 +261,25 @@ export function ProjectOverview({ slug }: { slug: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Fixed header */}
-      <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
-          <Typography.Title level={4} style={{ marginBottom: 0, flexShrink: 0 }}>
-            {s.project.title}
-          </Typography.Title>
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-            <GlobalSearchBox slug={slug} />
+      {/* Fixed header -- on mobile this row is dropped entirely: AppShell's
+          MobileHeader (back + omni search + profile) already fills the
+          same role above the page, so duplicating title/search/share here
+          would just eat vertical space on a phone viewport. */}
+      <div style={{ padding: isMobile ? '12px 12px 8px' : '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
+        {!isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+            <Typography.Title level={4} style={{ marginBottom: 0, flexShrink: 0 }}>
+              {s.project.title}
+            </Typography.Title>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+              <GlobalSearchBox slug={slug} />
+            </div>
+            <ShareProjectButton slug={slug} />
           </div>
-          <ShareProjectButton slug={slug} />
-        </div>
+        )}
         <style>{`.project-overview-stat:hover { background: rgba(255, 255, 255, 0.06); }`}</style>
-        <Row gutter={24}>
+        <div style={isMobile ? { overflowX: 'auto' } : undefined}>
+        <Row gutter={24} wrap={!isMobile}>
           <Col>
             <ClickableStat to={`/projects/${slug}/tasks`}>
               <Statistic
@@ -346,6 +354,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
             </ClickableStat>
           </Col>
         </Row>
+        </div>
       </div>
 
       {/* Tabs: Timeline | Kanban | Summary — timeline first (I-PMEM-011):
