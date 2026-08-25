@@ -178,6 +178,42 @@ export function combinedRankSql(table: string): string {
   return `(ts_rank(search_vector, ${combinedTsQuerySql}) * ${statusRankWeightSql()} * ${chainHeadRankWeightSql(table)})`;
 }
 
+// T-context (2026-08-25, live-caught while testing omni search): a live
+// quick-search box re-queries on every keystroke, so the user is very often
+// mid-word ("task compl") -- plainto_tsquery only matches WHOLE words (after
+// stemming), so "compl" never matches "completion" until the word is
+// finished, making a live search box feel broken. to_tsquery with each
+// token suffixed `:*` does prefix matching instead -- crucially, to_tsquery
+// still stems/normalizes each token through the given config's dictionary
+// BEFORE appending `:*` (so under 'simple' "compl:*" prefix-matches the
+// literal stored lexeme "completion"; under 'english'/'russian' it also
+// prefix-matches against stemmed lexemes like "complet"), so this composes
+// correctly with the existing tri-lingual OR pattern. Deliberately NOT
+// changed on the plain plainto_tsquery path above -- that's unaffected, kept
+// for existing "type a full query, press search" call sites; the new
+// prefix* functions below are additive, opted into per search* call only
+// when the caller explicitly wants live/incremental matching (see
+// global-search.mixin.ts).
+export function toPrefixTsQueryText(query: string): string {
+  const tokens = query
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}_]/gu, ""))
+    .filter(Boolean)
+    .slice(0, 12);
+  return tokens.map((token) => `${token}:*`).join(" & ");
+}
+
+const prefixTsQuerySql = "(to_tsquery('simple', ?) || to_tsquery('english', ?) || to_tsquery('russian', ?))";
+
+export function prefixRankSql(table: string): string {
+  return `(ts_rank(search_vector, ${prefixTsQuerySql}) * ${statusRankWeightSql()} * ${chainHeadRankWeightSql(table)})`;
+}
+
+export function prefixWhereSql(): string {
+  return `search_vector @@ ${prefixTsQuerySql}`;
+}
+
 // KWIC excerpt: context around the actual match instead of the first ~200
 // chars of body (which is usually just the intro). Markdown-bolded so the
 // match is visible in plain text without HTML.

@@ -3,7 +3,7 @@ import { AppError } from "../../../shared/errors.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { combinedRankSql, jsonStringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
+import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
 import { decisionOut, decisionSearchOut } from "../formatters/decisions.js";
 import { linkOut } from "../formatters/links.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
@@ -250,7 +250,17 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     }
     let query = this.db("decisions").select("*");
     const queryText = typeof input.query === "string" ? input.query : null;
-    if (queryText) {
+    let hasFilter = false;
+    if (queryText && input.prefix === true) {
+      const prefixQuery = toPrefixTsQueryText(queryText);
+      if (prefixQuery) {
+        hasFilter = true;
+        query = query
+          .select(this.db.raw(`${prefixRankSql("decisions")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
+          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+      }
+    } else if (queryText) {
+      hasFilter = true;
       query = query
         .select(this.db.raw(`${combinedRankSql("decisions")} as rank`, [queryText, queryText, queryText]))
         .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
@@ -265,7 +275,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     });
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
-      .orderBy(queryText ? "rank" : "updated_at", "desc")
+      .orderBy(hasFilter ? "rank" : "updated_at", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(decisionSearchOut);
   }

@@ -3,7 +3,7 @@ import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
-import { combinedRankSql, jsonStringArray, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
+import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, stringArray, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
   appendText,
@@ -166,13 +166,23 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     const project = await this.resolveProject(input.project, context);
     let query = this.db("tasks").select("*").where("project_id", project.id);
     const queryText = typeof input.query === "string" ? input.query : null;
-    if (queryText) {
+    let hasFilter = false;
+    if (queryText && input.prefix === true) {
+      const prefixQuery = toPrefixTsQueryText(queryText);
+      if (prefixQuery) {
+        hasFilter = true;
+        query = query
+          .select(this.db.raw(`${prefixRankSql("tasks")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
+          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+      }
+    } else if (queryText) {
+      hasFilter = true;
       query = query
         .select(this.db.raw(`${combinedRankSql("tasks")} as rank`, [queryText, queryText, queryText]))
         .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
     }
     const rows = await query
-      .orderBy(queryText ? "rank" : "updated_at", "desc")
+      .orderBy(hasFilter ? "rank" : "updated_at", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(taskSearchOut);
   }

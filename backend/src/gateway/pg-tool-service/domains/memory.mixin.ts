@@ -2,7 +2,7 @@ import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { createCreditsFacade } from "../../credits.js";
 import { commonItemPrefix, projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { combinedRankSql, jsonStringArray, kwicHeadlineSql, stringArray, stringOrNull, writeActorFields } from "../formatters/common.js";
+import { combinedRankSql, jsonStringArray, kwicHeadlineSql, prefixRankSql, prefixWhereSql, stringArray, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
 import { compactProject } from "../formatters/projects.js";
 import { linkOut } from "../formatters/links.js";
 import {
@@ -287,7 +287,21 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     // filter that has no reason to match — see I-MEMORY-022 step 1.
     const queryText = typeof input.query === "string" && input.query.trim() ? input.query : null;
     let query = this.db("items").select("id", "project_id", "type", "title", "body", "status", "tags", "summary");
-    if (queryText) {
+    let hasFilter = false;
+    if (queryText && input.prefix === true) {
+      // Prefix mode (live quick-search, see formatters/common.ts's
+      // toPrefixTsQueryText comment) skips the KWIC headline -- it's built
+      // around plainto_tsquery's own tsquery shape; searchOut's existing
+      // summary ?? headline ?? excerpt(body) fallback chain covers the gap.
+      const prefixQuery = toPrefixTsQueryText(queryText);
+      if (prefixQuery) {
+        hasFilter = true;
+        query = query
+          .select(this.db.raw(`${prefixRankSql("items")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
+          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+      }
+    } else if (queryText) {
+      hasFilter = true;
       query = query
         .select(this.db.raw(`${combinedRankSql("items")} as rank`, [queryText, queryText, queryText]))
         .select(this.db.raw(`${kwicHeadlineSql()} as headline`, [queryText, queryText, queryText]))
@@ -320,7 +334,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
 
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
-      .orderBy(queryText ? "rank" : "created_at", "desc")
+      .orderBy(hasFilter ? "rank" : "created_at", "desc")
       .limit(Number(input.limit ?? 10));
     return rows.map(searchOut);
   }

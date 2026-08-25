@@ -4,7 +4,7 @@ import path from "node:path";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
-import { combinedRankSql, jsonStringArray, stringArray, stringOrNull } from "../formatters/common.js";
+import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, stringArray, stringOrNull, toPrefixTsQueryText } from "../formatters/common.js";
 import {
   artifactAbsolutePath,
   artifactOut,
@@ -167,7 +167,17 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
 
     let query = this.db("artifacts").select("*");
     const queryText = typeof input.query === "string" ? input.query : null;
-    if (queryText) {
+    let hasFilter = false;
+    if (queryText && input.prefix === true) {
+      const prefixQuery = toPrefixTsQueryText(queryText);
+      if (prefixQuery) {
+        hasFilter = true;
+        query = query
+          .select(this.db.raw(`${prefixRankSql("artifacts")} as rank`, [prefixQuery, prefixQuery, prefixQuery]))
+          .whereRaw(prefixWhereSql(), [prefixQuery, prefixQuery, prefixQuery]);
+      }
+    } else if (queryText) {
+      hasFilter = true;
       query = query
         .select(this.db.raw(`${combinedRankSql("artifacts")} as rank`, [queryText, queryText, queryText]))
         .whereRaw("search_vector @@ (plainto_tsquery('simple', ?) || plainto_tsquery('english', ?) || plainto_tsquery('russian', ?))", [queryText, queryText, queryText]);
@@ -193,7 +203,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
 
     const rows = await query
       .orderByRaw("case when project_id is null then 1 else 0 end asc")
-      .orderBy(queryText ? "rank" : "created_at", "desc")
+      .orderBy(hasFilter ? "rank" : "created_at", "desc")
       .limit(Number(input.limit ?? 10));
     const artifacts = rows.map(artifactSearchOut);
     return input.compact === true ? artifacts.map(compactArtifactSearchRecord) : artifacts;

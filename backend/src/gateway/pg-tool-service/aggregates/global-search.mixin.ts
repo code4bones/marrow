@@ -37,12 +37,17 @@ export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(B
       return { results: [] };
     }
 
+    // prefix: true -- a live quick-search re-queries on every keystroke, so
+    // the caller is very often mid-word ("task compl"); plainto_tsquery only
+    // matches whole words, which made the box feel broken (reported live:
+    // "task compl" found nothing despite a real "Task completion..." task
+    // existing). See formatters/common.ts's toPrefixTsQueryText.
     const [tasks, decisions, memory, faults, artifacts] = await Promise.all([
-      this.searchTasks({ project: project.slug, query, limit: perKindLimit }, context),
-      this.searchDecisions({ project: project.slug, query, includeCommon: true, limit: perKindLimit }, context),
-      this.searchMemory({ project: project.slug, query, includeCommon: true, excludeType: "failed_attempt", limit: perKindLimit }, context),
-      this.searchMemory({ project: project.slug, query, includeCommon: true, type: "failed_attempt", limit: perKindLimit }, context),
-      this.searchArtifacts({ project: project.slug, query, includeCommon: true, limit: perKindLimit }, context)
+      this.searchTasks({ project: project.slug, query, prefix: true, limit: perKindLimit }, context),
+      this.searchDecisions({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context),
+      this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, excludeType: "failed_attempt", limit: perKindLimit }, context),
+      this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, type: "failed_attempt", limit: perKindLimit }, context),
+      this.searchArtifacts({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context)
     ]);
 
     const results = [
