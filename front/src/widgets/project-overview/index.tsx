@@ -6,7 +6,7 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Alert, Badge, Col, Row, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Badge, Col, Row, Segmented, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -365,13 +365,32 @@ export function ProjectOverview({ slug }: { slug: string }) {
           найдешь"), so its onChange below intercepts that one key and
           navigates instead of switching panels.
 
-          T-context (2026-08-26, owner's ask: mobile PWA layout follow-up,
-          "не колоночный timeline, а с проваливанием"): the Miller-columns
-          Timeline graph needs horizontal width a phone doesn't have, and
-          Kanban/Summary are desktop-table-shaped too -- mobile Overview
-          drops this whole tab section and stops at the drill-in stat tiles
-          above (each already navigates into its own section on tap). */}
-      {!isMobile && (
+          T-context (2026-08-26, owner's ask: mobile PWA layout follow-up):
+          T-MEMORY-130 dropped this whole section on mobile, which read as
+          "Overview - пустой экран" (empty) once live -- the Timeline needs
+          to stay, just not as desktop's horizontal multi-column Miller
+          layout. Mobile gets a compact Segmented (Timeline/Kanban only, no
+          Summary) instead of the full Tabs bar; DecisionTimeline itself
+          (via ProjectGraphView) renders its own single-column drill-in
+          variant on mobile (T-MEMORY-131) -- no prop needed here, it reads
+          the same useIsMobile() internally. */}
+      {isMobile ? (
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '8px 12px', flexShrink: 0 }}>
+            <Segmented
+              size="small"
+              value="timeline"
+              onChange={(key) => {
+                if (key === 'kanban') navigate(`/projects/${slug}/tasks?tab=kanban`);
+              }}
+              options={[{ label: t('timeline'), value: 'timeline' }, { label: t('kanban'), value: 'kanban' }]}
+            />
+          </div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <ProjectGraphView slug={slug} />
+          </div>
+        </div>
+      ) : (
       <Tabs
         activeKey={overviewTab}
         onChange={(key) => {
@@ -433,3 +452,4 @@ export function ProjectOverview({ slug }: { slug: string }) {
     </div>
   );
 }
+

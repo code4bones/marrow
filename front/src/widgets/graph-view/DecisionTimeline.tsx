@@ -1,5 +1,5 @@
 import {
-  CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
+  ArrowLeftOutlined, CheckCircleOutlined, CloseOutlined, InfoCircleOutlined, PlusCircleOutlined, RightOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { Input, Popover, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, UIEvent as ReactUIEvent } from 'react';
@@ -11,6 +11,7 @@ import { SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
 import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
@@ -920,6 +921,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
 
 function DrillColumn({ rootId, level, ...common }: { rootId: string; level: number } & ColumnCommonProps) {
   const { t } = useTranslation('decisions');
+  const isMobile = useIsMobile();
   const { nodeById, satellitesByRecord, linksByRecord, remarksByTarget, chain, onToggle, resolveNode, labelFor } = common;
   const rootNode = nodeById.get(rootId);
   const rows = useMemo(() => (rootNode ? buildDrillRows(rootId, linksByRecord, nodeById) : []), [rootNode, rootId, linksByRecord, nodeById]);
@@ -972,14 +974,17 @@ function DrillColumn({ rootId, level, ...common }: { rootId: string; level: numb
         </Typography.Text>
         {/* Closing this column is the only action left for the root card
             below — it's inert (see RecordCard's `interactive` prop), so a
-            re-click there can no longer make it appear to "vanish". */}
-        <Tooltip title={t('closeThisColumn')}>
+            re-click there can no longer make it appear to "vanish". On
+            mobile this is the ONLY column visible at a time (T-MEMORY-131),
+            so the exact same onToggle call reads as "back one level"
+            instead — same handler, just a back-arrow icon/label. */}
+        <Tooltip title={isMobile ? t('back') : t('closeThisColumn')}>
           <span
             role="button"
             onClick={() => onToggle(rootId, level)}
             style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 18, borderRadius: 4, cursor: 'pointer', color: '#8c8c8c', flexShrink: 0 }}
           >
-            <CloseOutlined style={{ fontSize: 11 }} />
+            {isMobile ? <ArrowLeftOutlined style={{ fontSize: 11 }} /> : <CloseOutlined style={{ fontSize: 11 }} />}
           </span>
         </Tooltip>
       </div>
@@ -1147,6 +1152,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // day-grouped baseline since they have nothing to group by.
   const groupByMilestone = kindHasMilestone(rootKind);
   const { t } = useTranslation('decisions');
+  const isMobile = useIsMobile();
   const rowRef = useRef<HTMLDivElement>(null);
   // The one open Miller-column chain (D-MEMORY-021: linear, breadcrumb-
   // style, exactly one path open at a time). chain[i] is the decision id
@@ -1438,33 +1444,56 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     labelFor,
   };
 
+  const baselineColumn = (
+    <BaselineColumn
+      rows={baselineRows}
+      filterQuery={filterQuery}
+      onFilterChange={setFilterQuery}
+      rootKind={rootKind}
+      groupByMilestone={groupByMilestone}
+      hiddenStatuses={hiddenStatuses}
+      onToggleStatus={toggleStatus}
+      onScroll={handleBaselineScroll}
+      hasMore={hasMoreBaseline}
+      {...common}
+    />
+  );
+
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      <div
-        ref={rowRef}
-        onMouseDown={handleRowMouseDown}
-        onClickCapture={handleRowClickCapture}
-        style={{
-          height: '100%', display: 'flex', overflowX: 'auto', overflowY: 'hidden', background: '#141414',
-          cursor: isPanning ? 'grabbing' : 'grab',
-        }}
-      >
-        <BaselineColumn
-          rows={baselineRows}
-          filterQuery={filterQuery}
-          onFilterChange={setFilterQuery}
-          rootKind={rootKind}
-          groupByMilestone={groupByMilestone}
-          hiddenStatuses={hiddenStatuses}
-          onToggleStatus={toggleStatus}
-          onScroll={handleBaselineScroll}
-          hasMore={hasMoreBaseline}
-          {...common}
-        />
-        {validChain.map((rootId, idx) => (
-          <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
-        ))}
-      </div>
+      {isMobile ? (
+        // T-MEMORY-131: exactly one Miller-column visible at a time --
+        // the deepest open drill column, or the baseline when nothing is
+        // drilled into yet. No drag-pan handlers (rowRef/isPanning): there's
+        // nothing to pan with a single full-height column.
+        <div style={{ height: '100%', width: '100%', overflow: 'hidden', background: '#141414' }}>
+          {validChain.length === 0
+            ? baselineColumn
+            : (
+              <DrillColumn
+                key={`${validChain[validChain.length - 1]}@${validChain.length - 1}`}
+                rootId={validChain[validChain.length - 1]}
+                level={validChain.length - 1}
+                {...common}
+              />
+            )}
+        </div>
+      ) : (
+        <div
+          ref={rowRef}
+          onMouseDown={handleRowMouseDown}
+          onClickCapture={handleRowClickCapture}
+          style={{
+            height: '100%', display: 'flex', overflowX: 'auto', overflowY: 'hidden', background: '#141414',
+            cursor: isPanning ? 'grabbing' : 'grab',
+          }}
+        >
+          {baselineColumn}
+          {validChain.map((rootId, idx) => (
+            <DrillColumn key={`${rootId}@${idx}`} rootId={rootId} level={idx} {...common} />
+          ))}
+        </div>
+      )}
 
       {/* Legend — collapsed by default (owner: it was covering the columns
           underneath it), just a toggle icon until opened. */}
