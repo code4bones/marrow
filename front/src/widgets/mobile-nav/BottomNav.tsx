@@ -1,4 +1,4 @@
-import { AuditOutlined, EllipsisOutlined, InboxOutlined, PartitionOutlined } from '@ant-design/icons';
+import { AuditOutlined, EllipsisOutlined, HomeOutlined, InboxOutlined, PartitionOutlined } from '@ant-design/icons';
 import type { ItemType } from 'antd/es/menu/interface';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +7,11 @@ import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { useNavData } from '../navigation-rail/useNavData';
 import { MoreDrawer } from './MoreDrawer';
 
+// T-context (2026-08-26, owner's ask: "главный то экран у нас Overview, в
+// bottom bar, перед Tasks"): Overview leads the promoted row -- it's the
+// mobile home for a project, not just another section.
 const PROMOTED: Array<{ key: string; icon: React.ReactNode }> = [
+  { key: 'overview', icon: <HomeOutlined /> },
   { key: 'tasks', icon: <AuditOutlined /> },
   { key: 'decisions', icon: <PartitionOutlined /> },
   { key: 'memory', icon: <InboxOutlined /> },

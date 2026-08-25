@@ -363,7 +363,15 @@ export function ProjectOverview({ slug }: { slug: string }) {
           the Tasks page, T-MEMORY-102) -- owner asked for a direct shortcut
           because nothing else pointed at it ("канбан не зная где он - не
           найдешь"), so its onChange below intercepts that one key and
-          navigates instead of switching panels. */}
+          navigates instead of switching panels.
+
+          T-context (2026-08-26, owner's ask: mobile PWA layout follow-up,
+          "не колоночный timeline, а с проваливанием"): the Miller-columns
+          Timeline graph needs horizontal width a phone doesn't have, and
+          Kanban/Summary are desktop-table-shaped too -- mobile Overview
+          drops this whole tab section and stops at the drill-in stat tiles
+          above (each already navigates into its own section on tap). */}
+      {!isMobile && (
       <Tabs
         activeKey={overviewTab}
         onChange={(key) => {
@@ -421,6 +429,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
           },
         ]}
       />
+      )}
     </div>
   );
 }
