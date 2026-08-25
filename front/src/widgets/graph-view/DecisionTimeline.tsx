@@ -12,6 +12,7 @@ import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useIsMobile } from '../../shared/lib/useIsMobile';
+import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
 import { type RemarkPreview, type TaskMarker, useTimelineOverlay } from './useTimelineOverlay';
@@ -268,21 +269,27 @@ function RemarksIndicator({ remarks }: { remarks: RemarkPreview[] }) {
   );
 }
 
-// Drill indicator — purely visual now (the whole card is the click target
-// for opening/closing its column, Finder-style; see RecordCard's own
-// onClick). Filled/accent style signals "this is the currently open root
-// at its slot in the chain".
-function DrillIndicator({ count, isOpen }: { count: number; isOpen: boolean }) {
+// Drill indicator — purely visual on desktop (the whole card is the click
+// target for opening/closing its column, Finder-style; see RecordCard's
+// own onClick). On mobile (T-MEMORY-131 follow-up, owner: "детализация
+// таска... на тап по карточке" -- the card body opens details there
+// instead, see RecordCard) this becomes the actual drill trigger, passed
+// its own onClick. Filled/accent style signals "this is the currently open
+// root at its slot in the chain".
+function DrillIndicator({ count, isOpen, onClick }: { count: number; isOpen: boolean; onClick?: (e: ReactMouseEvent) => void }) {
   const { t } = useTranslation('decisions');
   const title = isOpen ? t('openClickToCollapse') : count > 0 ? t('linksClickToOpenColumn', { count }) : t('noLinksYet');
   return (
     <Tooltip title={title}>
       <span
+        role={onClick ? 'button' : undefined}
+        onClick={onClick}
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 20, height: 18, borderRadius: 4, flexShrink: 0,
           background: isOpen ? '#177ddc' : 'transparent',
           color: isOpen ? '#fff' : count > 0 ? '#8c8c8c' : '#434343',
+          cursor: onClick ? 'pointer' : 'default',
         }}
       >
         <RightOutlined style={{ fontSize: 11 }} />
@@ -393,6 +400,16 @@ interface RecordCardProps {
 // without those two would've compared not-equal on every render anyway.
 const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCount, isOpen, onToggle, toggleLevel, labelFor, interactive = true }: RecordCardProps) {
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
+  const isMobile = useIsMobile();
+  // T-context (2026-08-26, owner's ask: mobile PWA layout follow-up --
+  // "детализация таска не должна вызываться по значку (i), а на тап по
+  // карточке"): desktop keeps card-tap=drill / (i)=details. Mobile swaps
+  // the primary action -- tap anywhere on the card opens details (even for
+  // an `interactive=false` root-of-open-column card, which has no drill
+  // action to begin with but should still be viewable), and drilling moves
+  // to the chevron (DrillIndicator, otherwise purely visual).
+  const openDetails = () => setSelectedRecord(node.id, node.kind.toLowerCase());
+  const drill = () => onToggle(node.id, toggleLevel);
   const status = node.status ?? 'active';
   const color = statusColorFor(node.kind, status);
   const borderColor = node.kind === 'DECISION' && status === 'rejected' ? REJECTED_BORDER : color;
@@ -409,14 +426,14 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
       <div
-        onClick={interactive ? () => onToggle(node.id, toggleLevel) : undefined}
+        onClick={isMobile ? openDetails : (interactive ? drill : undefined)}
         style={{
           minHeight: 84,
           background: isOpen ? '#1c2a38' : '#1f1f1f',
           border: `1px solid ${borderColor}`,
           borderRadius: 6,
           padding: '8px 12px',
-          cursor: interactive ? 'pointer' : 'default',
+          cursor: isMobile ? 'pointer' : (interactive ? 'pointer' : 'default'),
           boxSizing: 'border-box',
           opacity: status === 'superseded' || status === 'archived' || status === 'cancelled' ? 0.72 : 1,
           display: 'flex',
@@ -445,9 +462,16 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
             </Typography.Text>
             {/* Was hardcoded to 'decision' before D-MEMORY-022 generalized
                 this card to any kind — a task/memory/artifact root card
-                would have opened the wrong drawer type otherwise. */}
-            <DetailsTrigger onClick={() => setSelectedRecord(node.id, node.kind.toLowerCase())} />
-            {interactive && <DrillIndicator count={linkCount} isOpen={isOpen} />}
+                would have opened the wrong drawer type otherwise. Hidden on
+                mobile: the whole card now does this job, see above. */}
+            {!isMobile && <DetailsTrigger onClick={openDetails} />}
+            {interactive && (
+              <DrillIndicator
+                count={linkCount}
+                isOpen={isOpen}
+                onClick={isMobile ? (e) => { e.stopPropagation(); drill(); } : undefined}
+              />
+            )}
           </div>
         </div>
 
@@ -1348,6 +1372,29 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   const handleToggle = useCallback((id: string, level: number) => {
     setChain((prev) => (prev[level] === id ? prev.slice(0, level) : [...prev.slice(0, level), id]));
   }, []);
+
+  // T-context (2026-08-26, owner's ask: mobile PWA layout follow-up --
+  // "если я провалился глубже, back возвращает к списку проектов, а не
+  // предыдущему пункту"): on mobile, register this column's own back-one-
+  // level action with the shared registry so MobileHeader's back arrow
+  // pops the drill chain before it ever falls through to leaving the
+  // project. Desktop never registers (it has no single-column "current
+  // level" concept to pop via a global back button).
+  const popChain = useCallback(() => {
+    let didPop = false;
+    setChain((prev) => {
+      if (prev.length === 0) return prev;
+      didPop = true;
+      return prev.slice(0, -1);
+    });
+    return didPop;
+  }, []);
+  const setMobileBackHandler = useMobileBackStore((s) => s.setHandler);
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    setMobileBackHandler(popChain);
+    return () => setMobileBackHandler(null);
+  }, [isMobile, popChain, setMobileBackHandler]);
 
   // Mirrors Finder auto-scrolling to reveal a freshly opened column instead
   // of leaving it clipped off the right edge. Wrapped in an rAF so it runs

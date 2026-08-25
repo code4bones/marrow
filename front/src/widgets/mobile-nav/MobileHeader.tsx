@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { GlobalSearchBox } from '../project-overview/GlobalSearchBox';
 import { MarrowMark } from '../../shared/ui/MarrowMark';
+import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import { useNavData } from '../navigation-rail/useNavData';
 
 // T-context (2026-08-26, owner's ask: mobile PWA layout, "сверху — как и
@@ -22,6 +23,16 @@ export function MobileHeader() {
     handleAccountMenuClick,
     handleBack,
   } = useNavData();
+  // T-context (2026-08-26, owner's ask: "если я провалился глубже, back
+  // возвращает к списку проектов, а не предыдущему пункту"): whichever
+  // mobile screen currently owns a local navigation stack (e.g.
+  // DecisionTimeline's Miller drill chain) registers a pop handler here --
+  // try it first, only leave the project when there's nothing to pop.
+  const popLocalStack = useMobileBackStore((s) => s.handler);
+  const onBackClick = () => {
+    if (popLocalStack?.()) return;
+    handleBack();
+  };
 
   return (
     <div
@@ -43,7 +54,7 @@ export function MobileHeader() {
       {slug ? (
         <>
           <button
-            onClick={handleBack}
+            onClick={onBackClick}
             aria-label={t('projects')}
             style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.65)', fontSize: 18, padding: 4, cursor: 'pointer' }}
           >
