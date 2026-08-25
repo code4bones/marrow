@@ -135,6 +135,10 @@ agents and/or humans sharing one memory store instead.
 - **Realtime, bilingual web UI** — the companion UI updates live over a
   WebSocket subscription (no manual refresh) and ships in English and
   Russian.
+- **Mobile-responsive, installable PWA** — a phone-width layout (project
+  tiles, drill-in navigation, bottom nav, single-column Miller-timeline)
+  alongside the desktop UI, plus a manifest + service worker so it can be
+  installed to a home screen like a native app.
 
 ## CI/CD
 
