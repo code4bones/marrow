@@ -1,10 +1,13 @@
 import { Layout } from 'antd';
 import { useEffect } from 'react';
-import { Outlet, useSearchParams } from 'react-router-dom';
+import { Outlet, useParams, useSearchParams } from 'react-router-dom';
 import { getEntityType } from '../shared/lib/entityId';
+import { useIsMobile } from '../shared/lib/useIsMobile';
 import { useWorkspaceStore } from '../shared/model/workspace.store';
 import { DetailDrawer } from '../widgets/detail-drawer';
 import { NavigationRail } from '../widgets/navigation-rail';
+import { BottomNav } from '../widgets/mobile-nav/BottomNav';
+import { MobileHeader } from '../widgets/mobile-nav/MobileHeader';
 import { UpdateAnnouncementModal } from '../widgets/update-announcement';
 
 const { Sider, Content } = Layout;
@@ -37,16 +40,43 @@ function useRecordDeepLink() {
 
 export function AppShell() {
   useRecordDeepLink();
+  const isMobile = useIsMobile();
+  // Available here because React Router merges params from every route in
+  // the currently matched branch, including parent layout routes like this
+  // one -- no need for BottomNav/MobileHeader-style child routing tricks.
+  const { slug } = useParams<{ slug: string }>();
+
   return (
     <Layout style={{ height: '100%' }}>
-      <Sider width={220} theme="dark" style={{ borderRight: '1px solid #303030' }}>
-        <NavigationRail />
-      </Sider>
-      <Layout>
-        <Content style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <Outlet />
-        </Content>
-      </Layout>
+      {isMobile ? (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <MobileHeader />
+          <Content
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              paddingTop: 52,
+              paddingBottom: slug ? 56 : 0,
+            }}
+          >
+            <Outlet />
+          </Content>
+          <BottomNav />
+        </div>
+      ) : (
+        <>
+          <Sider width={220} theme="dark" style={{ borderRight: '1px solid #303030' }}>
+            <NavigationRail />
+          </Sider>
+          <Layout>
+            <Content style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <Outlet />
+            </Content>
+          </Layout>
+        </>
+      )}
       <DetailDrawer />
       <UpdateAnnouncementModal />
     </Layout>

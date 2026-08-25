@@ -7,6 +7,7 @@ import type {
 } from '../../shared/model/types';
 import { ENTITY_COLOR, type EntityType } from '../../shared/lib/entityId';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { AddTaskNoteButton } from '../../features/task/AddTaskNoteButton';
 import { ClaimTaskButton } from '../../features/task/ClaimTaskButton';
 import { CompleteTaskButton } from '../../features/task/CompleteTaskButton';
@@ -324,6 +325,7 @@ export function DetailDrawer() {
   const { t } = useTranslation('common');
   const { selectedRecordId, selectedRecordType, detailDrawerOpen, closeDetailDrawer } =
     useWorkspaceStore();
+  const isMobile = useIsMobile();
 
   const kind = (selectedRecordType ?? 'unknown').toUpperCase();
   const entityType = KIND_TYPE[kind] ?? 'unknown';
@@ -334,7 +336,9 @@ export function DetailDrawer() {
     <Drawer
       open={detailDrawerOpen}
       onClose={closeDetailDrawer}
-      width={520}
+      placement={isMobile ? 'bottom' : 'right'}
+      width={isMobile ? '100%' : 520}
+      height={isMobile ? '90%' : undefined}
       styles={{ header: { borderBottom: `2px solid ${accentColor}` }, body: { paddingTop: 20 } }}
       title={
         selectedRecordId ? (

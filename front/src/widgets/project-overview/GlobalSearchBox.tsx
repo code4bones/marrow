@@ -57,7 +57,7 @@ function ResultRow({ result, kindLabel, onSelect }: { result: GlobalSearchResult
   );
 }
 
-export function GlobalSearchBox({ slug }: { slug: string }) {
+export function GlobalSearchBox({ slug, fullWidth }: { slug: string; fullWidth?: boolean }) {
   const { t } = useTranslation('projects');
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
@@ -85,7 +85,7 @@ export function GlobalSearchBox({ slug }: { slug: string }) {
       open={open}
       placement="bottom"
       trigger={[]}
-      styles={{ content: { padding: 6, width: 420 } }}
+      styles={{ content: { padding: 6, width: fullWidth ? 'min(420px, 92vw)' : 420 } }}
       content={
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           <style>{'.global-search-row:hover { background: rgba(255, 255, 255, 0.06); }'}</style>
@@ -124,7 +124,7 @@ export function GlobalSearchBox({ slug }: { slug: string }) {
         onBlur={() => setFocused(false)}
         allowClear
         size="middle"
-        style={{ width: 320 }}
+        style={{ width: fullWidth ? '100%' : 320 }}
       />
     </Popover>
   );
