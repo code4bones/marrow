@@ -3,7 +3,6 @@ import { compactArtifactRecord } from "../formatters/artifacts.js";
 import { compactDecisionRecord } from "../formatters/decisions.js";
 import { compactEventRecord } from "../formatters/events.js";
 import { compactHandoffRecord } from "../formatters/memory.js";
-import { compactProject } from "../formatters/projects.js";
 import { compactTask, taskOut } from "../formatters/tasks.js";
 import { projectSummaryLimits, projectSummaryNextCalls } from "../formatters/project-summary.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
@@ -90,7 +89,18 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
         base64Included: false,
         limits
       },
-      project: compactProject(project),
+      // T-context (2026-08-25): was compactProject(project) (id/slug/title/
+      // status/description only) -- GET_PROJECT_SUMMARY's frontend selection
+      // set also asks for updatedAt, which compactProject doesn't have, so
+      // the response nulled it. Apollo's InMemoryCache normalizes Project
+      // entities by id with no custom merge policy, so that null silently
+      // overwrote the SAME project's already-correct updatedAt that the
+      // projects-sidebar list (GET_PROJECTS_PAGE) had cached, the moment a
+      // user opened that project -- Timestamp's `!value` guard then rendered
+      // a bare dash for both the date and the author in the sidebar row.
+      // `project` here is already resolveProject()->getProject()'s full
+      // projectOut()-shaped object, so no reformatting is needed at all.
+      project,
       query,
       includeCommon,
       counts,
