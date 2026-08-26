@@ -278,83 +278,82 @@ export function ProjectOverview({ slug }: { slug: string }) {
           </div>
         )}
         <style>{`.project-overview-stat:hover { background: rgba(255, 255, 255, 0.06); }`}</style>
-        <div style={isMobile ? { overflowX: 'auto' } : undefined}>
-        <Row gutter={24} wrap={!isMobile}>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/tasks`}>
-              <Statistic
-                // Badge intentionally omitted here (kept on "All tasks" below
-                // instead): newTaskCount counts ALL task-related activity,
-                // completions included, which pulls this exact number in the
-                // opposite direction of "open" -- pairing it with this stat
-                // specifically read as if N tasks had just become open.
-                title={<StatTitle label={t('openTasksStat')} newCount={0} />}
-                value={counts.openTasks}
-                prefix={<CalendarOutlined style={{ color: STAT_COLOR_TASK }} />}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_TASK }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/tasks`}>
-              <Statistic
-                title={<StatTitle label={t('allTasks')} newCount={newTaskCount} />}
-                value={counts.tasks}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_TASK }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/decisions`}>
-              <Statistic
-                title={<StatTitle label={t('decisions')} newCount={newDecisionCount} />}
-                value={counts.decisions}
-                prefix={<ApartmentOutlined style={{ color: STAT_COLOR_DECISION }} />}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_DECISION }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/artifacts`}>
-              <Statistic
-                title={<StatTitle label={t('artifacts')} newCount={newArtifactCount} />}
-                value={counts.artifacts}
-                prefix={<DatabaseOutlined style={{ color: STAT_COLOR_ARTIFACT }} />}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_ARTIFACT }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/events`}>
-              <Statistic
-                title={<StatTitle label={t('events')} newCount={newEventCount} />}
-                value={counts.events}
-                prefix={<ThunderboltOutlined style={{ color: STAT_COLOR_EVENT }} />}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_EVENT }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/memory`}>
-              <Statistic
-                title={<StatTitle label={t('memory')} newCount={newMemoryCount} />}
-                value={counts.items}
-                valueStyle={{ fontSize: 20, color: STAT_COLOR_MEMORY }}
-              />
-            </ClickableStat>
-          </Col>
-          <Col>
-            <ClickableStat to={`/projects/${slug}/faults`}>
-              <Statistic
-                title={t('faults')}
-                value={counts.faults}
-                prefix={<BugOutlined />}
-                valueStyle={{ fontSize: 20, color: '#ff4d4f' }}
-              />
-            </ClickableStat>
-          </Col>
+        <Row gutter={isMobile ? [8, 12] : 24} wrap>
+          {[
+            {
+              key: 'openTasks',
+              to: `/projects/${slug}/tasks`,
+              // Badge intentionally omitted here (kept on "All tasks" below
+              // instead): newTaskCount counts ALL task-related activity,
+              // completions included, which pulls this exact number in the
+              // opposite direction of "open" -- pairing it with this stat
+              // specifically read as if N tasks had just become open.
+              title: <StatTitle label={t('openTasksStat')} newCount={0} />,
+              value: counts.openTasks,
+              prefix: <CalendarOutlined style={{ color: STAT_COLOR_TASK }} />,
+              color: STAT_COLOR_TASK,
+            },
+            {
+              key: 'allTasks',
+              to: `/projects/${slug}/tasks`,
+              title: <StatTitle label={t('allTasks')} newCount={newTaskCount} />,
+              value: counts.tasks,
+              color: STAT_COLOR_TASK,
+            },
+            {
+              key: 'decisions',
+              to: `/projects/${slug}/decisions`,
+              title: <StatTitle label={t('decisions')} newCount={newDecisionCount} />,
+              value: counts.decisions,
+              prefix: <ApartmentOutlined style={{ color: STAT_COLOR_DECISION }} />,
+              color: STAT_COLOR_DECISION,
+            },
+            {
+              key: 'artifacts',
+              to: `/projects/${slug}/artifacts`,
+              title: <StatTitle label={t('artifacts')} newCount={newArtifactCount} />,
+              value: counts.artifacts,
+              prefix: <DatabaseOutlined style={{ color: STAT_COLOR_ARTIFACT }} />,
+              color: STAT_COLOR_ARTIFACT,
+            },
+            {
+              key: 'events',
+              to: `/projects/${slug}/events`,
+              title: <StatTitle label={t('events')} newCount={newEventCount} />,
+              value: counts.events,
+              prefix: <ThunderboltOutlined style={{ color: STAT_COLOR_EVENT }} />,
+              color: STAT_COLOR_EVENT,
+            },
+            {
+              key: 'memory',
+              to: `/projects/${slug}/memory`,
+              title: <StatTitle label={t('memory')} newCount={newMemoryCount} />,
+              value: counts.items,
+              color: STAT_COLOR_MEMORY,
+            },
+            {
+              key: 'faults',
+              to: `/projects/${slug}/faults`,
+              title: t('faults'),
+              value: counts.faults,
+              prefix: <BugOutlined />,
+              color: '#ff4d4f',
+            },
+          ].map((item) => (
+            // T-context (2026-08-26, owner's ask: mobile PWA layout follow-up,
+            // "верхний блок со статистикой не умещается"): the desktop row is
+            // content-sized and never wraps (there's always room), which on a
+            // phone meant 7 stats spilling past the viewport edge with no
+            // obvious way to reach the rest. Mobile instead wraps into a
+            // 2-per-row grid (span=12 of 24) so everything is visible without
+            // any horizontal scrolling.
+            <Col key={item.key} {...(isMobile ? { span: 12 } : {})}>
+              <ClickableStat to={item.to}>
+                <Statistic title={item.title} value={item.value} prefix={item.prefix} valueStyle={{ fontSize: 20, color: item.color }} />
+              </ClickableStat>
+            </Col>
+          ))}
         </Row>
-        </div>
       </div>
 
       {/* Tabs: Timeline | Kanban | Summary — timeline first (I-PMEM-011):
