@@ -6,8 +6,8 @@ import { projectKeyFromId } from "../../shared/ids/id.service.js";
 import { defaultGatewayOutputSchema, gatewayToolSpecs } from "../tool-definitions.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
+import { assigneeNotifyTarget } from "../assignees.js";
 import { isDefaultNotifyEventType, notifyTelegram } from "../telegram.js";
-import { userIdFromClientId } from "../credits.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
 import { currentProjectKey, jsonStringArray, paginationInput, stringArray } from "./formatters/common.js";
 import { itemOut } from "./formatters/memory.js";
@@ -129,14 +129,25 @@ export class BaseService {
     // target_user_ids expression the way task.created/task.assigned/etc.
     // used to before this. Explicit `[]` (a caller that computed "nobody,
     // on purpose" -- e.g. a self-action already excluded) is left alone.
+    //
+    // T-context (owner's ask, 2026-08-27, atlas-arrow-fix): "unless they're
+    // the one who just did this" used to mean any actor resolving to the
+    // owner's user id, agent sessions included -- so a solo project (owner
+    // is also the only creator/assignee, work driven entirely by an agent)
+    // never notified Telegram at all, even though the web Notifications
+    // feed showed the same events. Now reuses assigneeNotifyTarget's
+    // isInteractiveSelfAction nuance (see assignees.ts, T-MEMORY-095): only
+    // a real interactive browser click by the owner counts as "they just
+    // watched this happen, no need to also ping their phone" -- an agent
+    // session resolving to the same user id still notifies.
     let targetUserIds: string[];
     if (input.target_user_ids !== undefined) {
       targetUserIds = Array.from(new Set(stringArray(input.target_user_ids)));
     } else if (projectId && isDefaultNotifyEventType(String(input.type))) {
       const project = await this.db("projects").where({ id: projectId }).select("owner_user_id").first();
       const ownerUserId = project?.owner_user_id ? String(project.owner_user_id) : null;
-      const actorUserId = userIdFromClientId(context.clientId);
-      targetUserIds = ownerUserId && ownerUserId !== actorUserId ? [ownerUserId] : [];
+      const ownerNotifyTarget = assigneeNotifyTarget(ownerUserId, context);
+      targetUserIds = ownerNotifyTarget ? [ownerNotifyTarget] : [];
     } else {
       targetUserIds = [];
     }

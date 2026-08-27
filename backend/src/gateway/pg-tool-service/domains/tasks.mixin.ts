@@ -78,18 +78,22 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     // someone other than the owner creating a task with no explicit
     // assignee (it silently self-assigns, see resolveAssigneeUserId's
     // undefined-input fallback above) previously notified nobody, since
-    // assigneeDiffersFromOwner below is false in that case. Deliberately a
-    // plain creator-vs-owner id comparison, NOT assigneeNotifyTarget's
-    // isInteractiveSelfAction nuance -- that nuance means "don't tell X they
-    // just assigned something to themselves in their own browser," which is
-    // the wrong question here (an agent acting as the owner still shouldn't
-    // notify the owner about their own task). Only fires when the caller
-    // left assignee untouched -- an explicit assignee (to anyone, including
-    // themselves) is already covered by the task.assigned branch below and
-    // shouldn't double-notify the owner too.
-    const creatorUserId = userIdFromClientId(context.clientId);
-    const ownerCreateNotifyTarget = input.assignee === undefined && project.ownerUserId && project.ownerUserId !== creatorUserId
-      ? project.ownerUserId
+    // assigneeDiffersFromOwner below is false in that case. Only fires when
+    // the caller left assignee untouched -- an explicit assignee (to anyone,
+    // including themselves) is already covered by the task.assigned branch
+    // below and shouldn't double-notify the owner too.
+    //
+    // T-context (owner's ask, 2026-08-27, atlas-arrow-fix): this used to be
+    // a plain creator-vs-owner id comparison, deliberately not
+    // assigneeNotifyTarget's isInteractiveSelfAction nuance -- reasoned as
+    // "an agent acting as the owner still shouldn't notify the owner about
+    // their own task." In practice that made a solo project (owner is also
+    // the only creator, work agent-driven) never notify Telegram at all,
+    // while the web Notifications feed showed the same events. Now uses
+    // assigneeNotifyTarget so only a real interactive browser click by the
+    // owner is treated as "they just watched this happen."
+    const ownerCreateNotifyTarget = input.assignee === undefined
+      ? assigneeNotifyTarget(project.ownerUserId, context)
       : undefined;
     await this.recordEventForProject(project.id, {
       type: "task.created",
