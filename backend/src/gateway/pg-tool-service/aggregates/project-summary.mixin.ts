@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { compactContextEfficiencyHints, compactSearchRecord } from "../formatters/common.js";
 import { compactArtifactRecord } from "../formatters/artifacts.js";
 import { compactDecisionRecord } from "../formatters/decisions.js";
@@ -142,17 +143,28 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
   }
 
   protected async projectSummaryCounts(projectId: string) {
+    // T-context (owner's ask, 2026-08-27, kribrum): decisionsPage,
+    // artifactsPage, and memorySearchPage (faults) all default
+    // includeCommon to true with no frontend opt-out, so a project's
+    // Decisions/Artifacts/Faults tabs always show common-scope records
+    // mixed in -- but these three counts stayed project-id-only, so a
+    // young project with real common decisions/artifacts visible in its
+    // own tabs showed 0 in the header/menu/stat-tile badge. Memory items
+    // and links are NOT included here: their pages default their
+    // includeCommon toggle to false, so those two counts already match
+    // what's shown by default.
+    const includeCommon = (builder: Knex.QueryBuilder) => builder.where("project_id", projectId).orWhereNull("project_id");
     const [tasks, openTasks, items, decisions, links, artifacts, events, faults] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
       this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked", "review"])),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
-      this.countQueryRows(this.db("decisions").where("project_id", projectId)),
+      this.countQueryRows(this.db("decisions").where(includeCommon)),
       this.countQueryRows(this.db("links").where("project_id", projectId)),
-      this.countQueryRows(this.db("artifacts").where("project_id", projectId)),
+      this.countQueryRows(this.db("artifacts").where(includeCommon)),
       this.countQueryRows(this.db("events").where("project_id", projectId)),
       // T-context (2026-08-25): the frontend's "Faults" stat/nav badge was a
       // hardcoded 0 -- this count backs both now that a real number exists.
-      this.countQueryRows(this.db("items").where({ project_id: projectId, type: "failed_attempt", status: "current" }))
+      this.countQueryRows(this.db("items").where(includeCommon).andWhere({ type: "failed_attempt", status: "current" }))
     ]);
     return {
       tasks,
