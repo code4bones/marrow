@@ -40,11 +40,12 @@ export const GET_PROJECT_SUMMARY = gql`
   query GetProjectSummary($project: String!) {
     projectSummary(project: $project) {
       summary
-      counts { tasks openTasks items decisions artifacts events links faults }
+      counts { tasks openTasks items decisions artifacts events links faults skills }
       project { id slug title description status rootPath updatedAt }
       openTasks { id title status priority milestone updatedAt }
       decisions { id title status tags updatedAt }
       knownFaults { id title excerpt status updatedAt }
+      availableSkills { id name description tags }
       artifacts { id path title contentType sizeBytes tags status updatedAt }
       recentEvents { id type title relatedId createdAt }
     }
@@ -107,6 +108,19 @@ export const GET_ARTIFACTS_PAGE = gql`
   query GetArtifactsPage($project: String, $status: String, $limit: Int!, $offset: Int!) {
     artifactsPage(project: $project, status: $status, pagination: { limit: $limit, offset: $offset }) {
       items { id path title scope contentType sizeBytes status tags createdBy updatedAt }
+      pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
+    }
+  }
+`;
+
+// body included inline (unlike artifacts' separate peek/read_text split) --
+// a skill body is DB-only and small (agent instructions, not a file
+// attachment), so there's no base64/truncation concern the way artifact
+// content has; the edit drawer needs it to prefill without a second query.
+export const GET_SKILLS_PAGE = gql`
+  query GetSkillsPage($project: String, $status: String, $query: String, $limit: Int!, $offset: Int!) {
+    skillsPage(project: $project, status: $status, query: $query, pagination: { limit: $limit, offset: $offset }) {
+      items { id name description body status tags scope activationCount lastActivatedAt createdBy updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -268,6 +282,54 @@ export const ARCHIVE_ARTIFACT = gql`
   }
 `;
 
+export const RECORD_SKILL = gql`
+  mutation RecordSkill($input: RecordSkillInput!) {
+    recordSkill(input: $input) {
+      id name description status tags scope createdAt updatedAt
+    }
+  }
+`;
+
+export const UPDATE_SKILL = gql`
+  mutation UpdateSkill($input: UpdateSkillInput!) {
+    updateSkill(input: $input) {
+      id name description body tags updatedAt
+    }
+  }
+`;
+
+export const ARCHIVE_SKILL = gql`
+  mutation ArchiveSkill($id: ID!, $reason: String) {
+    archiveSkill(id: $id, reason: $reason) {
+      action
+      skill { id status archivedAt }
+      event { id type }
+    }
+  }
+`;
+
+export const DELETE_SKILL = gql`
+  mutation DeleteSkill($id: ID!, $reason: String) {
+    deleteSkill(id: $id, reason: $reason) {
+      deletedSkill { id name }
+      deletedLinks
+      event { id type }
+    }
+  }
+`;
+
+// D-MEMORY-041: not wired to a UI button yet -- activation is primarily an
+// agent action via MCP/GraphQL. Exported for the detail drawer's
+// activationCount/lastActivatedAt display and any future manual "try it"
+// affordance.
+export const ACTIVATE_SKILL = gql`
+  mutation ActivateSkill($id: ID!) {
+    activateSkill(id: $id) {
+      skill { id activationCount lastActivatedAt }
+    }
+  }
+`;
+
 export const CREATE_PROJECT = gql`
   mutation CreateProject($input: CreateProjectInput!) {
     createProject(input: $input) {
@@ -346,6 +408,10 @@ export const GET_RECORD = gql`
         }
         ... on Link {
           id fromId toId relation createdBy createdAt
+        }
+        ... on Skill {
+          id name description body status tags scope
+          activationCount lastActivatedAt archivedAt createdBy createdAt updatedAt
         }
         ... on Project {
           id slug title description status rootPath createdBy updatedAt

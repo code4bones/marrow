@@ -1,4 +1,4 @@
-export type EntityType = 'task' | 'decision' | 'artifact' | 'memory' | 'project' | 'event' | 'link' | 'unknown';
+export type EntityType = 'task' | 'decision' | 'artifact' | 'memory' | 'project' | 'event' | 'link' | 'skill' | 'unknown';
 
 const PREFIX_MAP: Record<string, EntityType> = {
   'T-': 'task',
@@ -8,6 +8,7 @@ const PREFIX_MAP: Record<string, EntityType> = {
   'P-': 'project',
   'E-': 'event',
   'L-': 'link',
+  'SK-': 'skill',
 };
 
 export function getEntityType(id: string): EntityType {
@@ -25,6 +26,7 @@ export const ENTITY_COLOR: Record<EntityType, string> = {
   project:  '#52c41a',
   event:    '#eb2f96',
   link:     '#fa8c16',
+  skill:    '#36cfc9',
   unknown:  '#595959',
 };
 

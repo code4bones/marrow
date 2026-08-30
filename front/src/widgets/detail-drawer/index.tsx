@@ -3,7 +3,7 @@ import { Alert, Divider, Drawer, Skeleton, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { GET_ARTIFACT_TEXT, GET_RECORD, GET_RECORD_LINKS } from '../../shared/api/queries';
 import type {
-  Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Task,
+  Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Skill, Task,
 } from '../../shared/model/types';
 import { ENTITY_COLOR, type EntityType } from '../../shared/lib/entityId';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
@@ -23,6 +23,7 @@ import { DecisionAssigneeSelect } from '../../features/decision/DecisionAssignee
 import { DecisionStatusSelect } from '../../features/decision/DecisionStatusSelect';
 import { MemoryStatusSelect } from '../../features/memory/MemoryStatusSelect';
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
+import { ArchiveSkillButton } from '../../features/skill/ArchiveSkillButton';
 import { canPerform } from '../../shared/lib/taskPermissions';
 import { useMyProjectRole } from '../../shared/lib/useMyProjectRole';
 import { Markdown } from '../../shared/ui/Markdown';
@@ -38,12 +39,14 @@ function kindLabel(t: (key: string) => string): Record<string, string> {
   return {
     TASK: t('kindTask'), DECISION: t('kindDecision'), ARTIFACT: t('kindArtifact'),
     MEMORY: t('kindMemory'), EVENT: t('kindEvent'), LINK: t('kindLink'), PROJECT: t('kindProject'),
+    SKILL: t('kindSkill'),
   };
 }
 
 const KIND_TYPE: Record<string, EntityType> = {
   TASK: 'task', DECISION: 'decision', ARTIFACT: 'artifact',
   MEMORY: 'memory', EVENT: 'event', LINK: 'link', PROJECT: 'project',
+  SKILL: 'skill',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -207,6 +210,42 @@ function MemoryBody({ r }: { r: MemoryRecord }) {
   );
 }
 
+// D-MEMORY-041: modeled on MemoryBody -- body renders inline via the shared
+// Markdown component straight from GET_RECORD's payload, no separate
+// preview query needed (unlike ArtifactBody's GET_ARTIFACT_TEXT) since a
+// skill's body isn't disk-backed.
+function SkillBody({ r }: { r: Skill }) {
+  const { t } = useTranslation('common');
+  const { labelFor } = useActorLabels([r.createdBy]);
+  return (
+    <>
+      <Field label={t('status')}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <StatusBadge status={r.status} />
+          {r.status === 'active' && <ArchiveSkillButton id={r.id} />}
+        </div>
+      </Field>
+      <Field label={t('scope')}><Tag style={{ fontSize: 11 }}>{r.scope}</Tag></Field>
+      {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
+      {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
+      <Field label={t('activations')}>
+        <Text>{r.activationCount}</Text>
+        {r.lastActivatedAt && (
+          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+            {t('lastActivated')}: <Timestamp value={r.lastActivatedAt} />
+          </Text>
+        )}
+      </Field>
+      <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
+      <Field label={t('body')}>
+        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+          <Markdown>{r.body}</Markdown>
+        </div>
+      </Field>
+    </>
+  );
+}
+
 function EventBody({ r }: { r: Event }) {
   const { t } = useTranslation('common');
   const { labelFor } = useActorLabels([r.credentialId]);
@@ -255,6 +294,7 @@ function RecordBody({ wrapper }: { wrapper: RecordWrapper }) {
     case 'Decision':    return <DecisionBody r={r} projectId={wrapper.projectId} />;
     case 'Artifact':    return <ArtifactBody r={r} />;
     case 'MemoryRecord': return <MemoryBody r={r} />;
+    case 'Skill':       return <SkillBody r={r} />;
     case 'Event':       return <EventBody r={r} />;
     case 'Link':        return <LinkBody r={r} />;
     case 'Project':     return <ProjectBody r={r} />;

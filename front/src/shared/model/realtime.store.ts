@@ -6,7 +6,8 @@ export type VersionKey =
   | 'projectsVersion'
   | 'artifactsVersion'
   | 'memoryVersion'
-  | 'linksVersion';
+  | 'linksVersion'
+  | 'skillsVersion';
 
 interface RealtimeState extends Record<VersionKey, number> {
   /** Always bumped, regardless of prefix — drives the Events/timeline page. */
@@ -28,6 +29,7 @@ export const PREFIX_MAP: Array<[string, VersionKey]> = [
   ['memory.', 'memoryVersion'],
   ['item.', 'memoryVersion'],
   ['link.', 'linksVersion'],
+  ['skill.', 'skillsVersion'],
 ];
 
 export const useRealtimeStore = create<RealtimeState>((set) => ({
@@ -37,6 +39,7 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   artifactsVersion: 0,
   memoryVersion: 0,
   linksVersion: 0,
+  skillsVersion: 0,
   eventsVersion: 0,
 
   handleGatewayEvent: (event) => {

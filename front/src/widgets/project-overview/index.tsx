@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import {
   ApartmentOutlined,
   BugOutlined,
+  BulbOutlined,
   CalendarOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
@@ -47,6 +48,9 @@ const STAT_COLOR_DECISION = SATELLITE_KIND_COLOR.DECISION;
 const STAT_COLOR_ARTIFACT = SATELLITE_KIND_COLOR.ARTIFACT;
 const STAT_COLOR_MEMORY = SATELLITE_KIND_COLOR.MEMORY;
 const STAT_COLOR_EVENT = ENTITY_COLOR.event;
+// Skills, like Events, has no on-screen satellite-dot precedent to match
+// (never rendered as a Timeline card satellite) -- same ENTITY_COLOR fallback.
+const STAT_COLOR_SKILL = ENTITY_COLOR.skill;
 
 /** First PREFIX_MAP entry whose prefix matches this event's type, or null (e.g. "gitCredential." has no bucket). */
 function categorizeEvent(type: string): VersionKey | null {
@@ -186,7 +190,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
   );
   // T-MEMORY-051: keep the overview live without a manual refresh.
   useRefetchOnVersion(
-    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.eventsVersion),
+    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.skillsVersion + s.eventsVersion),
     refetch,
   );
 
@@ -315,6 +319,14 @@ export function ProjectOverview({ slug }: { slug: string }) {
               value: counts.artifacts,
               prefix: <DatabaseOutlined style={{ color: STAT_COLOR_ARTIFACT }} />,
               color: STAT_COLOR_ARTIFACT,
+            },
+            {
+              key: 'skills',
+              to: `/projects/${slug}/skills`,
+              title: t('skills'),
+              value: counts.skills,
+              prefix: <BulbOutlined style={{ color: STAT_COLOR_SKILL }} />,
+              color: STAT_COLOR_SKILL,
             },
             {
               key: 'events',

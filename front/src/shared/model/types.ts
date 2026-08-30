@@ -34,9 +34,10 @@ export interface ProjectCounts {
   events: number;
   links: number;
   faults: number;
+  skills: number;
 }
 
-export type GlobalSearchKind = 'task' | 'decision' | 'memory' | 'fault' | 'artifact';
+export type GlobalSearchKind = 'task' | 'decision' | 'memory' | 'fault' | 'artifact' | 'skill';
 
 export interface GlobalSearchResult {
   id: string;
@@ -224,6 +225,35 @@ export interface Link {
   createdAt: string | null;
 }
 
+export interface Skill {
+  id: string;
+  projectId: string | null;
+  scope: string;
+  name: string;
+  description: string | null;
+  body: string;
+  status: string;
+  tags: string[];
+  activationCount: number;
+  lastActivatedAt: string | null;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+// T-context (D-MEMORY-041): the lighter shape listSkills(compact:true)
+// returns -- name+description+tags only, mirrors GraphQL's SkillSummary
+// type used for ProjectSummary.availableSkills.
+export interface SkillSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  tags: string[];
+}
+
 export type RecordPayload =
   | (Task     & { __typename: 'Task' })
   | (Decision & { __typename: 'Decision' })
@@ -231,6 +261,7 @@ export type RecordPayload =
   | (MemoryRecord & { __typename: 'MemoryRecord' })
   | (Event    & { __typename: 'Event' })
   | (Link     & { __typename: 'Link' })
+  | (Skill    & { __typename: 'Skill' })
   | (Project  & { __typename: 'Project' });
 
 export interface RecordWrapper {
@@ -247,6 +278,7 @@ export interface ProjectSummary {
   openTasks: Task[];
   decisions: Decision[];
   knownFaults: MemoryRecord[];
+  availableSkills: SkillSummary[];
   artifacts: Artifact[];
   memory: MemoryRecord[];
   recentEvents: Event[];

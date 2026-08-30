@@ -4,6 +4,7 @@ import {
   AuditOutlined,
   BellOutlined,
   BugOutlined,
+  BulbOutlined,
   DatabaseOutlined,
   HomeOutlined,
   InboxOutlined,
@@ -59,6 +60,7 @@ export function buildProjectSections(t: (key: string) => string, counts?: Projec
     { key: 'decisions',  icon: <PartitionOutlined />,   label: sectionLabel(t('decisions'), counts?.decisions) },
     { key: 'faults',     icon: <BugOutlined />,         label: sectionLabel(t('faults'), counts?.faults) },
     { key: 'artifacts',  icon: <DatabaseOutlined />,    label: sectionLabel(t('artifacts'), counts?.artifacts) },
+    { key: 'skills',     icon: <BulbOutlined />,        label: sectionLabel(t('skills'), counts?.skills) },
     { key: 'events',     icon: <ThunderboltOutlined />, label: sectionLabel(t('events'), counts?.events) },
     { key: 'memory',     icon: <InboxOutlined />,       label: sectionLabel(t('memory'), counts?.items) },
     { key: 'links',      icon: <LinkOutlined />,        label: sectionLabel(t('links'), counts?.links) },
@@ -154,7 +156,7 @@ export function useNavData() {
   });
   // T-MEMORY-051: keep nav badge counts live without a manual refresh.
   useRefetchOnVersion(
-    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.eventsVersion),
+    useRealtimeStore((s) => s.tasksVersion + s.decisionsVersion + s.artifactsVersion + s.memoryVersion + s.linksVersion + s.skillsVersion + s.eventsVersion),
     refetchSummary,
   );
   const projectSections = buildProjectSections(t, summaryData?.projectSummary?.counts);

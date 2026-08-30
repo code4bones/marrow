@@ -20,6 +20,7 @@ import { ProjectInvitePage } from '../../pages/project-invite';
 import { ProjectsPage } from '../../pages/projects';
 import { ProjectSettingsPage } from '../../pages/projects/settings';
 import { RegisterPage } from '../../pages/register';
+import { SkillsPage } from '../../pages/skills';
 import { TasksPage } from '../../pages/tasks';
 import { UsersPage } from '../../pages/users';
 import { AppShell } from '../AppShell';
@@ -79,6 +80,7 @@ export function AppRouter() {
         <Route path="projects/:slug/decisions"  element={<DecisionsPage />} />
         <Route path="projects/:slug/faults"     element={<FaultsPage />} />
         <Route path="projects/:slug/artifacts"  element={<ArtifactsPage />} />
+        <Route path="projects/:slug/skills"     element={<SkillsPage />} />
         <Route path="projects/:slug/events"     element={<EventsPage />} />
         <Route path="projects/:slug/memory"     element={<MemoryPage />} />
         <Route path="projects/:slug/links"      element={<LinksPage />} />

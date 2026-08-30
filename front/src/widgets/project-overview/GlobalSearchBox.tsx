@@ -4,7 +4,7 @@ import { Input, Popover, Spin, Tag, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GET_PROJECT_SEARCH } from '../../shared/api/queries';
-import { getEntityType, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
+import { ENTITY_COLOR, getEntityType, SATELLITE_KIND_COLOR } from '../../shared/lib/entityId';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GlobalSearchKind, GlobalSearchResult } from '../../shared/model/types';
 
@@ -22,6 +22,7 @@ const KIND_COLOR: Record<GlobalSearchKind, string> = {
   memory: SATELLITE_KIND_COLOR.MEMORY,
   fault: '#ff4d4f',
   artifact: SATELLITE_KIND_COLOR.ARTIFACT,
+  skill: ENTITY_COLOR.skill,
 };
 
 function ResultRow({ result, kindLabel, onSelect }: { result: GlobalSearchResult; kindLabel: string; onSelect: (id: string) => void }) {
@@ -76,6 +77,7 @@ export function GlobalSearchBox({ slug, fullWidth }: { slug: string; fullWidth?:
     memory: t('memory'),
     fault: t('faults'),
     artifact: t('artifacts'),
+    skill: t('skills'),
   };
 
   const open = focused && trimmed.length > 0;
