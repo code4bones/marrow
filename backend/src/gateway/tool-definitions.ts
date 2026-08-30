@@ -16,6 +16,7 @@ import {
   updateMemorySchema
 } from "../features/memory/model/schema.js";
 import { preflightSchema } from "../features/preflight/model/schema.js";
+import { recordLinksInputSchema } from "../features/memory/model/schema.js";
 import {
   approveProjectMemberSchema,
   createProjectSchema,
@@ -191,6 +192,7 @@ const projectSummarySchema = z.object({
       tasks: z.number().int().min(1).max(50).optional(),
       decisions: z.number().int().min(1).max(50).optional(),
       faults: z.number().int().min(1).max(50).optional(),
+      skills: z.number().int().min(1).max(50).optional(),
       handoffs: z.number().int().min(1).max(20).optional(),
       artifacts: z.number().int().min(1).max(50).optional(),
       memory: z.number().int().min(1).max(50).optional(),
@@ -366,6 +368,49 @@ const artifactArchiveSchema = z
     message: "Either id or path is required."
   });
 const artifactDeleteSchema = artifactArchiveSchema;
+// D-MEMORY-041: skill status is a 3-state draft/active/archived lifecycle
+// (not artifacts' 2-state active/archived) -- a drafted skill can be
+// refined before it's agent-visible.
+const skillStatusSchema = z.enum(["draft", "active", "archived"]);
+const skillRecordSchema = z.object({
+  project: z.string().nullable().optional(),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  body: z.string().min(1),
+  status: skillStatusSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  links: recordLinksInputSchema
+});
+const skillListSchema = z.object({
+  project: z.string().nullable().optional(),
+  includeCommon: z.boolean().optional(),
+  query: z.string().min(1).optional(),
+  prefix: z.boolean().optional(),
+  status: skillStatusSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  compact: z.boolean().optional()
+});
+const skillGetSchema = z.object({
+  id: z.string().min(1)
+});
+const skillUpdateSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    body: z.string().min(1).optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .refine(
+    (value) => value.name !== undefined || value.description !== undefined || value.body !== undefined || value.tags !== undefined,
+    { message: "At least one field is required." }
+  );
+const skillArchiveSchema = idReasonSchema;
+const skillDeleteSchema = idReasonSchema;
+const skillActivateSchema = z.object({
+  id: z.string().min(1)
+});
 const preflightByQuerySchema = z.object({
   query: z.string().min(1),
   project: z.string().nullable().optional(),
@@ -1173,6 +1218,48 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     description: "Hard-delete an artifact metadata row and remove its stored bytes. Use only after an explicit user request.",
     schema: artifactDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedArtifact: artifactSchema })),
+    access: "write"
+  },
+  {
+    name: "skill.record",
+    description:
+      "Record a reusable skill (agent-loadable markdown instructions) for a project or common scope. A skill is added by pasting/typing its body directly, or -- on the frontend -- by dropping a .md file whose text gets read into the body field before this call. Body is always text, never binary. Duplicate names in the same scope return SKILL_CONFLICT.",
+    schema: skillRecordSchema,
+    access: "write"
+  },
+  {
+    name: "skill.list",
+    description:
+      "List/search skills by scope/tags/status, optionally full-text query. Use compact=true for low-token selection (name+description only, no body) before skill.get/skill.activate.",
+    schema: skillListSchema
+  },
+  {
+    name: "skill.get",
+    description: "Get a skill's full record including body by id. Prefer skill.activate when actually about to follow the skill's instructions -- it records who used it.",
+    schema: skillGetSchema
+  },
+  {
+    name: "skill.update",
+    description: "Update an existing skill's name, description, body, or tags. Only fields present in the input are changed.",
+    schema: skillUpdateSchema,
+    access: "write"
+  },
+  {
+    name: "skill.archive",
+    description: "Archive a skill without deleting it. Archived skills are hidden from project.summary's availableSkills and cannot be activated, but remain visible to skill.list/skill.get.",
+    schema: skillArchiveSchema,
+    access: "write"
+  },
+  {
+    name: "skill.delete",
+    description: "Hard-delete a skill and clean up links that point to it. Use only after an explicit user request.",
+    schema: skillDeleteSchema,
+    access: "write"
+  },
+  {
+    name: "skill.activate",
+    description: "Load a skill's full body and record a skill.activated event for audit. Use this -- not skill.get -- when actually following a skill's instructions; only active-status skills can be activated.",
+    schema: skillActivateSchema,
     access: "write"
   },
   {

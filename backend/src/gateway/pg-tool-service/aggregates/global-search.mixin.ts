@@ -5,6 +5,7 @@ import { type Tier1Instance } from "../core/links-core.mixin.js";
 import { ArtifactsMixin } from "../domains/artifacts.mixin.js";
 import { DecisionsMixin } from "../domains/decisions.mixin.js";
 import { type MemoryInstance } from "../domains/memory.mixin.js";
+import { SkillsMixin } from "../domains/skills.mixin.js";
 import { TasksMixin } from "../domains/tasks.mixin.js";
 
 // T-context (2026-08-25, owner's ask: "(task/decisions/mem/faults/artifacts)
@@ -17,8 +18,9 @@ import { TasksMixin } from "../domains/tasks.mixin.js";
 // GIN pattern, migrations 007/060).
 type ArtifactsInstance = InstanceType<ReturnType<typeof ArtifactsMixin<Constructor<Tier1Instance>>>>;
 type DecisionsInstance = InstanceType<ReturnType<typeof DecisionsMixin<Constructor<Tier1Instance>>>>;
+type SkillsInstance = InstanceType<ReturnType<typeof SkillsMixin<Constructor<Tier1Instance>>>>;
 type TasksInstance = InstanceType<ReturnType<typeof TasksMixin<Constructor<MemoryInstance>>>>;
-type GlobalSearchBase = ArtifactsInstance & DecisionsInstance & TasksInstance;
+type GlobalSearchBase = ArtifactsInstance & DecisionsInstance & SkillsInstance & TasksInstance;
 
 export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(Base: TBase) {
   return class extends Base {
@@ -42,12 +44,13 @@ export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(B
     // matches whole words, which made the box feel broken (reported live:
     // "task compl" found nothing despite a real "Task completion..." task
     // existing). See formatters/common.ts's toPrefixTsQueryText.
-    const [tasks, decisions, memory, faults, artifacts] = await Promise.all([
+    const [tasks, decisions, memory, faults, artifacts, skills] = await Promise.all([
       this.searchTasks({ project: project.slug, query, prefix: true, limit: perKindLimit }, context),
       this.searchDecisions({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context),
       this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, excludeType: "failed_attempt", limit: perKindLimit }, context),
       this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, type: "failed_attempt", limit: perKindLimit }, context),
-      this.searchArtifacts({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context)
+      this.searchArtifacts({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context),
+      this.listSkills({ project: project.slug, query, prefix: true, includeCommon: true, status: "active", limit: perKindLimit }, context)
     ]);
 
     const results = [
@@ -55,7 +58,8 @@ export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(B
       ...decisions,
       ...memory.map((row: Row) => ({ id: row.id, kind: "memory", title: row.title, excerpt: row.excerpt, status: row.status, updatedAt: row.updatedAt })),
       ...faults.map((row: Row) => ({ id: row.id, kind: "fault", title: row.title, excerpt: row.excerpt, status: row.status, updatedAt: row.updatedAt })),
-      ...artifacts.map((row: Row) => ({ id: row.id, kind: "artifact", title: row.title, excerpt: shortText((row.description as string | null) ?? "", 200), status: row.status, updatedAt: row.updatedAt }))
+      ...artifacts.map((row: Row) => ({ id: row.id, kind: "artifact", title: row.title, excerpt: shortText((row.description as string | null) ?? "", 200), status: row.status, updatedAt: row.updatedAt })),
+      ...skills.map((row: Row) => ({ id: row.id, kind: "skill", title: row.name, excerpt: shortText((row.description as string | null) ?? "", 200), status: row.status, updatedAt: row.updatedAt }))
     ];
     return { results };
   }

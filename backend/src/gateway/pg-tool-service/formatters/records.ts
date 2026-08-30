@@ -7,9 +7,10 @@ import { decisionOut } from "./decisions.js";
 import { artifactOut } from "./artifacts.js";
 import { eventOut } from "./events.js";
 import { linkOut } from "./links.js";
+import { skillOut } from "./skills.js";
 
 export function recordLookupTables(id: string): string[] {
-  const tables = ["items", "projects", "tasks", "decisions", "artifacts", "events", "links"];
+  const tables = ["items", "projects", "tasks", "decisions", "artifacts", "events", "links", "skills"];
   let preferred = "items";
   if (id.startsWith("P-")) {
     preferred = "projects";
@@ -23,6 +24,8 @@ export function recordLookupTables(id: string): string[] {
     preferred = "events";
   } else if (id.startsWith("L-")) {
     preferred = "links";
+  } else if (id.startsWith("SK-")) {
+    preferred = "skills";
   }
   return [preferred, ...tables.filter((table) => table !== preferred)];
 }
@@ -90,6 +93,15 @@ export function recordLookupOut(table: string, row: Row): Row {
         kind: "LINK",
         projectId: link.projectId,
         record: { __typename: "Link", ...link }
+      };
+    }
+    case "skills": {
+      const skill = skillOut(row);
+      return {
+        id: skill.id,
+        kind: "SKILL",
+        projectId: skill.projectId,
+        record: { __typename: "Skill", ...skill }
       };
     }
     default:

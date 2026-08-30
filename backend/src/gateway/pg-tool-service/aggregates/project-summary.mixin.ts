@@ -13,19 +13,22 @@ import { ArtifactsMixin } from "../domains/artifacts.mixin.js";
 import { DecisionsMixin } from "../domains/decisions.mixin.js";
 import { EventsMixin } from "../domains/events.mixin.js";
 import { type MemoryInstance } from "../domains/memory.mixin.js";
+import { SkillsMixin } from "../domains/skills.mixin.js";
 import { TasksMixin } from "../domains/tasks.mixin.js";
 
 // project.summary reads across Memory (searchMemory), Artifacts
-// (searchArtifacts), Decisions (listDecisions), Events (listEvents), and
-// Tasks (listOpenProjectTasks needs the Tier 0 taskSelectWithActiveClaimCount
-// helper only, but listOpenProjectTasks itself lives here) -- so this
-// aggregate can only be composed onto a base that already includes all of
-// those domains (see service.ts's composition order).
+// (searchArtifacts), Decisions (listDecisions), Events (listEvents), Skills
+// (listSkills), and Tasks (listOpenProjectTasks needs the Tier 0
+// taskSelectWithActiveClaimCount helper only, but listOpenProjectTasks
+// itself lives here) -- so this aggregate can only be composed onto a base
+// that already includes all of those domains (see service.ts's composition
+// order).
 type ArtifactsInstance = InstanceType<ReturnType<typeof ArtifactsMixin<Constructor<Tier1Instance>>>>;
 type DecisionsInstance = InstanceType<ReturnType<typeof DecisionsMixin<Constructor<Tier1Instance>>>>;
 type EventsInstance = InstanceType<ReturnType<typeof EventsMixin<Constructor<Tier1Instance>>>>;
+type SkillsInstance = InstanceType<ReturnType<typeof SkillsMixin<Constructor<Tier1Instance>>>>;
 type TasksInstance = InstanceType<ReturnType<typeof TasksMixin<Constructor<MemoryInstance>>>>;
-type ProjectSummaryBase = ArtifactsInstance & DecisionsInstance & EventsInstance & TasksInstance;
+type ProjectSummaryBase = ArtifactsInstance & DecisionsInstance & EventsInstance & SkillsInstance & TasksInstance;
 
 export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase>>(Base: TBase) {
   return class extends Base {
@@ -44,7 +47,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
     const explicitQuery = typeof input.query === "string" && input.query.trim() ? input.query : undefined;
     const query = explicitQuery ?? [project.title, project.slug, project.description].filter(Boolean).join(" ");
 
-    const [openTasks, decisions, knownFaults, handoffs, artifacts, memory, recentEvents, counts] = await Promise.all([
+    const [openTasks, decisions, knownFaults, availableSkills, handoffs, artifacts, memory, recentEvents, counts] = await Promise.all([
       this.listOpenProjectTasks(project.id, limits.tasks),
       this.listDecisions({
         project: project.id,
@@ -59,6 +62,13 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
         type: "failed_attempt",
         status: "current",
         limit: limits.faults
+      }),
+      this.listSkills({
+        project: project.id,
+        includeCommon,
+        status: "active",
+        compact: true,
+        limit: limits.skills
       }),
       this.listRecentItemsByType("handoff", project.id, includeCommon, limits.handoffs),
       this.searchArtifacts({
@@ -112,6 +122,13 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       // reads first; burying it after task/decision lists meant it competed
       // for attention with everything else instead of priming the read.
       knownFaults: knownFaults.map(compactSearchRecord),
+      // T-context (D-MEMORY-041): availableSkills sits next to knownFaults
+      // for the same reason -- both are "orient before acting" surfaces an
+      // agent should notice before diving into openTasks/decisions. Already
+      // compact (listSkills was called with compact:true above) -- name+
+      // description only, no body -- skill.activate(id) loads the full body
+      // when the agent decides it needs one.
+      availableSkills,
       openTasks: openTasks.map(compactTask),
       handoffs: handoffs.map(compactHandoffRecord),
       decisions: decisions.map(compactDecisionRecord),
@@ -154,7 +171,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
     // includeCommon toggle to false, so those two counts already match
     // what's shown by default.
     const includeCommon = (builder: Knex.QueryBuilder) => builder.where("project_id", projectId).orWhereNull("project_id");
-    const [tasks, openTasks, items, decisions, links, artifacts, events, faults] = await Promise.all([
+    const [tasks, openTasks, items, decisions, links, artifacts, events, faults, skills] = await Promise.all([
       this.countQueryRows(this.db("tasks").where("project_id", projectId)),
       this.countQueryRows(this.db("tasks").where("project_id", projectId).whereIn("status", ["doing", "todo", "blocked", "review"])),
       this.countQueryRows(this.db("items").where("project_id", projectId)),
@@ -164,7 +181,8 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       this.countQueryRows(this.db("events").where("project_id", projectId)),
       // T-context (2026-08-25): the frontend's "Faults" stat/nav badge was a
       // hardcoded 0 -- this count backs both now that a real number exists.
-      this.countQueryRows(this.db("items").where(includeCommon).andWhere({ type: "failed_attempt", status: "current" }))
+      this.countQueryRows(this.db("items").where(includeCommon).andWhere({ type: "failed_attempt", status: "current" })),
+      this.countQueryRows(this.db("skills").where(includeCommon).andWhere({ status: "active" }))
     ]);
     return {
       tasks,
@@ -174,7 +192,8 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       links,
       artifacts,
       events,
-      faults
+      faults,
+      skills
     };
   }
 

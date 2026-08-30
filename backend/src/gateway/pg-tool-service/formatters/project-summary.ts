@@ -63,6 +63,7 @@ export function projectSummaryLimits(overrides: Row) {
     tasks: Number(overrides.tasks ?? 8),
     decisions: Number(overrides.decisions ?? 5),
     faults: Number(overrides.faults ?? 5),
+    skills: Number(overrides.skills ?? 5),
     handoffs: Number(overrides.handoffs ?? 3),
     artifacts: Number(overrides.artifacts ?? 5),
     memory: Number(overrides.memory ?? 6),

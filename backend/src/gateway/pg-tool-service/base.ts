@@ -314,7 +314,7 @@ export class BaseService {
   }
 
   protected async assertRecordExists(id: string): Promise<void> {
-    for (const table of ["projects", "items", "tasks", "decisions", "events", "links", "artifacts"]) {
+    for (const table of ["projects", "items", "tasks", "decisions", "events", "links", "artifacts", "skills"]) {
       if (await this.exists(table, id)) {
         return;
       }

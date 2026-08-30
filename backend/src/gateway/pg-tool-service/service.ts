@@ -9,6 +9,7 @@ import { LinksCoreMixin } from "./core/links-core.mixin.js";
 import { MemoryMixin } from "./domains/memory.mixin.js";
 import { ArtifactsMixin } from "./domains/artifacts.mixin.js";
 import { DecisionsMixin } from "./domains/decisions.mixin.js";
+import { SkillsMixin } from "./domains/skills.mixin.js";
 import { EventsMixin } from "./domains/events.mixin.js";
 import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
@@ -51,11 +52,13 @@ const ComposedService = GlobalSearchMixin(
                       CreditsMixin(
                         ClientsMixin(
                           EventsMixin(
-                            DecisionsMixin(
-                              ArtifactsMixin(
-                                MemoryMixin(
-                                  LinksCoreMixin(
-                                    ProjectsCoreMixin(BaseService)
+                            SkillsMixin(
+                              DecisionsMixin(
+                                ArtifactsMixin(
+                                  MemoryMixin(
+                                    LinksCoreMixin(
+                                      ProjectsCoreMixin(BaseService)
+                                    )
                                   )
                                 )
                               )
@@ -224,6 +227,20 @@ export class PgToolService extends ComposedService {
           return ok("Artifact archived.", await this.archiveArtifact(parsed, requestContext));
         case "artifact.delete":
           return ok("Artifact deleted.", await this.deleteArtifact(parsed, requestContext));
+        case "skill.record":
+          return ok("Skill recorded.", await this.recordSkill(parsed, requestContext));
+        case "skill.list":
+          return ok("Skills listed.", { skills: await this.listSkills(parsed, requestContext) });
+        case "skill.get":
+          return ok("Skill loaded.", { skill: await this.getSkill(String(parsed.id), requestContext) });
+        case "skill.update":
+          return ok("Skill updated.", { skill: await this.updateSkill(parsed, requestContext) });
+        case "skill.archive":
+          return ok("Skill archived.", await this.archiveSkill(parsed, requestContext));
+        case "skill.delete":
+          return ok("Skill deleted.", await this.deleteSkill(parsed, requestContext));
+        case "skill.activate":
+          return ok("Skill activated.", await this.activateSkill(parsed, requestContext));
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
         case "task.list":
@@ -369,6 +386,8 @@ export class PgToolService extends ComposedService {
         return this.artifactsPage(parsed, requestContext);
       case "artifactSearch":
         return this.artifactSearchPage(parsed, requestContext);
+      case "skills":
+        return this.skillsPage(parsed, requestContext);
       case "events":
         return this.eventsPage(parsed, requestContext);
       case "links":

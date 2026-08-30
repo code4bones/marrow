@@ -158,6 +158,10 @@ const typeDefs = `#graphql
     decisionsPage(project: String, includeCommon: Boolean, status: String, milestone: String, pagination: PaginationInput): PaginatedDecisions!
     decision(id: ID!): Decision!
 
+    skills(project: String, includeCommon: Boolean, query: String, status: String, tags: [String!], limit: Int): [Skill!]!
+    skillsPage(project: String, includeCommon: Boolean, query: String, status: String, tags: [String!], pagination: PaginationInput): PaginatedSkills!
+    skill(id: ID!): Skill!
+
     artifacts(
       project: String
       common: Boolean
@@ -300,6 +304,12 @@ const typeDefs = `#graphql
     archiveDecision(id: ID!, reason: String): ArchiveDecisionResult!
     deleteDecision(id: ID!, reason: String): DeleteDecisionResult!
 
+    recordSkill(input: RecordSkillInput!): Skill!
+    updateSkill(input: UpdateSkillInput!): Skill!
+    archiveSkill(id: ID!, reason: String): ArchiveSkillResult!
+    deleteSkill(id: ID!, reason: String): DeleteSkillResult!
+    activateSkill(id: ID!): ActivateSkillResult!
+
     putTextArtifact(input: PutTextArtifactInput!): Artifact!
     updateArtifactMetadata(input: UpdateArtifactMetadataInput!): Artifact!
     archiveArtifact(id: ID, project: String, path: String, reason: String): ArtifactArchiveResult!
@@ -383,9 +393,10 @@ const typeDefs = `#graphql
     ARTIFACT
     EVENT
     LINK
+    SKILL
   }
 
-  union RecordPayload = Project | MemoryRecord | Task | Decision | Artifact | Event | Link
+  union RecordPayload = Project | MemoryRecord | Task | Decision | Artifact | Event | Link | Skill
 
   type RecordLookup {
     id: ID!
@@ -473,6 +484,24 @@ const typeDefs = `#graphql
     milestone: String
     assignee: String
     links: [RecordLinkInput!]
+  }
+
+  input RecordSkillInput {
+    project: String
+    name: String!
+    description: String
+    body: String!
+    status: String
+    tags: [String!]
+    links: [RecordLinkInput!]
+  }
+
+  input UpdateSkillInput {
+    id: ID!
+    name: String
+    description: String
+    body: String
+    tags: [String!]
   }
 
   input RecordEventInput {
@@ -596,6 +625,7 @@ const typeDefs = `#graphql
     handoffs: [MemoryRecord!]!
     decisions: [Decision!]!
     knownFaults: [MemoryRecord!]!
+    availableSkills: [SkillSummary!]!
     artifacts: [ArtifactSearchResult!]!
     memory: [MemoryRecord!]!
     recentEvents: [Event!]!
@@ -611,6 +641,19 @@ const typeDefs = `#graphql
     artifacts: Int!
     events: Int!
     faults: Int!
+    skills: Int!
+  }
+
+  # T-context (D-MEMORY-041): a lighter type than Skill for
+  # ProjectSummary.availableSkills -- listSkills(compact:true) only returns
+  # {id, name, description, tags}, no body/status/timestamps, so reusing the
+  # full Skill type here would mean piling nullable-in-practice fields onto
+  # it the way ArtifactSearchResult awkwardly does for artifacts.
+  type SkillSummary {
+    id: ID!
+    name: String!
+    description: String
+    tags: [String!]!
   }
 
   type GlobalSearchResult {
@@ -827,6 +870,48 @@ const typeDefs = `#graphql
     deletedDecision: Decision!
     deletedLinks: Int!
     event: Event!
+  }
+
+  type Skill {
+    id: ID!
+    projectId: String
+    scope: String!
+    name: String!
+    description: String
+    body: String!
+    status: String!
+    tags: [String!]!
+    activationCount: Int!
+    lastActivatedAt: String
+    archivedAt: String
+    archivedBy: String
+    archiveReason: String
+    createdBy: String
+    createdAt: String
+    updatedAt: String
+    linksCreated: [Link!]
+    relatedCandidates: [RelatedRecordCandidate!]
+  }
+
+  type PaginatedSkills {
+    items: [Skill!]!
+    pageInfo: PageInfo!
+  }
+
+  type ArchiveSkillResult {
+    action: String!
+    skill: Skill!
+    event: Event
+  }
+
+  type DeleteSkillResult {
+    deletedSkill: Skill!
+    deletedLinks: Int!
+    event: Event!
+  }
+
+  type ActivateSkillResult {
+    skill: Skill!
   }
 
   type Artifact {
@@ -1110,6 +1195,12 @@ const resolvers = {
       await pageQuery(context, "decisions", cleanInput(args)),
     decision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "decision.get", cleanInput(args))).decision,
+    skills: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "skill.list", cleanInput(args))).skills,
+    skillsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await pageQuery(context, "skills", cleanInput(args)),
+    skill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "skill.get", cleanInput(args))).skill,
     artifacts: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.list", cleanInput(args))).artifacts,
     artifactsPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1244,6 +1335,16 @@ const resolvers = {
       await callTool<Row>(context, "decision.archive", cleanInput(args)),
     deleteDecision: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "decision.delete", cleanInput(args)),
+    recordSkill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "skill.record", cleanInput(args.input as Row))).skill,
+    updateSkill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "skill.update", cleanInput(args.input as Row))).skill,
+    archiveSkill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "skill.archive", cleanInput(args)),
+    deleteSkill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "skill.delete", cleanInput(args)),
+    activateSkill: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "skill.activate", cleanInput(args)),
     putTextArtifact: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "artifact.put_text", cleanInput(args.input as Row))).artifact,
     updateArtifactMetadata: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
