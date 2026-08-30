@@ -237,6 +237,7 @@ Use preflight output to check:
 - relevant project decisions
 - relevant common rules
 - known failed attempts and `knownFaults`
+- available skills (`availableSkills`) -- see Skill Discipline below
 - related links
 
 Stop and ask the user when preflight reveals:
@@ -358,6 +359,33 @@ agents/CODEX_PROJECT_MEMORY.md
 ```
 
 For Markdown documents, use `contentType: text/markdown; charset=utf-8`.
+
+## Skill Discipline
+
+Skills are reusable, agent-loadable markdown instructions (a "how to deploy",
+"how to write a fault", etc. playbook), project-scoped or common, distinct
+from artifacts.
+
+`project.summary`, `preflight`, `preflight.by_query`, and `context.pack` all
+surface `availableSkills`: compact `{id, name, description, tags}` cards for
+the current project's active skills. This is a passive safety net, the same
+role `knownFaults` already plays -- do not wait to be asked before reading it.
+
+Visibility alone does not mean a skill gets used. Before starting work, check
+whether the task, or the user's own words, name or tag-match one of the
+`availableSkills` entries. If one matches, call `skill.activate(id)` -- not
+`skill.get` -- before proceeding; this is the action of actually starting to
+follow that skill's instructions, and it records who used it.
+
+If the user names or references a skill by name/tag that is not in the
+current `availableSkills` list (stale context, common-scope skill outside the
+current project, or just-created), search with `skill.list(query=..., tags=...)`
+before assuming it does not exist.
+
+Use `skill.record` to create a new skill; prefer `status: "draft"` while still
+refining content, `status: "active"` once it should be agent-visible. Use
+`skill.update`/`skill.archive` to maintain existing skills; do not create a
+duplicate skill for a small edit.
 
 ## Recording Rules
 
