@@ -875,10 +875,10 @@ const typeDefs = `#graphql
   type Skill {
     id: ID!
     projectId: String
-    scope: String!
+    scope: String
     name: String!
     description: String
-    body: String!
+    body: String
     status: String!
     tags: [String!]!
     activationCount: Int!
