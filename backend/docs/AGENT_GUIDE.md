@@ -387,6 +387,42 @@ refining content, `status: "active"` once it should be agent-visible. Use
 `skill.update`/`skill.archive` to maintain existing skills; do not create a
 duplicate skill for a small edit.
 
+### Mirroring Project Skills To `.claude/skills/`
+
+Marrow's `skill.*` tools are the canonical, cross-agent, cross-project store.
+Claude Code separately auto-discovers its own native skills from
+`.claude/skills/<slug>/SKILL.md` in a project's own git checkout (a directory
+per skill, required `SKILL.md` file, YAML frontmatter -- see
+https://code.claude.com/docs/en/skills.md). Project-level native skills are
+meant to be committed to git so the whole team gets them.
+
+When `skill.record` or `skill.update` creates/edits a **project-scoped**
+skill (not common) and the agent is working inside that project's own git
+checkout, also write `./.claude/skills/<slug>/SKILL.md` there, where `<slug>`
+is the skill's `name` lowercased with non-alphanumeric runs collapsed to a
+single hyphen (matches the directory-name/command-slug constraint). File
+contents:
+
+```markdown
+---
+description: <skill.description, or a short summary of body if description is empty>
+---
+
+<skill.body>
+```
+
+Include this file in the same change/commit as the rest of the work, the
+same as any other edited file -- do not invent a separate auto-commit step
+for it.
+
+Common-scope skills are not mirrored this way: no single project checkout is
+the canonical home for a skill meant to apply across every project.
+
+When `skill.archive` or `skill.delete` runs on a project-scoped skill that
+was previously mirrored, delete the local `./.claude/skills/<slug>/`
+directory in the same checkout -- an archived/deleted skill should not stay
+auto-invocable by the native harness.
+
 ## Recording Rules
 
 Use `decision.record` for:
