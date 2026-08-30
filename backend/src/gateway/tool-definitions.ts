@@ -420,6 +420,7 @@ const preflightByQuerySchema = z.object({
       decisions: z.number().int().min(1).max(50).optional(),
       items: z.number().int().min(1).max(50).optional(),
       failedAttempts: z.number().int().min(1).max(50).optional(),
+      skills: z.number().int().min(1).max(50).optional(),
       artifacts: z.number().int().min(1).max(50).optional(),
       events: z.number().int().min(1).max(50).optional()
     })
@@ -439,6 +440,7 @@ const contextPackSchema = z
         decisions: z.number().int().min(1).max(50).optional(),
         items: z.number().int().min(1).max(50).optional(),
         failedAttempts: z.number().int().min(1).max(50).optional(),
+        skills: z.number().int().min(1).max(50).optional(),
         artifacts: z.number().int().min(1).max(50).optional(),
         events: z.number().int().min(1).max(50).optional(),
         handoffs: z.number().int().min(1).max(20).optional()
@@ -791,6 +793,7 @@ const contextPackDataSchema = z
     handoffs: z.array(looseRecordSchema),
     decisions: z.array(looseRecordSchema),
     knownFaults: z.array(looseRecordSchema),
+    availableSkills: z.array(looseRecordSchema),
     memory: z.array(looseRecordSchema),
     artifacts: z.array(compactArtifactSchema),
     recentEvents: z.array(looseRecordSchema),
@@ -806,6 +809,7 @@ const preflightByQueryDataSchema = z.object({
   relatedItems: z.array(looseRecordSchema),
   failedAttempts: z.array(looseRecordSchema),
   knownFaults: z.array(looseRecordSchema),
+  availableSkills: z.array(looseRecordSchema),
   artifacts: z.array(looseRecordSchema),
   recentEvents: z.array(looseRecordSchema),
   summary: z.string(),

@@ -8,6 +8,7 @@ export const preflightSchema = z.object({
       decisions: z.number().int().min(1).max(50).optional(),
       items: z.number().int().min(1).max(50).optional(),
       failedAttempts: z.number().int().min(1).max(50).optional(),
+      skills: z.number().int().min(1).max(50).optional(),
       events: z.number().int().min(1).max(50).optional()
     })
     .optional()

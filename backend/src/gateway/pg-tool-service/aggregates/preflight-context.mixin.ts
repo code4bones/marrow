@@ -20,18 +20,21 @@ import { ArtifactsMixin } from "../domains/artifacts.mixin.js";
 import { DecisionsMixin } from "../domains/decisions.mixin.js";
 import { EventsMixin } from "../domains/events.mixin.js";
 import { type MemoryInstance } from "../domains/memory.mixin.js";
+import { SkillsMixin } from "../domains/skills.mixin.js";
 import { TasksMixin } from "../domains/tasks.mixin.js";
 
 // preflight/preflightByQuery/contextPack/contextChangedSince read across
 // Memory (searchMemory), Artifacts (searchArtifacts), Decisions
-// (listDecisions), Events (listEvents), and Tasks (getTask) -- so this
-// aggregate can only be composed onto a base that already includes all of
-// those domains (see service.ts's composition order).
+// (listDecisions), Skills (listSkills), Events (listEvents), and Tasks
+// (getTask) -- so this aggregate can only be composed onto a base that
+// already includes all of those domains (see service.ts's composition
+// order).
 type ArtifactsInstance = InstanceType<ReturnType<typeof ArtifactsMixin<Constructor<Tier1Instance>>>>;
 type DecisionsInstance = InstanceType<ReturnType<typeof DecisionsMixin<Constructor<Tier1Instance>>>>;
 type EventsInstance = InstanceType<ReturnType<typeof EventsMixin<Constructor<Tier1Instance>>>>;
+type SkillsInstance = InstanceType<ReturnType<typeof SkillsMixin<Constructor<Tier1Instance>>>>;
 type TasksInstance = InstanceType<ReturnType<typeof TasksMixin<Constructor<MemoryInstance>>>>;
-type PreflightContextBase = ArtifactsInstance & DecisionsInstance & EventsInstance & TasksInstance;
+type PreflightContextBase = ArtifactsInstance & DecisionsInstance & EventsInstance & SkillsInstance & TasksInstance;
 
 export function PreflightContextMixin<TBase extends Constructor<PreflightContextBase>>(Base: TBase) {
   return class extends Base {
@@ -69,6 +72,18 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       // first.
       failedAttempts,
       knownFaults: failedAttempts,
+      // T-context (D-MEMORY-041 follow-up, owner's ask): project.summary
+      // surfaces availableSkills only once per session -- preflight is
+      // called before EVERY task, a much higher-frequency touchpoint, so an
+      // agent working a project for a while keeps seeing what's available
+      // instead of only remembering it from session start.
+      availableSkills: await this.listSkills({
+        project: project.id,
+        includeCommon: input.includeCommon !== false,
+        status: "active",
+        compact: true,
+        limit: limits.skills ?? 5
+      }),
       relevantDecisions: await this.listDecisions({
         project: project.id,
         includeCommon: input.includeCommon !== false,
@@ -122,6 +137,13 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       // reading the rest" field ordering.
       failedAttempts,
       knownFaults: failedAttempts,
+      availableSkills: await this.listSkills({
+        project: project?.id,
+        includeCommon,
+        status: "active",
+        compact: true,
+        limit: limits.skills ?? 5
+      }),
       relevantDecisions: await this.listDecisions({
         project: project?.id,
         includeCommon,
@@ -210,6 +232,9 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       query,
       mustRead: mustReadPointers((source.knownFaults ?? []) as Row[]),
       knownFaults: ((source.knownFaults ?? []) as Row[]).map(compactSearchRecord),
+      // Already compact from preflight/preflightByQuery's own
+      // listSkills(compact:true) call -- no further mapping needed.
+      availableSkills: (source.availableSkills ?? []) as Row[],
       handoffs: handoffs.map(compactHandoffRecord),
       decisions: ((source.relevantDecisions ?? []) as Row[]).map(compactDecisionRecord),
       memory: ((source.relatedItems ?? []) as Row[]).map(compactSearchRecord),
