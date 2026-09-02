@@ -43,8 +43,7 @@ function PinButton({ project, onDone }: { project: Project; onDone: () => void }
 export function ProjectsPage() {
   const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
-  // eslint-disable-next-line no-console -- I-MEMORY-128 temporary diagnostic, removed once the storm's cause is confirmed.
-  console.log('[I-MEMORY-128] ProjectsPage render', slug, Date.now());
+  console.log('[I-MEMORY-128] ProjectsPage render', slug);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);

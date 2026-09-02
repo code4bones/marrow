@@ -29,8 +29,7 @@ interface Props {
 // instead: a project-rooted hierarchy (GraphTree) built from the exact same
 // nodes/edges as the timeline, no extra backend request.
 export function ProjectGraphView({ slug }: Props) {
-  // eslint-disable-next-line no-console -- I-MEMORY-128 temporary diagnostic, removed once the storm's cause is confirmed.
-  console.log('[I-MEMORY-128] PGV render', slug, Date.now());
+  console.log('[I-MEMORY-128] PGV render', slug);
   const { t } = useTranslation('projects');
   const [view, setView] = useState<ViewMode>('timeline');
   const depth = MAX_LINK_DEPTH;
