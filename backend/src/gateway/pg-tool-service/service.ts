@@ -96,6 +96,18 @@ export class PgToolService extends ComposedService {
 
     try {
       const requestContext = normalizeContext(context);
+      // General agent self-identification (owner's ask, 2026-09-02): any
+      // write call can carry a top-level `agent` string naming which agent
+      // made it (e.g. "backend"/"front") -- read from the raw input, not
+      // from `parsed`, so it works even for tools whose zod schema doesn't
+      // declare it (schema.parse silently strips unknown keys either way).
+      // recordEventForProject (base.ts) stamps it on every event this call
+      // produces. No built-in identity exists for this -- purely a
+      // self-reported convention, same as request/reply's fromAgent/toAgent.
+      const rawAgent = input && typeof input === "object" ? (input as Row).agent : undefined;
+      if (typeof rawAgent === "string" && rawAgent.trim()) {
+        requestContext.agentName = rawAgent.trim();
+      }
       const parsed = spec.schema.parse(input ?? {}) as Row;
       await this.touchClient(requestContext, { cleanupAnonymous: canonicalToolName !== "gateway.client_prune" });
       switch (canonicalToolName) {

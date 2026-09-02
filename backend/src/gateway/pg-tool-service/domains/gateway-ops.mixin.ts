@@ -19,7 +19,8 @@ const SYSTEM_REGISTRATION_CONTEXT: NormalizedGatewayRequestContext = {
   sessionUserId: null,
   sessionRole: null,
   sessionSource: null,
-  ownerUserId: null
+  ownerUserId: null,
+  agentName: null
 };
 
 export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TBase) {

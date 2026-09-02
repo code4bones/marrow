@@ -453,6 +453,21 @@ human.
   explicitly when starting work if you expect the other agent to have asked
   something.
 
+## Agent Attribution On Events
+
+Any write call (`task.create`, `decision.record`, `artifact.put`, etc.) can
+carry a top-level `agent` string naming which agent made it -- e.g.
+`"backend"`/`"front"`, same self-declared convention as request/reply's
+`fromAgent`/`toAgent` above. When present, it's stamped onto every event
+that call produces (`events.agent_name`), so the Timeline shows *which
+agent* did something, not just the owning account -- the UI renders it as
+"owner (agent)". This isn't declared in every individual tool's schema
+(adding it to every one of them wasn't worth the mechanical diff), but the
+gateway reads it off the raw call regardless of whether a given tool's
+schema lists it -- pass it on any call where you want that specific action
+attributed to you in the Timeline. There is no built-in session identity
+behind this; it's purely self-reported, exactly like `fromAgent`/`toAgent`.
+
 ## Recording Rules
 
 Use `decision.record` for:

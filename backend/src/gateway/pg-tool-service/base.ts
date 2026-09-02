@@ -158,6 +158,12 @@ export class BaseService {
       title: input.title ?? null,
       body: input.body ?? null,
       related_id: input.related_id ?? null,
+      // input.agent lets a specific domain call override with a more
+      // precise value than the generic per-call context.agentName (e.g.
+      // requests.mixin.ts passes the request's own fromAgent, distinct from
+      // whatever -- if anything -- the top-level call itself was tagged
+      // with).
+      agent_name: (input.agent as string | undefined) ?? context.agentName ?? null,
       target_user_ids: jsonStringArray(targetUserIds),
       created_by: context.clientId,
       source_instance_id: context.clientId,

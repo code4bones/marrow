@@ -1051,6 +1051,9 @@ const typeDefs = `#graphql
     # for every other event type.
     targetUserIds: [String!]!
     createdAt: String
+    # Self-declared agent name that made this event's call (e.g.
+    # "backend"/"front"), if any -- see recordEventForProject.
+    agentName: String
   }
 
   type PaginatedEvents {

@@ -80,6 +80,14 @@ export interface NormalizedGatewayRequestContext {
   sessionRole: string | null;
   sessionSource: "cookie" | "personal_token" | "oauth" | null;
   ownerUserId: string | null;
+  // T-context (2026-09-02): a caller's self-declared agent name (e.g.
+  // "backend"/"front"), lifted out of the raw tool input's top-level
+  // `agent` field in service.ts's call() -- not part of auth/session
+  // resolution like the fields above, just a per-call passthrough so
+  // recordEventForProject (base.ts) can stamp it on every event without
+  // every domain mixin threading it through by hand. null when the caller
+  // didn't pass one.
+  agentName: string | null;
 }
 
 export const manualSpecs = [

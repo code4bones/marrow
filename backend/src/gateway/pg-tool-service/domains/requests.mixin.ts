@@ -49,22 +49,17 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
       { project: toProject.id, fromId: item.id, toId: fromProject.id, relation: "asked_by" },
       context
     );
-    // Agent info has nowhere else to surface on the Timeline (Events) table,
-    // which shows type/title/related but not the request's own tags -- so
-    // it rides along in the event body, the same slot artifact.archived /
-    // decision.status_changed already use for a free-text detail line.
-    const agentLine = fromAgent && toAgent
-      ? `${fromAgent} → ${toAgent}`
-      : toAgent
-        ? `→ ${toAgent}`
-        : fromAgent
-          ? `from ${fromAgent}`
-          : null;
+    // agent: the generic per-event agent stamp (base.ts's
+    // recordEventForProject) -- fromAgent is the more precise value here
+    // than whatever the top-level call itself carried, so it wins.
+    // toAgent isn't part of that generic slot (it's "who this is addressed
+    // to", not "who acted"); it's still visible via the request's own tags
+    // one click away in the detail drawer.
     const event = await this.recordEventForProject(toProject.id, {
       type: "request.created",
       title: `Request asked: ${item.title}`,
-      body: agentLine,
-      related_id: item.id
+      related_id: item.id,
+      agent: fromAgent
     }, context);
 
     return {
@@ -170,8 +165,8 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     const event = await this.recordEventForProject(replyingProject.id, {
       type: "reply.created",
       title: `Reply added to request ${requestId}`,
-      body: fromAgent ? `from ${fromAgent}` : null,
-      related_id: item.id
+      related_id: item.id,
+      agent: fromAgent
     }, context);
 
     return {

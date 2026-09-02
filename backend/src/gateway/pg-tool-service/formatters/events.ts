@@ -30,7 +30,10 @@ export function eventOut(row: Row) {
     // owner+assignee -- distinct from credentialId (who performed the
     // action). Empty for every other event type.
     targetUserIds: stringArray(row.target_user_ids),
-    createdAt: dateStringOrNull(row.created_at)
+    createdAt: dateStringOrNull(row.created_at),
+    // Self-declared agent name (e.g. "backend"/"front"), if the call that
+    // produced this event carried one -- see recordEventForProject (base.ts).
+    agentName: stringOrNull(row.agent_name)
   };
 }
 

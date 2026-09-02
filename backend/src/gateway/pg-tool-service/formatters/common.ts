@@ -294,7 +294,12 @@ export function normalizeContext(context: GatewayRequestContext): NormalizedGate
     sessionUserId: context.sessionUserId ?? null,
     sessionRole: context.sessionRole ?? null,
     sessionSource: context.sessionSource ?? null,
-    ownerUserId: context.ownerUserId ?? null
+    ownerUserId: context.ownerUserId ?? null,
+    // Not an auth-context field -- service.ts's call() sets this from the
+    // raw tool input's `agent` param after this runs. Defaults to null here
+    // for every caller that doesn't go through call() (internal/test
+    // construction) or didn't pass one.
+    agentName: null
   };
 }
 
