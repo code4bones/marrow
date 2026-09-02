@@ -889,7 +889,7 @@ function output(dataSchema: z.ZodType): z.ZodType {
   return toolOutputSchema(dataSchema);
 }
 
-export const gatewayToolSpecs: GatewayToolSpec[] = [
+const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.about",
     description:
@@ -1637,6 +1637,19 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
     access: "admin"
   }
 ];
+
+// Generic per-call agent self-identification (2026-09-02, owner's ask:
+// "owner (agent)" attribution on every Timeline event, not just
+// request/reply). service.ts's call() already reads `agent` off the raw
+// input regardless of what a schema declares, but an MCP client filters
+// outgoing arguments down to what the tool's *advertised* inputSchema lists
+// before the call is ever sent -- so the field has to actually be in the
+// schema for a caller to be able to pass it at all. Merged in here once,
+// rather than by hand on all ~115 specs above.
+export const gatewayToolSpecs: GatewayToolSpec[] = baseGatewayToolSpecs.map((spec) => ({
+  ...spec,
+  schema: spec.schema.extend({ agent: z.string().min(1).optional() })
+}));
 
 export function gatewayToolRequiredScopes(toolName: string): string[] {
   const canonicalName = gatewayToolCanonicalName(toolName);
