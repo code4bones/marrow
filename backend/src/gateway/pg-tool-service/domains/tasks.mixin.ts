@@ -158,6 +158,16 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       const assigneeUserId = await this.resolveAssigneeFilter(project.id, String(input.assignee), context);
       query = query.andWhere("assignee_user_id", assigneeUserId);
     }
+    if (input.claimedByAgent) {
+      // Sweep expired claims first -- otherwise a stale active row (past
+      // its lease) would still match here even though task.claims'
+      // taskClaimEffectiveStatus would already report it as "expired".
+      await this.expireTaskClaims();
+      query = query.whereIn(
+        "id",
+        this.db("task_claims").select("task_id").where({ status: "active", agent_name: String(input.claimedByAgent) })
+      );
+    }
     const tasks = (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
     return input.compact === true ? tasks.map(compactTask) : tasks;
   }
@@ -686,6 +696,12 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       client_id: context.clientId,
       client_label: context.clientLabel,
       client_kind: typeof context.metadata.kind === "string" ? context.metadata.kind : null,
+      // Self-declared agent-executor name (e.g. "backend"/"branch-pwa"),
+      // distinct from assignee_user_id (a real project member you delegate
+      // to) -- this is "who is actually working on it right now", tied to
+      // the claim's own lease. Comes from the generic `agent` param every
+      // tool schema now carries (service.ts's call()).
+      agent_name: context.agentName,
       role: taskClaimRole(input.role),
       scope: stringOrNull(input.scope),
       status: "active",

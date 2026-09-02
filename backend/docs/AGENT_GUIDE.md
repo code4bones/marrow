@@ -468,6 +468,24 @@ schema lists it -- pass it on any call where you want that specific action
 attributed to you in the Timeline. There is no built-in session identity
 behind this; it's purely self-reported, exactly like `fromAgent`/`toAgent`.
 
+## Agent-Executor vs Owner vs Assignee
+
+Three distinct identities can be attached to a task, don't conflate them:
+
+- **Owner** -- the real Marrow account (`createdBy`/`credentialId`), never an
+  agent name.
+- **Assignee** (`assignee`/`assigneeUserId`) -- a real project member you
+  delegate the task to. Only ever resolves against actual project members;
+  passing an agent name here fails with `NOT_FOUND`.
+- **Agent-executor** -- a self-declared agent name (same convention as
+  `fromAgent`/`toAgent`/the generic `agent` param above) tied to whoever is
+  *currently working* the task, not a permanent assignment. This lives on
+  `task_claims`, not on the task itself: call `task.claim({ taskId, agent:
+  "<you>" })` to record it. Another agent can find what a given agent
+  currently has claimed with `task.list({ claimedByAgent: "<name>" })` --
+  don't try to encode this in a task's title/notes as a workaround, the
+  structural filter exists for exactly this.
+
 ## Recording Rules
 
 Use `decision.record` for:

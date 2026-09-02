@@ -71,6 +71,7 @@ export function taskClaimOut(row: Row) {
     clientId: String(row.client_id),
     clientLabel: stringOrNull(row.client_label),
     clientKind: stringOrNull(row.client_kind),
+    agentName: stringOrNull(row.agent_name),
     role: String(row.role),
     scope: stringOrNull(row.scope),
     status: taskClaimEffectiveStatus(row),

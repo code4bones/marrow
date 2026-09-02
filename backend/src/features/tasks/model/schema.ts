@@ -32,6 +32,12 @@ export const listTasksSchema = z.object({
   // also works, same resolution task.create's own assignee field already
   // uses.
   assignee: z.string().optional(),
+  // T-context (2026-09-02, owner's ask): distinct from `assignee` -- an
+  // agent-executor is a self-declared name tied to an active task_claims
+  // row (task.claim's `agent` param), not a real project member. Lets one
+  // agent find what another agent (or itself) currently has claimed,
+  // e.g. task.list({ claimedByAgent: "branch-pwa" }).
+  claimedByAgent: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   compact: z.boolean().optional()
 });
