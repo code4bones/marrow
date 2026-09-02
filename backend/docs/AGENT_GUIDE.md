@@ -423,6 +423,36 @@ was previously mirrored, delete the local `./.claude/skills/<slug>/`
 directory in the same checkout -- an archived/deleted skill should not stay
 auto-invocable by the native harness.
 
+## Request/Reply Discipline
+
+`request.create`/`request.list`/`request.get`/`reply.create` are Marrow's
+Q&A channel, built for one project asking another a question. They also
+support **same-project agent-to-agent messaging**: two agents (e.g. a
+"backend" agent and a "front" agent) working the same project under the
+same owner, needing to ask each other something without going through the
+human.
+
+- To address another agent in your own project, call `request.create` with
+  `project` = your own project and `toAgent` set to the target agent's name
+  (e.g. `"front"`, `"backend"`). This is the one case where the target
+  project may equal the asking project -- normally `request.create` requires
+  two different projects.
+- Always pass `fromAgent` to self-identify. Convention: derive it from your
+  own working directory in this monorepo (a checkout under `backend/` calls
+  itself `"backend"`, under `front/` calls itself `"front"`) unless the
+  owner has told you a different name for this session -- there is no
+  built-in session identity, so this is a self-reported, not
+  server-verified, label.
+- `request.list({ toAgent: "..." })` filters to requests addressed to a
+  specific agent -- check this for anything addressed to you before
+  assuming a project has nothing for you.
+- `reply.create` also takes `fromAgent` for the same self-identification on
+  the reply side.
+- This is not proactively surfaced in `preflight`/`project.summary` (unlike
+  `knownFaults`/`availableSkills`) -- call `request.list({ toAgent: <you> })`
+  explicitly when starting work if you expect the other agent to have asked
+  something.
+
 ## Recording Rules
 
 Use `decision.record` for:

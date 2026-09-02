@@ -497,6 +497,14 @@ const handoffSearchSchema = z.object({
 const requestCreateSchema = z.object({
   project: z.string().min(1),
   fromProject: z.string().min(1).optional(),
+  // Same-project agent addressing (e.g. two agents, "backend"/"front",
+  // sharing one project under one owner): set toAgent to target a specific
+  // agent instead of another project -- this is the one case where
+  // fromProject === project (target) is allowed. fromAgent self-identifies
+  // the asker; convention is to derive it from the caller's own working
+  // directory (see docs/AGENT_GUIDE.md's Request/Reply Discipline).
+  toAgent: z.string().min(1).optional(),
+  fromAgent: z.string().min(1).optional(),
   question: z.string().min(1)
 });
 // "closed" isn't a third status -- an unwanted/resolved-without-a-reply
@@ -505,6 +513,7 @@ const requestCreateSchema = z.object({
 const requestListSchema = z.object({
   project: z.string().nullable().optional(),
   status: z.enum(["open", "answered", "archived"]).optional(),
+  toAgent: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional()
 });
 const requestGetSchema = z.object({
@@ -516,6 +525,7 @@ const replyCreateSchema = z.object({
   // reply's id to nest under it, LiveJournal-comment-style.
   parentId: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
+  fromAgent: z.string().min(1).optional(),
   body: z.string().min(1)
 });
 
@@ -1520,14 +1530,14 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "request.create",
     description:
-      "Ask another project a question. Files it as an open request under the target project (`project`) with a link back to the asking project (`fromProject`, defaults to the caller's current project).",
+      "Ask another project a question, or ask another agent within the *same* project (set `toAgent`, e.g. \"backend\"/\"front\") -- files it as an open request under the target project (`project`) with a link back to the asking project (`fromProject`, defaults to the caller's current project). Pass `fromAgent` to self-identify.",
     schema: requestCreateSchema,
     access: "write"
   },
   {
     name: "request.list",
     description:
-      "List requests addressed to a project (defaults to open ones). Use this to check whether another project has asked something.",
+      "List requests addressed to a project (defaults to open ones); pass `toAgent` to filter to requests addressed to a specific agent within that project. Use this to check whether another project or agent has asked something.",
     schema: requestListSchema
   },
   {
@@ -1539,7 +1549,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "reply.create",
     description:
-      "Reply to a request, or to another reply within the same thread (set parentId). The first reply flips an open request to answered.",
+      "Reply to a request, or to another reply within the same thread (set parentId). Pass `fromAgent` to self-identify as the replying agent. The first reply flips an open request to answered.",
     schema: replyCreateSchema,
     access: "write"
   },

@@ -1,7 +1,7 @@
 import { AppError } from "../../../shared/errors.js";
 import { shortText, stringArray } from "../formatters/common.js";
 import { itemOut } from "../formatters/memory.js";
-import { buildReplyTree, replyOut, requestOut } from "../formatters/requests.js";
+import { buildReplyTree, fromAgentTag, replyOut, requestOut, toAgentTag } from "../formatters/requests.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
 import { type MemoryInstance } from "./memory.mixin.js";
@@ -22,13 +22,18 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     const fromProject = input.fromProject
       ? await this.resolveProject(input.fromProject, context)
       : await this.currentProject(context);
-    if (fromProject.id === toProject.id) {
-      throw new AppError("VALIDATION_ERROR", "A request's fromProject and project (target) must be different projects.", {
-        project: toProject.id
-      });
+    const toAgent = input.toAgent ? String(input.toAgent) : null;
+    const fromAgent = input.fromAgent ? String(input.fromAgent) : null;
+    if (fromProject.id === toProject.id && !toAgent) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "A request's fromProject and project (target) must be different projects, unless it's addressed to a specific agent within the same project via toAgent.",
+        { project: toProject.id }
+      );
     }
 
     const question = String(input.question);
+    const tags = ["request", ...(toAgent ? [toAgentTag(toAgent)] : []), ...(fromAgent ? [fromAgentTag(fromAgent)] : [])];
     const item = await this.createMemory(
       {
         project: toProject.id,
@@ -36,7 +41,7 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
         title: shortText(question, 120) ?? question,
         body: question,
         status: "open",
-        tags: ["request"]
+        tags
       },
       context
     );
@@ -62,6 +67,9 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     let query = this.db("items").where({ project_id: project.id, type: "request" });
     if (input.status) {
       query = query.andWhere("status", String(input.status));
+    }
+    if (input.toAgent) {
+      query = query.andWhereRaw("tags @> ?::jsonb", [JSON.stringify([toAgentTag(String(input.toAgent))])]);
     }
     const rows = await query.orderBy("created_at", "desc").limit(Number(input.limit ?? 20));
     if (rows.length === 0) {
@@ -121,6 +129,7 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     const replyingProject = input.project
       ? await this.resolveProject(input.project, context)
       : await this.currentProject(context);
+    const fromAgent = input.fromAgent ? String(input.fromAgent) : null;
     const body = String(input.body);
     const item = await this.createMemory(
       {
@@ -129,7 +138,7 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
         title: shortText(body, 120) ?? body,
         body,
         status: "current",
-        tags: ["reply", threadTag(requestId)]
+        tags: ["reply", threadTag(requestId), ...(fromAgent ? [fromAgentTag(fromAgent)] : [])]
       },
       context
     );
