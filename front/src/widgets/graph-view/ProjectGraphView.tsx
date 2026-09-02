@@ -58,11 +58,20 @@ export function ProjectGraphView({ slug }: Props) {
     'DECISION',
   );
 
+  // T-context (2026-09-02, owner's ask -- project switch felt slow): this
+  // used to wait on `projectId` (resolved by the GET_PROJECT query above),
+  // gating the whole graph fetch behind a round trip it doesn't actually
+  // need -- projectGraph's `projectId` argument is resolved server-side via
+  // resolveProject(), which already accepts a slug just as well as a real
+  // id (see backend/.../projects-core.mixin.ts). Passing `slug` directly
+  // lets this fire immediately, in parallel with GET_PROJECT and every
+  // other overlay query, instead of waiting its turn behind GET_PROJECT --
+  // measured live: this was one whole hop in an ~800ms, 15-request
+  // waterfall on the project's largest project.
   const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
     {
-      variables: { projectId, depth },
-      skip: !projectId,
+      variables: { projectId: slug, depth },
     },
   );
   // This query batches every kind (decisions/tasks/memory/artifacts/links)
