@@ -1537,7 +1537,7 @@ export const gatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "request.list",
     description:
-      "List requests addressed to a project (defaults to open ones); pass `toAgent` to filter to requests addressed to a specific agent within that project. Use this to check whether another project or agent has asked something.",
+      "List requests addressed to a project (defaults to open ones); pass `toAgent` to filter to requests addressed to a specific agent within that project. Use this to check whether another project or agent has asked something -- call `request.list({ toAgent: <your own agent name> })` at the start of your work to see whether another agent sharing this project addressed something to you; this is not proactively surfaced anywhere else.",
     schema: requestListSchema
   },
   {
