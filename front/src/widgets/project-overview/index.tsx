@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { Alert, Badge, Col, Row, Segmented, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
@@ -180,6 +180,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function ProjectOverview({ slug }: { slug: string }) {
+  const instanceId = useId();
+  console.log('[I-MEMORY-128] ProjectOverview render', slug, instanceId);
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const isMobile = useIsMobile();

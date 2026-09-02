@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Segmented, Select, Space, Switch, Typography } from 'antd';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -29,7 +29,8 @@ interface Props {
 // instead: a project-rooted hierarchy (GraphTree) built from the exact same
 // nodes/edges as the timeline, no extra backend request.
 export function ProjectGraphView({ slug }: Props) {
-  console.log('[I-MEMORY-128] PGV render', slug);
+  const instanceId = useId();
+  console.log('[I-MEMORY-128] PGV render', slug, instanceId);
   const { t } = useTranslation('projects');
   const [view, setView] = useState<ViewMode>('timeline');
   const depth = MAX_LINK_DEPTH;

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Col, Input, List, Pagination, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
@@ -43,7 +43,8 @@ function PinButton({ project, onDone }: { project: Project; onDone: () => void }
 export function ProjectsPage() {
   const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
-  console.log('[I-MEMORY-128] ProjectsPage render', slug);
+  const instanceId = useId();
+  console.log('[I-MEMORY-128] ProjectsPage render', slug, instanceId);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
