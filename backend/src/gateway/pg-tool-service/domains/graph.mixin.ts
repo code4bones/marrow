@@ -36,7 +36,16 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
 
     addNode(graphNodeOut("PROJECT", project));
 
-    const [items, tasks, decisions, artifacts] = await Promise.all([
+    // T-context (2026-09-02, owner's ask -- project switch took 5-7s+):
+    // the old BFS here did up to two sequential DB round trips *per depth
+    // level* (a filtered links query, then a node-detail batch) -- up to
+    // ~10 round trips end to end at depth=5 (the frontend's fixed value)
+    // on a link-rich project. Every link the project owns is cheap to
+    // fetch in one shot (149 rows on P-MEMORY, still cheap at 10x that) --
+    // fetching it once here and walking the whole multi-hop expansion in
+    // memory turns "up to 10 sequential round trips" into "at most 2"
+    // (this Promise.all, then one final node-detail batch below).
+    const [items, tasks, decisions, artifacts, allLinks] = await Promise.all([
       this.db("items")
         .select("id", "title", "status", "type", "project_id", "created_by", "created_at")
         .where({ project_id: project.id })
@@ -56,7 +65,8 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
         .select("id", "title", "status", "project_id", "path", "created_by", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
-        .limit(maxPerType)
+        .limit(maxPerType),
+      this.projectGraphLinkRows(project.id)
     ]);
 
     for (const row of items) {
@@ -79,25 +89,55 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
       addNode(graphNodeOut("ARTIFACT", row));
     }
 
-    for (let level = 1; level <= depth; level += 1) {
-      const linkRows = await this.projectGraphLinkRows(project.id, Array.from(nodes.keys()));
-      for (const link of linkRows) {
-        addEdge({
-          from: String(link.from_id),
-          to: String(link.to_id),
-          relation: String(link.relation)
-        });
-      }
+    // Pure in-memory BFS over allLinks, depth-1 expansion rounds -- matches
+    // the old loop's semantics exactly (its last level only ever harvested
+    // edges, never expanded past them; see graph.mixin.ts git history for
+    // the walkthrough this comment is based on). One difference, strictly
+    // additive and safe: the old loop stopped following a chain through any
+    // id that didn't resolve to a real node (e.g. it deliberately never
+    // expands through an event id) since that gated *which ids counted as
+    // the next level's frontier*; this version's frontier is the plain id
+    // graph and only filters out unresolvable ids at the very end (the
+    // final `nodes.has(...)` check on edges, same as before) -- so it can
+    // occasionally surface a real node reachable only through such a
+    // chain that the old code would've missed, never a fabricated one.
+    const adjacency = new Map<string, string[]>();
+    for (const link of allLinks) {
+      const from = String(link.from_id);
+      const to = String(link.to_id);
+      (adjacency.get(from) ?? adjacency.set(from, []).get(from)!).push(to);
+      (adjacency.get(to) ?? adjacency.set(to, []).get(to)!).push(from);
+    }
 
-      const missingEndpointIds = this.missingGraphEndpointIds(edges, nodes);
-      if (level >= depth || missingEndpointIds.length === 0) {
+    const knownIds = new Set<string>(nodes.keys());
+    let frontier = new Set<string>(knownIds);
+    for (let level = 1; level < depth; level += 1) {
+      const nextFrontier = new Set<string>();
+      for (const id of frontier) {
+        for (const neighborId of adjacency.get(id) ?? []) {
+          if (!knownIds.has(neighborId)) {
+            knownIds.add(neighborId);
+            nextFrontier.add(neighborId);
+          }
+        }
+      }
+      if (nextFrontier.size === 0) {
         break;
       }
+      frontier = nextFrontier;
+    }
 
-      const expandedNodes = await this.graphNodesByIds(missingEndpointIds);
-      if (expandedNodes.length === 0) {
-        break;
+    for (const link of allLinks) {
+      const from = String(link.from_id);
+      const to = String(link.to_id);
+      if (knownIds.has(from) || knownIds.has(to)) {
+        addEdge({ from, to, relation: String(link.relation) });
       }
+    }
+
+    const pendingIds = Array.from(knownIds).filter((id) => !nodes.has(id));
+    if (pendingIds.length > 0) {
+      const expandedNodes = await this.graphNodesByIds(pendingIds);
       for (const node of expandedNodes) {
         addNode(node);
       }
@@ -111,29 +151,11 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     };
   }
 
-  protected async projectGraphLinkRows(projectId: string, ids: string[]): Promise<Row[]> {
+  protected async projectGraphLinkRows(projectId: string): Promise<Row[]> {
     return await this.db("links")
       .select("id", "project_id", "from_id", "to_id", "relation")
-      .where((builder) => {
-        builder.where("project_id", projectId);
-        if (ids.length > 0) {
-          builder.orWhereIn("from_id", ids).orWhereIn("to_id", ids);
-        }
-      })
+      .where("project_id", projectId)
       .orderBy("created_at", "desc");
-  }
-
-  protected missingGraphEndpointIds(edges: Map<string, GraphEdge>, nodes: Map<string, GraphNode>): string[] {
-    const ids = new Set<string>();
-    for (const edge of edges.values()) {
-      if (!nodes.has(edge.from)) {
-        ids.add(edge.from);
-      }
-      if (!nodes.has(edge.to)) {
-        ids.add(edge.to);
-      }
-    }
-    return Array.from(ids).sort();
   }
 
   protected async graphNodesByIds(ids: string[]): Promise<GraphNode[]> {
