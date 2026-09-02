@@ -318,15 +318,21 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     });
 
     if (input.type) {
-      query = query.andWhere("type", String(input.type));
+      query = Array.isArray(input.type)
+        ? query.whereIn("type", (input.type as unknown[]).map(String))
+        : query.andWhere("type", String(input.type));
     }
     // T-context (2026-08-25, global quick-search): lets globalSearch fetch
     // "memory excluding faults" as its own ranked bucket, separate from a
     // second searchMemory({type:"failed_attempt"}) call for the faults
     // bucket, instead of one mixed list that would need re-splitting after
     // the fact (and could under-fill either bucket below its own limit).
+    // Both type/excludeType also accept an array (request/reply now need
+    // their own two-type bucket the same way faults needed one).
     if (input.excludeType) {
-      query = query.andWhereNot("type", String(input.excludeType));
+      query = Array.isArray(input.excludeType)
+        ? query.whereNotIn("type", (input.excludeType as unknown[]).map(String))
+        : query.andWhereNot("type", String(input.excludeType));
     }
     if (input.status) {
       query = query.andWhere("status", String(input.status));

@@ -4,8 +4,8 @@ import type { Row } from "../types.js";
 // Agent addressing (backend/front-style same-project Q&A) piggybacks on the
 // existing tags array instead of adding columns -- same trick threadTag()
 // in requests.mixin.ts already uses for threading.
-const TO_AGENT_PREFIX = "to-agent:";
-const FROM_AGENT_PREFIX = "from-agent:";
+export const TO_AGENT_PREFIX = "to-agent:";
+export const FROM_AGENT_PREFIX = "from-agent:";
 
 export function toAgentTag(agent: string): string {
   return `${TO_AGENT_PREFIX}${agent}`;
@@ -15,7 +15,7 @@ export function fromAgentTag(agent: string): string {
   return `${FROM_AGENT_PREFIX}${agent}`;
 }
 
-function agentFromTags(tags: unknown, prefix: string): string | null {
+export function agentFromTags(tags: unknown, prefix: string): string | null {
   const list = Array.isArray(tags) ? (tags as string[]) : [];
   const tag = list.find((t) => t.startsWith(prefix));
   return tag ? tag.slice(prefix.length) : null;

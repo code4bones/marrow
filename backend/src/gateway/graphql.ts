@@ -7,6 +7,7 @@ import type { ToolResponse } from "../shared/mcp/tool-response.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import type { GatewayRequestContext } from "./pg-tool-service.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents, type GatewayEventEnvelope } from "./event-bus.js";
+import { agentFromTags, FROM_AGENT_PREFIX, TO_AGENT_PREFIX } from "./pg-tool-service/formatters/requests.js";
 
 type Row = Record<string, unknown>;
 
@@ -736,6 +737,12 @@ const typeDefs = `#graphql
     updatedAt: String
     linksCreated: [Link!]
     relatedCandidates: [RelatedRecordCandidate!]
+    # Agent-to-agent request/reply addressing (fromAgent = asker/replier,
+    # toAgent = target agent) -- not real columns, derived from the
+    # "from-agent:<x>"/"to-agent:<x>" tags requests.mixin.ts writes. null for
+    # every non-request/reply record.
+    fromAgent: String
+    toAgent: String
   }
 
   type PaginatedMemoryRecords {
@@ -1141,6 +1148,10 @@ const resolvers = {
     __resolveType(value: Row) {
       return typeof value.__typename === "string" ? value.__typename : null;
     }
+  },
+  MemoryRecord: {
+    fromAgent: (parent: Row) => agentFromTags(parent.tags, FROM_AGENT_PREFIX),
+    toAgent: (parent: Row) => agentFromTags(parent.tags, TO_AGENT_PREFIX)
   },
   Query: {
     gatewayVersion: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>

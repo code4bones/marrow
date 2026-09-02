@@ -44,11 +44,15 @@ export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(B
     // matches whole words, which made the box feel broken (reported live:
     // "task compl" found nothing despite a real "Task completion..." task
     // existing). See formatters/common.ts's toPrefixTsQueryText.
-    const [tasks, decisions, memory, faults, artifacts, skills] = await Promise.all([
+    const [tasks, decisions, memory, faults, requests, artifacts, skills] = await Promise.all([
       this.searchTasks({ project: project.slug, query, prefix: true, limit: perKindLimit }, context),
       this.searchDecisions({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context),
-      this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, excludeType: "failed_attempt", limit: perKindLimit }, context),
+      this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, excludeType: ["failed_attempt", "request", "reply"], limit: perKindLimit }, context),
       this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, type: "failed_attempt", limit: perKindLimit }, context),
+      // Same trick as faults: request/reply are still `items` rows under the
+      // hood, split into their own ranked bucket so they read as a distinct
+      // kind in search instead of an indistinguishable "Memory" hit.
+      this.searchMemory({ project: project.slug, query, prefix: true, includeCommon: true, type: ["request", "reply"], limit: perKindLimit }, context),
       this.searchArtifacts({ project: project.slug, query, prefix: true, includeCommon: true, limit: perKindLimit }, context),
       this.listSkills({ project: project.slug, query, prefix: true, includeCommon: true, status: "active", limit: perKindLimit }, context)
     ]);
@@ -58,6 +62,7 @@ export function GlobalSearchMixin<TBase extends Constructor<GlobalSearchBase>>(B
       ...decisions,
       ...memory.map((row: Row) => ({ id: row.id, kind: "memory", title: row.title, excerpt: row.excerpt, status: row.status, updatedAt: row.updatedAt })),
       ...faults.map((row: Row) => ({ id: row.id, kind: "fault", title: row.title, excerpt: row.excerpt, status: row.status, updatedAt: row.updatedAt })),
+      ...requests.map((row: Row) => ({ id: row.id, kind: "request", title: row.title, excerpt: row.excerpt, status: row.status, updatedAt: row.updatedAt })),
       ...artifacts.map((row: Row) => ({ id: row.id, kind: "artifact", title: row.title, excerpt: shortText((row.description as string | null) ?? "", 200), status: row.status, updatedAt: row.updatedAt })),
       ...skills.map((row: Row) => ({ id: row.id, kind: "skill", title: row.name, excerpt: shortText((row.description as string | null) ?? "", 200), status: row.status, updatedAt: row.updatedAt }))
     ];
