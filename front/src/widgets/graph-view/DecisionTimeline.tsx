@@ -1318,10 +1318,23 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // box already implies. React's own "adjusting state when a prop changes"
   // pattern (react.dev) -- comparing+resetting during render instead of in
   // an effect avoids an extra discarded paint on every filter keystroke.
+  // I-MEMORY-128: compares the actual filter criteria (normalizedFilter,
+  // hiddenStatuses, rootKind) instead of `filteredBaselineNodes` BY
+  // REFERENCE like this used to -- that array is a useMemo derived from
+  // `baselineNodes`, which gets a brand-new reference from every background
+  // cache-and-network refetch even when nothing a user would call "the
+  // filter" actually changed, resetting pagination (and re-rendering) on
+  // every silent background refresh. normalizedFilter/rootKind are plain
+  // strings and hiddenStatuses only gets a new Set from toggleStatus above,
+  // so all three are safe to compare by reference/value here.
   const [revealCount, setRevealCount] = useState(BASELINE_INITIAL_REVEAL);
-  const [revealTrackedNodes, setRevealTrackedNodes] = useState(filteredBaselineNodes);
-  if (filteredBaselineNodes !== revealTrackedNodes) {
-    setRevealTrackedNodes(filteredBaselineNodes);
+  const [lastRevealCriteria, setLastRevealCriteria] = useState({ normalizedFilter, hiddenStatuses, rootKind });
+  if (
+    lastRevealCriteria.normalizedFilter !== normalizedFilter ||
+    lastRevealCriteria.hiddenStatuses !== hiddenStatuses ||
+    lastRevealCriteria.rootKind !== rootKind
+  ) {
+    setLastRevealCriteria({ normalizedFilter, hiddenStatuses, rootKind });
     setRevealCount(BASELINE_INITIAL_REVEAL);
   }
   const visibleBaselineNodes = useMemo(
