@@ -129,7 +129,7 @@ export const GET_SKILLS_PAGE = gql`
 export const GET_EVENTS_PAGE = gql`
   query GetEventsPage($project: String, $limit: Int!, $offset: Int!) {
     eventsPage(project: $project, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title relatedId credentialId targetUserIds createdAt }
+      items { id type title body relatedId credentialId targetUserIds createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -401,7 +401,7 @@ export const GET_RECORD = gql`
           contentType sizeBytes tags downloadPath createdBy createdAt updatedAt
         }
         ... on MemoryRecord {
-          id type title status excerpt body tags createdBy createdAt updatedAt
+          id type title status excerpt body tags createdBy createdAt updatedAt fromAgent toAgent
         }
         ... on Event {
           id type title relatedId credentialId createdAt

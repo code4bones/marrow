@@ -39,6 +39,15 @@ export function EventsPage() {
     { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
     { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
     {
+      // request.created/reply.created are the only event types that stash a
+      // "backend → front"-style agent line in body (requests.mixin.ts) --
+      // every other type's body is a free-text detail not meant for this
+      // column, so it's shown only for those two.
+      title: t('agent'), dataIndex: 'body', width: 140,
+      render: (v, row) => (row.type === 'request.created' || row.type === 'reply.created') && v
+        ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : null,
+    },
+    {
       title: t('related'), dataIndex: 'relatedId', width: 160,
       render: (v) => <RecordLink id={v} />,
     },

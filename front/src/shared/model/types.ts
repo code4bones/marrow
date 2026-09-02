@@ -37,7 +37,7 @@ export interface ProjectCounts {
   skills: number;
 }
 
-export type GlobalSearchKind = 'task' | 'decision' | 'memory' | 'fault' | 'artifact' | 'skill';
+export type GlobalSearchKind = 'task' | 'decision' | 'memory' | 'fault' | 'request' | 'artifact' | 'skill';
 
 export interface GlobalSearchResult {
   id: string;
@@ -213,6 +213,8 @@ export interface MemoryRecord {
   createdBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  fromAgent: string | null;
+  toAgent: string | null;
 }
 
 export interface Link {

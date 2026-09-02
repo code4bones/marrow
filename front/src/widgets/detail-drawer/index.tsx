@@ -189,14 +189,27 @@ function ArtifactBody({ r }: { r: Artifact }) {
   );
 }
 
+// request/reply piggyback on plain memory items (requests.mixin.ts) --
+// "from-agent:"/"to-agent:"/"thread:" are bookkeeping tags for that, not
+// meant to show raw in the tag list once there's a dedicated Field for them.
+const INTERNAL_TAG_PREFIXES = ['from-agent:', 'to-agent:', 'thread:'];
+
 function MemoryBody({ r }: { r: MemoryRecord }) {
   const { t } = useTranslation('common');
   const { labelFor } = useActorLabels([r.createdBy]);
+  const visibleTags = r.tags.filter((tag) => !INTERNAL_TAG_PREFIXES.some((p) => tag.startsWith(p)));
   return (
     <>
       <Field label={t('type')}><Tag style={{ fontSize: 11 }}>{r.type}</Tag></Field>
       <Field label={t('status')}><MemoryStatusSelect id={r.id} value={r.status} /></Field>
-      {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
+      {(r.fromAgent || r.toAgent) && (
+        <Field label={t('agent')}>
+          {r.fromAgent && <Tag style={{ fontSize: 11 }}>{r.fromAgent}</Tag>}
+          {r.fromAgent && r.toAgent && <Text type="secondary"> → </Text>}
+          {r.toAgent && <Tag style={{ fontSize: 11 }}>{r.toAgent}</Tag>}
+        </Field>
+      )}
+      {visibleTags.length > 0 && <Field label={t('tags')}><TagList items={visibleTags} /></Field>}
       {r.excerpt && <Field label={t('excerpt')}><Text type="secondary" style={{ fontSize: 12 }}>{r.excerpt}</Text></Field>}
       {r.body && (
         <Field label={t('body')}>

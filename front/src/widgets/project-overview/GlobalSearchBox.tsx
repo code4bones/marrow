@@ -21,6 +21,7 @@ const KIND_COLOR: Record<GlobalSearchKind, string> = {
   decision: SATELLITE_KIND_COLOR.DECISION,
   memory: SATELLITE_KIND_COLOR.MEMORY,
   fault: '#ff4d4f',
+  request: '#2f54eb',
   artifact: SATELLITE_KIND_COLOR.ARTIFACT,
   skill: ENTITY_COLOR.skill,
 };
@@ -76,6 +77,7 @@ export function GlobalSearchBox({ slug, fullWidth }: { slug: string; fullWidth?:
     decision: t('decisions'),
     memory: t('memory'),
     fault: t('faults'),
+    request: t('requests'),
     artifact: t('artifacts'),
     skill: t('skills'),
   };
