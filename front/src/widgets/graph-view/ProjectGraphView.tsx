@@ -50,13 +50,15 @@ export function ProjectGraphView({ slug }: Props) {
   // Timeline-only -- GraphTree's root is always the project itself, so this
   // selection (and showTasks above) just sits unused-but-preserved while
   // view === 'tree', per T-MEMORY-056's acceptance criteria. T-MEMORY-086:
-  // persisted server-side per (user, project) -- the key is null until
-  // projectId resolves, so the preference hook just returns the 'DECISION'
-  // fallback for that first render instead of persisting under a bogus key.
-  const [rootKind, setRootKind] = useUserPreference<RootKind>(
-    projectId ? `timelineRootKind:${projectId}` : null,
-    'DECISION',
-  );
+  // persisted server-side per (user, project). I-MEMORY-128: keyed by
+  // `slug` (this component's own prop, synchronous) rather than `projectId`
+  // (GET_PROJECT's resolved id, one network round trip behind) -- the old
+  // projectId-gated key briefly went null then flipped from the 'DECISION'
+  // fallback to the real stored value on every project switch, same
+  // multiple-sources-of-truth shape as I-MEMORY-128's nav-rail slug bug.
+  // `slug` is exactly what GET_PROJECT_GRAPH's own `projectId` variable
+  // already passes below (resolveProject() accepts a slug just as well).
+  const [rootKind, setRootKind] = useUserPreference<RootKind>(`timelineRootKind:${slug}`, 'DECISION');
 
   // T-context (2026-09-02, owner's ask -- project switch felt slow): this
   // used to wait on `projectId` (resolved by the GET_PROJECT query above),

@@ -22,7 +22,7 @@ import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -115,7 +115,19 @@ export function useNavData() {
   const logout = useAuthStore((s) => s.logout);
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   const fetchNotificationsSeenAt = useAuthStore((s) => s.fetchNotificationsSeenAt);
-  const selectedSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
+  // I-MEMORY-128: the route param, when this render is on a project route
+  // at all, is available synchronously in the same commit as the URL
+  // change -- unlike storeSlug below, which only catches up a tick later
+  // via ProjectsPage's useEffect(setSelectedProject). Switching projects
+  // used to leave a window where this hook's own GET_PROJECT_SUMMARY (for
+  // the nav badges) still pointed at the OLD project while ProjectOverview's
+  // had already moved to the new one -- two disagreeing "current project"
+  // sources reacting to each other instead of one synchronous source of
+  // truth. storeSlug remains the fallback for routes with no :slug param at
+  // all (/profile, /notifications, ...), where it's still the only source.
+  const { slug: paramSlug } = useParams<{ slug: string }>();
+  const storeSlug = useWorkspaceStore((s) => s.selectedProjectSlug);
+  const selectedSlug = paramSlug ?? storeSlug;
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
   const fetchPendingUsers = useAuthStore((s) => s.fetchPendingUsers);
   const isAdmin = user?.role === 'admin';
