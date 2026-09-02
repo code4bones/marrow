@@ -76,6 +76,7 @@ export interface TaskClaim {
   clientId: string;
   clientLabel: string | null;
   clientKind: string | null;
+  agentName: string | null;
   role: string;
   scope: string | null;
   status: string;

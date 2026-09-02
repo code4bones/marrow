@@ -57,7 +57,11 @@ export function TaskClaimsPanel({ taskId, activeClaimCount }: Props) {
                     <span>
                       <Tag color={STATUS_COLOR[c.status] ?? '#8c8c8c'} style={{ fontSize: 10, marginRight: 4 }}>{c.status}</Tag>
                       <Tag style={{ fontSize: 10, marginRight: 4 }}>{c.role}</Tag>
-                      {c.clientLabel && <span style={{ color: '#ccc' }}>{c.clientLabel}</span>}
+                      {c.clientLabel && (
+                        <span style={{ color: '#ccc' }}>
+                          {c.clientLabel}{c.agentName && ` (${c.agentName})`}
+                        </span>
+                      )}
                     </span>
                     <span style={{ color: '#595959', fontSize: 11 }}>
                       {t('expires')} <Timestamp value={c.leaseExpiresAt} />

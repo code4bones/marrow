@@ -551,7 +551,7 @@ export const GET_TASK = gql`
 export const GET_TASK_CLAIMS = gql`
   query GetTaskClaims($taskId: ID!) {
     taskClaims(taskId: $taskId, includeInactive: true) {
-      id role scope status clientLabel leaseExpiresAt heartbeatAt note createdAt updatedAt
+      id role scope status clientLabel agentName leaseExpiresAt heartbeatAt note createdAt updatedAt
     }
   }
 `;
