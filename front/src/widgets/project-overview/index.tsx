@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { Alert, Badge, Col, Row, Segmented, Skeleton, Statistic, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
@@ -184,9 +184,19 @@ export function ProjectOverview({ slug }: { slug: string }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [overviewTab, setOverviewTab] = useState('timeline');
+  // I-MEMORY-128: memoized -- apollo.ts's global `cache-and-network` fires a
+  // real network request on every query re-execution, and an inline object
+  // literal here would count as a "new" variables value (hence a
+  // re-execution) on every unrelated re-render of this component, not only
+  // when `slug` actually changes. Cyclically revisiting a project (A→B→A→B)
+  // compounds this: each incidental re-render while sitting on the same
+  // project re-fires the network leg, and that response arriving triggers
+  // further re-renders -- a feedback loop that gets worse the more times
+  // you cycle, not just a fixed per-switch cost.
+  const summaryVariables = useMemo(() => ({ project: slug }), [slug]);
   const { data, loading, error, refetch } = useQuery<{ projectSummary: ProjectSummary }>(
     GET_PROJECT_SUMMARY,
-    { variables: { project: slug } },
+    { variables: summaryVariables },
   );
   // T-MEMORY-051: keep the overview live without a manual refresh.
   useRefetchOnVersion(
@@ -200,9 +210,10 @@ export function ProjectOverview({ slug }: { slug: string }) {
   // window of raw events to bucket by type prefix, not the summary's counts.
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   const getSeenAt = useSectionSeenStore((st) => st.getSeenAt);
+  const newEventsVariables = useMemo(() => ({ project: slug, limit: NEW_BADGE_WINDOW_SIZE, offset: 0 }), [slug]);
   const { data: newEventsData, refetch: refetchNewEvents } = useQuery<{ eventsPage: Paginated<Event> }>(
     GET_EVENTS_PAGE,
-    { variables: { project: slug, limit: NEW_BADGE_WINDOW_SIZE, offset: 0 } },
+    { variables: newEventsVariables },
   );
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchNewEvents);
 

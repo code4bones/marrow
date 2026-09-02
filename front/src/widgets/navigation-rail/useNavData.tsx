@@ -20,7 +20,7 @@ import {
 import { Badge } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import type { MenuProps } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
@@ -152,17 +152,23 @@ export function useNavData() {
 
   // T-MEMORY-051: unread badge — a small recent-events window, re-fetched on
   // every realtime version bump the same way the dedicated pages are.
+  // I-MEMORY-128: memoized -- see ProjectGraphView/ProjectOverview's own
+  // comments on the same pattern. `unreadEventsVariables` never actually
+  // changes, but a fresh literal every render still reads as a "new" query
+  // execution to apollo.ts's cache-and-network default.
+  const unreadEventsVariables = useMemo(() => ({ limit: UNREAD_WINDOW_SIZE, offset: 0 }), []);
   const { data: unreadEventsData, refetch: refetchUnreadEvents } = useQuery<{ eventsPage: Paginated<Event> }>(
     GET_EVENTS_PAGE,
-    { variables: { limit: UNREAD_WINDOW_SIZE, offset: 0 } },
+    { variables: unreadEventsVariables },
   );
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchUnreadEvents);
   const unreadCount = (unreadEventsData?.eventsPage.items ?? []).filter((event) =>
     isNewSince(event.createdAt, notificationsSeenAt),
   ).length;
 
+  const summaryVariables = useMemo(() => ({ project: selectedSlug }), [selectedSlug]);
   const { data: summaryData, refetch: refetchSummary } = useQuery<{ projectSummary: ProjectSummary }>(GET_PROJECT_SUMMARY, {
-    variables: { project: selectedSlug },
+    variables: summaryVariables,
     skip: !selectedSlug,
     fetchPolicy: 'cache-first',
   });

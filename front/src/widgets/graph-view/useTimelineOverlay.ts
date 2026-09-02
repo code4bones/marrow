@@ -56,15 +56,28 @@ export interface TimelineOverlay {
 }
 
 export function useTimelineOverlay(projectSlug: string | null, showTasks: boolean): TimelineOverlay {
+  // I-MEMORY-128: memoized -- apollo.ts's global cache-and-network policy
+  // fires a real network request on every re-execution of a query, and an
+  // inline variables literal counts as a fresh execution on every unrelated
+  // re-render of the caller, not only when `projectSlug` changes. Cyclically
+  // revisiting a project compounds this into a feedback loop (each
+  // incidental re-render re-fires the network leg for all three queries
+  // below; those responses arriving trigger more re-renders) that gets
+  // worse the more times you cycle. All three share the same shape, one
+  // shared object is enough.
+  const overlayVariables = useMemo(
+    () => ({ project: projectSlug, limit: OVERLAY_LIMIT, offset: 0 }),
+    [projectSlug],
+  );
   const { data: linksData, loading: linksLoading } = useQuery<{ linksPage: Paginated<Link> }>(GET_LINKS_PAGE, {
-    variables: { project: projectSlug, limit: OVERLAY_LIMIT, offset: 0 },
+    variables: overlayVariables,
     skip: !projectSlug,
   });
 
   const { data: remarksData, loading: remarksLoading } = useQuery<{ memoryItemsPage: Paginated<RemarkItem> }>(
     GET_PROJECT_REMARKS_PAGE,
     {
-      variables: { project: projectSlug, limit: OVERLAY_LIMIT, offset: 0 },
+      variables: overlayVariables,
       skip: !projectSlug,
     },
   );
@@ -72,7 +85,7 @@ export function useTimelineOverlay(projectSlug: string | null, showTasks: boolea
   // Task events only fetched when the "Show tasks" toggle is on — off by
   // default per T-MEMORY-045, so most sessions never pay for this query.
   const { data: eventsData, loading: eventsLoading } = useQuery<{ eventsPage: Paginated<Event> }>(GET_EVENTS_PAGE, {
-    variables: { project: projectSlug, limit: OVERLAY_LIMIT, offset: 0 },
+    variables: overlayVariables,
     skip: !projectSlug || !showTasks,
   });
 

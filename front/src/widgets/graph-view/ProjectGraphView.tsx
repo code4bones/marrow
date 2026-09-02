@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react';
 import { Alert, Segmented, Select, Space, Switch, Typography } from 'antd';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
@@ -38,9 +38,17 @@ export function ProjectGraphView({ slug }: Props) {
   // when decisions are the root — see DecisionTimeline's own guard.
   const [showTasks, setShowTasks] = useState(false);
 
+  // I-MEMORY-128: memoized -- apollo.ts's global cache-and-network policy
+  // fires a real network request on every re-execution of a query, and an
+  // inline variables literal counts as a fresh execution on every unrelated
+  // re-render of this component, not only when `slug` changes. Cyclically
+  // revisiting a project compounds this into a feedback loop (each
+  // incidental re-render re-fires the network leg; that response arriving
+  // triggers more re-renders) that gets worse the more times you cycle.
+  const projectVariables = useMemo(() => ({ slug }), [slug]);
   const { data: projectData, loading: projectLoading, error: projectError } = useQuery<{ project: { id: string; title: string } }>(
     GET_PROJECT,
-    { variables: { slug } },
+    { variables: projectVariables },
   );
 
   const projectId = projectData?.project.id;
@@ -70,10 +78,11 @@ export function ProjectGraphView({ slug }: Props) {
   // other overlay query, instead of waiting its turn behind GET_PROJECT --
   // measured live: this was one whole hop in an ~800ms, 15-request
   // waterfall on the project's largest project.
+  const graphVariables = useMemo(() => ({ projectId: slug, depth }), [slug, depth]);
   const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
     {
-      variables: { projectId: slug, depth },
+      variables: graphVariables,
     },
   );
   // This query batches every kind (decisions/tasks/memory/artifacts/links)
