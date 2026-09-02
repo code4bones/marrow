@@ -9,6 +9,7 @@ import { RecordEventModal } from '../../features/event/RecordEventModal';
 import { GET_EVENTS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
+import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useSectionSeenStore } from '../../shared/model/sectionSeen.store';
@@ -35,18 +36,26 @@ export function EventsPage() {
   const { labelFor } = useActorLabels((data?.eventsPage.items ?? []).map((e) => e.credentialId));
 
   const columns: ColumnsType<Event> = [
-    { title: t('at'), dataIndex: 'createdAt', width: 160, fixed: 'left', render: (v, row) => <Timestamp value={v} author={labelFor(row.credentialId)} /> },
+    {
+      // agentName (any event, any domain -- base.ts's recordEventForProject)
+      // renders as "owner (agent)" folded into the existing author line
+      // rather than its own column: it's a qualifier on who did this, not
+      // an independent fact deserving separate table real estate.
+      title: t('at'), dataIndex: 'createdAt', width: 160, fixed: 'left',
+      render: (v, row) => {
+        // shortAuthor() up front, not left to Timestamp's own internal call
+        // -- Timestamp's shortAuthor(author) truncates at the first "@", and
+        // an unshortened "user@host (agent)" string has one inside the
+        // owner part, which would swallow the "(agent)" suffix along with
+        // the domain.
+        const owner = labelFor(row.credentialId);
+        const shortOwner = owner ? shortAuthor(owner) : null;
+        const author = shortOwner && row.agentName ? `${shortOwner} (${row.agentName})` : shortOwner;
+        return <Timestamp value={v} author={author} />;
+      },
+    },
     { title: t('type'), dataIndex: 'type', width: 180, render: (v) => <Tag style={{ fontSize: 11 }}>{v}</Tag> },
     { title: t('title'), dataIndex: 'title', minWidth: 240, ellipsis: true },
-    {
-      // request.created/reply.created are the only event types that stash a
-      // "backend → front"-style agent line in body (requests.mixin.ts) --
-      // every other type's body is a free-text detail not meant for this
-      // column, so it's shown only for those two.
-      title: t('agent'), dataIndex: 'body', width: 140,
-      render: (v, row) => (row.type === 'request.created' || row.type === 'reply.created') && v
-        ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : null,
-    },
     {
       title: t('related'), dataIndex: 'relatedId', width: 160,
       render: (v) => <RecordLink id={v} />,

@@ -129,7 +129,7 @@ export const GET_SKILLS_PAGE = gql`
 export const GET_EVENTS_PAGE = gql`
   query GetEventsPage($project: String, $limit: Int!, $offset: Int!) {
     eventsPage(project: $project, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title body relatedId credentialId targetUserIds createdAt }
+      items { id type title body relatedId credentialId agentName targetUserIds createdAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
