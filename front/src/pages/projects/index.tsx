@@ -76,7 +76,19 @@ export function ProjectsPage() {
   // state this page owns.
   if (isMobile) {
     if (slug) {
-      return <ProjectOverview slug={slug} />;
+      // I-MEMORY-128/131: `key` forces a full unmount/remount of this whole
+      // subtree on every project switch, instead of React reusing the same
+      // ProjectOverview/ProjectGraphView instance across different `slug`
+      // props. Without it, Apollo's per-hook ObservableQuery subscriptions
+      // for the OLD project were never fully torn down before the NEW
+      // project's queries started -- revisiting an already-cached project
+      // touched off a runaway cross-project refetch storm (see apollo.ts's
+      // nextFetchPolicy comment for the first half of this fix, which
+      // capped it but didn't eliminate it). Apollo's cache itself is a
+      // module-level singleton untouched by this remount, so the instant
+      // cache-paint on revisit is unaffected -- only the live subscriptions
+      // get a clean teardown/recreate.
+      return <ProjectOverview key={slug} slug={slug} />;
     }
     return (
       <div style={{ height: '100%', overflowY: 'auto', padding: '12px 12px 24px' }}>
@@ -246,7 +258,7 @@ export function ProjectsPage() {
       {/* Right: project content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {slug ? (
-          <ProjectOverview slug={slug} />
+          <ProjectOverview key={slug} slug={slug} />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography.Text type="secondary">{t('selectAProject')}</Typography.Text>
