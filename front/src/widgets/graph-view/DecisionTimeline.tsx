@@ -864,10 +864,18 @@ function StatusToggleBadges({ statuses, hidden, onToggle, rootKind }: { statuses
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {statuses.map((status) => {
         const active = !hidden.has(status);
+        const color = statusColorFor(rootKind, status);
         return (
           <Tag
             key={status}
-            color={active ? statusColorFor(rootKind, status) : undefined}
+            // Deliberately NOT Tag's `color` prop -- see RecordCard's own
+            // status badge just above for why: antd auto-detects a hex that
+            // happens to match one of its presets (e.g. "accepted"'s
+            // #52c41a == antd's "green") and silently swaps to a pastel
+            // preset style (pale bg + colored text) for that one status
+            // only, instead of the solid fill every other status gets.
+            // Setting background/border/text directly via `style` sidesteps
+            // that preset auto-detection entirely, same fix as RecordCard.
             style={{
               margin: 0,
               cursor: 'pointer',
@@ -875,8 +883,10 @@ function StatusToggleBadges({ statuses, hidden, onToggle, rootKind }: { statuses
               lineHeight: '15px',
               padding: '0 6px',
               textTransform: 'uppercase',
-              opacity: active ? 1 : 0.45,
               userSelect: 'none',
+              ...(active
+                ? { backgroundColor: color, borderColor: color, color: '#fff' }
+                : { opacity: 0.45 }),
             }}
             onClick={(e) => { e.stopPropagation(); onToggle(status); }}
           >
