@@ -39,6 +39,18 @@ export const apolloClient = new ApolloClient({
   // background network request on every mount, so any page self-heals on
   // its own next visit regardless of whether the WS event was ever seen.
   defaultOptions: {
-    watchQuery: { fetchPolicy: 'cache-and-network' },
+    // I-MEMORY-128/131: `nextFetchPolicy` is what actually makes
+    // cache-and-network a ONE-TIME "paint from cache, then verify over the
+    // network" policy. Without it, every later re-observe of an already-
+    // cached (query, variables) pair -- e.g. revisiting a project you'd
+    // already viewed this session, so its ObservableQuery still has cache
+    // data -- keeps re-applying cache-and-network forever, firing a fresh
+    // network request on every subsequent notification instead of settling
+    // into cache-first. Confirmed live: switching to a never-before-visited
+    // project stays a clean single round of requests; revisiting an
+    // already-visited one touched off a runaway refetch storm alternating
+    // between the two most-recently-viewed projects (300+ requests, ~70ms
+    // apart) until this was set.
+    watchQuery: { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
   },
 });
