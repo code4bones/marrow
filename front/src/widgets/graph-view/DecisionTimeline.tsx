@@ -908,12 +908,13 @@ function milestoneGroupLabel(t: (key: string, options?: Record<string, unknown>)
   return `${name}: ${countLabel}`;
 }
 
-function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, hiddenStatuses, onToggleStatus, onScroll, hasMore, ...common }: {
+function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMilestone, presentStatuses, hiddenStatuses, onToggleStatus, onScroll, hasMore, ...common }: {
   rows: BaselineRow[];
   filterQuery: string;
   onFilterChange: (value: string) => void;
   rootKind: RootKind;
   groupByMilestone: boolean;
+  presentStatuses: string[];
   hiddenStatuses: Set<string>;
   onToggleStatus: (status: string) => void;
   onScroll: (e: ReactUIEvent<HTMLDivElement>) => void;
@@ -930,7 +931,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
           {rootKindLabel(t, rootKind)}
         </Typography.Text>
         <TimelineFilterInput value={filterQuery} onChange={onFilterChange} />
-        <StatusToggleBadges statuses={rootKindStatuses(rootKind)} hidden={hiddenStatuses} onToggle={onToggleStatus} rootKind={rootKind} />
+        <StatusToggleBadges statuses={presentStatuses} hidden={hiddenStatuses} onToggle={onToggleStatus} rootKind={rootKind} />
       </div>
       <div style={COLUMN_SCROLL_STYLE} onScroll={onScroll}>
         {groupByMilestone && milestoneGroups.length === 0 ? (
@@ -1326,6 +1327,20 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     return { baselineNodes, satellitesByRecord };
   }, [nodes, edges, nodeById, rootKind]);
 
+  // T-context (owner's ask, 2026-09-06: "я думал что тогглы собираются из
+  // имеющихся, но нет" -- a project with zero CHANGES_REQUESTED tasks still
+  // showed that toggle, since rootKindStatuses(rootKind) is the kind's
+  // FULL static status vocabulary, not what's actually present): narrow it
+  // down to statuses that occur in at least one of THIS project's own
+  // baselineNodes, keeping rootKindStatuses' canonical ordering. Computed
+  // from baselineNodes (not filteredBaselineNodes/hiddenStatuses) so
+  // hiding a status never makes its own toggle disappear -- you'd have no
+  // way to turn it back on.
+  const presentStatuses = useMemo(() => {
+    const occurring = new Set(baselineNodes.map((n) => n.status ?? ''));
+    return rootKindStatuses(rootKind).filter((status) => occurring.has(status));
+  }, [baselineNodes, rootKind]);
+
   // T-MEMORY-087: in-place filter of the baseline list (no popup, no
   // jump-to-root) -- narrows both baselineNodes and the task-marker overlay
   // by the same substring match RootSearch used to use only for its dropdown.
@@ -1570,6 +1585,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
       onFilterChange={setFilterQuery}
       rootKind={rootKind}
       groupByMilestone={groupByMilestone}
+      presentStatuses={presentStatuses}
       hiddenStatuses={hiddenStatuses}
       onToggleStatus={toggleStatus}
       onScroll={handleBaselineScroll}
