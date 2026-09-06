@@ -78,6 +78,22 @@ export function ProjectGraphView({ slug }: Props) {
   // other overlay query, instead of waiting its turn behind GET_PROJECT --
   // measured live: this was one whole hop in an ~800ms, 15-request
   // waterfall on the project's largest project.
+  // T-context (owner's ask -- big projects still feel slow to open even
+  // after graph.mixin.ts's backend fix, since depth=5 on a large project is
+  // just a genuinely bigger payload to transfer/parse): a cheap depth=1
+  // fetch paints the baseline ribbon (and its direct satellites) almost
+  // immediately, while the real depth=5 fetch -- needed for satellites past
+  // the first hop and for opening a drill chain several levels deep -- loads
+  // in the background and silently replaces it once ready. No user-facing
+  // depth control added (still always ends up at the owner's mandated
+  // MAX_LINK_DEPTH), this only staggers when the fuller data arrives.
+  const QUICK_DEPTH = 1;
+  const quickGraphVariables = useMemo(() => ({ projectId: slug, depth: QUICK_DEPTH }), [slug]);
+  const { data: quickGraphData } = useQuery<{ projectGraph: ProjectGraph }>(
+    GET_PROJECT_GRAPH,
+    { variables: quickGraphVariables },
+  );
+
   const graphVariables = useMemo(() => ({ projectId: slug, depth }), [slug, depth]);
   const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
@@ -102,7 +118,9 @@ export function ProjectGraphView({ slug }: Props) {
   const error = projectError || graphError;
   if (error) return <Alert type="error" message={error.message} style={{ margin: 16 }} />;
 
-  const graph = graphData?.projectGraph;
+  // Prefer the full depth=5 graph once it's in; fall back to the quick
+  // depth=1 one so the ribbon paints before the fuller fetch resolves.
+  const graph = graphData?.projectGraph ?? quickGraphData?.projectGraph;
   const nodes = graph?.nodes ?? [];
   const edges = graph?.edges ?? [];
   // `&& !xData`, not just `xLoading` -- useRefetchOnVersion right above
@@ -115,7 +133,10 @@ export function ProjectGraphView({ slug }: Props) {
   // single event anywhere in the project -- reported live as the whole
   // task list re-rendering on one task's status change. Once data exists
   // from the initial load, a background refetch updates in place instead.
-  const loading = (projectLoading && !projectData) || (graphLoading && !graphData);
+  // `!graph` here (not `!graphData`) -- the quick depth=1 result counts as
+  // "has data" for this gate too, so the loading spinner clears the moment
+  // EITHER fetch lands, not only the full one.
+  const loading = (projectLoading && !projectData) || (graphLoading && !graph);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

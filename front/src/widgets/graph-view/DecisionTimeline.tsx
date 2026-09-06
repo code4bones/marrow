@@ -1501,7 +1501,8 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
 
   if (loading) {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        <Spin size="large" />
         <Typography.Text type="secondary">{t('loadingTimeline')}</Typography.Text>
       </div>
     );
