@@ -12,6 +12,7 @@ import { formatGraphTimestamp } from '../../shared/lib/graphTimestamp';
 import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useIsMobile } from '../../shared/lib/useIsMobile';
+import { useUserPreference } from '../../shared/lib/useUserPreference';
 import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import type { GraphEdge, GraphNode, Link, RecordWrapper } from '../../shared/model/types';
@@ -839,11 +840,17 @@ function TimelineFilterInput({ value, onChange }: { value: string; onChange: (va
 }
 
 // T-MEMORY-092: status filter toggles directly under the baseline filter
-// input -- owner's ask: "не чек боксы, а аккуратные бэджи-тогглы". Reuses
-// the same STATUS_COLORS mapping every status <Tag> in this file already
-// draws from; a hidden status just loses its color and dims, rather than
-// a separate on/off visual language.
-function StatusToggleBadges({ statuses, hidden, onToggle }: { statuses: string[]; hidden: Set<string>; onToggle: (status: string) => void }) {
+// input -- owner's ask: "не чек боксы, а аккуратные бэджи-тогглы". T-context
+// (owner's ask, 2026-09-06: "трудно различимы" -- on/off states read as
+// nearly identical): reuses statusColorFor's kind-aware hex map (the same
+// one RecordCard's own status swatch draws from) instead of the generic
+// GENERIC_STATUS_COLORS map, which is missing most TASK statuses (todo/
+// doing/review/changes_requested/cancelled all silently fell back to
+// antd's grey "default", visually indistinguishable from the dimmed-off
+// state below). An "on" badge is now solid-filled with that status's real
+// color; "off" stays the same uniform dim/muted look as before -- only the
+// on-state needed fixing.
+function StatusToggleBadges({ statuses, hidden, onToggle, rootKind }: { statuses: string[]; hidden: Set<string>; onToggle: (status: string) => void; rootKind: RootKind }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {statuses.map((status) => {
@@ -851,7 +858,7 @@ function StatusToggleBadges({ statuses, hidden, onToggle }: { statuses: string[]
         return (
           <Tag
             key={status}
-            color={active ? (GENERIC_STATUS_COLORS[status] ?? 'default') : undefined}
+            color={active ? statusColorFor(rootKind, status) : undefined}
             style={{
               margin: 0,
               cursor: 'pointer',
@@ -904,7 +911,7 @@ function BaselineColumn({ rows, filterQuery, onFilterChange, rootKind, groupByMi
           {rootKindLabel(t, rootKind)}
         </Typography.Text>
         <TimelineFilterInput value={filterQuery} onChange={onFilterChange} />
-        <StatusToggleBadges statuses={rootKindStatuses(rootKind)} hidden={hiddenStatuses} onToggle={onToggleStatus} />
+        <StatusToggleBadges statuses={rootKindStatuses(rootKind)} hidden={hiddenStatuses} onToggle={onToggleStatus} rootKind={rootKind} />
       </div>
       <div style={COLUMN_SCROLL_STYLE} onScroll={onScroll}>
         {groupByMilestone && milestoneGroups.length === 0 ? (
@@ -1219,21 +1226,27 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // `rootKindAtLastChain !== rootKind` guard makes it self-limiting.
   // T-MEMORY-092: which statuses are hidden from the baseline ribbon --
   // empty by default (everything shown), same "show everything until the
-  // user opts out" convention as the text filter above it.
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(new Set());
+  // user opts out" convention as the text filter above it. T-context
+  // (owner's ask, 2026-09-06: filter choice "not sticking" across visits):
+  // persisted server-side per (project, rootKind), same mechanism/scope as
+  // rootKind itself just below -- previously plain useState, reset on every
+  // remount. Keying by rootKind too means switching Root already starts
+  // fresh for that kind's own status vocabulary with no separate reset.
+  const hiddenStatusesKey = projectSlug ? `timelineHiddenStatuses:${projectSlug}:${rootKind}` : null;
+  const [hiddenStatusesArray, setHiddenStatusesArray] = useUserPreference<string[]>(hiddenStatusesKey, []);
+  const hiddenStatuses = useMemo(() => new Set(hiddenStatusesArray), [hiddenStatusesArray]);
   const toggleStatus = useCallback((status: string) => {
-    setHiddenStatuses((cur) => {
-      const next = new Set(cur);
-      if (next.has(status)) next.delete(status); else next.add(status);
-      return next;
-    });
-  }, []);
+    setHiddenStatusesArray(
+      hiddenStatusesArray.includes(status)
+        ? hiddenStatusesArray.filter((s) => s !== status)
+        : [...hiddenStatusesArray, status],
+    );
+  }, [hiddenStatusesArray, setHiddenStatusesArray]);
 
   const [rootKindAtLastChain, setRootKindAtLastChain] = useState(rootKind);
   if (rootKindAtLastChain !== rootKind) {
     setRootKindAtLastChain(rootKind);
     setChain([]);
-    setHiddenStatuses(new Set());
   }
 
   // Collapsed by default — the expanded panel was covering the columns
