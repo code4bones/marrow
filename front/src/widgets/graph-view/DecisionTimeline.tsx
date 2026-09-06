@@ -123,6 +123,15 @@ const MAX_SATELLITES_SHOWN = 8;
 // across unrelated refetches) array from satellitesByRecord/remarksByTarget.
 const EMPTY_SATELLITES: GraphNode[] = [];
 const EMPTY_REMARKS: RemarkPreview[] = [];
+// Fallback for useUserPreference's hiddenStatuses below -- MUST be a stable
+// module-level reference, not an inline `[]` literal passed at the call
+// site. useUserPreference returns this exact object whenever nothing's
+// been persisted yet, and hiddenStatuses (a useMemo over it) is compared
+// BY REFERENCE downstream (the revealCount reset check) to detect "did the
+// filter actually change" -- an inline `[]` is a fresh reference every
+// render, which looked like the filter changing on every single render
+// and infinite-looped the render-time state adjustment into a crash.
+const EMPTY_HIDDEN_STATUSES: string[] = [];
 
 const TASK_MARKER_COLOR = '#177ddc';
 
@@ -1233,7 +1242,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // remount. Keying by rootKind too means switching Root already starts
   // fresh for that kind's own status vocabulary with no separate reset.
   const hiddenStatusesKey = projectSlug ? `timelineHiddenStatuses:${projectSlug}:${rootKind}` : null;
-  const [hiddenStatusesArray, setHiddenStatusesArray] = useUserPreference<string[]>(hiddenStatusesKey, []);
+  const [hiddenStatusesArray, setHiddenStatusesArray] = useUserPreference<string[]>(hiddenStatusesKey, EMPTY_HIDDEN_STATUSES);
   const hiddenStatuses = useMemo(() => new Set(hiddenStatusesArray), [hiddenStatusesArray]);
   const toggleStatus = useCallback((status: string) => {
     setHiddenStatusesArray(
