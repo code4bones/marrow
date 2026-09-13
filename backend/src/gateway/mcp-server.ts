@@ -6,7 +6,24 @@ import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js"
 export function createGatewayMcpServer(service: PgToolService, context: GatewayRequestContext): McpServer {
   const server = new McpServer({
     name: "project-memory-gateway",
-    version: "0.1.0"
+    title: "Marrow",
+    version: "0.1.0",
+    websiteUrl: "https://marrow.undoo.ru",
+    description: "Shared MCP memory gateway and local-first project memory server for coding agents.",
+    // Owner's ask (2026-09-13): the connector showed a generic default icon
+    // in Claude.ai's connector list after auth, even though the web app has
+    // real branding. That list reads this `serverInfo` from the MCP
+    // `initialize` response, not the OAuth authorize page (which already
+    // used the web app's own branded UI, hence looking fine) -- `icons` is
+    // part of the MCP spec's ImplementationSchema (SDK 1.30+) but was never
+    // populated. Points at the already-deployed front/public/ PWA icon
+    // (served statically by the same nginx that serves the web app) rather
+    // than adding a new backend route for it.
+    icons: [
+      { src: "https://marrow.undoo.ru/pwa-icon-512.png", mimeType: "image/png", sizes: ["512x512"] },
+      { src: "https://marrow.undoo.ru/pwa-icon-192.png", mimeType: "image/png", sizes: ["192x192"] },
+      { src: "https://marrow.undoo.ru/favicon.svg", mimeType: "image/svg+xml" }
+    ]
   });
 
   const useClaudeSafeNames = shouldUseClaudeSafeToolNames(context);
