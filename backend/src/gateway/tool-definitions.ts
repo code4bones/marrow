@@ -570,6 +570,54 @@ const gitRunnersStatusSchema = z.object({
   project: z.string().min(1)
 });
 
+// CI/CD variable CRUD + pipeline_trigger (owner's ask, 2026-09-13). `key`
+// follows GitLab's own CI/CD variable naming rule (letters/digits/
+// underscore only, case-sensitive) -- validated here rather than left to
+// GitLab's own 400 response, so a malformed key fails fast with a clear
+// VALIDATION_ERROR instead of a generic GATEWAY_ERROR from the API call.
+const gitVariableKeySchema = z.string().min(1).max(255).regex(/^[A-Za-z0-9_]+$/, "CI/CD variable keys may only contain letters, digits, and underscores.");
+const gitVariablesListSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  // Default true -- see gitVariableGet's redact for the full rationale.
+  redact: z.boolean().optional()
+});
+const gitVariableGetSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  key: gitVariableKeySchema,
+  environmentScope: z.string().min(1).optional(),
+  redact: z.boolean().optional()
+});
+const gitVariableSetSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  key: gitVariableKeySchema,
+  value: z.string(),
+  protected: z.boolean().optional(),
+  masked: z.boolean().optional(),
+  raw: z.boolean().optional(),
+  variableType: z.enum(["env_var", "file"]).optional(),
+  environmentScope: z.string().min(1).optional(),
+  description: z.string().optional()
+});
+const gitVariableDeleteSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  key: gitVariableKeySchema,
+  environmentScope: z.string().min(1).optional()
+});
+const gitPipelineTriggerSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  ref: z.string().min(1),
+  // Run-scoped variables layered on top of the project's stored ones for
+  // this one pipeline only -- plain string values, matching GitLab's own
+  // "Run pipeline" UI form (no masked/protected flags at trigger time,
+  // those only apply to variables stored via git.variable_set).
+  variables: z.record(z.string(), z.string()).optional()
+});
+
 // D-MEMORY-037: gateway-only credits tools, same reasoning as the git.*
 // schemas above -- wallets/credit_transactions are keyed on the
 // hosted-gateway-only `users` table, no local-first (SQLite) counterpart.
@@ -874,6 +922,28 @@ const gitRunnerSchema = z.object({
 });
 const gitRunnersStatusOutSchema = z.object({
   runners: z.array(gitRunnerSchema)
+});
+const gitVariableOutSchema = z.object({
+  key: z.string(),
+  // "[MASKED]" when the variable is GitLab-masked and the caller didn't
+  // pass redact:false -- see toGitVariable in git-credentials.ts.
+  value: z.string(),
+  variableType: z.string(),
+  protected: z.boolean(),
+  masked: z.boolean(),
+  raw: z.boolean(),
+  environmentScope: z.string(),
+  description: z.string().nullable()
+});
+const gitVariablesListOutSchema = z.object({
+  variables: z.array(gitVariableOutSchema)
+});
+const gitPipelineTriggerOutSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+  webUrl: z.string()
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -1609,6 +1679,51 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
       "List the GitLab runners available to a project (its own runners plus any shared/group runners assigned to it), using the same stored credential as git.pipeline_status. Each entry reports online/status (GitLab's own heartbeat-based online/offline/stale/never_contacted classification) -- useful for diagnosing a pipeline stuck in created/pending because no matching runner is online, which git.pipeline_status/git.job_trace alone can't explain.",
     schema: gitRunnersStatusSchema,
     outputSchema: output(gitRunnersStatusOutSchema)
+  },
+  {
+    name: "git.variables_list",
+    description:
+      "List a GitLab project's CI/CD variables, using the same stored credential as git.pipeline_status. A variable's `value` reads as \"[MASKED]\" whenever GitLab itself flags that variable masked=true (a real secret) -- pass redact:false to see the actual value when you genuinely need it.",
+    schema: gitVariablesListSchema,
+    outputSchema: output(gitVariablesListOutSchema)
+  },
+  {
+    name: "git.variable_get",
+    description:
+      "Get one GitLab CI/CD variable by key. Pass environmentScope to disambiguate if the same key exists for more than one environment (defaults to GitLab's own `*` / all-environments entry). Same masked-value redaction as git.variables_list.",
+    schema: gitVariableGetSchema,
+    outputSchema: output(gitVariableOutSchema)
+  },
+  {
+    name: "git.variable_set",
+    // access:"admin", a deliberate departure from git.credential_delete's
+    // "write, not admin" precedent right above -- that tool can only ever
+    // touch the CALLER'S OWN local row in Marrow's own database; this one
+    // rewrites a real GitLab project's live CI/CD configuration (owner's
+    // explicit call, 2026-09-13). A CI/CD variable is very often a secret
+    // (deploy key, API token) -- an OAuth-connected agent with only
+    // memory:write shouldn't be able to mint or overwrite one.
+    description:
+      "Create or update (upsert, by key) a GitLab CI/CD variable, using the same stored credential as git.pipeline_status. Pass masked:true for secrets (GitLab will then refuse to log its value in job traces going forward) and protected:true to restrict it to protected branches/tags. Requires admin scope -- this mutates the real project's live CI/CD config, not a local Marrow record.",
+    schema: gitVariableSetSchema,
+    outputSchema: output(gitVariableOutSchema),
+    access: "admin"
+  },
+  {
+    name: "git.variable_delete",
+    description:
+      "Permanently delete one GitLab CI/CD variable by key, using the same stored credential as git.pipeline_status. Pass environmentScope to target a specific scope if the key exists for more than one. Requires admin scope, same reasoning as git.variable_set.",
+    schema: gitVariableDeleteSchema,
+    outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "admin"
+  },
+  {
+    name: "git.pipeline_trigger",
+    description:
+      "Start a new pipeline run for `ref` (branch/tag), using the same stored credential as git.pipeline_status. Optional `variables` are layered on top of the project's stored CI/CD variables for this one run only, matching GitLab's own \"Run pipeline\" UI form. Requires admin scope -- this kicks off real CI/CD execution (builds, tests, possibly a deploy), not a local Marrow action.",
+    schema: gitPipelineTriggerSchema,
+    outputSchema: output(gitPipelineTriggerOutSchema),
+    access: "admin"
   },
   {
     name: "credit.balance",

@@ -1,7 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
-import { decryptGitToken, encryptGitToken, fetchGitlabJobTrace, fetchGitlabPipelineStatus, fetchGitlabRunnersStatus } from "../../git-credentials.js";
+import {
+  decryptGitToken,
+  encryptGitToken,
+  fetchGitlabJobTrace,
+  fetchGitlabPipelineStatus,
+  fetchGitlabPipelineTrigger,
+  fetchGitlabRunnersStatus,
+  fetchGitlabVariableDelete,
+  fetchGitlabVariableGet,
+  fetchGitlabVariableSet,
+  fetchGitlabVariablesList
+} from "../../git-credentials.js";
 import { gitCredentialOut } from "../formatters/git-credentials.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
@@ -15,7 +26,7 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   // browser session -- but management (create/delete, immediately below)
   // additionally requires sessionSource === "cookie", so a personal token
   // still can't manage credentials even though it resolves an owner id; see
-  // requireSessionUserId's own comment for why that extra check exists.
+  // requireGitCredentialSession's own comment for why that extra check exists.
   // Since T-MEMORY-052, an OAuth connector's real identity ALSO populates
   // sessionUserId/sessionRole (for project-membership filtering) -- but a
   // git credential can only ever have been created through the trusted
@@ -43,7 +54,23 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   // token's own owner_user_id in ensureStaticTokenCredential
   // (T-MEMORY-029). A browser session's or personal token's own user id
   // always takes precedence when present.
-  protected requireSessionUserId(context: NormalizedGatewayRequestContext): string {
+  // I-MEMORY-133: named requireGitCredentialSession, NOT requireSessionUserId
+  // -- UserPrefsMixin (user-prefs.mixin.ts) independently defines its own
+  // protected requireSessionUserId with a materially weaker check (only
+  // `context?.sessionUserId` truthiness, no sessionSource restriction).
+  // Both mixins get composed into the same ComposedService class in
+  // service.ts (`UserPrefsMixin(...GitCredentialsMixin(...)...)`, with
+  // UserPrefsMixin outermost), and a same-named method on an outer mixin
+  // SILENTLY SHADOWS the inner one for every caller, including callers that
+  // "belong" to the inner mixin -- this file's own createGitCredential/
+  // deleteGitCredential were, until this rename, unknowingly calling
+  // UserPrefsMixin's weaker check instead of the sessionSource-checking one
+  // below, letting a personal-API-token bearer manage git credentials
+  // (findable via a plain 401-message-mismatch in the git-credentials smoke
+  // test) when the intent documented all over this file is browser-session-
+  // only. Renaming avoids the collision without touching UserPrefsMixin's
+  // own (intentionally different, and itself correct) behavior.
+  protected requireGitCredentialSession(context: NormalizedGatewayRequestContext): string {
     // T-MEMORY-047: deliberately checks sessionSource, not just
     // sessionUserId -- a personal-API-token bearer also populates
     // sessionUserId/sessionRole (so scope-tier resolution and
@@ -81,7 +108,7 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   }
 
   protected async createGitCredential(input: Row, context: NormalizedGatewayRequestContext) {
-    const ownerUserId = this.requireSessionUserId(context);
+    const ownerUserId = this.requireGitCredentialSession(context);
     const now = nowIso();
     const row = {
       id: randomUUID(),
@@ -111,7 +138,7 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   }
 
   protected async deleteGitCredential(input: Row, context: NormalizedGatewayRequestContext) {
-    const ownerUserId = this.requireSessionUserId(context);
+    const ownerUserId = this.requireGitCredentialSession(context);
     const id = String(input.id);
     // Ownership is enforced in the WHERE clause, not checked-then-deleted --
     // a credential belonging to a different user is indistinguishable from
@@ -221,6 +248,134 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
     });
     await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
     return { runners };
+  }
+
+  // CI/CD variable CRUD + pipeline_trigger (owner's ask, 2026-09-13: "не
+  // хватает CRUD для CI/CD... агент должен иметь возможность читать Vars, и
+  // запускать pipeline"). Same credential-resolution/last_used_at
+  // bookkeeping as the three read tools above. Owner made two explicit
+  // security calls for this batch (not this codebase's usual *.delete=admin
+  // default, decided fresh here since these -- unlike git.credential_delete
+  // -- mutate a THIRD-PARTY system's live config/execution, not just a
+  // local row scoped to the caller's own ownership):
+  //  1. variable_set/variable_delete/pipeline_trigger are access:"admin"
+  //     (see tool-definitions.ts) -- reading is much lower-risk than
+  //     rewriting a project's real CI/CD secrets or kicking off a pipeline
+  //     that might deploy something.
+  //  2. variables_list/variable_get redact a variable's `value` whenever
+  //     GitLab itself flags that variable `masked: true` (a real secret),
+  //     unless the caller explicitly passes redact:false -- same opt-out
+  //     shape as git.job_trace's own redact param, since an agent
+  //     legitimately needs the real value sometimes (e.g. to reuse it).
+
+  protected async gitVariablesList(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const variables = await fetchGitlabVariablesList({
+      host,
+      project,
+      redact: input.redact !== false,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    return { variables };
+  }
+
+  protected async gitVariableGet(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const variable = await fetchGitlabVariableGet({
+      host,
+      project,
+      key: String(input.key),
+      environmentScope: typeof input.environmentScope === "string" ? input.environmentScope : undefined,
+      redact: input.redact !== false,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    return variable;
+  }
+
+  protected async gitVariableSet(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const key = String(input.key);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const variable = await fetchGitlabVariableSet({
+      host,
+      project,
+      key,
+      value: String(input.value),
+      protected: typeof input.protected === "boolean" ? input.protected : undefined,
+      masked: typeof input.masked === "boolean" ? input.masked : undefined,
+      raw: typeof input.raw === "boolean" ? input.raw : undefined,
+      variableType: typeof input.variableType === "string" ? input.variableType : undefined,
+      environmentScope: typeof input.environmentScope === "string" ? input.environmentScope : undefined,
+      description: typeof input.description === "string" ? input.description : undefined,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    await this.recordEventForProject(null, {
+      type: "git_variable.set",
+      title: `CI/CD variable set: ${host}/${project} ${key}`,
+      related_id: null
+    }, context);
+    return variable;
+  }
+
+  protected async gitVariableDelete(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const key = String(input.key);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    await fetchGitlabVariableDelete({
+      host,
+      project,
+      key,
+      environmentScope: typeof input.environmentScope === "string" ? input.environmentScope : undefined,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    await this.recordEventForProject(null, {
+      type: "git_variable.deleted",
+      title: `CI/CD variable deleted: ${host}/${project} ${key}`,
+      related_id: null
+    }, context);
+    return { deleted: true as const };
+  }
+
+  protected async gitPipelineTrigger(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    const ref = String(input.ref);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const variables =
+      input.variables && typeof input.variables === "object"
+        ? Object.fromEntries(
+          Object.entries(input.variables as Record<string, unknown>).map(([k, v]) => [k, String(v)])
+        )
+        : undefined;
+    const pipeline = await fetchGitlabPipelineTrigger({
+      host,
+      project,
+      ref,
+      variables,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    await this.recordEventForProject(null, {
+      type: "git_pipeline.triggered",
+      title: `Pipeline triggered: ${host}/${project} (${ref}) -> #${pipeline.id}`,
+      related_id: null
+    }, context);
+    return pipeline;
   }
 
   };

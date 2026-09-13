@@ -47,6 +47,11 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `git.pipeline_status`
 * `git.job_trace`
 * `git.runners_status`
+* `git.variables_list`
+* `git.variable_get`
+* `git.variable_set`
+* `git.variable_delete`
+* `git.pipeline_trigger`
 
 ## General response format
 
@@ -164,6 +169,11 @@ docs/AUTH.md.
 | `artifact.archive` | write | | `git.pipeline_status` | read |
 | `artifact.delete` | **admin** | | `git.job_trace` | read |
 | | | | `git.runners_status` | read |
+| | | | `git.variables_list` | read |
+| | | | `git.variable_get` | read |
+| | | | `git.variable_set` | **admin** |
+| | | | `git.variable_delete` | **admin** |
+| | | | `git.pipeline_trigger` | **admin** |
 
 ## Gateway tools
 
@@ -3238,6 +3248,147 @@ classification (`online`/`offline`/`stale`/`never_contacted`) -- there is
 no separate "currently running a job" flag in this endpoint's response, so
 this answers "is any runner even reachable" rather than "is a specific
 runner busy right now".
+
+### `git.variables_list`
+
+List a project's CI/CD variables, using the same stored credential as
+`git.pipeline_status`. A variable's `value` reads as `"[MASKED]"` whenever
+GitLab itself flags that variable `masked: true` (a real secret) -- pass
+`redact: false` to see the actual value when you genuinely need it.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "redact": true
+}
+```
+
+Output:
+
+```json
+{
+  "variables": [
+    {
+      "key": "DEPLOY_TOKEN",
+      "value": "[MASKED]",
+      "variableType": "env_var",
+      "protected": true,
+      "masked": true,
+      "raw": false,
+      "environmentScope": "*",
+      "description": null
+    }
+  ]
+}
+```
+
+### `git.variable_get`
+
+Get one CI/CD variable by key. Pass `environmentScope` to disambiguate if
+the same key exists for more than one environment (defaults to GitLab's
+own `*` / all-environments entry). Same masked-value redaction as
+`git.variables_list`.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "key": "DEPLOY_TOKEN",
+  "redact": false
+}
+```
+
+Output: a single variable object, same shape as one entry of
+`git.variables_list`'s `variables` array.
+
+### `git.variable_set`
+
+**Requires admin scope** (see `AUTH.md`'s "Git host credentials" section
+for why this tier differs from `git.credential_delete`'s). Create or
+update (upsert, by key) a CI/CD variable, using the same stored credential
+as `git.pipeline_status`. Tries `PUT` (update) first; falls back to `POST`
+(create) only if the key doesn't exist yet.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "key": "DEPLOY_TOKEN",
+  "value": "a-real-secret-value",
+  "protected": true,
+  "masked": true,
+  "raw": false,
+  "variableType": "env_var",
+  "environmentScope": "*",
+  "description": "deploy step's API token"
+}
+```
+
+Only `host`/`project`/`key`/`value` are required; every other field is
+optional and passed through to GitLab as-is when present. Output: the
+resulting variable object (never redacted -- the caller just supplied
+this exact value).
+
+### `git.variable_delete`
+
+**Requires admin scope**, same reasoning as `git.variable_set`.
+Permanently delete one CI/CD variable by key. Pass `environmentScope` to
+target a specific scope if the key exists for more than one.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "key": "DEPLOY_TOKEN"
+}
+```
+
+Output: `{ "deleted": true }`.
+
+### `git.pipeline_trigger`
+
+**Requires admin scope** -- this kicks off real CI/CD execution (builds,
+tests, possibly a deploy), not a local Marrow action. Starts a new
+pipeline run for `ref` (a branch or tag), using the same stored credential
+as `git.pipeline_status`.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "ref": "main",
+  "variables": { "DEPLOY_ENV": "staging" }
+}
+```
+
+`variables` is optional -- when given, each becomes a pipeline-run-scoped
+CI/CD variable layered on top of the project's stored ones for this one
+run only, matching GitLab's own "Run pipeline" UI form (no masked/
+protected flags at trigger time -- those only apply to variables stored
+via `git.variable_set`).
+
+Output:
+
+```json
+{
+  "id": 4243,
+  "status": "created",
+  "ref": "main",
+  "sha": "abc123def456",
+  "webUrl": "https://gitlab.example.com/group/project/-/pipelines/4243"
+}
+```
 
 ## Seed tools or scripts
 

@@ -42,7 +42,10 @@ type Row = Record<string, unknown>;
 // owner-or-admin check now lives inside deleteProject itself, same as
 // updateProject/regenerateProjectInviteLink below it).
 export const ADMIN_GRAPHQL_MUTATION_NAMES = [
-  "updateCreditSettings"
+  "updateCreditSettings",
+  "setGitVariable",
+  "deleteGitVariable",
+  "triggerGitPipeline"
 ] as const;
 
 export interface GatewayGraphqlToolService {
@@ -242,6 +245,8 @@ const typeDefs = `#graphql
     gitPipelineStatus(host: String!, project: String!, ref: String): JSON
     gitJobTrace(host: String!, project: String!, jobId: Int, ref: String, jobName: String, tailLines: Int, redact: Boolean): JSON
     gitRunnersStatus(host: String!, project: String!): JSON
+    gitVariablesList(host: String!, project: String!, redact: Boolean): JSON
+    gitVariable(host: String!, project: String!, key: String!, environmentScope: String, redact: Boolean): JSON
 
     creditBalance(userId: ID): CreditBalance!
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
@@ -331,6 +336,16 @@ const typeDefs = `#graphql
     # rationale.
     createGitCredential(host: String!, label: String!, token: String!): GitCredential!
     deleteGitCredential(id: ID!): Boolean!
+
+    # ADMIN_GRAPHQL_MUTATION_NAMES-gated (see that const's own comment) --
+    # unlike createGitCredential/deleteGitCredential above, these mutate a
+    # real GitLab project's live CI/CD config/execution, not a local
+    # Marrow row scoped to the caller's own ownership. Matches
+    # git.variable_set/git.variable_delete/git.pipeline_trigger's own
+    # access:"admin" in tool-definitions.ts.
+    setGitVariable(host: String!, project: String!, key: String!, value: String!, protected: Boolean, masked: Boolean, raw: Boolean, variableType: String, environmentScope: String, description: String): JSON
+    deleteGitVariable(host: String!, project: String!, key: String!, environmentScope: String): Boolean!
+    triggerGitPipeline(host: String!, project: String!, ref: String!, variables: JSON): JSON
 
     updateCreditSettings(enabled: Boolean!): CreditSettings!
     setUserPreference(key: String!, value: JSON!): JSON!
@@ -1260,6 +1275,10 @@ const resolvers = {
       await callTool<Row>(context, "git.job_trace", cleanInput(args)),
     gitRunnersStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.runners_status", cleanInput(args)),
+    gitVariablesList: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "git.variables_list", cleanInput(args))).variables,
+    gitVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.variable_get", cleanInput(args)),
     creditBalance: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.balance", cleanInput(args))).balance,
     creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1382,6 +1401,14 @@ const resolvers = {
       const result = await callTool<Row>(context, "git.credential_delete", cleanInput(args));
       return result.deleted === true;
     },
+    setGitVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.variable_set", cleanInput(args)),
+    deleteGitVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "git.variable_delete", cleanInput(args));
+      return result.deleted === true;
+    },
+    triggerGitPipeline: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "git.pipeline_trigger", cleanInput(args)),
     updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings,
     setUserPreference: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

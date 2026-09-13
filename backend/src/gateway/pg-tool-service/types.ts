@@ -53,7 +53,7 @@ export interface GatewayRequestContext {
   sessionRole?: string;
   // T-MEMORY-047 / T-MEMORY-052: distinguishes *how* sessionUserId/sessionRole
   // were resolved. Only one consumer cares about the distinction:
-  // git-credential *management* (create/delete, see requireSessionUserId
+  // git-credential *management* (create/delete, see requireGitCredentialSession
   // below) stays deliberately browser-session-only, so it checks this field
   // is exactly "cookie" -- a personal token or an OAuth connector resolving
   // the same user's real identity still can't mint/destroy a raw credential.

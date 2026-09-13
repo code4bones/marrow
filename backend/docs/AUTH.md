@@ -443,7 +443,7 @@ supposed to avoid.
 - **Git-credential *management* is the one deliberate exception: it stays
   browser-session-only, not extended to a personal-token bearer for the same
   user.** `git.credential_create`/`git.credential_delete`'s existing
-  `requireSessionUserId()` (see "Git host credentials" below) was written
+  `requireGitCredentialSession()` (see "Git host credentials" below) was written
   before this task to mean "a real browser session cookie", enforcing that a
   raw git PAT only ever enters or leaves storage through the trusted browser
   profile UI, never through an agent. Populating `sessionUserId` identically
@@ -586,10 +586,58 @@ rejection of putting a PAT in `.env`).
   `GitHttpFetch` (`PgToolService`'s constructor, defaulting to the real
   global `fetch`) specifically so `scripts/smoke-gateway-git-credentials.ts`
   can substitute a fake and never touch a real GitLab instance.
-- **Not in scope for this task** (per the task record): non-GitLab hosts,
-  any write/trigger/cancel operation against CI/CD (only read-only pipeline/
-  job status), and a UI/API for managing git repositories themselves
-  (clone, push, etc).
+- **`git.variables_list`/`git.variable_get(host, project, key)`**: same
+  credential resolution/`last_used_at` bookkeeping as `git.pipeline_status`,
+  listing or fetching one GitLab CI/CD variable. A variable's `value` reads
+  as `"[MASKED]"` whenever GitLab itself flags it `masked: true` (a real
+  secret), unless the caller passes `redact: false` -- the caller
+  legitimately needs the real value sometimes (e.g. to reuse it in a
+  script), so this is an opt-out, not a hard block, same shape as
+  `git.job_trace`'s own `redact` param. Scope tier: `read` (default) --
+  reading a variable is materially lower-risk than rewriting one.
+- **`git.variable_set(host, project, key, value, ...)` /
+  `git.variable_delete(host, project, key)` / `git.pipeline_trigger(host,
+  project, ref, variables?)` (`I-MEMORY-133`, 2026-09-13)**: CI/CD write
+  operations, added after this task's original read-only pass. **Scope
+  tier: `admin`** -- a deliberate departure from `git.credential_delete`'s
+  `write`-not-`admin` precedent above. That precedent holds because
+  `git.credential_delete` can only ever touch the *caller's own local row*
+  in Marrow's own database (`WHERE owner_user_id = ?`); these three mutate
+  a **real GitLab project's live CI/CD configuration and execution** --
+  variables are very often secrets (deploy keys, API tokens), and
+  triggering a pipeline can kick off a real deploy. An OAuth-connected
+  agent with only `memory:write` must not be able to mint/overwrite a
+  secret or start arbitrary CI/CD execution on its own. `git.variable_set`
+  upserts by key: tries `PUT` (update) first, falls back to `POST`
+  (create) only on a 404, rather than a separate existence-check `GET`
+  first. All three are in `ADMIN_GRAPHQL_MUTATION_NAMES`
+  (`setGitVariable`/`deleteGitVariable`/`triggerGitPipeline`), unlike
+  `createGitCredential`/`deleteGitCredential`.
+- **A same-named-method shadowing bug found and fixed alongside this task
+  (`I-MEMORY-133`)**: `UserPrefsMixin` (`user-prefs.mixin.ts`) independently
+  defines its own `protected requireSessionUserId`, with a materially
+  weaker check than `GitCredentialsMixin`'s (only `sessionUserId`
+  truthiness, no `sessionSource` restriction). Both mixins compose into the
+  same `ComposedService` class in `service.ts`, with `UserPrefsMixin`
+  outermost -- a same-named method on an outer mixin silently shadows the
+  inner one for *every* caller, including callers that "belong" to the
+  inner mixin. `createGitCredential`/`deleteGitCredential` were, until this
+  fix, unknowingly calling `UserPrefsMixin`'s weaker check instead of the
+  intended `sessionSource === "cookie"`-checking one -- meaning a personal-
+  API-token bearer (which does populate `sessionUserId`) could actually
+  manage git credentials in production, despite every comment in this file
+  and `git-credentials.mixin.ts` describing that path as browser-session-
+  only. Found via a smoke-test assertion mismatch (expected `UNAUTHORIZED`
+  with the git-specific message, got `VALIDATION_ERROR` with
+  `UserPrefsMixin`'s generic one). Fixed by renaming
+  `GitCredentialsMixin`'s method to `requireGitCredentialSession` --
+  `UserPrefsMixin`'s own (correct, intentionally different) behavior is
+  untouched. Worth a grep for other same-named `protected` methods across
+  mixins before adding a new one with a generic name.
+- **Not in scope for this task's original pass**: non-GitLab hosts, and a
+  UI/API for managing git repositories themselves (clone, push, etc) --
+  still true. CI/CD write operations (variables, pipeline triggering) are
+  now covered by the three admin-tier tools above.
 
 ### Smoke coverage
 
@@ -616,6 +664,17 @@ even though both otherwise carry sufficient scope → and, the actual
 motivating case, an OAuth-bearer request to `git.credential_list` and
 `git.pipeline_status` succeeding by falling back to the instance admin's
 own stored credential and returning real (faked) pipeline data.
+
+Extended (`I-MEMORY-133`) to also cover: `git.variables_list`/
+`git.variable_get` redacting only `masked: true` variables by default,
+with `redact: false` returning the real value → `git.variable_set` and
+`git.pipeline_trigger` both requiring admin scope, a write-scope-only
+(`role=member`) session getting `INSUFFICIENT_SCOPE` with no write
+reaching the fake GitLab store → an admin session's `git.variable_set`
+creating a new key (`PUT` 404 -> `POST` fallback) then updating it
+(`PUT` succeeds directly) → `git.variable_delete` actually removing it →
+`git.pipeline_trigger` returning the new pipeline's id/status/ref/sha/
+webUrl.
 
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 

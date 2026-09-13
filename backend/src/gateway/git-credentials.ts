@@ -305,12 +305,22 @@ export async function fetchGitlabRunnersStatus(input: {
   }));
 }
 
-async function gitlabRequest(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<Response> {
+async function gitlabRequest(
+  url: URL,
+  token: string,
+  httpFetch: GitHttpFetch,
+  host: string,
+  init?: { method: string; body?: unknown }
+): Promise<Response> {
   let response: Response;
   try {
     response = await httpFetch(url.toString(), {
-      method: "GET",
-      headers: { "PRIVATE-TOKEN": token }
+      method: init?.method ?? "GET",
+      headers: {
+        "PRIVATE-TOKEN": token,
+        ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {})
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined
     });
   } catch (error) {
     throw new AppError(
@@ -348,9 +358,226 @@ async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, ho
   return (await response.json()) as T;
 }
 
+async function gitlabPost<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string, body: unknown): Promise<T> {
+  const response = await gitlabRequest(url, token, httpFetch, host, { method: "POST", body });
+  return (await response.json()) as T;
+}
+
+async function gitlabPut<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string, body: unknown): Promise<T> {
+  const response = await gitlabRequest(url, token, httpFetch, host, { method: "PUT", body });
+  return (await response.json()) as T;
+}
+
+async function gitlabDelete(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<void> {
+  await gitlabRequest(url, token, httpFetch, host, { method: "DELETE" });
+}
+
 // GitLab's job trace endpoint (GET .../jobs/:id/trace) returns plain text,
 // not JSON -- everything else this file talks to does.
 async function gitlabGetText(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<string> {
   const response = await gitlabRequest(url, token, httpFetch, host);
   return response.text();
+}
+
+export interface GitVariable {
+  key: string;
+  value: string;
+  variableType: string;
+  protected: boolean;
+  masked: boolean;
+  raw: boolean;
+  environmentScope: string;
+  description: string | null;
+}
+
+interface GitlabVariable {
+  variable_type: string;
+  key: string;
+  value: string;
+  protected: boolean;
+  masked: boolean;
+  raw: boolean;
+  environment_scope: string;
+  description: string | null;
+}
+
+// Owner's explicit call (2026-09-13): mask a variable's `value` ONLY when
+// GitLab itself flags that specific variable `masked: true` (a real secret,
+// per GitLab's own CI/CD UI checkbox) -- never a blanket "hide everything"
+// pass. `redact` defaults to true (same convention as git.job_trace's own
+// redact param) so a routine "what variables exist" listing doesn't dump
+// secrets into an agent's context/logs by default, but an agent that
+// genuinely needs a masked variable's real value (e.g. to reuse it in a
+// script) can still get it by passing redact:false explicitly -- the same
+// escape hatch job_trace already offers for its own redaction.
+function toGitVariable(v: GitlabVariable, redact: boolean): GitVariable {
+  return {
+    key: v.key,
+    value: redact && v.masked ? "[MASKED]" : v.value,
+    variableType: v.variable_type,
+    protected: v.protected,
+    masked: v.masked,
+    raw: v.raw,
+    environmentScope: v.environment_scope,
+    description: v.description
+  };
+}
+
+/** Lists a project's CI/CD variables (GET /projects/:id/variables). GitLab caps this at 100/page; a project with more than 100 variables would need real pagination, not attempted here since none of this instance's known projects are anywhere close. */
+export async function fetchGitlabVariablesList(input: {
+  host: string;
+  project: string;
+  redact?: boolean;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitVariable[]> {
+  const { host, project, token, httpFetch } = input;
+  const redact = input.redact !== false;
+  const projectPath = encodeURIComponent(project);
+  const url = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/variables`);
+  url.searchParams.set("per_page", "100");
+  const variables = await gitlabGet<GitlabVariable[]>(url, token, httpFetch, host);
+  return variables.map((v) => toGitVariable(v, redact));
+}
+
+/**
+ * Gets one CI/CD variable by key (GET /projects/:id/variables/:key).
+ * `environmentScope` disambiguates when the same key exists more than once
+ * with different scopes (GitLab's own `filter[environment_scope]` query
+ * param) -- omitted, GitLab resolves to the `*` (all environments) entry.
+ */
+export async function fetchGitlabVariableGet(input: {
+  host: string;
+  project: string;
+  key: string;
+  environmentScope?: string;
+  redact?: boolean;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitVariable> {
+  const { host, project, key, token, httpFetch } = input;
+  const redact = input.redact !== false;
+  const projectPath = encodeURIComponent(project);
+  const url = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/variables/${encodeURIComponent(key)}`);
+  if (input.environmentScope) {
+    url.searchParams.set("filter[environment_scope]", input.environmentScope);
+  }
+  const variable = await gitlabGet<GitlabVariable>(url, token, httpFetch, host);
+  return toGitVariable(variable, redact);
+}
+
+/**
+ * Upsert: tries PUT (update) first since an agent adjusting a variable's
+ * value is the more common case than minting a brand new one; falls back to
+ * POST (create) only on a 404, rather than doing a separate existence-check
+ * GET first (one round trip instead of two in the common "already exists"
+ * path). Never redacts its own response -- the caller just supplied this
+ * exact value themselves, redacting it back to them would be pointless.
+ */
+export async function fetchGitlabVariableSet(input: {
+  host: string;
+  project: string;
+  key: string;
+  value: string;
+  protected?: boolean;
+  masked?: boolean;
+  raw?: boolean;
+  variableType?: string;
+  environmentScope?: string;
+  description?: string;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitVariable> {
+  const { host, project, key, token, httpFetch } = input;
+  const projectPath = encodeURIComponent(project);
+  const body: Record<string, unknown> = { value: input.value };
+  if (input.protected !== undefined) body.protected = input.protected;
+  if (input.masked !== undefined) body.masked = input.masked;
+  if (input.raw !== undefined) body.raw = input.raw;
+  if (input.variableType !== undefined) body.variable_type = input.variableType;
+  if (input.environmentScope !== undefined) body.environment_scope = input.environmentScope;
+  if (input.description !== undefined) body.description = input.description;
+
+  const updateUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/variables/${encodeURIComponent(key)}`);
+  if (input.environmentScope) {
+    updateUrl.searchParams.set("filter[environment_scope]", input.environmentScope);
+  }
+  try {
+    const updated = await gitlabPut<GitlabVariable>(updateUrl, token, httpFetch, host, body);
+    return toGitVariable(updated, false);
+  } catch (error) {
+    if (!(error instanceof AppError) || error.code !== "NOT_FOUND") {
+      throw error;
+    }
+  }
+  const createUrl = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/variables`);
+  const created = await gitlabPost<GitlabVariable>(createUrl, token, httpFetch, host, { key, ...body });
+  return toGitVariable(created, false);
+}
+
+/** Deletes one CI/CD variable by key (DELETE /projects/:id/variables/:key). `environmentScope` disambiguates the same way fetchGitlabVariableGet's does. */
+export async function fetchGitlabVariableDelete(input: {
+  host: string;
+  project: string;
+  key: string;
+  environmentScope?: string;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<void> {
+  const { host, project, key, token, httpFetch } = input;
+  const projectPath = encodeURIComponent(project);
+  const url = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/variables/${encodeURIComponent(key)}`);
+  if (input.environmentScope) {
+    url.searchParams.set("filter[environment_scope]", input.environmentScope);
+  }
+  await gitlabDelete(url, token, httpFetch, host);
+}
+
+export interface GitPipelineTriggerResult {
+  id: number;
+  status: string;
+  ref: string;
+  sha: string;
+  webUrl: string;
+}
+
+interface GitlabPipelineCreateResponse {
+  id: number;
+  status: string;
+  ref: string;
+  sha: string;
+  web_url: string;
+}
+
+/**
+ * Starts a new pipeline run (POST /projects/:id/pipeline -- GitLab's "create
+ * a new pipeline" endpoint, not a trigger-token webhook, since this already
+ * authenticates via the caller's own stored PAT). `variables` become
+ * pipeline-run-scoped CI/CD variables layered on top of the project's
+ * stored ones for this one run only, exactly like GitLab's own "Run
+ * pipeline" UI form's variable rows.
+ */
+export async function fetchGitlabPipelineTrigger(input: {
+  host: string;
+  project: string;
+  ref: string;
+  variables?: Record<string, string>;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitPipelineTriggerResult> {
+  const { host, project, ref, token, httpFetch } = input;
+  const projectPath = encodeURIComponent(project);
+  const url = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/pipeline`);
+  const body: Record<string, unknown> = { ref };
+  if (input.variables && Object.keys(input.variables).length > 0) {
+    body.variables = Object.entries(input.variables).map(([key, value]) => ({ key, value }));
+  }
+  const created = await gitlabPost<GitlabPipelineCreateResponse>(url, token, httpFetch, host, body);
+  return {
+    id: created.id,
+    status: created.status,
+    ref: created.ref,
+    sha: created.sha,
+    webUrl: created.web_url
+  };
 }

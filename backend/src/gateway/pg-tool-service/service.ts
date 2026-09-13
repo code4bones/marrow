@@ -353,6 +353,16 @@ export class PgToolService extends ComposedService {
           return ok("Job trace loaded.", await this.gitJobTrace(parsed, requestContext));
         case "git.runners_status":
           return ok("Runners status loaded.", await this.gitRunnersStatus(parsed, requestContext));
+        case "git.variables_list":
+          return ok("CI/CD variables listed.", await this.gitVariablesList(parsed, requestContext));
+        case "git.variable_get":
+          return ok("CI/CD variable loaded.", await this.gitVariableGet(parsed, requestContext));
+        case "git.variable_set":
+          return ok("CI/CD variable set.", await this.gitVariableSet(parsed, requestContext));
+        case "git.variable_delete":
+          return ok("CI/CD variable deleted.", await this.gitVariableDelete(parsed, requestContext));
+        case "git.pipeline_trigger":
+          return ok("Pipeline triggered.", await this.gitPipelineTrigger(parsed, requestContext));
         case "credit.balance":
           return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
         case "credit.history":

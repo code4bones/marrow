@@ -54,6 +54,25 @@ const GOOD_HOST = `gitlab-smoke-good-${unique}.example.test`;
 const REJECTING_HOST = `gitlab-smoke-rejecting-${unique}.example.test`; // simulates a revoked/expired token (401)
 const NO_CRED_HOST = `gitlab-smoke-no-credential-${unique}.example.test`; // never gets a stored credential
 
+interface FakeGitlabVariable {
+  key: string;
+  value: string;
+  variable_type: string;
+  protected: boolean;
+  masked: boolean;
+  raw: boolean;
+  environment_scope: string;
+  description: string | null;
+}
+
+// Pre-seeded so git.variables_list/git.variable_get have something real to
+// read; DEPLOY_TOKEN's masked:true is the one this task's redaction default
+// actually exercises.
+const fakeVariablesStore = new Map<string, FakeGitlabVariable>([
+  ["DEPLOY_TOKEN", { key: "DEPLOY_TOKEN", value: "super-secret-deploy-value", variable_type: "env_var", protected: true, masked: true, raw: false, environment_scope: "*", description: null }],
+  ["BUILD_ENV", { key: "BUILD_ENV", value: "production", variable_type: "env_var", protected: false, masked: false, raw: false, environment_scope: "*", description: "which env this build targets" }]
+]);
+
 let gitlabRequestCount = 0;
 // Comparing through a helper (parameterized, not a literal) rather than
 // `assert(gitlabRequestCount === 0, ...)` inline at each call site --
@@ -65,13 +84,70 @@ let gitlabRequestCount = 0;
 function assertGitlabRequestCount(expected: number, message: string): void {
   assert(gitlabRequestCount === expected, message);
 }
-const fakeGitHttpFetch: typeof fetch = async (input) => {
+const fakeGitHttpFetch: typeof fetch = async (input, init) => {
   gitlabRequestCount += 1;
   const url = new URL(String(input));
+  const method = init?.method ?? "GET";
   if (url.hostname === REJECTING_HOST) {
     return new Response(JSON.stringify({ message: "401 Unauthorized" }), { status: 401 });
   }
   if (url.hostname === GOOD_HOST) {
+    if (url.pathname.endsWith("/variables") && method === "GET") {
+      return new Response(JSON.stringify([...fakeVariablesStore.values()]), { status: 200 });
+    }
+    if (url.pathname.endsWith("/variables") && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as Partial<FakeGitlabVariable> & { key: string };
+      const created: FakeGitlabVariable = {
+        key: body.key,
+        value: body.value ?? "",
+        variable_type: body.variable_type ?? "env_var",
+        protected: body.protected ?? false,
+        masked: body.masked ?? false,
+        raw: body.raw ?? false,
+        environment_scope: body.environment_scope ?? "*",
+        description: body.description ?? null
+      };
+      fakeVariablesStore.set(created.key, created);
+      return new Response(JSON.stringify(created), { status: 201 });
+    }
+    const variableKeyMatch = url.pathname.match(/\/variables\/([^/]+)$/);
+    if (variableKeyMatch && method === "GET") {
+      const existing = fakeVariablesStore.get(variableKeyMatch[1]!);
+      if (!existing) {
+        return new Response(JSON.stringify({ message: "404 Not found" }), { status: 404 });
+      }
+      return new Response(JSON.stringify(existing), { status: 200 });
+    }
+    if (variableKeyMatch && method === "PUT") {
+      const existing = fakeVariablesStore.get(variableKeyMatch[1]!);
+      if (!existing) {
+        return new Response(JSON.stringify({ message: "404 Not found" }), { status: 404 });
+      }
+      const body = JSON.parse(String(init?.body)) as Partial<FakeGitlabVariable>;
+      const updated: FakeGitlabVariable = { ...existing, ...body };
+      fakeVariablesStore.set(updated.key, updated);
+      return new Response(JSON.stringify(updated), { status: 200 });
+    }
+    if (variableKeyMatch && method === "DELETE") {
+      const existed = fakeVariablesStore.delete(variableKeyMatch[1]!);
+      if (!existed) {
+        return new Response(JSON.stringify({ message: "404 Not found" }), { status: 404 });
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname.endsWith("/pipeline") && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { ref: string; variables?: Array<{ key: string; value: string }> };
+      return new Response(
+        JSON.stringify({
+          id: 5150,
+          status: "created",
+          ref: body.ref,
+          sha: "triggered-sha-000111",
+          web_url: `https://${GOOD_HOST}/group/project/-/pipelines/5150`
+        }),
+        { status: 201 }
+      );
+    }
     if (url.pathname.endsWith("/jobs")) {
       return new Response(
         JSON.stringify([
@@ -424,6 +500,77 @@ try {
   assert(onlineRunner?.online === true && onlineRunner.status === "online" && onlineRunner.isSharedRunner === true, "Online shared runner not reported correctly.");
   assert(staleRunner?.online === false && staleRunner.status === "stale" && staleRunner.isSharedRunner === false, "Stale project runner not reported correctly.");
   console.log("ok - git.runners_status resolves the caller's own credential and reports each runner's online/status");
+
+  // --- git.variables_list / git.variable_get: masked redaction default ---
+  const variablesListResult = expectData<{ variables: Array<{ key: string; value: string; masked: boolean }> }>(
+    unwrap(await callTool("git.variables_list", { host: GOOD_HOST, project: "group/project" }, sessionHeaders(memberACookie)))
+  );
+  const deployTokenListed = variablesListResult.variables.find((v) => v.key === "DEPLOY_TOKEN");
+  const buildEnvListed = variablesListResult.variables.find((v) => v.key === "BUILD_ENV");
+  assert(deployTokenListed?.masked === true && deployTokenListed.value === "[MASKED]", `Masked variable's value should read [MASKED] by default. Got: ${JSON.stringify(deployTokenListed)}`);
+  assert(buildEnvListed?.masked === false && buildEnvListed.value === "production", `Non-masked variable's real value should still be returned. Got: ${JSON.stringify(buildEnvListed)}`);
+  console.log("ok - git.variables_list redacts only variables GitLab itself flags masked=true, by default");
+
+  const unmaskedGet = expectData<{ key: string; value: string }>(
+    unwrap(await callTool("git.variable_get", { host: GOOD_HOST, project: "group/project", key: "DEPLOY_TOKEN", redact: false }, sessionHeaders(memberACookie)))
+  );
+  assert(unmaskedGet.value === "super-secret-deploy-value", "git.variable_get with redact:false should return the real value even for a masked variable.");
+  console.log("ok - git.variable_get redact:false returns the real value for a masked variable when explicitly asked");
+
+  // --- Admin-tier enforcement: a write-scope-only session is denied ------
+  const memberVariableSetAttempt = await callTool(
+    "git.variable_set",
+    { host: GOOD_HOST, project: "group/project", key: "SHOULD_NOT_BE_SET", value: "nope" },
+    sessionHeaders(memberACookie)
+  );
+  assert(memberVariableSetAttempt.status === 403, `Write-only session calling git.variable_set should get HTTP 403. Status: ${memberVariableSetAttempt.status}`);
+  const memberVariableSetBody = memberVariableSetAttempt.json as { error?: { code?: string } };
+  assert(memberVariableSetBody.error?.code === "INSUFFICIENT_SCOPE", `Expected INSUFFICIENT_SCOPE, got: ${JSON.stringify(memberVariableSetBody)}`);
+  assert(!fakeVariablesStore.has("SHOULD_NOT_BE_SET"), "Denied git.variable_set must be a true no-op against the fake GitLab store.");
+  console.log("ok - git.variable_set requires admin scope; a write-scope-only (role=member) session is denied with INSUFFICIENT_SCOPE, no write happens");
+
+  const memberPipelineTriggerAttempt = await callTool(
+    "git.pipeline_trigger",
+    { host: GOOD_HOST, project: "group/project", ref: "main" },
+    sessionHeaders(memberACookie)
+  );
+  assert(memberPipelineTriggerAttempt.status === 403, `Write-only session calling git.pipeline_trigger should get HTTP 403. Status: ${memberPipelineTriggerAttempt.status}`);
+  console.log("ok - git.pipeline_trigger also requires admin scope; write-only session denied the same way");
+
+  // --- Admin-tier success path: role=admin session, its own GOOD_HOST credential ---
+  const adminVariablesCreate = expectData<{ id: string }>(
+    unwrap(await callTool("git.credential_create", { host: GOOD_HOST, label: "admin's own PAT for CI/CD variable tests", token: "glpat-admin-cicd-0002" }, sessionHeaders(adminCookie)))
+  );
+  try {
+    const createdVariable = expectData<{ key: string; value: string }>(
+      unwrap(await callTool("git.variable_set", { host: GOOD_HOST, project: "group/project", key: "NEW_VAR", value: "first-value", masked: false }, sessionHeaders(adminCookie)))
+    );
+    assert(createdVariable.key === "NEW_VAR" && createdVariable.value === "first-value", `git.variable_set (create path) returned unexpected data: ${JSON.stringify(createdVariable)}`);
+    assert(fakeVariablesStore.get("NEW_VAR")?.value === "first-value", "Fake GitLab store should now have NEW_VAR.");
+    console.log("ok - git.variable_set (admin session) creates a variable that didn't exist yet (PUT 404 -> falls back to POST)");
+
+    const updatedVariable = expectData<{ key: string; value: string }>(
+      unwrap(await callTool("git.variable_set", { host: GOOD_HOST, project: "group/project", key: "NEW_VAR", value: "second-value" }, sessionHeaders(adminCookie)))
+    );
+    assert(updatedVariable.value === "second-value", `git.variable_set (update path) should overwrite the existing value. Got: ${JSON.stringify(updatedVariable)}`);
+    assert(fakeVariablesStore.get("NEW_VAR")?.value === "second-value", "Fake GitLab store should reflect the updated value.");
+    console.log("ok - git.variable_set (admin session) updates an already-existing variable (PUT succeeds directly, no POST fallback)");
+
+    const deletedVariable = expectData<{ deleted: boolean }>(
+      unwrap(await callTool("git.variable_delete", { host: GOOD_HOST, project: "group/project", key: "NEW_VAR" }, sessionHeaders(adminCookie)))
+    );
+    assert(deletedVariable.deleted === true, "git.variable_delete should report deleted: true.");
+    assert(!fakeVariablesStore.has("NEW_VAR"), "git.variable_delete should actually remove the variable from the fake GitLab store.");
+    console.log("ok - git.variable_delete (admin session) actually removes the variable");
+
+    const triggeredPipeline = expectData<{ id: number; status: string; ref: string; sha: string; webUrl: string }>(
+      unwrap(await callTool("git.pipeline_trigger", { host: GOOD_HOST, project: "group/project", ref: "main", variables: { DEPLOY_ENV: "staging" } }, sessionHeaders(adminCookie)))
+    );
+    assert(triggeredPipeline.id === 5150 && triggeredPipeline.ref === "main" && triggeredPipeline.status === "created", `git.pipeline_trigger returned unexpected data: ${JSON.stringify(triggeredPipeline)}`);
+    console.log("ok - git.pipeline_trigger (admin session) starts a new pipeline run and returns its id/status/ref/sha/webUrl");
+  } finally {
+    await db("git_credentials").where({ id: adminVariablesCreate.id }).del();
+  }
 
   // --- git.pipeline_status: GitLab itself rejects the token (401) --------
   const rejectingCreate = expectData<{ id: string }>(
