@@ -618,6 +618,17 @@ const gitPipelineTriggerSchema = z.object({
   variables: z.record(z.string(), z.string()).optional()
 });
 
+// Same jobId-or-jobName shape as gitJobTraceSchema -- enforced at runtime
+// (VALIDATION_ERROR) in fetchGitlabJobArtifacts, not here, matching that
+// tool's own precedent.
+const gitJobArtifactsDownloadSchema = z.object({
+  host: z.string().min(1),
+  project: z.string().min(1),
+  jobId: z.number().int().positive().optional(),
+  ref: z.string().min(1).optional(),
+  jobName: z.string().min(1).optional()
+});
+
 // D-MEMORY-037: gateway-only credits tools, same reasoning as the git.*
 // schemas above -- wallets/credit_transactions are keyed on the
 // hosted-gateway-only `users` table, no local-first (SQLite) counterpart.
@@ -944,6 +955,9 @@ const gitPipelineTriggerOutSchema = z.object({
   ref: z.string(),
   sha: z.string(),
   webUrl: z.string()
+});
+const gitJobArtifactsDownloadOutSchema = z.object({
+  downloadUrl: z.string()
 });
 
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
@@ -1724,6 +1738,16 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     schema: gitPipelineTriggerSchema,
     outputSchema: output(gitPipelineTriggerOutSchema),
     access: "admin"
+  },
+  {
+    name: "git.job_artifacts_download",
+    // Read tier, not admin -- downloading a build's own output is no more
+    // sensitive than reading its trace (git.job_trace), unlike the CI/CD
+    // variable/pipeline_trigger writes above.
+    description:
+      "Get a download URL for a GitLab job's build artifacts (the same artifacts.zip GitLab's own UI's \"Download\" button fetches), using the same stored credential as git.pipeline_status. Pass jobId from a prior git.pipeline_status call, or jobName (+ optional ref) to resolve it from the latest pipeline. The returned URL streams the raw archive proxied through this gateway (using the same credential you'd use for any other git.* call) -- fetch it with your own HTTP client/curl and unzip locally; Marrow never stores a copy.",
+    schema: gitJobArtifactsDownloadSchema,
+    outputSchema: output(gitJobArtifactsDownloadOutSchema)
   },
   {
     name: "credit.balance",

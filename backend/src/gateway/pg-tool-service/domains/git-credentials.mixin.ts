@@ -4,6 +4,7 @@ import { AppError } from "../../../shared/errors.js";
 import {
   decryptGitToken,
   encryptGitToken,
+  fetchGitlabJobArtifacts,
   fetchGitlabJobTrace,
   fetchGitlabPipelineStatus,
   fetchGitlabPipelineTrigger,
@@ -11,7 +12,8 @@ import {
   fetchGitlabVariableDelete,
   fetchGitlabVariableGet,
   fetchGitlabVariableSet,
-  fetchGitlabVariablesList
+  fetchGitlabVariablesList,
+  type GitJobArtifactsStream
 } from "../../git-credentials.js";
 import { gitCredentialOut } from "../formatters/git-credentials.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
@@ -348,6 +350,61 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
       related_id: null
     }, context);
     return { deleted: true as const };
+  }
+
+  // git.job_artifacts_download (owner's ask, 2026-09-13: "агент должен
+  // просто скачать и что-то из него вытащить локально, без хранилища в
+  // Marrow") -- deliberately NOT a normal MCP tool response carrying bytes
+  // (would mean base64-encoding an arbitrarily large artifacts.zip into a
+  // JSON-RPC payload, exactly what this codebase's artifact.* domain
+  // already avoids for its own uploads/downloads). Split into two halves:
+  // this MCP-tool-facing method just resolves+validates the credential
+  // (so a missing one surfaces as a clear GIT_CREDENTIAL_REQUIRED right
+  // away, not an opaque 401 when the agent later curls the URL) and hands
+  // back a download URL; gitJobArtifactsStream below (called directly from
+  // http-server.ts's GET /git/job-artifacts route, bypassing call()'s
+  // dispatch entirely -- same pattern as PgToolService.artifactDownload)
+  // does the actual proxy-streaming. Read tier, no access:"admin" needed --
+  // downloading a build's own output is no more sensitive than reading its
+  // trace (git.job_trace), unlike the CI/CD variable/pipeline_trigger
+  // writes above.
+  protected async gitJobArtifactsUrl(input: Row, context: NormalizedGatewayRequestContext) {
+    const host = String(input.host);
+    const project = String(input.project);
+    await this.resolveGitCredentialToken(host, context);
+
+    const params = new URLSearchParams({ host, project });
+    if (typeof input.jobId === "number") params.set("jobId", String(input.jobId));
+    if (typeof input.ref === "string" && input.ref) params.set("ref", input.ref);
+    if (typeof input.jobName === "string" && input.jobName) params.set("jobName", input.jobName);
+
+    const publicUrl = (process.env.PROJECT_MEMORY_PUBLIC_URL ?? "").replace(/\/$/, "");
+    return {
+      downloadUrl: `${publicUrl}/git/job-artifacts?${params.toString()}`
+    };
+  }
+
+  // Called directly from the GET /git/job-artifacts route in http-server.ts
+  // (public method on PgToolService, see service.ts) -- bypasses call()'s
+  // scope/session dispatch the same way artifactDownload does, since the
+  // route needs a live ReadableStream back, not a JSON envelope. Reuses the
+  // exact same resolveGitCredentialToken authorization this whole file's
+  // other tools rely on.
+  protected async gitJobArtifactsStream(input: Row, context: NormalizedGatewayRequestContext): Promise<GitJobArtifactsStream> {
+    const host = String(input.host);
+    const project = String(input.project);
+    const credential = await this.resolveGitCredentialToken(host, context);
+    const stream = await fetchGitlabJobArtifacts({
+      host,
+      project,
+      jobId: typeof input.jobId === "number" ? input.jobId : undefined,
+      ref: typeof input.ref === "string" && input.ref.length > 0 ? input.ref : undefined,
+      jobName: typeof input.jobName === "string" ? input.jobName : undefined,
+      token: credential.token,
+      httpFetch: this.gitHttpFetch
+    });
+    await this.db("git_credentials").where({ id: credential.id }).update({ last_used_at: nowIso() });
+    return stream;
   }
 
   protected async gitPipelineTrigger(input: Row, context: NormalizedGatewayRequestContext) {

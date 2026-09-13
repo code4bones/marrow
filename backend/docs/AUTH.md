@@ -634,10 +634,37 @@ rejection of putting a PAT in `.env`).
   `UserPrefsMixin`'s own (correct, intentionally different) behavior is
   untouched. Worth a grep for other same-named `protected` methods across
   mixins before adding a new one with a generic name.
+- **`git.job_artifacts_download(host, project, jobId?, ref?, jobName?)`
+  (2026-09-13)**: read-tier, not admin -- fetching a build's own artifacts
+  is no more sensitive than reading its trace (`git.job_trace`). Unlike
+  every other `git.*` tool, its actual response never carries data:
+  `gitJobArtifactsUrl` (the tool-facing method, dispatched through `call()`
+  like any other tool) only resolves the credential (to fail fast if none
+  is stored) and hands back a `downloadUrl` pointing at a new plain `GET
+  /git/job-artifacts` route in `http-server.ts`. That route -- not the MCP
+  tool-call channel -- does the real work: it re-resolves the credential
+  itself (same `resolveGitCredentialToken` every other tool here uses,
+  so the URL alone grants nothing without also carrying whatever
+  auth/session the caller already had) and proxy-streams GitLab's
+  `artifacts.zip` `Response.body` straight to the HTTP response via
+  `Readable.fromWeb(...).pipe(response)`, byte-for-byte, never buffered
+  into memory and never written to disk. This mirrors
+  `PgToolService.artifactDownload`'s existing pattern of a public method
+  that bypasses `call()`'s scope/session dispatch for routes needing a raw
+  stream instead of a JSON envelope -- the new public wrapper
+  (`PgToolService.gitJobArtifactsDownload`) was deliberately named
+  differently from the protected mixin method it calls
+  (`gitJobArtifactsStream`), specifically to avoid repeating the
+  same-named-method shadowing bug described above for `I-MEMORY-133`.
+  Owner's explicit instruction: the agent downloads and extracts the
+  archive locally itself -- **no `artifact.*` record is created, and
+  Marrow never stores a copy** (this is a deliberate architectural choice,
+  not a gap to "fix" later).
 - **Not in scope for this task's original pass**: non-GitLab hosts, and a
   UI/API for managing git repositories themselves (clone, push, etc) --
   still true. CI/CD write operations (variables, pipeline triggering) are
-  now covered by the three admin-tier tools above.
+  now covered by the three admin-tier tools above, and build artifact
+  retrieval by the read-tier tool above.
 
 ### Smoke coverage
 
@@ -675,6 +702,16 @@ creating a new key (`PUT` 404 -> `POST` fallback) then updating it
 (`PUT` succeeds directly) → `git.variable_delete` actually removing it →
 `git.pipeline_trigger` returning the new pipeline's id/status/ref/sha/
 webUrl.
+
+Extended again for `git.job_artifacts_download` (2026-09-13): the tool call
+resolving a `/git/job-artifacts` download URL that carries host/project/
+jobId → the same call failing with `GIT_CREDENTIAL_REQUIRED` for a host
+with no stored credential → a real HTTP `GET` against that route (through
+the actual `startGatewayServer` instance, not just the `/call` tool
+dispatcher) proxy-streaming the fake GitLab client's artifact bytes through
+byte-for-byte with a correct `content-type`/`content-disposition` →  and
+an unauthenticated `GET` against the same route being rejected rather than
+streaming anything.
 
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 

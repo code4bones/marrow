@@ -73,6 +73,13 @@ const fakeVariablesStore = new Map<string, FakeGitlabVariable>([
   ["BUILD_ENV", { key: "BUILD_ENV", value: "production", variable_type: "env_var", protected: false, masked: false, raw: false, environment_scope: "*", description: "which env this build targets" }]
 ]);
 
+// Deliberately just a few arbitrary bytes, not a real zip -- the route
+// under test proxies bytes byte-for-byte and never parses/unzips them
+// server-side (that's the agent's own job, locally, per the owner's
+// explicit "без хранилища в Marrow" instruction), so content correctness
+// is all this needs to prove.
+const FAKE_ARTIFACTS_ZIP_BYTES = new TextEncoder().encode("PK\x03\x04-fake-artifacts-zip-bytes-not-a-real-zip");
+
 let gitlabRequestCount = 0;
 // Comparing through a helper (parameterized, not a literal) rather than
 // `assert(gitlabRequestCount === 0, ...)` inline at each call site --
@@ -161,6 +168,12 @@ const fakeGitHttpFetch: typeof fetch = async (input, init) => {
     const jobByIdMatch = url.pathname.match(/\/jobs\/(\d+)$/);
     if (jobByIdMatch) {
       return new Response(JSON.stringify({ id: 9003, name: "deploy", status: "running" }), { status: 200 });
+    }
+    if (url.pathname.endsWith("/jobs/9003/artifacts")) {
+      return new Response(FAKE_ARTIFACTS_ZIP_BYTES, {
+        status: 200,
+        headers: { "content-type": "application/zip", "content-length": String(FAKE_ARTIFACTS_ZIP_BYTES.length) }
+      });
     }
     if (url.pathname.endsWith("/jobs/9003/trace")) {
       return new Response(
@@ -500,6 +513,66 @@ try {
   assert(onlineRunner?.online === true && onlineRunner.status === "online" && onlineRunner.isSharedRunner === true, "Online shared runner not reported correctly.");
   assert(staleRunner?.online === false && staleRunner.status === "stale" && staleRunner.isSharedRunner === false, "Stale project runner not reported correctly.");
   console.log("ok - git.runners_status resolves the caller's own credential and reports each runner's online/status");
+
+  // --- git.job_artifacts_download: URL leg (tool call) --------------------
+  const artifactsUrlResult = expectData<{ downloadUrl: string }>(
+    unwrap(
+      await callTool(
+        "git.job_artifacts_download",
+        { host: GOOD_HOST, project: "group/project", jobId: 9003 },
+        sessionHeaders(memberACookie)
+      )
+    )
+  );
+  assert(
+    artifactsUrlResult.downloadUrl.includes("/git/job-artifacts?") &&
+      artifactsUrlResult.downloadUrl.includes(GOOD_HOST) &&
+      artifactsUrlResult.downloadUrl.includes("jobId=9003"),
+    `git.job_artifacts_download should return a /git/job-artifacts download URL carrying host/project/jobId. Got: ${artifactsUrlResult.downloadUrl}`
+  );
+  console.log("ok - git.job_artifacts_download resolves the caller's credential and returns a /git/job-artifacts download URL");
+
+  // --- git.job_artifacts_download: no stored credential for the host ------
+  const artifactsUrlNoCred = await callTool(
+    "git.job_artifacts_download",
+    { host: NO_CRED_HOST, project: "group/project", jobId: 9003 },
+    sessionHeaders(memberACookie)
+  );
+  assertFailureCode(unwrap(artifactsUrlNoCred), "GIT_CREDENTIAL_REQUIRED", "git.job_artifacts_download with no stored credential for the host should fail with GIT_CREDENTIAL_REQUIRED, not silently proceed.");
+  console.log("ok - git.job_artifacts_download requires a stored credential for the host, same as every other git.* tool");
+
+  // --- GET /git/job-artifacts: actual proxy-streamed bytes -----------------
+  // Built directly against started.url (this test run's real listen
+  // address) rather than by parsing artifactsUrlResult.downloadUrl's host --
+  // that URL is built from PROJECT_MEMORY_PUBLIC_URL, which need not match
+  // where this smoke server actually listens.
+  const artifactsDownloadUrl = new URL(`${started.url}/git/job-artifacts`);
+  artifactsDownloadUrl.searchParams.set("host", GOOD_HOST);
+  artifactsDownloadUrl.searchParams.set("project", "group/project");
+  artifactsDownloadUrl.searchParams.set("jobId", "9003");
+  const artifactsResponse = await fetch(artifactsDownloadUrl, { headers: sessionHeaders(memberACookie) });
+  if (artifactsResponse.status !== 200) {
+    throw new Error(`GET /git/job-artifacts should return 200. Status: ${artifactsResponse.status}, body: ${await artifactsResponse.text().catch(() => "<unreadable>")}`);
+  }
+  assert(artifactsResponse.headers.get("content-type") === "application/zip", `Expected content-type application/zip. Got: ${artifactsResponse.headers.get("content-type")}`);
+  assert(
+    /attachment; filename="job-9003-artifacts\.zip"/.test(artifactsResponse.headers.get("content-disposition") ?? ""),
+    `Expected a content-disposition attachment filename naming the job. Got: ${artifactsResponse.headers.get("content-disposition")}`
+  );
+  const artifactsBytes = new Uint8Array(await artifactsResponse.arrayBuffer());
+  assert(
+    Buffer.from(artifactsBytes).equals(Buffer.from(FAKE_ARTIFACTS_ZIP_BYTES)),
+    "GET /git/job-artifacts should proxy GitLab's artifacts bytes through byte-for-byte, unmodified."
+  );
+  console.log("ok - GET /git/job-artifacts proxy-streams the job's artifacts.zip bytes through unmodified, with a correct filename");
+
+  // --- GET /git/job-artifacts: unauthenticated request is rejected --------
+  const artifactsUnauthResponse = await fetch(artifactsDownloadUrl);
+  assert(
+    artifactsUnauthResponse.status === 401 || artifactsUnauthResponse.status === 404,
+    `An unauthenticated GET /git/job-artifacts should be rejected (401/404), not stream anything. Status: ${artifactsUnauthResponse.status}`
+  );
+  console.log("ok - GET /git/job-artifacts rejects a request with no session/credential context");
 
   // --- git.variables_list / git.variable_get: masked redaction default ---
   const variablesListResult = expectData<{ variables: Array<{ key: string; value: string; masked: boolean }> }>(

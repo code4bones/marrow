@@ -533,6 +533,76 @@ export async function fetchGitlabVariableDelete(input: {
   await gitlabDelete(url, token, httpFetch, host);
 }
 
+export interface GitJobArtifactsStream {
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  contentLength: string | null;
+  filename: string;
+}
+
+/**
+ * Resolves the job (by id, or by ref+jobName -- same resolution as
+ * fetchGitlabJobTrace) and returns GitLab's own artifacts.zip response as a
+ * raw stream, proxied byte-for-byte. Deliberately NOT buffered into memory
+ * and NOT persisted anywhere in Marrow (unlike the artifact.* domain's
+ * uploads) -- owner's explicit call (2026-09-13): "агент должен просто
+ * скачать и что-то из него вытащить локально, без хранилища в Marrow".
+ * The caller (git.job_artifacts_download in the mixin, proxied over HTTP in
+ * http-server.ts) pipes this straight through to the agent's own
+ * filesystem, so an arbitrarily large artifacts archive never needs to fit
+ * in the gateway process's memory or cross the JSON-RPC/base64 boundary.
+ */
+export async function fetchGitlabJobArtifacts(input: {
+  host: string;
+  project: string;
+  jobId?: number;
+  ref?: string;
+  jobName?: string;
+  token: string;
+  httpFetch: GitHttpFetch;
+}): Promise<GitJobArtifactsStream> {
+  const { host, project, token, httpFetch } = input;
+
+  let jobId: number;
+  let filenamePart: string;
+  if (typeof input.jobId === "number") {
+    jobId = input.jobId;
+    filenamePart = String(input.jobId);
+  } else if (input.jobName) {
+    const latest = await fetchLatestGitlabPipeline(host, project, input.ref, token, httpFetch);
+    const jobs = await fetchGitlabPipelineJobs(host, project, latest.id, token, httpFetch);
+    const match = jobs.find((j) => j.name === input.jobName);
+    if (!match) {
+      throw new AppError(
+        "NOT_FOUND",
+        `No job named "${input.jobName}" found in the latest pipeline for ${project} on ${host}${input.ref ? ` (ref ${input.ref})` : ""}.`,
+        { host, project, ref: input.ref ?? null, jobName: input.jobName, availableJobs: jobs.map((j) => j.name) }
+      );
+    }
+    jobId = match.id;
+    filenamePart = match.name;
+  } else {
+    throw new AppError("VALIDATION_ERROR", "git.job_artifacts_download requires either jobId or jobName.");
+  }
+
+  const projectPath = encodeURIComponent(project);
+  const url = new URL(`${gitlabBaseUrl(host)}/projects/${projectPath}/jobs/${jobId}/artifacts`);
+  const response = await gitlabRequest(url, token, httpFetch, host);
+  if (!response.body) {
+    throw new AppError(
+      "NOT_FOUND",
+      `GitLab returned an empty artifacts response for job ${jobId} on ${host} -- the job may have no artifacts.`,
+      { host, project, jobId }
+    );
+  }
+  return {
+    body: response.body,
+    contentType: response.headers.get("content-type") ?? "application/zip",
+    contentLength: response.headers.get("content-length"),
+    filename: `job-${filenamePart}-artifacts.zip`
+  };
+}
+
 export interface GitPipelineTriggerResult {
   id: number;
   status: string;

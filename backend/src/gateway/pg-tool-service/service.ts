@@ -363,6 +363,8 @@ export class PgToolService extends ComposedService {
           return ok("CI/CD variable deleted.", await this.gitVariableDelete(parsed, requestContext));
         case "git.pipeline_trigger":
           return ok("Pipeline triggered.", await this.gitPipelineTrigger(parsed, requestContext));
+        case "git.job_artifacts_download":
+          return ok("Job artifacts download URL resolved.", await this.gitJobArtifactsUrl(parsed, requestContext));
         case "credit.balance":
           return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
         case "credit.history":
@@ -476,5 +478,20 @@ export class PgToolService extends ComposedService {
       artifact: artifactOut(row),
       absolutePath
     };
+  }
+
+  // GET /git/job-artifacts in http-server.ts -- bypasses call()'s dispatch
+  // the same way artifactDownload above does, since this needs a live
+  // ReadableStream back to pipe straight to the HTTP response, not a JSON
+  // envelope. Named differently from GitCredentialsMixin's own protected
+  // gitJobArtifactsStream (I-MEMORY-133's own lesson: never give a public
+  // wrapper the exact same name as the protected method it calls, on a
+  // class that extends the mixin defining it -- that's an override, not a
+  // distinct method, and would recurse into itself). Reuses
+  // resolveGitCredentialToken's authorization, so a caller with no git
+  // credential for `host` gets the same clear GIT_CREDENTIAL_REQUIRED
+  // error as every other git.* tool, not a generic 401/404 from GitLab.
+  async gitJobArtifactsDownload(input: Row, context: GatewayRequestContext = {}) {
+    return this.gitJobArtifactsStream(input, normalizeContext(context));
   }
 }

@@ -52,6 +52,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `git.variable_set`
 * `git.variable_delete`
 * `git.pipeline_trigger`
+* `git.job_artifacts_download`
 
 ## General response format
 
@@ -174,6 +175,7 @@ docs/AUTH.md.
 | | | | `git.variable_set` | **admin** |
 | | | | `git.variable_delete` | **admin** |
 | | | | `git.pipeline_trigger` | **admin** |
+| | | | `git.job_artifacts_download` | read |
 
 ## Gateway tools
 
@@ -3389,6 +3391,42 @@ Output:
   "webUrl": "https://gitlab.example.com/group/project/-/pipelines/4243"
 }
 ```
+
+### `git.job_artifacts_download`
+
+Get a download URL for a GitLab job's build artifacts (the same
+`artifacts.zip` GitLab's own UI's "Download" button fetches), using the
+same stored credential as `git.pipeline_status`. Read tier, not admin --
+downloading a build's own output is no more sensitive than reading its
+trace (`git.job_trace`).
+
+Pass `jobId` from a prior `git.pipeline_status` call, or `jobName` (+
+optional `ref`) to resolve it from the latest pipeline -- same resolution
+rules as `git.job_trace`.
+
+Input:
+
+```json
+{
+  "host": "gitlab.example.com",
+  "project": "group/project",
+  "jobId": 9003
+}
+```
+
+Output:
+
+```json
+{ "downloadUrl": "https://marrow.example/git/job-artifacts?host=gitlab.example.com&project=group%2Fproject&jobId=9003" }
+```
+
+This tool's own response never carries the archive's bytes -- the
+returned URL is a plain authenticated `GET` on this gateway (same
+credential resolution as any other `git.*` call, not a public link) that
+streams GitLab's raw `artifacts.zip` straight through. Fetch it with your
+own HTTP client or `curl` and extract locally; Marrow never buffers the
+archive in memory or stores a copy anywhere (deliberately -- there's no
+`artifact.*` record created for it).
 
 ## Seed tools or scripts
 

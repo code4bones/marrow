@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { WebSocketServer } from "ws";
 import { useServer as useGraphqlWsServer } from "graphql-ws/use/ws";
@@ -609,6 +610,19 @@ async function handleRequest(
       return;
     }
 
+    // git.job_artifacts_download's actual proxy leg -- see that tool's own
+    // comment in tool-definitions.ts/git-credentials.mixin.ts for why this
+    // is a separate raw GET route instead of an MCP tool response body
+    // (an artifacts.zip is arbitrarily large; base64-into-JSON-RPC is
+    // exactly what this codebase's artifact.* domain already avoids).
+    // Authorization is context-based (same resolveGitCredentialToken every
+    // other git.* tool uses), not a special session-only gate -- same
+    // reasoning as /artifacts/:id/download above.
+    if (request.method === "GET" && requestPath === "/git/job-artifacts") {
+      await sendGitJobArtifactsDownload(service, request, response, requestId, startedAt, context, options);
+      return;
+    }
+
     // Session-only, same reasoning as /extract-text -- a web UI convenience
     // for bulk-uploading binary files (spreadsheets, etc.) as artifacts
     // without the browser ever base64-encoding the bytes into a GraphQL
@@ -828,6 +842,65 @@ async function sendArtifactDownload(
   response.on("finish", () => {
     logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
   });
+}
+
+// Proxies a GitLab job's artifacts.zip straight through to the caller --
+// query params, not a JSON body, since this is a plain GET the agent's own
+// HTTP client/curl hits directly (see git.job_artifacts_download's tool
+// description). No filesystem write happens on this side at any point:
+// download.body is GitLab's own live response stream, piped straight to
+// `response`. Error handling mirrors the /auth/* and /project-invites/:id
+// routes above (AppError code -> HTTP status) rather than falling through
+// to the generic 500 in the outer catch, since NOT_FOUND/UNAUTHORIZED here
+// are routine (bad host/project/jobId, no stored credential) not server bugs.
+async function sendGitJobArtifactsDownload(
+  service: PgToolService,
+  request: IncomingMessage,
+  response: ServerResponse,
+  requestId: string,
+  startedAt: number,
+  context: GatewayRequestContext,
+  options: GatewayServerOptions
+): Promise<void> {
+  const url = parseRequestUrl(request);
+  const jobIdParam = url.searchParams.get("jobId");
+  try {
+    const download = await service.gitJobArtifactsDownload(
+      {
+        host: url.searchParams.get("host") ?? "",
+        project: url.searchParams.get("project") ?? "",
+        jobId: jobIdParam ? Number(jobIdParam) : undefined,
+        ref: url.searchParams.get("ref") ?? undefined,
+        jobName: url.searchParams.get("jobName") ?? undefined
+      },
+      context
+    );
+    response.writeHead(200, {
+      "content-type": download.contentType,
+      ...(download.contentLength ? { "content-length": download.contentLength } : {}),
+      "content-disposition": `attachment; filename="${download.filename.replace(/["\\]/g, "_")}"`,
+      "x-request-id": requestId
+    });
+    Readable.fromWeb(download.body).pipe(response);
+    response.on("finish", () => {
+      logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
+    });
+  } catch (error) {
+    const status =
+      error instanceof AppError
+        ? error.code === "VALIDATION_ERROR"
+          ? 400
+          : error.code === "UNAUTHORIZED"
+            ? 401
+            : error.code === "INSUFFICIENT_SCOPE"
+              ? 403
+              : error.code === "NOT_FOUND" || error.code === "GIT_CREDENTIAL_REQUIRED"
+                ? 404
+                : 500
+        : 500;
+    sendJson(response, status, fail(error), requestId);
+    logRequest(options, request, status, Date.now() - startedAt, requestId, context);
+  }
 }
 
 async function handleMcpRequest(
