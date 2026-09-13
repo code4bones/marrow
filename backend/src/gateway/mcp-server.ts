@@ -1,13 +1,19 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { asMcpResult } from "../shared/mcp/tool-response.js";
+import { readPackageMetadata } from "./pg-tool-service/formatters/gateway-ops.js";
 import { defaultGatewayOutputSchema, gatewayToolClaudeName, gatewayToolSpecs } from "./tool-definitions.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 
-export function createGatewayMcpServer(service: PgToolService, context: GatewayRequestContext): McpServer {
+export async function createGatewayMcpServer(service: PgToolService, context: GatewayRequestContext): Promise<McpServer> {
+  // Owner's ask (2026-09-13): this was hardcoded "0.1.0" forever, unrelated
+  // to the real deployed backend version gateway.version already reports
+  // (packageMetadata.version, read from the same package.json) -- the two
+  // should obviously agree, not drift apart forever.
+  const packageMetadata = await readPackageMetadata();
   const server = new McpServer({
     name: "project-memory-gateway",
     title: "Marrow",
-    version: "0.1.0",
+    version: packageMetadata.version,
     websiteUrl: "https://marrow.undoo.ru",
     description: "Shared MCP memory gateway and local-first project memory server for coding agents.",
     // Owner's ask (2026-09-13): the connector showed a generic default icon

@@ -861,7 +861,7 @@ async function handleMcpRequest(
     return;
   }
 
-  const server = createGatewayMcpServer(service, context);
+  const server = await createGatewayMcpServer(service, context);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
