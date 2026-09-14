@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
-import { DeleteOutlined, GithubOutlined, SendOutlined } from '@ant-design/icons';
+import { DeleteOutlined, GithubOutlined, RightOutlined, SendOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -9,6 +9,7 @@ import {
   Empty,
   Form,
   Input,
+  List,
   Modal,
   Popconfirm,
   Select,
@@ -21,9 +22,11 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
+import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
@@ -1250,8 +1253,19 @@ function CreditsAdminSection() {
   );
 }
 
+// T-context (2026-09-14, owner's ask): the same problem Ask Marrow had --
+// a fixed left tab bar alongside content doesn't work on a phone
+// ("такая же проблема, с сайдбаром и контентом, тут тоже нужно
+// проваливаться в меню"). Mobile shows a full-width list of sections
+// first; tapping one drills into just that section's content, full width,
+// with a back arrow (same useMobileBackStore mechanism as Ask Marrow/
+// DecisionTimeline's own mobile drill-in) to return to the list. Desktop
+// keeps the existing Tabs tabPosition="left" unchanged. Local component
+// state (not a route param) -- nothing else needs to deep-link into a
+// specific profile section today.
 export function ProfilePage() {
   const { t } = useTranslation('profile');
+  const isMobile = useIsMobile();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'admin';
   const sections = [
@@ -1263,6 +1277,42 @@ export function ProfilePage() {
     { key: 'aiProviders', label: t('aiProviders'), children: <AiProvidersSection /> },
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),
   ];
+
+  const [mobileOpenKey, setMobileOpenKey] = useState<string | null>(null);
+  const setMobileBackHandler = useMobileBackStore((s) => s.setHandler);
+  const closeSection = useCallback(() => {
+    setMobileOpenKey(null);
+    return true;
+  }, []);
+  useEffect(() => {
+    if (!isMobile || !mobileOpenKey) return undefined;
+    setMobileBackHandler(closeSection);
+    return () => setMobileBackHandler(null);
+  }, [isMobile, mobileOpenKey, closeSection, setMobileBackHandler]);
+
+  if (isMobile) {
+    const activeSection = sections.find((s) => s.key === mobileOpenKey);
+    return (
+      <PageLayout title={activeSection ? activeSection.label : t('profile')} subtitle={activeSection ? undefined : t('profileSubtitle')}>
+        {activeSection ? (
+          activeSection.children
+        ) : (
+          <List
+            dataSource={sections}
+            renderItem={(section) => (
+              <List.Item
+                onClick={() => setMobileOpenKey(section.key)}
+                style={{ cursor: 'pointer', padding: '14px 4px' }}
+              >
+                <Typography.Text style={{ flex: 1 }}>{section.label}</Typography.Text>
+                <RightOutlined style={{ opacity: 0.4, fontSize: 12 }} />
+              </List.Item>
+            )}
+          />
+        )}
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout title={t('profile')} subtitle={t('profileSubtitle')}>
