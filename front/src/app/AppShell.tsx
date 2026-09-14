@@ -1,6 +1,6 @@
 import { Layout } from 'antd';
 import { useEffect } from 'react';
-import { Outlet, useParams, useSearchParams } from 'react-router-dom';
+import { Outlet, useSearchParams } from 'react-router-dom';
 import { getEntityType } from '../shared/lib/entityId';
 import { useIsMobile } from '../shared/lib/useIsMobile';
 import { useWorkspaceStore } from '../shared/model/workspace.store';
@@ -41,10 +41,6 @@ function useRecordDeepLink() {
 export function AppShell() {
   useRecordDeepLink();
   const isMobile = useIsMobile();
-  // Available here because React Router merges params from every route in
-  // the currently matched branch, including parent layout routes like this
-  // one -- no need for BottomNav/MobileHeader-style child routing tricks.
-  const { slug } = useParams<{ slug: string }>();
 
   return (
     <Layout style={{ height: '100%' }}>
@@ -58,7 +54,10 @@ export function AppShell() {
               display: 'flex',
               flexDirection: 'column',
               paddingTop: 52,
-              paddingBottom: slug ? 56 : 0,
+              // T-context (2026-09-14): BottomNav now renders at the top
+              // level too (Projects/Common/Ask Marrow tabs), not just
+              // inside a project -- padding is unconditional to match.
+              paddingBottom: 56,
             }}
           >
             <Outlet />

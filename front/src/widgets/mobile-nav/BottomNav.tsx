@@ -1,4 +1,4 @@
-import { AuditOutlined, EllipsisOutlined, HomeOutlined, InboxOutlined, PartitionOutlined } from '@ant-design/icons';
+import { AuditOutlined, EllipsisOutlined, FolderOpenOutlined, HomeOutlined, InboxOutlined, PartitionOutlined } from '@ant-design/icons';
 import type { ItemType } from 'antd/es/menu/interface';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,10 +36,22 @@ function tabButtonStyle(active: boolean): React.CSSProperties {
 
 // T-context (2026-08-26, owner's ask: mobile PWA layout, "bottom nav bar —
 // самые значимые места — [Tasks][Decisions][Mem], на что не хватило места
-// [...]"): fixed bottom bar shown only inside a project on mobile. Reuses
-// useNavData() (the same source NavigationRail's desktop Sider consumes)
-// for selection state and the "..." overflow contents, so the two shells
-// never drift out of sync as sections are added/removed.
+// [...]"): fixed bottom bar on mobile. Reuses useNavData() (the same
+// source NavigationRail's desktop Sider consumes) for selection state and
+// the "..." overflow contents, so the two shells never drift out of sync
+// as sections are added/removed.
+//
+// T-context (2026-09-14, owner's ask): originally only rendered inside a
+// project ("если выбрано Projects — я вижу сетку плашек... но уже не могу
+// выбрать что-то из sidebar (тот же Ask Marrow)... до него можно
+// добраться только если провалиться в проект") -- the desktop Sider's
+// global items (Projects/Common/Ask Marrow) had NO mobile entry point at
+// all outside a project. Now renders at the top level too, with those
+// global items as direct tabs (mirrors NavigationRail's own "no project —
+// flat list" merge of `[{key:'projects',...}, ...globalItems]") -- no
+// "More" needed there since account items (Profile/Notifications/...)
+// are already reachable via MobileHeader's own avatar dropdown on every
+// screen, project or not.
 export function BottomNav() {
   const { t } = useTranslation('nav');
   const isMobile = useIsMobile();
@@ -47,7 +59,37 @@ export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { selectedKey, projectSections, globalItems, accountMenuItems, handleMenuClick, handleAccountMenuClick } = useNavData();
 
-  if (!isMobile || !slug) return null;
+  if (!isMobile) return null;
+
+  if (!slug) {
+    const topLevelTabs: ItemType[] = [
+      { key: 'projects', icon: <FolderOpenOutlined />, label: t('projects') },
+      ...globalItems,
+    ];
+    return (
+      <nav
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          display: 'flex',
+          height: 56,
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          background: '#141414',
+          borderTop: '1px solid #303030',
+        }}
+      >
+        {topLevelTabs.map((item) => item && 'key' in item && (
+          <button key={item.key} onClick={() => handleMenuClick(String(item.key))} style={tabButtonStyle(selectedKey === item.key)}>
+            <span style={{ fontSize: 18 }}>{'icon' in item ? item.icon : null}</span>
+            {'label' in item ? item.label : null}
+          </button>
+        ))}
+      </nav>
+    );
+  }
 
   const restSections = projectSections.filter(
     (item): item is ItemType & { key: string } => item != null && 'key' in item && !PROMOTED_KEYS.has(String(item.key)),
