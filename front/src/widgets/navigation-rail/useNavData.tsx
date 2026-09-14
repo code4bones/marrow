@@ -10,6 +10,7 @@ import {
   InboxOutlined,
   LinkOutlined,
   LogoutOutlined,
+  MessageOutlined,
   PartitionOutlined,
   SettingOutlined,
   TeamOutlined,
@@ -71,6 +72,7 @@ export function buildProjectSections(t: (key: string) => string, counts?: Projec
 export function buildGlobalItems(t: (key: string) => string): ItemType[] {
   return [
     { key: 'common', icon: <ApartmentOutlined />, label: t('common') },
+    { key: 'ask', icon: <MessageOutlined />, label: t('ask') },
   ];
 }
 
@@ -198,6 +200,7 @@ export function useNavData() {
 
   const handleMenuClick = (key: string) => {
     if (key === 'common') { navigate('/common'); return; }
+    if (key === 'ask') { navigate('/ask'); return; }
     if (key === 'projects') { navigate('/projects'); return; }
     if (!selectedSlug) return;
     navigate(key === 'overview' ? `/projects/${selectedSlug}` : `/projects/${selectedSlug}/${key}`);

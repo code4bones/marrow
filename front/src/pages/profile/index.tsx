@@ -29,6 +29,7 @@ import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
 import { PersonalTokenPanel } from '../../features/auth/PersonalTokenPanel';
 import { EnvironmentVariablesSection } from '../../features/environment-variables/EnvironmentVariablesSection';
+import { AiProvidersSection } from '../../features/ai-provider/AiProvidersSection';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
@@ -1259,6 +1260,7 @@ export function ProfilePage() {
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
     { key: 'envVars', label: t('envVars'), children: <EnvironmentVariablesSection canManage /> },
+    { key: 'aiProviders', label: t('aiProviders'), children: <AiProvidersSection /> },
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),
   ];
 

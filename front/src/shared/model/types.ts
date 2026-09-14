@@ -147,6 +147,28 @@ export interface EnvironmentVariable {
   updatedAt: string | null;
 }
 
+// "Ask Marrow" (2026-09-14) -- an embedded chat assistant, NOT related to
+// GitCredential/EnvironmentVariable. provider is only 'deepseek'-functional
+// today; 'claude'/'codex' are selectable but not yet wired up server-side.
+export type AiProviderId = 'claude' | 'codex' | 'deepseek';
+
+export interface AiProviderCredential {
+  id: string;
+  provider: AiProviderId;
+  label: string;
+  model: string | null;
+  isDefault: boolean;
+  keyHint: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface AiChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string | null;
+}
+
 export interface Decision {
   id: string;
   projectId: string | null;

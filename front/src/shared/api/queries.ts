@@ -793,6 +793,66 @@ export const GET_ENVIRONMENT_VARIABLE = gql`
   }
 `;
 
+// ── Ask Marrow (2026-09-14) -- AI provider credentials + chat ──────────────
+
+export const GET_AI_PROVIDER_CREDENTIALS = gql`
+  query GetAiProviderCredentials {
+    aiProviderCredentials {
+      id provider label model isDefault keyHint createdAt updatedAt
+    }
+  }
+`;
+
+export const CREATE_AI_PROVIDER_CREDENTIAL = gql`
+  mutation CreateAiProviderCredential($provider: String!, $label: String!, $apiKey: String!, $model: String, $isDefault: Boolean) {
+    createAiProviderCredential(provider: $provider, label: $label, apiKey: $apiKey, model: $model, isDefault: $isDefault) {
+      id provider label model isDefault keyHint createdAt updatedAt
+    }
+  }
+`;
+
+export const UPDATE_AI_PROVIDER_CREDENTIAL = gql`
+  mutation UpdateAiProviderCredential($id: ID!, $label: String, $model: String, $isDefault: Boolean) {
+    updateAiProviderCredential(id: $id, label: $label, model: $model, isDefault: $isDefault) {
+      id provider label model isDefault keyHint createdAt updatedAt
+    }
+  }
+`;
+
+export const DELETE_AI_PROVIDER_CREDENTIAL = gql`
+  mutation DeleteAiProviderCredential($id: ID!) {
+    deleteAiProviderCredential(id: $id)
+  }
+`;
+
+export const GET_AI_AVAILABLE_MODELS = gql`
+  query GetAiAvailableModels($provider: String!, $apiKey: String) {
+    aiAvailableModels(provider: $provider, apiKey: $apiKey)
+  }
+`;
+
+export const GET_AI_CONVERSATION = gql`
+  query GetAiConversation {
+    aiConversation {
+      role content createdAt
+    }
+  }
+`;
+
+export const ASK_MARROW = gql`
+  mutation AskMarrow($message: String!) {
+    askMarrow(message: $message) {
+      role content createdAt
+    }
+  }
+`;
+
+export const CLEAR_AI_CONVERSATION = gql`
+  mutation ClearAiConversation {
+    clearAiConversation
+  }
+`;
+
 // T-MEMORY-084: global admin on/off switch for the credits economy.
 export const GET_CREDIT_SETTINGS = gql`
   query GetCreditSettings {

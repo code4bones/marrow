@@ -16,6 +16,7 @@ import { MemoryPage } from '../../pages/memory';
 import { NotificationsPage } from '../../pages/notifications';
 import { OAuthAuthorizePage } from '../../pages/oauth-authorize';
 import { ProfilePage } from '../../pages/profile';
+import { AskMarrowPage } from '../../pages/ask';
 import { ProjectInvitePage } from '../../pages/project-invite';
 import { ProjectsPage } from '../../pages/projects';
 import { ProjectSettingsPage } from '../../pages/projects/settings';
@@ -88,6 +89,7 @@ export function AppRouter() {
 
         {/* Global */}
         <Route path="common"        element={<CommonPage />} />
+        <Route path="ask"           element={<AskMarrowPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="approvals"     element={<ApprovalsPage />} />
