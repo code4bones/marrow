@@ -1,6 +1,6 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
-import { DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Checkbox, Empty, Form, Input, Popconfirm, Space, Table, Tag, Typography, message } from 'antd';
+import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Checkbox, Drawer, Empty, Form, Input, Popconfirm, Space, Table, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnsType } from 'antd/es/table';
@@ -33,6 +33,12 @@ interface FormValues {
  * only, so the project-vars management table only ever shows rows this
  * page can actually create/edit/delete, not the viewer's own common
  * variables leaking in from the merge.
+ *
+ * Create/edit is a right-side Drawer (GitLab CI/CD variables' own pattern,
+ * requested explicitly), not an inline form under the table -- same shape
+ * as RecordSkillDrawer/UpdateSkillDrawer, one shared Drawer handling both
+ * modes instead of two separate components since the form fields are
+ * identical either way.
  */
 export function EnvironmentVariablesSection({ project, canManage }: { project?: string; canManage: boolean }) {
   const { t } = useTranslation('environmentVariables');
@@ -42,16 +48,19 @@ export function EnvironmentVariablesSection({ project, canManage }: { project?: 
   const [fetchVariable] = useLazyQuery<{ environmentVariable: EnvironmentVariable | null }>(GET_ENVIRONMENT_VARIABLE);
   const [revealedByKey, setRevealedByKey] = useState<Record<string, string>>({});
   const [revealingKey, setRevealingKey] = useState<string | null>(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form] = Form.useForm<FormValues>();
 
   const [setVariable, { loading: saving }] = useMutation(SET_ENVIRONMENT_VARIABLE, {
     onCompleted: () => {
       message.success(t('saved'));
-      form.resetFields();
+      setDrawerOpen(false);
       setEditingKey(null);
-      setFormError(null);
+      form.resetFields();
       void refetch();
     },
     onError: (err) => setFormError(err.message),
@@ -72,31 +81,39 @@ export function EnvironmentVariablesSection({ project, canManage }: { project?: 
     }
   };
 
-  const startEdit = async (row: EnvironmentVariable) => {
-    const value = await reveal(row);
-    setEditingKey(row.key);
-    setFormError(null);
-    form.setFieldsValue({ key: row.key, value, secret: row.secret, description: row.description ?? '' });
-  };
-
-  const cancelEdit = () => {
+  const openCreate = () => {
     setEditingKey(null);
     setFormError(null);
     form.resetFields();
+    setDrawerOpen(true);
   };
 
-  const onFinish = (values: FormValues) => {
+  const openEdit = async (row: EnvironmentVariable) => {
+    setEditingKey(row.key);
     setFormError(null);
-    void setVariable({
-      variables: {
-        key: values.key.trim(),
-        value: values.value,
-        project,
-        secret: values.secret,
-        description: values.description?.trim() || undefined,
-      },
-    });
+    setDrawerOpen(true);
+    setDrawerLoading(true);
+    try {
+      const value = await reveal(row);
+      form.setFieldsValue({ key: row.key, value, secret: row.secret, description: row.description ?? '' });
+    } finally {
+      setDrawerLoading(false);
+    }
   };
+
+  const submit = () =>
+    form.validateFields().then((values) => {
+      setFormError(null);
+      void setVariable({
+        variables: {
+          key: values.key.trim(),
+          value: values.value,
+          project,
+          secret: values.secret,
+          description: values.description?.trim() || undefined,
+        },
+      });
+    });
 
   const rows = (data?.environmentVariables ?? []).filter((v) => (project ? v.scope === 'project' : true));
 
@@ -146,7 +163,7 @@ export function EnvironmentVariablesSection({ project, canManage }: { project?: 
             width: 76,
             render: (_: unknown, row: EnvironmentVariable) => (
               <Space size={2}>
-                <Button size="small" type="text" icon={<EditOutlined />} onClick={() => void startEdit(row)} />
+                <Button size="small" type="text" icon={<EditOutlined />} onClick={() => void openEdit(row)} />
                 <DeleteEnvironmentVariableButton keyName={row.key} project={project} onDone={() => void refetch()} />
               </Space>
             ),
@@ -156,7 +173,18 @@ export function EnvironmentVariablesSection({ project, canManage }: { project?: 
   ];
 
   return (
-    <Card title={t('title')} size="small" style={{ marginBottom: 16 }}>
+    <Card
+      title={t('title')}
+      size="small"
+      style={{ marginBottom: 16 }}
+      extra={
+        canManage && (
+          <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t('addVariable')}
+          </Button>
+        )
+      }
+    >
       <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
         {project ? t('projectDescription') : t('commonDescription')}
       </Paragraph>
@@ -170,45 +198,43 @@ export function EnvironmentVariablesSection({ project, canManage }: { project?: 
         dataSource={rows}
         columns={columns}
         pagination={false}
-        style={{ marginBottom: 20 }}
         locale={{ emptyText: <Empty description={t('noneYet')} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
 
-      {canManage && (
-        <>
-          <Text strong style={{ display: 'block', marginBottom: 12 }}>
-            {editingKey ? t('editVariable') : t('addVariable')}
-          </Text>
-          {formError && <Alert type="error" message={formError} style={{ marginBottom: 16 }} showIcon />}
-          <Form form={form} layout="vertical" onFinish={onFinish} disabled={saving} style={{ maxWidth: 400 }}>
-            <Form.Item
-              name="key"
-              label={t('key')}
-              rules={[
-                { required: true, message: t('keyRequired') },
-                { pattern: /^[A-Za-z0-9_]+$/, message: t('keyPattern') },
-              ]}
-            >
-              <Input placeholder="MY_API_KEY" autoComplete="off" disabled={!!editingKey} />
-            </Form.Item>
-            <Form.Item name="value" label={t('value')} rules={[{ required: true, message: t('valueRequired') }]}>
-              <Input.TextArea rows={2} autoComplete="off" />
-            </Form.Item>
-            <Form.Item name="description" label={t('description')}>
-              <Input placeholder={t('descriptionPlaceholder')} />
-            </Form.Item>
-            <Form.Item name="secret" valuePropName="checked" initialValue={false} style={{ marginBottom: 12 }}>
-              <Checkbox>{t('secretHint')}</Checkbox>
-            </Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit" loading={saving}>
-                {editingKey ? t('save') : t('addVariable')}
-              </Button>
-              {editingKey && <Button onClick={cancelEdit}>{t('cancel')}</Button>}
-            </Space>
-          </Form>
-        </>
-      )}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={editingKey ? t('editVariable') : t('addVariable')}
+        width={440}
+        extra={
+          <Button type="primary" size="small" loading={saving} onClick={submit}>
+            {t('save')}
+          </Button>
+        }
+      >
+        {formError && <Alert type="error" message={formError} style={{ marginBottom: 16 }} showIcon />}
+        <Form form={form} layout="vertical" size="small" disabled={drawerLoading || saving}>
+          <Form.Item
+            name="key"
+            label={t('key')}
+            rules={[
+              { required: true, message: t('keyRequired') },
+              { pattern: /^[A-Za-z0-9_]+$/, message: t('keyPattern') },
+            ]}
+          >
+            <Input placeholder="MY_API_KEY" autoComplete="off" disabled={!!editingKey} />
+          </Form.Item>
+          <Form.Item name="value" label={t('value')} rules={[{ required: true, message: t('valueRequired') }]}>
+            <Input.TextArea rows={4} autoComplete="off" />
+          </Form.Item>
+          <Form.Item name="description" label={t('description')}>
+            <Input placeholder={t('descriptionPlaceholder')} />
+          </Form.Item>
+          <Form.Item name="secret" valuePropName="checked" initialValue={false} style={{ marginBottom: 0 }}>
+            <Checkbox>{t('secretHint')}</Checkbox>
+          </Form.Item>
+        </Form>
+      </Drawer>
     </Card>
   );
 }
