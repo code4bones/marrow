@@ -248,6 +248,13 @@ const typeDefs = `#graphql
     gitVariablesList(host: String!, project: String!, redact: Boolean): JSON
     gitVariable(host: String!, project: String!, key: String!, environmentScope: String, redact: Boolean): JSON
 
+    # Marrow-native Environment Variables (not GitLab's, see above). project
+    # omitted -> the caller's own common (profile-scoped) variables only;
+    # project given -> merged with that project's variables, project wins
+    # on key collision.
+    environmentVariables(project: String, redact: Boolean): [EnvironmentVariable!]!
+    environmentVariable(key: String!, project: String, redact: Boolean): EnvironmentVariable
+
     creditBalance(userId: ID): CreditBalance!
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
     creditLeaderboard(limit: Int): [LeaderboardEntry!]!
@@ -346,6 +353,15 @@ const typeDefs = `#graphql
     setGitVariable(host: String!, project: String!, key: String!, value: String!, protected: Boolean, masked: Boolean, raw: Boolean, variableType: String, environmentScope: String, description: String): JSON
     deleteGitVariable(host: String!, project: String!, key: String!, environmentScope: String): Boolean!
     triggerGitPipeline(host: String!, project: String!, ref: String!, variables: JSON): JSON
+
+    # Marrow-native Environment Variables (not GitLab's). NOT in
+    # ADMIN_GRAPHQL_MUTATION_NAMES -- same reasoning as createGitCredential/
+    # deleteGitCredential above: project omitted mutates only the caller's
+    # own common (profile-scoped) row; project given still only reaches a
+    # project the caller owns/admins (assertProjectOwnerOrAdmin, enforced
+    # server-side in the mixin, not by this GraphQL layer).
+    setEnvironmentVariable(key: String!, value: String!, project: String, secret: Boolean, description: String): EnvironmentVariable!
+    deleteEnvironmentVariable(key: String!, project: String): Boolean!
 
     updateCreditSettings(enabled: Boolean!): CreditSettings!
     setUserPreference(key: String!, value: JSON!): JSON!
@@ -628,6 +644,23 @@ const typeDefs = `#graphql
     label: String!
     createdAt: String!
     lastUsedAt: String
+  }
+
+  # Marrow-native "Environment Variables" domain (2026-09-14) -- NOT
+  # GitLab CI/CD variables (those stay JSON-shaped above, gitVariablesList/
+  # gitVariable, since their shape is externally defined by GitLab). This
+  # type is Marrow's own, so a proper typed shape is worth it for the
+  # frontend. "value" reads as "[MASKED]" when secret:true, unless the
+  # query passed redact:false.
+  type EnvironmentVariable {
+    id: ID!
+    scope: String!
+    key: String!
+    value: String!
+    secret: Boolean!
+    description: String
+    createdAt: String
+    updatedAt: String
   }
 
   type ProjectSummary {
@@ -1279,6 +1312,10 @@ const resolvers = {
       (await callTool<Row>(context, "git.variables_list", cleanInput(args))).variables,
     gitVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.variable_get", cleanInput(args)),
+    environmentVariables: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "env.variables_list", cleanInput(args))).variables,
+    environmentVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "env.variable_get", cleanInput(args)),
     creditBalance: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.balance", cleanInput(args))).balance,
     creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1409,6 +1446,12 @@ const resolvers = {
     },
     triggerGitPipeline: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.pipeline_trigger", cleanInput(args)),
+    setEnvironmentVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "env.variable_set", cleanInput(args)),
+    deleteEnvironmentVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "env.variable_delete", cleanInput(args));
+      return result.deleted === true;
+    },
     updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings,
     setUserPreference: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

@@ -960,6 +960,49 @@ const gitJobArtifactsDownloadOutSchema = z.object({
   downloadUrl: z.string()
 });
 
+// Marrow-native "Environment Variables" domain (owner's request,
+// 2026-09-14) -- NOT git.variable_* (those proxy a real GitLab project's
+// CI/CD variables). This is Marrow's own .env-style store: `project`
+// omitted means the caller's own common (profile-scoped) variable,
+// `project` given means a project-scoped one. Same key format as
+// git.variable_* for familiarity/shell-safety.
+const envVariableKeySchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_]+$/, "Environment variable keys may only contain letters, digits, and underscores.");
+const envVariablesListSchema = z.object({
+  project: z.string().min(1).optional(),
+  redact: z.boolean().optional()
+});
+const envVariableGetSchema = z.object({
+  key: envVariableKeySchema,
+  project: z.string().min(1).optional(),
+  redact: z.boolean().optional()
+});
+const envVariableSetSchema = z.object({
+  key: envVariableKeySchema,
+  value: z.string(),
+  project: z.string().min(1).optional(),
+  secret: z.boolean().optional(),
+  description: z.string().max(500).optional()
+});
+const envVariableDeleteSchema = z.object({
+  key: envVariableKeySchema,
+  project: z.string().min(1).optional()
+});
+const envVariableOutSchema = z.object({
+  id: z.string(),
+  scope: z.enum(["user", "project"]),
+  key: z.string(),
+  value: z.string(),
+  secret: z.boolean(),
+  description: z.string().nullable(),
+  createdAt: z.string().nullable(),
+  updatedAt: z.string().nullable()
+});
+const envVariablesListOutSchema = z.object({ variables: z.array(envVariableOutSchema) });
+
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
   return z.object({
     ok: z.boolean(),
@@ -1748,6 +1791,36 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
       "Get a download URL for a GitLab job's build artifacts (the same artifacts.zip GitLab's own UI's \"Download\" button fetches), using the same stored credential as git.pipeline_status. Pass jobId from a prior git.pipeline_status call, or jobName (+ optional ref) to resolve it from the latest pipeline. The returned URL streams the raw archive proxied through this gateway (using the same credential you'd use for any other git.* call) -- fetch it with your own HTTP client/curl and unzip locally; Marrow never stores a copy.",
     schema: gitJobArtifactsDownloadSchema,
     outputSchema: output(gitJobArtifactsDownloadOutSchema)
+  },
+  {
+    name: "env.variables_list",
+    description:
+      "List environment variables visible to you: your own common (profile-scoped) variables, merged with a project's variables when `project` is given -- the project's values win on key collision, like a .env plus a .env.local override. NOT GitLab CI/CD variables (see git.variables_list for those) -- this is Marrow's own .env-style store. Secret values read as \"[MASKED]\" unless redact:false.",
+    schema: envVariablesListSchema,
+    outputSchema: output(envVariablesListOutSchema)
+  },
+  {
+    name: "env.variable_get",
+    description:
+      "Get a single environment variable by key -- checks the given project's variables first (if any), then falls back to your own common (profile-scoped) variables. Secret values read as \"[MASKED]\" unless redact:false.",
+    schema: envVariableGetSchema,
+    outputSchema: output(envVariableOutSchema)
+  },
+  {
+    name: "env.variable_set",
+    description:
+      "Create or update (upsert by key) an environment variable in Marrow's own store. Omit `project` to set your own common (profile-scoped) variable, visible to you in every project; pass `project` to set a project-scoped variable (requires being the project's owner or a system admin), visible to every project member. Pass secret:true so future reads mask the value by default.",
+    schema: envVariableSetSchema,
+    outputSchema: output(envVariableOutSchema),
+    access: "write"
+  },
+  {
+    name: "env.variable_delete",
+    description:
+      "Permanently delete an environment variable by key. Omit `project` to delete your own common (profile-scoped) variable; pass `project` to delete a project-scoped one (requires being the project's owner or a system admin).",
+    schema: envVariableDeleteSchema,
+    outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "write"
   },
   {
     name: "credit.balance",

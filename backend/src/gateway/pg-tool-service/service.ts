@@ -13,6 +13,7 @@ import { SkillsMixin } from "./domains/skills.mixin.js";
 import { EventsMixin } from "./domains/events.mixin.js";
 import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
+import { EnvironmentVariablesMixin } from "./domains/environment-variables.mixin.js";
 import { CreditsMixin } from "./domains/credits.mixin.js";
 import { GraphMixin } from "./domains/graph.mixin.js";
 import { UserPrefsMixin } from "./domains/user-prefs.mixin.js";
@@ -49,15 +50,17 @@ const ComposedService = GlobalSearchMixin(
                 UserPrefsMixin(
                   GraphMixin(
                     GitCredentialsMixin(
-                      CreditsMixin(
-                        ClientsMixin(
-                          EventsMixin(
-                            SkillsMixin(
-                              DecisionsMixin(
-                                ArtifactsMixin(
-                                  MemoryMixin(
-                                    LinksCoreMixin(
-                                      ProjectsCoreMixin(BaseService)
+                      EnvironmentVariablesMixin(
+                        CreditsMixin(
+                          ClientsMixin(
+                            EventsMixin(
+                              SkillsMixin(
+                                DecisionsMixin(
+                                  ArtifactsMixin(
+                                    MemoryMixin(
+                                      LinksCoreMixin(
+                                        ProjectsCoreMixin(BaseService)
+                                      )
                                     )
                                   )
                                 )
@@ -365,6 +368,14 @@ export class PgToolService extends ComposedService {
           return ok("Pipeline triggered.", await this.gitPipelineTrigger(parsed, requestContext));
         case "git.job_artifacts_download":
           return ok("Job artifacts download URL resolved.", await this.gitJobArtifactsUrl(parsed, requestContext));
+        case "env.variables_list":
+          return ok("Environment variables loaded.", await this.environmentVariablesList(parsed, requestContext));
+        case "env.variable_get":
+          return ok("Environment variable loaded.", await this.environmentVariableGet(parsed, requestContext));
+        case "env.variable_set":
+          return ok("Environment variable saved.", await this.setEnvironmentVariable(parsed, requestContext));
+        case "env.variable_delete":
+          return ok("Environment variable deleted.", await this.deleteEnvironmentVariable(parsed, requestContext));
         case "credit.balance":
           return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
         case "credit.history":

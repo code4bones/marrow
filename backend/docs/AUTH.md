@@ -713,6 +713,82 @@ byte-for-byte with a correct `content-type`/`content-disposition` →  and
 an unauthenticated `GET` against the same route being rejected rather than
 streaming anything.
 
+## Environment Variables -- Marrow-native, not GitLab (2026-09-14)
+
+`env.variables_list` / `env.variable_get` / `env.variable_set` /
+`env.variable_delete`, backed by the `environment_variables` table
+(migration `093_environment_variables.cjs`). Owner's own framing: "аналог
+CI Variables ... название не CI, а Environment" -- a `.env`-style key/value
+store Marrow owns itself, deliberately distinct from `git.variable_*`
+above (which proxy a *real GitLab project's* CI/CD variables over the
+GitLab REST API). Values are AES-256-GCM-encrypted at rest
+(`environment-variables.ts`, `ENV_VAR_ENC_KEY` -- its own key, independent
+of `GIT_CREDENTIAL_ENC_KEY`/`TOTP_ENC_KEY`, same "different secret class,
+independently rotatable" reasoning as every other encrypted column in this
+file) regardless of the row's `secret` flag; `secret` only controls
+whether a read masks the value by default (`redact` param, same
+default-true/opt-out shape as `git.variable_get`'s own `redact`).
+
+Two scopes, on one table via a `scope` discriminator (`'user'` |
+`'project'`) rather than two tables -- a CHECK constraint pins exactly one
+of `owner_user_id`/`project_id` to match `scope`, and two partial unique
+indexes enforce one-row-per-key *within* each scope:
+
+- **`user` (common/profile-scoped)**: private to the calling user, exactly
+  like their Git hosts on the profile page. Gated by a **new, deliberately
+  self-contained** `requireEnvVariableOwner(context)` in
+  `environment-variables.mixin.ts` -- NOT named `requireSessionUserId`,
+  even though the check it wants (`context.sessionUserId` truthy, no
+  `sessionSource` restriction) happens to be the exact same rule
+  `UserPrefsMixin`'s own `requireSessionUserId` already implements. Reusing
+  that name would risk exactly the `I-MEMORY-133` shadowing class again
+  (`UserPrefsMixin` composes outermost in `service.ts`) -- even a
+  same-*behavior* collision is worth avoiding, since a later edit to either
+  method could then silently change the other's behavior through the
+  shadow. Unlike `git_credentials`' write path, this does **not** require
+  `sessionSource === "cookie"` -- a Marrow-internal config value is a much
+  lower-stakes secret class than a raw external GitLab PAT (fully
+  reversible by re-entering it, never reaches a live external system), and
+  the owner's own framing ("tools for *getting* these variables") implies
+  agents should be able to read *and populate* this store, not just a human
+  typing values into a form. Any authenticated identity (cookie session,
+  personal token, or an OAuth connector's resolved identity) can manage its
+  own common variables.
+- **`project`**: visible to every project member on read (`resolveProject`
+  itself gates via `assertProjectMember`, same as any other project-scoped
+  read in this codebase). Write (`env.variable_set`/`env.variable_delete`)
+  requires `assertProjectOwnerOrAdmin` -- the same "Settings"-tier gate
+  `updateProject`/member-role management use, not a scope-tier ("admin"
+  OAuth scope) requirement the way `git.variable_set` uses. A plain
+  `role=member` project member who isn't the owner gets `UNAUTHORIZED` on
+  write, same as trying to rename the project or manage its members.
+
+**Merge rule on read** (`env.variables_list`/`env.variable_get` when
+`project` is given): the caller's own common variables merged with the
+project's, **project wins on key collision** -- like a `.env` plus a
+`.env.local` override. This was an explicit owner decision (asked via
+`AskUserQuestion`, not assumed): the alternative (no auto-merge, common
+vars read only via a separate call) was rejected in favor of the merged
+view.
+
+### Smoke coverage
+
+`npm run smoke:gateway:environment-variables`
+(`scripts/smoke-gateway-environment-variables.ts`) covers: a common
+variable set → get masked by default (`secret: true`) → get unmasked with
+`redact: false` → another user's common variables never appearing in the
+caller's own list → a plain project member denied (`UNAUTHORIZED`) on
+`env.variable_set` for that project → the project owner's `env.variable_set`
+succeeding → that same plain member still able to *read* the project's
+variable → a non-member denied entirely (`PROJECT_NOT_FOUND`, not just
+`UNAUTHORIZED` -- existence isn't leaked, same convention as every other
+project-scoped read) → the project-wins merge rule when a common and a
+project variable share a key → delete actually removing the row, with a
+re-get and a re-delete both failing `NOT_FOUND` → a static-token caller
+(no `sessionUserId` at all) rejected on write → and the GraphQL
+`setEnvironmentVariable`/`environmentVariables`/`environmentVariable`/
+`deleteEnvironmentVariable` equivalents, end to end.
+
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 
 `project_members` (migration `010_scopes_membership_attribution.cjs`) is a

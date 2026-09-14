@@ -53,6 +53,10 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `git.variable_delete`
 * `git.pipeline_trigger`
 * `git.job_artifacts_download`
+* `env.variables_list`
+* `env.variable_get`
+* `env.variable_set`
+* `env.variable_delete`
 
 ## General response format
 
@@ -176,6 +180,10 @@ docs/AUTH.md.
 | | | | `git.variable_delete` | **admin** |
 | | | | `git.pipeline_trigger` | **admin** |
 | | | | `git.job_artifacts_download` | read |
+| | | | `env.variables_list` | read |
+| | | | `env.variable_get` | read |
+| | | | `env.variable_set` | write |
+| | | | `env.variable_delete` | write |
 
 ## Gateway tools
 
@@ -3427,6 +3435,94 @@ streams GitLab's raw `artifacts.zip` straight through. Fetch it with your
 own HTTP client or `curl` and extract locally; Marrow never buffers the
 archive in memory or stores a copy anywhere (deliberately -- there's no
 `artifact.*` record created for it).
+
+## Environment Variables (Marrow-native, not GitLab)
+
+Marrow's own `.env`-style key/value store -- NOT the `git.variable_*` tools
+above (those proxy a real GitLab project's CI/CD variables over the GitLab
+REST API). This one is Marrow's own storage, for arbitrary config (API
+keys, base URLs, feature flags, ...) an agent needs without a human pasting
+it into chat every session.
+
+Two scopes, chosen by whether `project` is passed:
+
+- **Common (profile-scoped)**: `project` omitted. Private to the calling
+  user, exactly like their Git hosts -- nobody else can see or list it.
+- **Project-scoped**: `project` given (slug or id). Visible to every member
+  of that project on read; only the project's owner or a system admin can
+  write it (same "Settings"-tier gate as project rename/invite/members).
+
+When both a common and a same-keyed project variable exist,
+`env.variables_list`/`env.variable_get` merge them with the **project value
+winning** -- like a `.env` plus a `.env.local` override.
+
+### `env.variables_list`
+
+List variables visible to you. With no `project`, only your own common
+variables. With `project`, your common variables merged with that
+project's, project values winning on key collision.
+
+Input:
+
+```json
+{ "project": "my-project" }
+```
+
+Output:
+
+```json
+{
+  "variables": [
+    { "id": "...", "scope": "project", "key": "SHARED_BASE_URL", "value": "https://api.example.com", "secret": false, "description": null, "createdAt": "...", "updatedAt": "..." },
+    { "id": "...", "scope": "user", "key": "MY_API_KEY", "value": "[MASKED]", "secret": true, "description": null, "createdAt": "...", "updatedAt": "..." }
+  ]
+}
+```
+
+Secret values (`secret: true`) read as `"[MASKED]"` unless `redact: false`
+is passed.
+
+### `env.variable_get`
+
+Get one variable by key -- checks the given project first (if any), then
+falls back to your own common variables.
+
+Input:
+
+```json
+{ "key": "SHARED_BASE_URL", "project": "my-project" }
+```
+
+Fails with `NOT_FOUND` if neither the project nor your own common
+variables have that key.
+
+### `env.variable_set`
+
+Create or update (upsert by key). Omit `project` to set your own common
+variable; pass `project` to set a project-scoped one (requires being the
+project's owner or a system admin -- a plain member gets `UNAUTHORIZED`).
+
+Input:
+
+```json
+{ "key": "SHARED_BASE_URL", "value": "https://api.example.com", "project": "my-project", "secret": false, "description": "Backend base URL for this project's staging env" }
+```
+
+Output is the variable as just set, **unredacted** (you just supplied the
+value yourself).
+
+### `env.variable_delete`
+
+Permanently delete a variable by key and scope. Same project-owner-or-admin
+gate as `env.variable_set` for a project-scoped one.
+
+Input:
+
+```json
+{ "key": "SHARED_BASE_URL", "project": "my-project" }
+```
+
+Output: `{ "deleted": true }`.
 
 ## Seed tools or scripts
 
