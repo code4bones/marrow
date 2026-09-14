@@ -789,6 +789,130 @@ re-get and a re-delete both failing `NOT_FOUND` → a static-token caller
 `setEnvironmentVariable`/`environmentVariables`/`environmentVariable`/
 `deleteEnvironmentVariable` equivalents, end to end.
 
+## Ask Marrow -- AI provider credentials + chat (2026-09-14)
+
+`ai.provider_create`/`ai.provider_list`/`ai.provider_update`/
+`ai.provider_delete`, backed by `ai_provider_credentials`
+(`095_ai_providers_and_chat.cjs`) -- an embedded LLM chat assistant a
+human talks to directly in the Marrow web UI, distinct from Marrow's
+normal mode of being called BY an already-connected agent. Owner's own
+framing: "автономный, скорее для анализа" -- a human just opens the app
+and asks a question in plain language.
+
+**Storage model -- an explicit correction mid-design.** An earlier draft
+of this feature tried to fold provider/model/key storage into the
+just-shipped Environment Variables domain (`env.variable_set` + a
+`user.preference_set` for provider/model choice). The owner corrected
+this: AI provider credentials are structurally and risk-wise closer to
+`git_credentials` (a real external secret, real money, one blast radius
+per key) than to Environment Variables (Marrow's own fully-reversible
+config) -- so `ai_provider_credentials` is its own table, modeled directly
+on `git_credentials`'s shape: a per-user **list** of credential rows
+(`provider` + optional pinned `model` + `api_key_enc` + `is_default`), not
+a single settings form. A partial unique index
+(`... on ai_provider_credentials(owner_user_id) where is_default`)
+enforces at most one default row per user at the database level, not just
+in application logic.
+
+**Access split, mirroring `git_credentials`'s own management-vs-usage
+split exactly**:
+- `ai.provider_create`/`ai.provider_delete` (mint/destroy the raw secret)
+  require a real browser session (`requireProviderCredentialSession`,
+  checks `sessionSource === "cookie"`, same as
+  `requireGitCredentialSession`) -- no static token, OAuth, or personal
+  token can mint or destroy a provider credential.
+- `ai.provider_list`/`ai.provider_update` (read, or touch only
+  label/model/is_default -- never the key itself) use a broader gate
+  (`requireProviderReaderIdentity` -- any authenticated identity).
+- `ai.ask`/`ai.conversation_list`/`ai.conversation_clear`
+  (`requireChatSession` in `ai-chat.mixin.ts`) also use the broad gate --
+  unlike `git_credentials`' read paths, there is **no** admin-fallback for
+  a caller with no session/personal-token identity: Ask Marrow is
+  inherently "this exact human, talking to their own assistant," not a
+  shared single-operator resource an agent might need to borrow.
+- Three deliberately **separately-named** identity-check methods
+  (`requireProviderCredentialSession`, `requireProviderReaderIdentity` in
+  `ai-providers.mixin.ts`, `requireChatSession` in `ai-chat.mixin.ts`) even
+  though two of them implement the identical check -- `I-MEMORY-133`'s
+  lesson applies here proactively: a same-named `protected` method on a
+  mixin composed at a different point in `service.ts`'s chain can silently
+  shadow another, so every new domain gets its own self-contained check
+  rather than reusing one by name across mixins.
+
+**`askMarrow` lives on `PgToolService` itself, not in a mixin.** It's the
+one method in this whole feature that needs `this.call(toolName, args,
+context)` to dispatch the model's tool_use requests through the exact
+same schema-validation/access-tier/event-recording pipeline every other
+caller goes through -- and `call()` only exists on `PgToolService`,
+assembled on top of the entire composed mixin chain in `service.ts` (same
+reason `artifactDownload`/`gitJobArtifactsDownload` are plain
+`PgToolService` methods rather than mixin methods). Everything the loop
+needs that *doesn't* require `call()` -- session gating, credential
+resolution, history persistence -- stays in `ai-chat.mixin.ts`/
+`ai-providers.mixin.ts` and is invoked from `askMarrow` via `this.xxx`,
+the same cross-mixin-to-outer-class pattern `gitJobArtifactsDownload`
+already uses.
+
+**Tool surface offered to the model is curated, not the full ~130-tool
+list**: admin-tier tools (this codebase's own existing "very
+consequential" boundary) and the raw-credential-minting tools
+specifically (`git.credential_create/delete`,
+`ai.provider_create/update/delete`) are excluded regardless of the
+calling session's own scope -- a chat instruction must never be able to
+mint or destroy a stored external credential, independent of the owner's
+explicit "read + write" access decision for everything else. Tool names
+are sanitized for the provider's function-calling constraints via the
+existing `gatewayToolClaudeName`/`gatewayToolCanonicalName`
+(`tool-definitions.ts`) -- the same transform `mcp-server.ts` already uses
+for Claude's own tool_use naming rules, reused rather than reinvented.
+
+**Provider abstraction**: `llm-providers/index.ts`'s `LlmProvider`
+interface (`chatCompletion`, `listModels`) + a `PROVIDERS` registry keyed
+by provider id -- only `deepseek` (`llm-providers/deepseek.ts`) has a
+working entry today. `claude`/`codex` are valid `provider` values in the
+schema/UI (forward-compatible) but resolve to no registry entry, so
+`ai.ask` fails with a clear `VALIDATION_ERROR` ("isn't wired up yet") if
+selected as default, rather than crashing or guessing. `DeepSeekHttpFetch`
+mirrors `GitHttpFetch`/`LlmHttpFetch` exactly (injectable, defaults to the
+real `fetch`) -- `PgToolService`'s constructor grew a third parameter,
+`llmHttpFetch`, alongside `gitHttpFetch`, for smoke-test injection.
+
+**Encryption**: `ai-provider-credentials.ts`, AES-256-GCM via `crypto.ts`,
+own key `AI_PROVIDER_ENC_KEY` -- independent of `GIT_CREDENTIAL_ENC_KEY`/
+`ENV_VAR_ENC_KEY`/`TOTP_ENC_KEY`, same "different secret class,
+independently rotatable" reasoning as every other encrypted column in
+this file.
+
+**No token-level streaming** -- the frontend's only existing live-update
+mechanism (`gatewayEvents` WS subscription) is coarse invalidation-only
+(bump a version counter, refetch), not incremental-payload streaming.
+`ai.ask` returns the complete answer after the loop finishes; a real
+streaming version would need a new dedicated transport, out of scope for
+this pass.
+
+### Smoke coverage
+
+`npm run smoke:gateway:ai-chat`
+(`scripts/smoke-gateway-ai-chat.ts`) covers, against a real gateway/
+Postgres instance with a fake (never-real-network) DeepSeek HTTP client
+injected into `PgToolService`'s new `llmHttpFetch` constructor param:
+`ai.ask` with no default provider failing clearly (`AI_PROVIDER_REQUIRED`)
+→ credential create/list/update(default)/delete round trip, the raw key
+never appearing in any response → `ai.available_models` proxying the fake
+`/models` response both pre-save (a raw `apiKey` param) and post-save (an
+already-stored credential) → a full successful loop actually calling a
+real Marrow tool (`project.list`) via `service.call` with the CALLER's own
+context, and -- the actual security-critical assertion -- a second user
+who is NOT a member of the first user's project asking the assistant "what
+projects do I have?" never seeing that project in the answer, proving
+`assertProjectMember`'s scoping holds all the way through the tool-use
+loop, not just for direct GraphQL/tool calls → conversation persistence
+(oldest-first, exact content preserved) and clear → the iteration cap
+(exactly 6 round trips against a fake that always requests another tool
+call, never hangs, returns a clear fallback message) → and selecting
+`claude` (not yet wired up) as default failing `ai.ask` with a clear
+`VALIDATION_ERROR`, not a crash.
+
 ## Project membership: `project_members` (`T-MEMORY-029` / `D-MEMORY-007`)
 
 `project_members` (migration `010_scopes_membership_attribution.cjs`) is a

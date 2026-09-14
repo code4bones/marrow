@@ -1,8 +1,10 @@
 import type { Knex } from "knex";
+import * as z from "zod/v4";
 import { AppError } from "../../shared/errors.js";
 import { fail, ok, type ToolResponse } from "../../shared/mcp/tool-response.js";
-import { gatewayToolCanonicalName, gatewayToolSpecs } from "../tool-definitions.js";
+import { gatewayToolCanonicalName, gatewayToolClaudeName, gatewayToolSpecs } from "../tool-definitions.js";
 import type { GitHttpFetch } from "../git-credentials.js";
+import { PROVIDERS, type ChatMessage, type LlmHttpFetch } from "../llm-providers/index.js";
 import { BaseService } from "./base.js";
 import { ProjectsCoreMixin } from "./core/projects-core.mixin.js";
 import { LinksCoreMixin } from "./core/links-core.mixin.js";
@@ -14,6 +16,8 @@ import { EventsMixin } from "./domains/events.mixin.js";
 import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
 import { EnvironmentVariablesMixin } from "./domains/environment-variables.mixin.js";
+import { AiProvidersMixin } from "./domains/ai-providers.mixin.js";
+import { AiChatMixin } from "./domains/ai-chat.mixin.js";
 import { CreditsMixin } from "./domains/credits.mixin.js";
 import { GraphMixin } from "./domains/graph.mixin.js";
 import { UserPrefsMixin } from "./domains/user-prefs.mixin.js";
@@ -37,7 +41,7 @@ import {
   ensureArtifactBytesExist,
   type ArtifactDownload
 } from "./formatters/artifacts.js";
-import type { GatewayRequestContext, Row } from "./types.js";
+import type { GatewayRequestContext, NormalizedGatewayRequestContext, Row } from "./types.js";
 
 const ComposedService = GlobalSearchMixin(
   ProjectSummaryMixin(
@@ -51,15 +55,19 @@ const ComposedService = GlobalSearchMixin(
                   GraphMixin(
                     GitCredentialsMixin(
                       EnvironmentVariablesMixin(
-                        CreditsMixin(
-                          ClientsMixin(
-                            EventsMixin(
-                              SkillsMixin(
-                                DecisionsMixin(
-                                  ArtifactsMixin(
-                                    MemoryMixin(
-                                      LinksCoreMixin(
-                                        ProjectsCoreMixin(BaseService)
+                        AiProvidersMixin(
+                          AiChatMixin(
+                            CreditsMixin(
+                              ClientsMixin(
+                                EventsMixin(
+                                  SkillsMixin(
+                                    DecisionsMixin(
+                                      ArtifactsMixin(
+                                        MemoryMixin(
+                                          LinksCoreMixin(
+                                            ProjectsCoreMixin(BaseService)
+                                          )
+                                        )
                                       )
                                     )
                                   )
@@ -82,8 +90,8 @@ const ComposedService = GlobalSearchMixin(
 );
 
 export class PgToolService extends ComposedService {
-  constructor(db: Knex, gitHttpFetch: GitHttpFetch = fetch) {
-    super(db, gitHttpFetch);
+  constructor(db: Knex, gitHttpFetch: GitHttpFetch = fetch, llmHttpFetch: LlmHttpFetch = fetch) {
+    super(db, gitHttpFetch, llmHttpFetch);
   }
 
   async call(
@@ -376,6 +384,22 @@ export class PgToolService extends ComposedService {
           return ok("Environment variable saved.", await this.setEnvironmentVariable(parsed, requestContext));
         case "env.variable_delete":
           return ok("Environment variable deleted.", await this.deleteEnvironmentVariable(parsed, requestContext));
+        case "ai.provider_create":
+          return ok("AI provider credential added.", await this.createProviderCredential(parsed, requestContext));
+        case "ai.provider_list":
+          return ok("AI provider credentials listed.", { credentials: await this.listProviderCredentials(requestContext) });
+        case "ai.provider_update":
+          return ok("AI provider credential updated.", await this.updateProviderCredential(parsed, requestContext));
+        case "ai.provider_delete":
+          return ok("AI provider credential deleted.", await this.deleteProviderCredential(parsed, requestContext));
+        case "ai.available_models":
+          return ok("Available models loaded.", await this.availableModels(parsed, requestContext));
+        case "ai.ask":
+          return ok("Assistant replied.", await this.askMarrow(parsed, requestContext));
+        case "ai.conversation_list":
+          return ok("Conversation loaded.", await this.listConversation(requestContext));
+        case "ai.conversation_clear":
+          return ok("Conversation cleared.", await this.clearConversation(requestContext));
         case "credit.balance":
           return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
         case "credit.history":
@@ -505,4 +529,133 @@ export class PgToolService extends ComposedService {
   async gitJobArtifactsDownload(input: Row, context: GatewayRequestContext = {}) {
     return this.gitJobArtifactsStream(input, normalizeContext(context));
   }
+
+  // "Ask Marrow" chat loop (owner's request, 2026-09-14) -- lives directly
+  // on PgToolService, not in a mixin, specifically because it needs
+  // `this.call(...)` itself (to dispatch the model's tool_use requests
+  // through the exact same dispatch every other caller goes through --
+  // schema validation, access-tier enforcement, event recording, all of
+  // it), and `call` only exists here, added on top of the whole composed
+  // mixin chain (same reason artifactDownload/gitJobArtifactsDownload
+  // above are plain PgToolService methods, not mixin methods). Everything
+  // that DOESN'T need `call` (session gating, credential resolution,
+  // history persistence) still lives in ai-chat.mixin.ts/
+  // ai-providers.mixin.ts and is called from here via `this.xxx`, same as
+  // gitJobArtifactsDownload calls the protected gitJobArtifactsStream.
+  private async askMarrow(input: Row, context: NormalizedGatewayRequestContext) {
+    const userId = this.requireChatSession(context);
+    const userMessage = String(input.message ?? "").trim();
+    if (!userMessage) {
+      throw new AppError("VALIDATION_ERROR", "message is required.");
+    }
+
+    const credential = await this.resolveDefaultProviderCredential(context);
+    const provider = PROVIDERS[credential.provider];
+    if (!provider) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `Your default AI provider ("${credential.provider}") isn't wired up yet -- deepseek is the only supported provider right now. Add a deepseek credential and mark it default.`
+      );
+    }
+    const model = credential.model;
+    if (!model) {
+      throw new AppError("VALIDATION_ERROR", "Your default AI provider credential has no model set -- pick one in your profile first.");
+    }
+
+    const historyRows = await this.recentChatHistory(userId, AI_CHAT_HISTORY_TURNS);
+    const specs = aiChatToolSpecs();
+    const toolsJson = specs.map((spec) => ({
+      name: gatewayToolClaudeName(spec.name),
+      description: spec.description,
+      parameters: z.toJSONSchema(spec.schema)
+    }));
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: AI_CHAT_SYSTEM_PROMPT },
+      ...historyRows.map((row): ChatMessage => ({ role: row.role as "user" | "assistant", content: String(row.content) })),
+      { role: "user", content: userMessage }
+    ];
+
+    let finalText = "";
+    for (let round = 0; round < AI_CHAT_MAX_LOOP_ROUNDS; round += 1) {
+      const result = await provider.chatCompletion({
+        apiKey: credential.apiKey,
+        model,
+        messages,
+        tools: toolsJson,
+        httpFetch: this.llmHttpFetch
+      });
+
+      if (result.toolCalls.length === 0) {
+        finalText = result.content ?? "";
+        break;
+      }
+
+      messages.push({ role: "assistant", content: result.content, toolCalls: result.toolCalls });
+      for (const toolCall of result.toolCalls) {
+        const canonicalName = gatewayToolCanonicalName(toolCall.name);
+        let args: unknown = {};
+        try {
+          args = toolCall.argumentsJson ? JSON.parse(toolCall.argumentsJson) : {};
+        } catch {
+          // Malformed tool-call arguments from the model -- feed the parse
+          // error back as the tool result rather than crashing the loop,
+          // so the model can retry with corrected JSON.
+        }
+        let toolResultText: string;
+        if (AI_CHAT_EXCLUDED_TOOLS.has(canonicalName) || !specs.some((spec) => spec.name === canonicalName)) {
+          toolResultText = JSON.stringify(fail(new AppError("VALIDATION_ERROR", `Tool "${canonicalName}" is not available to Ask Marrow.`)));
+        } else {
+          // call() re-normalizes whatever context it's given (normalizeContext
+          // is idempotent -- an already-normalized context's sessionUserId:
+          // null round-trips to null again) -- the cast below is only for
+          // GatewayRequestContext's looser `sessionUserId?: string` (no
+          // explicit null) vs. this already-normalized context's
+          // `string | null`, not a real structural mismatch.
+          const toolResponse = await this.call(canonicalName, args, context as GatewayRequestContext);
+          toolResultText = JSON.stringify(toolResponse);
+        }
+        messages.push({ role: "tool", content: toolResultText, toolCallId: toolCall.id });
+      }
+
+      if (round === AI_CHAT_MAX_LOOP_ROUNDS - 1) {
+        finalText = "I gathered some information but ran out of steps to fully answer -- try asking a more specific follow-up.";
+      }
+    }
+
+    const { createdAt } = await this.appendChatTurn(userId, userMessage, finalText);
+    return { role: "assistant" as const, content: finalText, createdAt };
+  }
 }
+
+const AI_CHAT_MAX_LOOP_ROUNDS = 6;
+const AI_CHAT_HISTORY_TURNS = 20;
+
+// Tools the "Ask Marrow" assistant is never offered, regardless of the
+// caller's own read+write access: admin-tier tools (this codebase's own
+// existing "very consequential" boundary -- project.delete, artifact.delete,
+// memory.delete, etc.) and the raw-secret-minting tools specifically
+// (git.credential_create/delete, ai.provider_create/update/delete) -- a
+// chat instruction should never be able to mint or destroy a stored
+// external credential, independent of whatever scope tier the calling
+// session otherwise has. Everything else at read/write tier is offered,
+// per the owner's explicit "read + write" access decision.
+const AI_CHAT_EXCLUDED_TOOLS = new Set([
+  "git.credential_create",
+  "git.credential_delete",
+  "ai.provider_create",
+  "ai.provider_update",
+  "ai.provider_delete"
+]);
+
+function aiChatToolSpecs() {
+  return gatewayToolSpecs.filter((spec) => spec.access !== "admin" && !AI_CHAT_EXCLUDED_TOOLS.has(spec.name));
+}
+
+const AI_CHAT_SYSTEM_PROMPT = [
+  "You are Marrow's own built-in assistant, answering a human directly inside the Marrow web app",
+  "(not an external coding agent connected to Marrow). Use the provided tools to look up real",
+  "project/task/decision/memory/event data before answering -- never guess or make up specifics.",
+  "Answer in the same language the human wrote their question in. Keep answers concise and concrete;",
+  "prefer citing actual IDs/titles you found over vague summaries."
+].join(" ");

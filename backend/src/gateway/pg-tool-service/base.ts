@@ -6,6 +6,7 @@ import { projectKeyFromId } from "../../shared/ids/id.service.js";
 import { defaultGatewayOutputSchema, gatewayToolSpecs } from "../tool-definitions.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
+import type { LlmHttpFetch } from "../llm-providers/index.js";
 import { assigneeNotifyTarget } from "../assignees.js";
 import { isDefaultNotifyEventType, notifyTelegram } from "../telegram.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
@@ -23,7 +24,11 @@ export class BaseService {
   // "the smoke test should NOT make real network calls").
   constructor(
     protected readonly db: Knex,
-    protected readonly gitHttpFetch: GitHttpFetch = fetch
+    protected readonly gitHttpFetch: GitHttpFetch = fetch,
+    // Same reasoning as gitHttpFetch above, for the "Ask Marrow" chat
+    // loop's outbound calls to whichever LLM provider is configured --
+    // defaults to the real `fetch`, injectable for smoke tests.
+    protected readonly llmHttpFetch: LlmHttpFetch = fetch
   ) {}
 
   listTools() {

@@ -255,6 +255,11 @@ const typeDefs = `#graphql
     environmentVariables(project: String, redact: Boolean): [EnvironmentVariable!]!
     environmentVariable(key: String!, project: String, redact: Boolean): EnvironmentVariable
 
+    # "Ask Marrow" (see AiProviderCredential/AiChatMessage above).
+    aiProviderCredentials: [AiProviderCredential!]!
+    aiAvailableModels(provider: String!, apiKey: String): [String!]!
+    aiConversation: [AiChatMessage!]!
+
     creditBalance(userId: ID): CreditBalance!
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
     creditLeaderboard(limit: Int): [LeaderboardEntry!]!
@@ -362,6 +367,15 @@ const typeDefs = `#graphql
     # server-side in the mixin, not by this GraphQL layer).
     setEnvironmentVariable(key: String!, value: String!, project: String, secret: Boolean, description: String): EnvironmentVariable!
     deleteEnvironmentVariable(key: String!, project: String): Boolean!
+
+    # "Ask Marrow" -- NOT in ADMIN_GRAPHQL_MUTATION_NAMES, same reasoning
+    # as createGitCredential/setEnvironmentVariable above: each of these
+    # only ever reaches the caller's own row/history.
+    createAiProviderCredential(provider: String!, label: String!, apiKey: String!, model: String, isDefault: Boolean): AiProviderCredential!
+    updateAiProviderCredential(id: ID!, label: String, model: String, isDefault: Boolean): AiProviderCredential!
+    deleteAiProviderCredential(id: ID!): Boolean!
+    askMarrow(message: String!): AiChatMessage!
+    clearAiConversation: Boolean!
 
     updateCreditSettings(enabled: Boolean!): CreditSettings!
     setUserPreference(key: String!, value: JSON!): JSON!
@@ -661,6 +675,28 @@ const typeDefs = `#graphql
     description: String
     createdAt: String
     updatedAt: String
+  }
+
+  # "Ask Marrow" (2026-09-14) -- an embedded chat assistant a human talks
+  # to directly in the web UI. AiProviderCredential mirrors GitCredential's
+  # own "never expose the key" shape -- modeled on git.credential_*, not a
+  # variant of EnvironmentVariable (owner's explicit correction to an
+  # earlier draft of this design).
+  type AiProviderCredential {
+    id: ID!
+    provider: String!
+    label: String!
+    model: String
+    isDefault: Boolean!
+    keyHint: String
+    createdAt: String
+    updatedAt: String
+  }
+
+  type AiChatMessage {
+    role: String!
+    content: String!
+    createdAt: String
   }
 
   type ProjectSummary {
@@ -1316,6 +1352,12 @@ const resolvers = {
       (await callTool<Row>(context, "env.variables_list", cleanInput(args))).variables,
     environmentVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "env.variable_get", cleanInput(args)),
+    aiProviderCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "ai.provider_list", {})).credentials,
+    aiAvailableModels: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "ai.available_models", cleanInput(args))).models,
+    aiConversation: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "ai.conversation_list", {})).messages,
     creditBalance: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.balance", cleanInput(args))).balance,
     creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1451,6 +1493,20 @@ const resolvers = {
     deleteEnvironmentVariable: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
       const result = await callTool<Row>(context, "env.variable_delete", cleanInput(args));
       return result.deleted === true;
+    },
+    createAiProviderCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "ai.provider_create", cleanInput(args)),
+    updateAiProviderCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "ai.provider_update", cleanInput(args)),
+    deleteAiProviderCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "ai.provider_delete", cleanInput(args));
+      return result.deleted === true;
+    },
+    askMarrow: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "ai.ask", cleanInput(args)),
+    clearAiConversation: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "ai.conversation_clear", {});
+      return result.cleared === true;
     },
     updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings,

@@ -1003,6 +1003,48 @@ const envVariableOutSchema = z.object({
 });
 const envVariablesListOutSchema = z.object({ variables: z.array(envVariableOutSchema) });
 
+// "Ask Marrow" -- an embedded chat assistant a human talks to directly in
+// the web UI (owner's request, 2026-09-14). ai.provider_* manage stored
+// LLM provider credentials (modeled on git.credential_*, NOT a variant of
+// env.variable_* -- owner's explicit correction to an earlier draft);
+// ai.ask/ai.conversation_*/ai.available_models are the assistant itself.
+const aiProviderIdSchema = z.enum(["claude", "codex", "deepseek"]);
+const aiProviderCreateSchema = z.object({
+  provider: aiProviderIdSchema,
+  label: z.string().min(1),
+  apiKey: z.string().min(1),
+  model: z.string().min(1).optional(),
+  isDefault: z.boolean().optional()
+});
+const aiProviderUpdateSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).optional(),
+  model: z.string().min(1).nullable().optional(),
+  isDefault: z.boolean().optional()
+});
+const aiProviderDeleteSchema = z.object({ id: z.string().min(1) });
+const aiAvailableModelsSchema = z.object({
+  provider: aiProviderIdSchema,
+  apiKey: z.string().min(1).optional()
+});
+const aiAskSchema = z.object({ message: z.string().min(1) });
+
+const aiProviderCredentialOutSchema = z.object({
+  id: z.string(),
+  provider: aiProviderIdSchema,
+  label: z.string(),
+  model: z.string().nullable(),
+  isDefault: z.boolean(),
+  keyHint: z.string().optional(),
+  createdAt: z.string().nullable(),
+  updatedAt: z.string().nullable()
+});
+const aiChatMessageOutSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string().nullable().optional()
+});
+
 function toolOutputSchema(dataSchema: z.ZodType): z.ZodType {
   return z.object({
     ok: z.boolean(),
@@ -1820,6 +1862,63 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
       "Permanently delete an environment variable by key. Omit `project` to delete your own common (profile-scoped) variable; pass `project` to delete a project-scoped one (requires being the project's owner or a system admin).",
     schema: envVariableDeleteSchema,
     outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "write"
+  },
+  {
+    name: "ai.provider_create",
+    description:
+      "Store an AI provider credential (claude/codex/deepseek) encrypted at rest, for use by Ask Marrow (ai.ask). The key is never returned by this or any other ai.* tool. Pass isDefault:true to make this the credential ai.ask uses (only one credential can be default per user).",
+    schema: aiProviderCreateSchema,
+    outputSchema: output(aiProviderCredentialOutSchema),
+    access: "write"
+  },
+  {
+    name: "ai.provider_list",
+    description: "List your own stored AI provider credentials (provider, label, model, default flag, dates, and a last-4-characters hint) -- never the key value.",
+    schema: emptySchema,
+    outputSchema: output(z.object({ credentials: z.array(aiProviderCredentialOutSchema) }))
+  },
+  {
+    name: "ai.provider_update",
+    description: "Update a stored AI provider credential's label, pinned model, or default flag (setting isDefault:true clears any other default for you). Does not change the key itself -- delete and recreate to rotate it.",
+    schema: aiProviderUpdateSchema,
+    outputSchema: output(aiProviderCredentialOutSchema),
+    access: "write"
+  },
+  {
+    name: "ai.provider_delete",
+    // write, not admin -- same reasoning as git.credential_delete: this
+    // can only ever delete the caller's own credential.
+    description: "Permanently delete one of your own stored AI provider credentials.",
+    schema: aiProviderDeleteSchema,
+    outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "write"
+  },
+  {
+    name: "ai.available_models",
+    description: "List the models a provider currently offers. Pass apiKey directly to preview models before saving a credential, or omit it to use your already-stored credential for that provider.",
+    schema: aiAvailableModelsSchema,
+    outputSchema: output(z.object({ models: z.array(z.string()) }))
+  },
+  {
+    name: "ai.ask",
+    description:
+      "Ask Marrow's own built-in assistant a question in natural language -- it runs a tool-use loop against Marrow's own tools (using YOUR OWN access/project-membership scoping, nothing broader) to gather real data before answering. Requires a default AI provider credential (ai.provider_create with isDefault:true). Conversation history persists (one continuous thread per user) -- see ai.conversation_list/ai.conversation_clear.",
+    schema: aiAskSchema,
+    outputSchema: output(aiChatMessageOutSchema),
+    access: "write"
+  },
+  {
+    name: "ai.conversation_list",
+    description: "Your persisted Ask Marrow conversation history, oldest first.",
+    schema: emptySchema,
+    outputSchema: output(z.object({ messages: z.array(aiChatMessageOutSchema) }))
+  },
+  {
+    name: "ai.conversation_clear",
+    description: "Permanently delete your Ask Marrow conversation history and start fresh.",
+    schema: emptySchema,
+    outputSchema: output(z.object({ cleared: z.literal(true) })),
     access: "write"
   },
   {

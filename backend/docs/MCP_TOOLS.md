@@ -57,6 +57,14 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `env.variable_get`
 * `env.variable_set`
 * `env.variable_delete`
+* `ai.provider_create`
+* `ai.provider_list`
+* `ai.provider_update`
+* `ai.provider_delete`
+* `ai.available_models`
+* `ai.ask`
+* `ai.conversation_list`
+* `ai.conversation_clear`
 
 ## General response format
 
@@ -184,6 +192,14 @@ docs/AUTH.md.
 | | | | `env.variable_get` | read |
 | | | | `env.variable_set` | write |
 | | | | `env.variable_delete` | write |
+| | | | `ai.provider_create` | write |
+| | | | `ai.provider_list` | read |
+| | | | `ai.provider_update` | write |
+| | | | `ai.provider_delete` | write |
+| | | | `ai.available_models` | read |
+| | | | `ai.ask` | write |
+| | | | `ai.conversation_list` | read |
+| | | | `ai.conversation_clear` | write |
 
 ## Gateway tools
 
@@ -3523,6 +3539,93 @@ Input:
 ```
 
 Output: `{ "deleted": true }`.
+
+## Ask Marrow (embedded chat assistant, not GitLab/GitHub)
+
+An LLM-backed assistant a human can talk to directly in the Marrow web UI
+(as opposed to Marrow's normal mode of being called BY an already-connected
+agent). Modeled on `git.credential_*`, NOT on `env.variable_*` -- provider
+credentials are managed as a list of rows (`ai.provider_*`), not a single
+settings form. `claude`/`codex`/`deepseek` are all valid `provider` values;
+only `deepseek` has a working implementation today -- selecting an
+unimplemented provider as your default fails `ai.ask` with a clear
+`VALIDATION_ERROR`, not a crash.
+
+### `ai.provider_create`
+
+Store a provider credential, encrypted at rest. The key is never returned
+by this or any other `ai.*` tool. `isDefault: true` makes this credential
+the one `ai.ask` uses (only one default per user -- setting a new default
+clears the previous one automatically).
+
+Input:
+
+```json
+{ "provider": "deepseek", "label": "My DeepSeek key", "apiKey": "sk-...", "model": "deepseek-flash", "isDefault": true }
+```
+
+### `ai.provider_list`
+
+List your own stored credentials (provider, label, model, default flag,
+dates, a last-4-characters hint) -- never the key value.
+
+### `ai.provider_update`
+
+Update `label`/`model`/`isDefault` on an existing credential. Does not
+rotate the key itself -- delete and recreate for that.
+
+### `ai.provider_delete`
+
+Permanently delete one of your own credentials. Write tier, not admin --
+same reasoning as `git.credential_delete`: this can only ever touch the
+caller's own row.
+
+### `ai.available_models`
+
+List the models a provider currently offers -- proxies that provider's own
+models endpoint (DeepSeek's `GET /models`, OpenAI-compatible). Pass
+`apiKey` directly to preview models **before** saving a credential
+(matches the natural "paste key -> see models -> pick one -> save" form
+flow); omit it to use your already-stored credential for that provider.
+
+Input: `{ "provider": "deepseek", "apiKey": "sk-..." }` (or omit `apiKey`).
+
+Output: `{ "models": ["deepseek-flash", "deepseek-v4-pro"] }`.
+
+### `ai.ask`
+
+Ask Marrow's own assistant a question in natural language. Runs a
+tool-use loop against Marrow's own tools (`project.summary`, `task.list`,
+`decision.list`, etc.) using **your own** access/project-membership
+scoping -- an admin's chat sees everything, a `role=member`'s chat only
+ever sees their own projects, exactly like any other call. Admin-tier
+tools and the raw-credential-minting tools (`git.credential_create/delete`,
+`ai.provider_create/update/delete`) are never offered to the assistant,
+regardless of the caller's own scope -- a chat instruction can't mint or
+destroy a stored external credential. Bounded to 6 tool-use round trips
+per call so a confused model can't loop forever.
+
+Input: `{ "message": "what's going on with my projects?" }`.
+
+Output:
+
+```json
+{ "role": "assistant", "content": "...", "createdAt": "..." }
+```
+
+Requires a default provider credential (`ai.provider_create` with
+`isDefault: true`) -- fails with `AI_PROVIDER_REQUIRED` otherwise.
+Conversation history persists automatically (one continuous thread per
+user, not multiple named conversations) -- see `ai.conversation_list`/
+`ai.conversation_clear`.
+
+### `ai.conversation_list`
+
+Your persisted Ask Marrow history, oldest first.
+
+### `ai.conversation_clear`
+
+Permanently delete your history and start fresh.
 
 ## Seed tools or scripts
 
