@@ -831,25 +831,51 @@ export const GET_AI_AVAILABLE_MODELS = gql`
   }
 `;
 
-export const GET_AI_CONVERSATION = gql`
-  query GetAiConversation {
-    aiConversation {
+// Multi-conversation (2026-09-14 follow-up) -- New Chat / Chat List /
+// delete chat, each conversation titled and independently managed.
+export const GET_AI_CONVERSATIONS = gql`
+  query GetAiConversations {
+    aiConversations {
+      id title createdAt updatedAt
+    }
+  }
+`;
+
+export const GET_AI_CONVERSATION_MESSAGES = gql`
+  query GetAiConversationMessages($id: ID!) {
+    aiConversationMessages(id: $id) {
       role content createdAt
     }
+  }
+`;
+
+export const CREATE_AI_CONVERSATION = gql`
+  mutation CreateAiConversation($title: String!) {
+    createAiConversation(title: $title) {
+      id title createdAt updatedAt
+    }
+  }
+`;
+
+export const RENAME_AI_CONVERSATION = gql`
+  mutation RenameAiConversation($id: ID!, $title: String!) {
+    renameAiConversation(id: $id, title: $title) {
+      id title createdAt updatedAt
+    }
+  }
+`;
+
+export const DELETE_AI_CONVERSATION = gql`
+  mutation DeleteAiConversation($id: ID!) {
+    deleteAiConversation(id: $id)
   }
 `;
 
 export const ASK_MARROW = gql`
-  mutation AskMarrow($message: String!) {
-    askMarrow(message: $message) {
+  mutation AskMarrow($conversationId: ID!, $message: String!) {
+    askMarrow(conversationId: $conversationId, message: $message) {
       role content createdAt
     }
-  }
-`;
-
-export const CLEAR_AI_CONVERSATION = gql`
-  mutation ClearAiConversation {
-    clearAiConversation
   }
 `;
 

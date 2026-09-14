@@ -89,7 +89,7 @@ export function AppRouter() {
 
         {/* Global */}
         <Route path="common"        element={<CommonPage />} />
-        <Route path="ask"           element={<AskMarrowPage />} />
+        <Route path="ask/:conversationId?" element={<AskMarrowPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="approvals"     element={<ApprovalsPage />} />

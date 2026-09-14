@@ -169,6 +169,16 @@ export interface AiChatMessage {
   createdAt: string | null;
 }
 
+// Multi-conversation follow-up -- a user can have many titled
+// conversations (New Chat / Chat List / delete chat), not one continuous
+// thread.
+export interface AiConversation {
+  id: string;
+  title: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface Decision {
   id: string;
   projectId: string | null;

@@ -1,11 +1,13 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { SendOutlined, UserOutlined, RobotOutlined, DeleteOutlined } from '@ant-design/icons';
-import { Alert, Avatar, Button, Empty, Input, Popconfirm, Spin, Typography, message } from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, MessageOutlined } from '@ant-design/icons';
+import { Alert, Avatar, Button, Empty, Input, Spin, Typography } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
-import { ASK_MARROW, CLEAR_AI_CONVERSATION, GET_AI_CONVERSATION } from '../../shared/api/queries';
-import type { AiChatMessage } from '../../shared/model/types';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ASK_MARROW, GET_AI_CONVERSATIONS, GET_AI_CONVERSATION_MESSAGES } from '../../shared/api/queries';
+import type { AiChatMessage, AiConversation } from '../../shared/model/types';
+import { ConversationListPanel } from '../../features/ai-chat/ConversationListPanel';
+import { Markdown } from '../../shared/ui/Markdown';
 import { PageLayout } from '../../shared/ui/PageLayout';
 
 const { Text } = Typography;
@@ -22,45 +24,40 @@ function ChatBubble({ msg }: { msg: AiChatMessage }) {
           borderRadius: 10,
           background: isUser ? '#177ddc' : 'rgba(255,255,255,0.06)',
           color: isUser ? '#fff' : undefined,
-          whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
-          fontSize: 13.5,
         }}
       >
-        {msg.content}
+        {isUser ? (
+          <span style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{msg.content}</span>
+        ) : (
+          <Markdown>{msg.content}</Markdown>
+        )}
       </div>
     </div>
   );
 }
 
 /**
- * "Ask Marrow" (owner's request, 2026-09-14) -- a chat page for talking to
- * Marrow's own embedded assistant directly, as opposed to Marrow's normal
- * mode of being called BY an already-connected agent. No token-level
- * streaming (see docs/AUTH.md's "Ask Marrow" section) -- the full answer
- * appears after the backend's tool-use loop finishes, with a loading
- * indicator meanwhile.
+ * The right-hand chat pane for one conversation. Mounted with
+ * key={conversationId} by the parent (same remount-on-identity-change
+ * pattern as ProjectOverview's own key={slug} elsewhere in this app) so
+ * switching conversations resets all local state for free instead of a
+ * setState-in-effect.
  */
-export function AskMarrowPage() {
+function ChatPane({ conversationId }: { conversationId: string }) {
   const { t } = useTranslation('ask');
-  const { data, loading: loadingHistory } = useQuery<{ aiConversation: AiChatMessage[] }>(GET_AI_CONVERSATION, {
+  const { data, loading: loadingHistory } = useQuery<{ aiConversationMessages: AiChatMessage[] }>(GET_AI_CONVERSATION_MESSAGES, {
+    variables: { id: conversationId },
     fetchPolicy: 'network-only',
   });
-  // sentMessages holds only what this page visit itself added (optimistic
-  // user turns + the assistant replies that came back) -- persisted
-  // history from GET_AI_CONVERSATION is combined in via `messages` below
-  // rather than copied into state (avoids a setState-in-effect just to
-  // mirror query data). historyCleared hides the persisted history after
-  // "Clear conversation" without needing to refetch.
   const [sentMessages, setSentMessages] = useState<AiChatMessage[]>([]);
-  const [historyCleared, setHistoryCleared] = useState(false);
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const messages = useMemo(
-    () => (historyCleared ? sentMessages : [...(data?.aiConversation ?? []), ...sentMessages]),
-    [data, sentMessages, historyCleared]
+    () => [...(data?.aiConversationMessages ?? []), ...sentMessages],
+    [data, sentMessages]
   );
 
   useEffect(() => {
@@ -79,41 +76,19 @@ export function AskMarrowPage() {
     },
   });
 
-  const [clearConversation, { loading: clearing }] = useMutation(CLEAR_AI_CONVERSATION, {
-    onCompleted: () => {
-      message.success(t('cleared'));
-      setSentMessages([]);
-      setHistoryCleared(true);
-    },
-    onError: (err) => message.error(err.message),
-  });
-
   const send = () => {
     const text = input.trim();
     if (!text || asking) return;
     setSendError(null);
     setSentMessages((prev) => [...prev, { role: 'user', content: text, createdAt: null }]);
     setInput('');
-    void ask({ variables: { message: text } });
+    void ask({ variables: { conversationId, message: text } });
   };
 
   const providerMissing = sendError?.toLowerCase().includes('provider');
 
   return (
-    <PageLayout
-      title={t('title')}
-      subtitle={t('subtitle')}
-      fill
-      headerExtra={
-        messages.length > 0 ? (
-          <Popconfirm title={t('clearConfirmTitle')} okText={t('clear')} okButtonProps={{ danger: true, loading: clearing }} onConfirm={() => void clearConversation()}>
-            <Button size="small" icon={<DeleteOutlined />}>
-              {t('clear')}
-            </Button>
-          </Popconfirm>
-        ) : undefined
-      }
-    >
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
         {loadingHistory ? (
           <Spin size="small" />
@@ -157,6 +132,43 @@ export function AskMarrowPage() {
           style={{ flex: 1 }}
         />
         <Button type="primary" icon={<SendOutlined />} onClick={send} loading={asking} disabled={!input.trim()} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Ask Marrow" (owner's request, 2026-09-14) -- a chat page for talking to
+ * Marrow's own embedded assistant directly, as opposed to Marrow's normal
+ * mode of being called BY an already-connected agent. Two-pane layout
+ * (owner's same-day follow-up: "New Chat & Chat List (+ delete chat)") --
+ * ConversationListPanel on the left, the selected conversation's chat on
+ * the right, driven by the optional :conversationId route param. No
+ * token-level streaming (see docs/AUTH.md's "Ask Marrow" section) -- the
+ * full answer appears after the backend's tool-use loop finishes, with a
+ * loading indicator meanwhile.
+ */
+export function AskMarrowPage() {
+  const { t } = useTranslation('ask');
+  const { conversationId = '' } = useParams<{ conversationId?: string }>();
+  const navigate = useNavigate();
+  const onSelect = (id: string) => navigate(id ? `/ask/${id}` : '/ask');
+
+  const { data: conversationsData } = useQuery<{ aiConversations: AiConversation[] }>(GET_AI_CONVERSATIONS);
+  const activeConversation = conversationsData?.aiConversations.find((c) => c.id === conversationId);
+
+  return (
+    <PageLayout title={activeConversation?.title ?? t('title')} subtitle={conversationId ? undefined : t('subtitle')} fill>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        <ConversationListPanel selectedId={conversationId || null} onSelect={onSelect} />
+
+        {!conversationId ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Empty image={<MessageOutlined style={{ fontSize: 40, opacity: 0.4 }} />} description={t('selectOrCreateChat')} />
+          </div>
+        ) : (
+          <ChatPane key={conversationId} conversationId={conversationId} />
+        )}
       </div>
     </PageLayout>
   );
