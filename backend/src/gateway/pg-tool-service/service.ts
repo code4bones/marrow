@@ -394,12 +394,18 @@ export class PgToolService extends ComposedService {
           return ok("AI provider credential deleted.", await this.deleteProviderCredential(parsed, requestContext));
         case "ai.available_models":
           return ok("Available models loaded.", await this.availableModels(parsed, requestContext));
+        case "ai.conversation_create":
+          return ok("Conversation created.", await this.createConversation(parsed, requestContext));
+        case "ai.conversations_list":
+          return ok("Conversations listed.", await this.listConversations(requestContext));
+        case "ai.conversation_rename":
+          return ok("Conversation renamed.", await this.renameConversation(parsed, requestContext));
+        case "ai.conversation_delete":
+          return ok("Conversation deleted.", await this.deleteConversation(parsed, requestContext));
+        case "ai.conversation_messages":
+          return ok("Conversation messages loaded.", await this.conversationMessages(parsed, requestContext));
         case "ai.ask":
           return ok("Assistant replied.", await this.askMarrow(parsed, requestContext));
-        case "ai.conversation_list":
-          return ok("Conversation loaded.", await this.listConversation(requestContext));
-        case "ai.conversation_clear":
-          return ok("Conversation cleared.", await this.clearConversation(requestContext));
         case "credit.balance":
           return ok("Credit balance loaded.", { balance: await this.creditBalance(parsed, requestContext) });
         case "credit.history":
@@ -543,7 +549,7 @@ export class PgToolService extends ComposedService {
   // ai-providers.mixin.ts and is called from here via `this.xxx`, same as
   // gitJobArtifactsDownload calls the protected gitJobArtifactsStream.
   private async askMarrow(input: Row, context: NormalizedGatewayRequestContext) {
-    const userId = this.requireChatSession(context);
+    const conversation = await this.resolveOwnedConversation(String(input.conversationId), context);
     const userMessage = String(input.message ?? "").trim();
     if (!userMessage) {
       throw new AppError("VALIDATION_ERROR", "message is required.");
@@ -562,7 +568,7 @@ export class PgToolService extends ComposedService {
       throw new AppError("VALIDATION_ERROR", "Your default AI provider credential has no model set -- pick one in your profile first.");
     }
 
-    const historyRows = await this.recentChatHistory(userId, AI_CHAT_HISTORY_TURNS);
+    const historyRows = await this.recentChatHistory(String(conversation.id), AI_CHAT_HISTORY_TURNS);
     const specs = aiChatToolSpecs();
     const toolsJson = specs.map((spec) => ({
       name: gatewayToolClaudeName(spec.name),
@@ -623,7 +629,7 @@ export class PgToolService extends ComposedService {
       }
     }
 
-    const { createdAt } = await this.appendChatTurn(userId, userMessage, finalText);
+    const { createdAt } = await this.appendChatTurn(String(conversation.id), userMessage, finalText);
     return { role: "assistant" as const, content: finalText, createdAt };
   }
 }
@@ -659,5 +665,9 @@ const AI_CHAT_SYSTEM_PROMPT = [
   "You are Marrow's own built-in assistant, answering a human directly inside the Marrow web app",
   "(not an external coding agent connected to Marrow). Use the provided tools to look up real",
   "project/task/decision/memory/event data before answering -- never guess or make up specifics.",
-  "Keep answers concise and concrete; prefer citing actual IDs/titles you found over vague summaries."
+  "Keep answers concise and concrete; prefer citing actual IDs/titles you found over vague summaries.",
+  "Your replies are rendered as Markdown (GitHub-flavored) -- use it where it actually helps: bullet or",
+  "numbered lists for multiple items, **bold** for key terms/status, `inline code` for IDs/keys/paths,",
+  "fenced code blocks for actual code/config/logs, and tables for tabular data (e.g. comparing several",
+  "projects/tasks). Don't force formatting on a short one-line answer that doesn't need it."
 ].join(" ");

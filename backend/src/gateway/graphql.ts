@@ -255,10 +255,11 @@ const typeDefs = `#graphql
     environmentVariables(project: String, redact: Boolean): [EnvironmentVariable!]!
     environmentVariable(key: String!, project: String, redact: Boolean): EnvironmentVariable
 
-    # "Ask Marrow" (see AiProviderCredential/AiChatMessage above).
+    # "Ask Marrow" (see AiProviderCredential/AiConversation/AiChatMessage above).
     aiProviderCredentials: [AiProviderCredential!]!
     aiAvailableModels(provider: String!, apiKey: String): [String!]!
-    aiConversation: [AiChatMessage!]!
+    aiConversations: [AiConversation!]!
+    aiConversationMessages(id: ID!): [AiChatMessage!]!
 
     creditBalance(userId: ID): CreditBalance!
     creditHistory(userId: ID, projectId: ID, reason: String, limit: Int, offset: Int): [CreditTransaction!]!
@@ -374,8 +375,10 @@ const typeDefs = `#graphql
     createAiProviderCredential(provider: String!, label: String!, apiKey: String!, model: String, isDefault: Boolean): AiProviderCredential!
     updateAiProviderCredential(id: ID!, label: String, model: String, isDefault: Boolean): AiProviderCredential!
     deleteAiProviderCredential(id: ID!): Boolean!
-    askMarrow(message: String!): AiChatMessage!
-    clearAiConversation: Boolean!
+    createAiConversation(title: String!): AiConversation!
+    renameAiConversation(id: ID!, title: String!): AiConversation!
+    deleteAiConversation(id: ID!): Boolean!
+    askMarrow(conversationId: ID!, message: String!): AiChatMessage!
 
     updateCreditSettings(enabled: Boolean!): CreditSettings!
     setUserPreference(key: String!, value: JSON!): JSON!
@@ -697,6 +700,17 @@ const typeDefs = `#graphql
     role: String!
     content: String!
     createdAt: String
+  }
+
+  # Multi-conversation follow-up, same day (owner's ask): "New Chat & Chat
+  # List (+ delete chat), перед созданием нового чата нужно ввести его
+  # название". A user can have many titled conversations, not one
+  # continuous thread.
+  type AiConversation {
+    id: ID!
+    title: String!
+    createdAt: String
+    updatedAt: String
   }
 
   type ProjectSummary {
@@ -1356,8 +1370,10 @@ const resolvers = {
       (await callTool<Row>(context, "ai.provider_list", {})).credentials,
     aiAvailableModels: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "ai.available_models", cleanInput(args))).models,
-    aiConversation: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
-      (await callTool<Row>(context, "ai.conversation_list", {})).messages,
+    aiConversations: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "ai.conversations_list", {})).conversations,
+    aiConversationMessages: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "ai.conversation_messages", cleanInput(args))).messages,
     creditBalance: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.balance", cleanInput(args))).balance,
     creditHistory: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1502,12 +1518,16 @@ const resolvers = {
       const result = await callTool<Row>(context, "ai.provider_delete", cleanInput(args));
       return result.deleted === true;
     },
+    createAiConversation: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "ai.conversation_create", cleanInput(args)),
+    renameAiConversation: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "ai.conversation_rename", cleanInput(args)),
+    deleteAiConversation: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {
+      const result = await callTool<Row>(context, "ai.conversation_delete", cleanInput(args));
+      return result.deleted === true;
+    },
     askMarrow: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "ai.ask", cleanInput(args)),
-    clearAiConversation: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) => {
-      const result = await callTool<Row>(context, "ai.conversation_clear", {});
-      return result.cleared === true;
-    },
     updateCreditSettings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "credit.settings_update", cleanInput(args))).settings,
     setUserPreference: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

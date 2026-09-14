@@ -133,10 +133,31 @@ try {
   await callTool("project.create", { slug: projectSlug, title: "AI Chat Smoke Project" }, sessionHeaders(ownerCookie));
   console.log("ok - a project created, visible only to its owner (outsider is not a member)");
 
+  // --- ai.conversation_create + ai.conversations_list ----------------------
+  const ownerConversation = expectData<{ id: string; title: string }>(
+    unwrap(await callTool("ai.conversation_create", { title: "My first chat" }, sessionHeaders(ownerCookie)))
+  );
+  const ownerConversationId = ownerConversation.id;
+  assert(ownerConversation.title === "My first chat", `Unexpected created conversation. Got: ${JSON.stringify(ownerConversation)}`);
+  const ownerConversationsListed = expectData<{ conversations: Array<{ id: string; title: string }> }>(
+    unwrap(await callTool("ai.conversations_list", {}, sessionHeaders(ownerCookie)))
+  );
+  assert(ownerConversationsListed.conversations.some((c) => c.id === ownerConversationId), "ai.conversations_list should include the just-created conversation.");
+  console.log("ok - ai.conversation_create requires a title and ai.conversations_list returns it");
+
+  const createWithoutTitle = await callTool("ai.conversation_create", {}, sessionHeaders(ownerCookie));
+  assertFailureCode(unwrap(createWithoutTitle), "VALIDATION_ERROR", "ai.conversation_create with no title should fail clearly.");
+  console.log("ok - ai.conversation_create requires a non-empty title");
+
   // --- ai.ask with no default provider configured -------------------------
-  const askNoProvider = await callTool("ai.ask", { message: "hello" }, sessionHeaders(ownerCookie));
+  const askNoProvider = await callTool("ai.ask", { conversationId: ownerConversationId, message: "hello" }, sessionHeaders(ownerCookie));
   assertFailureCode(unwrap(askNoProvider), "AI_PROVIDER_REQUIRED", "ai.ask with no default AI provider should fail clearly, not silently proceed.");
   console.log("ok - ai.ask requires a default AI provider credential");
+
+  // --- ai.ask against a conversation the caller doesn't own -----------------
+  const askUnknownConversation = await callTool("ai.ask", { conversationId: `not-${ownerConversationId}`, message: "hello" }, sessionHeaders(ownerCookie));
+  assertFailureCode(unwrap(askUnknownConversation), "AI_CONVERSATION_NOT_FOUND", "ai.ask against a nonexistent/unowned conversation id should fail clearly.");
+  console.log("ok - ai.ask requires an owned, existing conversation");
 
   // --- Provider credential CRUD -------------------------------------------
   const created = expectData<{ id: string; provider: string; isDefault: boolean; keyHint?: string }>(
@@ -177,7 +198,7 @@ try {
   // --- ai.ask: the loop actually calls a real Marrow tool with the
   // caller's own scoping ----------------------------------------------------
   const askOwner = expectData<{ role: string; content: string }>(
-    unwrap(await callTool("ai.ask", { message: "what projects do I have?" }, sessionHeaders(ownerCookie)))
+    unwrap(await callTool("ai.ask", { conversationId: ownerConversationId, message: "what projects do I have?" }, sessionHeaders(ownerCookie)))
   );
   assert(askOwner.content.startsWith("TOOL_RESULT_ECHO:"), `ai.ask should have gone through the fake tool-call round trip. Got: ${JSON.stringify(askOwner)}`);
   assert(askOwner.content.includes(projectSlug), "The owner's own ai.ask should see their own project through project.list.");
@@ -187,31 +208,55 @@ try {
     unwrap(await callTool("ai.provider_create", { provider: "deepseek", label: "outsider key", apiKey: "sk-outsider-deepseek-secret-000", isDefault: true }, sessionHeaders(outsiderCookie)))
   );
   await callTool("ai.provider_update", { id: outsiderCredential.id, model: "deepseek-flash" }, sessionHeaders(outsiderCookie));
+  const outsiderConversation = expectData<{ id: string }>(
+    unwrap(await callTool("ai.conversation_create", { title: "Outsider chat" }, sessionHeaders(outsiderCookie)))
+  );
   const askOutsider = expectData<{ content: string }>(
-    unwrap(await callTool("ai.ask", { message: "what projects do I have?" }, sessionHeaders(outsiderCookie)))
+    unwrap(await callTool("ai.ask", { conversationId: outsiderConversation.id, message: "what projects do I have?" }, sessionHeaders(outsiderCookie)))
   );
   assert(!askOutsider.content.includes(projectSlug), "A user who is not a member of the project must never see it through Ask Marrow -- project-membership scoping must hold through the chat loop.");
   console.log("ok - project-membership scoping holds through the chat loop: an outsider's ai.ask never sees a project they're not a member of");
+
+  const outsiderAskInOwnerConversation = await callTool("ai.ask", { conversationId: ownerConversationId, message: "hi" }, sessionHeaders(outsiderCookie));
+  assertFailureCode(unwrap(outsiderAskInOwnerConversation), "AI_CONVERSATION_NOT_FOUND", "One user must never be able to ai.ask into another user's conversation, even with their own valid provider credential.");
+  console.log("ok - conversation ownership is enforced independently of provider credential ownership");
+
   await callTool("ai.provider_delete", { id: outsiderCredential.id }, sessionHeaders(outsiderCookie));
+  await callTool("ai.conversation_delete", { id: outsiderConversation.id }, sessionHeaders(outsiderCookie));
 
-  // --- Conversation persistence + clear ------------------------------------
-  const conversation = expectData<{ messages: Array<{ role: string; content: string }> }>(
-    unwrap(await callTool("ai.conversation_list", {}, sessionHeaders(ownerCookie)))
+  // --- Conversation persistence, rename, messages, delete -------------------
+  const messagesAfterAsk = expectData<{ messages: Array<{ role: string; content: string }> }>(
+    unwrap(await callTool("ai.conversation_messages", { id: ownerConversationId }, sessionHeaders(ownerCookie)))
   );
-  assert(conversation.messages.length >= 2, `Expected at least the user+assistant turn from ai.ask above to be persisted. Got: ${conversation.messages.length}`);
-  assert(conversation.messages[0].role === "user" && conversation.messages[0].content === "what projects do I have?", "First persisted message should be the user's own question, unmodified.");
-  console.log("ok - ai.conversation_list persists the user question + assistant answer, oldest first");
+  assert(messagesAfterAsk.messages.length >= 2, `Expected at least the user+assistant turn from ai.ask above to be persisted. Got: ${messagesAfterAsk.messages.length}`);
+  assert(messagesAfterAsk.messages[0].role === "user" && messagesAfterAsk.messages[0].content === "what projects do I have?", "First persisted message should be the user's own question, unmodified.");
+  console.log("ok - ai.conversation_messages persists the user question + assistant answer, oldest first");
 
-  const cleared = expectData<{ cleared: boolean }>(unwrap(await callTool("ai.conversation_clear", {}, sessionHeaders(ownerCookie))));
-  assert(cleared.cleared === true, "ai.conversation_clear should report cleared: true.");
-  const afterClear = expectData<{ messages: unknown[] }>(unwrap(await callTool("ai.conversation_list", {}, sessionHeaders(ownerCookie))));
-  assert(afterClear.messages.length === 0, "Conversation history should be empty right after ai.conversation_clear.");
-  console.log("ok - ai.conversation_clear actually empties the persisted history");
+  const renamed = expectData<{ title: string }>(
+    unwrap(await callTool("ai.conversation_rename", { id: ownerConversationId, title: "Renamed chat" }, sessionHeaders(ownerCookie)))
+  );
+  assert(renamed.title === "Renamed chat", `ai.conversation_rename should have updated the title. Got: ${JSON.stringify(renamed)}`);
+  console.log("ok - ai.conversation_rename updates the title");
 
-  // --- Iteration cap ---------------------------------------------------------
+  const renameByOutsider = await callTool("ai.conversation_rename", { id: ownerConversationId, title: "hijacked" }, sessionHeaders(outsiderCookie));
+  assertFailureCode(unwrap(renameByOutsider), "AI_CONVERSATION_NOT_FOUND", "A non-owner must never be able to rename someone else's conversation.");
+  console.log("ok - only the owner can rename their own conversation");
+
+  const deletedConversation = expectData<{ deleted: boolean }>(
+    unwrap(await callTool("ai.conversation_delete", { id: ownerConversationId }, sessionHeaders(ownerCookie)))
+  );
+  assert(deletedConversation.deleted === true, "ai.conversation_delete should report deleted: true.");
+  const messagesAfterDelete = await callTool("ai.conversation_messages", { id: ownerConversationId }, sessionHeaders(ownerCookie));
+  assertFailureCode(unwrap(messagesAfterDelete), "AI_CONVERSATION_NOT_FOUND", "Deleting a conversation should also make its messages unreachable, not just hide it from the list.");
+  console.log("ok - ai.conversation_delete removes the conversation and cascades its messages (ON DELETE CASCADE)");
+
+  // --- Iteration cap (needs a fresh conversation, the one above was deleted) -
+  const capConversation = expectData<{ id: string }>(
+    unwrap(await callTool("ai.conversation_create", { title: "Cap test chat" }, sessionHeaders(ownerCookie)))
+  );
   const requestCountBefore = fakeDeepSeekRequestCount;
   const loopForever = expectData<{ content: string }>(
-    unwrap(await callTool("ai.ask", { message: "LOOP_FOREVER_MARKER please answer" }, sessionHeaders(ownerCookie)))
+    unwrap(await callTool("ai.ask", { conversationId: capConversation.id, message: "LOOP_FOREVER_MARKER please answer" }, sessionHeaders(ownerCookie)))
   );
   assert(!loopForever.content.startsWith("TOOL_RESULT_ECHO:"), "The iteration cap should have kicked in with its own fallback message, not a normal echoed answer.");
   assert(fakeDeepSeekRequestCount - requestCountBefore === 6, `Expected exactly 6 chat-completion round trips (the cap), got ${fakeDeepSeekRequestCount - requestCountBefore}.`);
@@ -221,9 +266,10 @@ try {
   const claudeCredential = expectData<{ id: string }>(
     unwrap(await callTool("ai.provider_create", { provider: "claude", label: "not wired up yet", apiKey: "sk-fake-claude-key", isDefault: true }, sessionHeaders(ownerCookie)))
   );
-  const askUnsupported = await callTool("ai.ask", { message: "hello" }, sessionHeaders(ownerCookie));
+  const askUnsupported = await callTool("ai.ask", { conversationId: capConversation.id, message: "hello" }, sessionHeaders(ownerCookie));
   assertFailureCode(unwrap(askUnsupported), "VALIDATION_ERROR", "Selecting an unimplemented provider as default should fail clearly when asked a question, not crash.");
   await callTool("ai.provider_delete", { id: claudeCredential.id }, sessionHeaders(ownerCookie));
+  await callTool("ai.conversation_delete", { id: capConversation.id }, sessionHeaders(ownerCookie));
   console.log("ok - selecting claude (not yet wired up) as default fails ai.ask with a clear error, not a crash");
 
   // --- Delete round trip ------------------------------------------------------
@@ -242,7 +288,10 @@ try {
   }
   for (const id of [ownerUserId, outsiderUserId]) {
     if (id) {
-      await db("ai_chat_messages").where({ user_id: id }).del();
+      // ai_conversations.user_id -> users(id) and ai_chat_messages.conversation_id
+      // -> ai_conversations(id) are both ON DELETE CASCADE, but clean up
+      // explicitly rather than relying on that for a smoke script.
+      await db("ai_conversations").where({ user_id: id }).del();
       await db("ai_provider_credentials").where({ owner_user_id: id }).del();
       await db("users").where({ id }).del();
     }

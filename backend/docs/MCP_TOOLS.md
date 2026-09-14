@@ -62,9 +62,12 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `ai.provider_update`
 * `ai.provider_delete`
 * `ai.available_models`
+* `ai.conversation_create`
+* `ai.conversations_list`
+* `ai.conversation_rename`
+* `ai.conversation_delete`
+* `ai.conversation_messages`
 * `ai.ask`
-* `ai.conversation_list`
-* `ai.conversation_clear`
 
 ## General response format
 
@@ -197,9 +200,12 @@ docs/AUTH.md.
 | | | | `ai.provider_update` | write |
 | | | | `ai.provider_delete` | write |
 | | | | `ai.available_models` | read |
+| | | | `ai.conversation_create` | write |
+| | | | `ai.conversations_list` | read |
+| | | | `ai.conversation_rename` | write |
+| | | | `ai.conversation_delete` | write |
+| | | | `ai.conversation_messages` | read |
 | | | | `ai.ask` | write |
-| | | | `ai.conversation_list` | read |
-| | | | `ai.conversation_clear` | write |
 
 ## Gateway tools
 
@@ -3592,11 +3598,47 @@ Input: `{ "provider": "deepseek", "apiKey": "sk-..." }` (or omit `apiKey`).
 
 Output: `{ "models": ["deepseek-flash", "deepseek-v4-pro"] }`.
 
+### `ai.conversation_create`
+
+Start a new, titled Ask Marrow conversation. You can have many -- there's
+no single continuous thread; each conversation keeps its own message
+history.
+
+Input: `{ "title": "Sprint planning notes" }` (required, non-empty).
+
+Output: `{ "id": "...", "title": "...", "createdAt": "...", "updatedAt": "..." }`.
+
+### `ai.conversations_list`
+
+List your own conversations (id, title, dates), most recently active
+first.
+
+### `ai.conversation_rename`
+
+Rename one of your own conversations.
+
+Input: `{ "id": "...", "title": "New title" }`.
+
+### `ai.conversation_delete`
+
+Permanently delete one of your own conversations **and all its
+messages**. Write tier, not admin -- same reasoning as
+`ai.provider_delete`: this can only ever touch the caller's own
+conversation (a non-owner gets `AI_CONVERSATION_NOT_FOUND`, not a leak of
+whether the id exists).
+
+### `ai.conversation_messages`
+
+The persisted messages in one of your own conversations, oldest first.
+
+Input: `{ "id": "..." }`.
+
 ### `ai.ask`
 
-Ask Marrow's own assistant a question in natural language. Runs a
-tool-use loop against Marrow's own tools (`project.summary`, `task.list`,
-`decision.list`, etc.) using **your own** access/project-membership
+Ask Marrow's own assistant a question in natural language, within an
+existing conversation (create one first with `ai.conversation_create`).
+Runs a tool-use loop against Marrow's own tools (`project.summary`,
+`task.list`, `decision.list`, etc.) using **your own** access/project-membership
 scoping -- an admin's chat sees everything, a `role=member`'s chat only
 ever sees their own projects, exactly like any other call. Admin-tier
 tools and the raw-credential-minting tools (`git.credential_create/delete`,
@@ -3605,7 +3647,7 @@ regardless of the caller's own scope -- a chat instruction can't mint or
 destroy a stored external credential. Bounded to 6 tool-use round trips
 per call so a confused model can't loop forever.
 
-Input: `{ "message": "what's going on with my projects?" }`.
+Input: `{ "conversationId": "...", "message": "what's going on with my projects?" }`.
 
 Output:
 
@@ -3614,18 +3656,10 @@ Output:
 ```
 
 Requires a default provider credential (`ai.provider_create` with
-`isDefault: true`) -- fails with `AI_PROVIDER_REQUIRED` otherwise.
-Conversation history persists automatically (one continuous thread per
-user, not multiple named conversations) -- see `ai.conversation_list`/
-`ai.conversation_clear`.
-
-### `ai.conversation_list`
-
-Your persisted Ask Marrow history, oldest first.
-
-### `ai.conversation_clear`
-
-Permanently delete your history and start fresh.
+`isDefault: true`) -- fails with `AI_PROVIDER_REQUIRED` otherwise. Requires
+`conversationId` to be one of your own, existing conversations -- fails
+with `AI_CONVERSATION_NOT_FOUND` otherwise (not-found-not-forbidden, same
+as `ai.conversation_delete`).
 
 ## Seed tools or scripts
 

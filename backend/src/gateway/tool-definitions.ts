@@ -1027,7 +1027,13 @@ const aiAvailableModelsSchema = z.object({
   provider: aiProviderIdSchema,
   apiKey: z.string().min(1).optional()
 });
-const aiAskSchema = z.object({ message: z.string().min(1) });
+// Multi-conversation follow-up (owner's request, same day the single-
+// thread v1 was already live and tested): "New Chat & Chat List (+ delete
+// chat), перед созданием нового чата нужно ввести его название".
+const aiConversationCreateSchema = z.object({ title: z.string().min(1) });
+const aiConversationRenameSchema = z.object({ id: z.string().min(1), title: z.string().min(1) });
+const aiConversationIdSchema = z.object({ id: z.string().min(1) });
+const aiAskSchema = z.object({ conversationId: z.string().min(1), message: z.string().min(1) });
 
 const aiProviderCredentialOutSchema = z.object({
   id: z.string(),
@@ -1036,6 +1042,12 @@ const aiProviderCredentialOutSchema = z.object({
   model: z.string().nullable(),
   isDefault: z.boolean(),
   keyHint: z.string().optional(),
+  createdAt: z.string().nullable(),
+  updatedAt: z.string().nullable()
+});
+const aiConversationOutSchema = z.object({
+  id: z.string(),
+  title: z.string(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable()
 });
@@ -1901,24 +1913,46 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     outputSchema: output(z.object({ models: z.array(z.string()) }))
   },
   {
-    name: "ai.ask",
-    description:
-      "Ask Marrow's own built-in assistant a question in natural language -- it runs a tool-use loop against Marrow's own tools (using YOUR OWN access/project-membership scoping, nothing broader) to gather real data before answering. Requires a default AI provider credential (ai.provider_create with isDefault:true). Conversation history persists (one continuous thread per user) -- see ai.conversation_list/ai.conversation_clear.",
-    schema: aiAskSchema,
-    outputSchema: output(aiChatMessageOutSchema),
+    name: "ai.conversation_create",
+    description: "Start a new, titled Ask Marrow conversation. You can have many -- see ai.conversations_list.",
+    schema: aiConversationCreateSchema,
+    outputSchema: output(aiConversationOutSchema),
     access: "write"
   },
   {
-    name: "ai.conversation_list",
-    description: "Your persisted Ask Marrow conversation history, oldest first.",
+    name: "ai.conversations_list",
+    description: "List your own Ask Marrow conversations (id, title, dates), most recently active first.",
     schema: emptySchema,
+    outputSchema: output(z.object({ conversations: z.array(aiConversationOutSchema) }))
+  },
+  {
+    name: "ai.conversation_rename",
+    description: "Rename one of your own Ask Marrow conversations.",
+    schema: aiConversationRenameSchema,
+    outputSchema: output(aiConversationOutSchema),
+    access: "write"
+  },
+  {
+    name: "ai.conversation_delete",
+    // write, not admin -- same reasoning as ai.provider_delete: only ever
+    // the caller's own conversation.
+    description: "Permanently delete one of your own Ask Marrow conversations and all its messages.",
+    schema: aiConversationIdSchema,
+    outputSchema: output(z.object({ deleted: z.literal(true) })),
+    access: "write"
+  },
+  {
+    name: "ai.conversation_messages",
+    description: "The persisted messages in one of your own Ask Marrow conversations, oldest first.",
+    schema: aiConversationIdSchema,
     outputSchema: output(z.object({ messages: z.array(aiChatMessageOutSchema) }))
   },
   {
-    name: "ai.conversation_clear",
-    description: "Permanently delete your Ask Marrow conversation history and start fresh.",
-    schema: emptySchema,
-    outputSchema: output(z.object({ cleared: z.literal(true) })),
+    name: "ai.ask",
+    description:
+      "Ask Marrow's own built-in assistant a question in natural language, within an existing conversation (ai.conversation_create first) -- it runs a tool-use loop against Marrow's own tools (using YOUR OWN access/project-membership scoping, nothing broader) to gather real data before answering. Requires a default AI provider credential (ai.provider_create with isDefault:true).",
+    schema: aiAskSchema,
+    outputSchema: output(aiChatMessageOutSchema),
     access: "write"
   },
   {

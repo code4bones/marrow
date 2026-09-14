@@ -1,6 +1,7 @@
 import { ZodError } from "zod/v4";
 
 export type ErrorCode =
+  | "AI_CONVERSATION_NOT_FOUND"
   | "AI_PROVIDER_NOT_FOUND"
   | "AI_PROVIDER_REQUIRED"
   | "ARTIFACT_CONFLICT"

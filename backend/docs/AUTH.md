@@ -824,7 +824,8 @@ split exactly**:
 - `ai.provider_list`/`ai.provider_update` (read, or touch only
   label/model/is_default -- never the key itself) use a broader gate
   (`requireProviderReaderIdentity` -- any authenticated identity).
-- `ai.ask`/`ai.conversation_list`/`ai.conversation_clear`
+- `ai.ask`/`ai.conversation_create`/`ai.conversations_list`/
+  `ai.conversation_rename`/`ai.conversation_delete`/`ai.conversation_messages`
   (`requireChatSession` in `ai-chat.mixin.ts`) also use the broad gate --
   unlike `git_credentials`' read paths, there is **no** admin-fallback for
   a caller with no session/personal-token identity: Ask Marrow is
@@ -890,14 +891,42 @@ mechanism (`gatewayEvents` WS subscription) is coarse invalidation-only
 streaming version would need a new dedicated transport, out of scope for
 this pass.
 
+**Multi-conversation follow-up, same day (`097_ai_chat_conversations.cjs`).**
+The original ship was one continuous thread per user
+(`ai_chat_messages.user_id` directly). The owner tested it live in
+production, THEN asked for named, multiple conversations ("забыли про New
+Chat & Chat List (+ delete chat), перед созданием нового чата нужно ввести
+его название") -- meaning real `ai_chat_messages` rows already existed in
+production by the time this migration was written. Rather than dropping
+that data, the migration backfills: every distinct `user_id` already in
+`ai_chat_messages` gets exactly one new `ai_conversations` row (title
+`"Chat"`, `created_at` = that user's earliest message), every one of that
+user's existing messages is re-pointed at it via a new `conversation_id`
+column, and only then does `conversation_id` become `NOT NULL` and
+`user_id` get dropped from `ai_chat_messages` (ownership now flows through
+the conversation). Verified locally against real dev-DB rows (not just
+migration up/down) -- planted two messages for a real user, ran the
+migration, confirmed a "Chat" conversation was created and both messages
+were re-pointed to it with zero orphans, before this migration ever ran
+against production. `ai.ask` now requires `conversationId` (resolved via
+the same `resolveOwnedConversation` not-found-not-forbidden helper every
+other conversation-scoped method uses) instead of resolving the caller's
+single implicit thread; `ai.conversation_clear` (clear-in-place) is gone,
+replaced entirely by `ai.conversation_delete` (delete-the-conversation) --
+redundant once multiple named conversations exist, and matches how
+ChatGPT/Claude's own UIs handle "I don't want this chat anymore."
+
 ### Smoke coverage
 
 `npm run smoke:gateway:ai-chat`
 (`scripts/smoke-gateway-ai-chat.ts`) covers, against a real gateway/
 Postgres instance with a fake (never-real-network) DeepSeek HTTP client
 injected into `PgToolService`'s new `llmHttpFetch` constructor param:
-`ai.ask` with no default provider failing clearly (`AI_PROVIDER_REQUIRED`)
-→ credential create/list/update(default)/delete round trip, the raw key
+`ai.conversation_create` requiring a non-empty title, `ai.conversations_list`
+returning it → `ai.ask` with no default provider failing clearly
+(`AI_PROVIDER_REQUIRED`) → `ai.ask` against a nonexistent/unowned
+`conversationId` failing clearly (`AI_CONVERSATION_NOT_FOUND`) →
+credential create/list/update(default)/delete round trip, the raw key
 never appearing in any response → `ai.available_models` proxying the fake
 `/models` response both pre-save (a raw `apiKey` param) and post-save (an
 already-stored credential) → a full successful loop actually calling a
@@ -906,8 +935,14 @@ context, and -- the actual security-critical assertion -- a second user
 who is NOT a member of the first user's project asking the assistant "what
 projects do I have?" never seeing that project in the answer, proving
 `assertProjectMember`'s scoping holds all the way through the tool-use
-loop, not just for direct GraphQL/tool calls → conversation persistence
-(oldest-first, exact content preserved) and clear → the iteration cap
+loop, not just for direct GraphQL/tool calls → **conversation ownership
+enforced independently of provider credential ownership** (the outsider,
+with their own valid default provider credential, still can't `ai.ask`
+into the first user's conversation id) → conversation message persistence
+(oldest-first, exact content preserved), rename (and a non-owner denied
+`AI_CONVERSATION_NOT_FOUND` renaming it), and delete (cascading its
+messages, confirmed by re-fetching them afterward and getting
+`AI_CONVERSATION_NOT_FOUND` rather than an empty list) → the iteration cap
 (exactly 6 round trips against a fake that always requests another tool
 call, never hangs, returns a clear fallback message) → and selecting
 `claude` (not yet wired up) as default failing `ai.ask` with a clear
