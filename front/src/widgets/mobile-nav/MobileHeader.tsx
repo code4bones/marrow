@@ -26,13 +26,21 @@ export function MobileHeader() {
   // T-context (2026-08-26, owner's ask: "если я провалился глубже, back
   // возвращает к списку проектов, а не предыдущему пункту"): whichever
   // mobile screen currently owns a local navigation stack (e.g.
-  // DecisionTimeline's Miller drill chain) registers a pop handler here --
-  // try it first, only leave the project when there's nothing to pop.
+  // DecisionTimeline's Miller drill chain, or Ask Marrow's own chat-open
+  // state, 2026-09-14) registers a pop handler here -- try it first, only
+  // leave the project when there's nothing to pop.
   const popLocalStack = useMobileBackStore((s) => s.handler);
   const onBackClick = () => {
     if (popLocalStack?.()) return;
     handleBack();
   };
+  // T-context (2026-09-14, owner's ask): the back arrow used to only show
+  // inside a project (`slug`) -- Ask Marrow's chat view has no `slug` (it's
+  // a global route, /ask/:conversationId) but still owns a poppable local
+  // stack (list <-> one open chat) via the same mechanism, so it needs the
+  // arrow too. `showBack` covers both cases; the search box specifically
+  // still only makes sense inside a project.
+  const showBack = Boolean(slug) || Boolean(popLocalStack);
 
   return (
     <div
@@ -51,7 +59,7 @@ export function MobileHeader() {
         borderBottom: '1px solid #303030',
       }}
     >
-      {slug ? (
+      {showBack ? (
         <>
           <button
             onClick={onBackClick}
@@ -61,7 +69,7 @@ export function MobileHeader() {
             <ArrowLeftOutlined />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <GlobalSearchBox slug={slug} fullWidth />
+            {slug && <GlobalSearchBox slug={slug} fullWidth />}
           </div>
         </>
       ) : (

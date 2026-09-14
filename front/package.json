@@ -1,7 +1,7 @@
 {
   "name": "@deadragdoll/marrow-front",
   "private": true,
-  "version": "0.68.25",
+  "version": "0.68.26",
   "type": "module",
   "scripts": {
     "dev": "vite",

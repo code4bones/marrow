@@ -9,6 +9,7 @@ import {
   GET_AI_CONVERSATIONS,
   RENAME_AI_CONVERSATION,
 } from '../../shared/api/queries';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
 import type { AiConversation } from '../../shared/model/types';
 
 const { Text } = Typography;
@@ -22,6 +23,7 @@ const { Text } = Typography;
  */
 export function ConversationListPanel({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
   const { t } = useTranslation('ask');
+  const isMobile = useIsMobile();
   const { data, loading, refetch } = useQuery<{ aiConversations: AiConversation[] }>(GET_AI_CONVERSATIONS);
   const [titleModal, setTitleModal] = useState<{ mode: 'create' | 'rename'; id?: string; initial: string } | null>(null);
   const [titleInput, setTitleInput] = useState('');
@@ -74,7 +76,10 @@ export function ConversationListPanel({ selectedId, onSelect }: { selectedId: st
   };
 
   return (
-    <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid #303030', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={isMobile
+      ? { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }
+      : { width: 260, flexShrink: 0, borderRight: '1px solid #303030', display: 'flex', flexDirection: 'column', height: '100%' }
+    }>
       <div style={{ padding: 12, borderBottom: '1px solid #303030' }}>
         <Button block type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           {t('newChat')}

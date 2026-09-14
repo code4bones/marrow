@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { SendOutlined, UserOutlined, RobotOutlined, MessageOutlined } from '@ant-design/icons';
 import { Alert, Avatar, Button, Empty, Input, Spin, Typography } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ASK_MARROW, GET_AI_CONVERSATIONS, GET_AI_CONVERSATION_MESSAGES } from '../../shared/api/queries';
+import { useIsMobile } from '../../shared/lib/useIsMobile';
+import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import type { AiChatMessage, AiConversation } from '../../shared/model/types';
 import { ConversationListPanel } from '../../features/ai-chat/ConversationListPanel';
 import { Markdown } from '../../shared/ui/Markdown';
@@ -140,16 +142,29 @@ function ChatPane({ conversationId }: { conversationId: string }) {
 /**
  * "Ask Marrow" (owner's request, 2026-09-14) -- a chat page for talking to
  * Marrow's own embedded assistant directly, as opposed to Marrow's normal
- * mode of being called BY an already-connected agent. Two-pane layout
- * (owner's same-day follow-up: "New Chat & Chat List (+ delete chat)") --
- * ConversationListPanel on the left, the selected conversation's chat on
- * the right, driven by the optional :conversationId route param. No
- * token-level streaming (see docs/AUTH.md's "Ask Marrow" section) -- the
- * full answer appears after the backend's tool-use loop finishes, with a
- * loading indicator meanwhile.
+ * mode of being called BY an already-connected agent. Two-pane layout on
+ * desktop (owner's same-day follow-up: "New Chat & Chat List (+ delete
+ * chat)") -- ConversationListPanel on the left, the selected conversation's
+ * chat on the right, driven by the optional :conversationId route param.
+ *
+ * T-context (2026-09-14, owner's ask): a fixed-width sidebar alongside the
+ * chat doesn't work on a phone ("проваливаемся в него, и убираем левый
+ * сайдбар... а в режиме списка — не видим самих чатов") -- on mobile this
+ * is master-detail instead, showing EITHER the full-width list OR the
+ * full-width chat, never both. Drilling into a chat registers a
+ * useMobileBackStore handler (same mechanism DecisionTimeline's own
+ * mobile drill-in already uses) so MobileHeader's back arrow returns to
+ * the list; MobileHeader's own back-arrow visibility was extended
+ * (T-context there) to show for this handler even though /ask has no
+ * project `slug`.
+ *
+ * No token-level streaming (see docs/AUTH.md's "Ask Marrow" section) --
+ * the full answer appears after the backend's tool-use loop finishes,
+ * with a loading indicator meanwhile.
  */
 export function AskMarrowPage() {
   const { t } = useTranslation('ask');
+  const isMobile = useIsMobile();
   const { conversationId = '' } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
   const onSelect = (id: string) => navigate(id ? `/ask/${id}` : '/ask');
@@ -157,17 +172,33 @@ export function AskMarrowPage() {
   const { data: conversationsData } = useQuery<{ aiConversations: AiConversation[] }>(GET_AI_CONVERSATIONS);
   const activeConversation = conversationsData?.aiConversations.find((c) => c.id === conversationId);
 
+  const setMobileBackHandler = useMobileBackStore((s) => s.setHandler);
+  const backToList = useCallback(() => {
+    navigate('/ask');
+    return true;
+  }, [navigate]);
+  useEffect(() => {
+    if (!isMobile || !conversationId) return undefined;
+    setMobileBackHandler(backToList);
+    return () => setMobileBackHandler(null);
+  }, [isMobile, conversationId, backToList, setMobileBackHandler]);
+
+  const showList = !isMobile || !conversationId;
+  const showChat = !isMobile || !!conversationId;
+
   return (
     <PageLayout title={activeConversation?.title ?? t('title')} subtitle={conversationId ? undefined : t('subtitle')} fill>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        <ConversationListPanel selectedId={conversationId || null} onSelect={onSelect} />
+        {showList && <ConversationListPanel selectedId={conversationId || null} onSelect={onSelect} />}
 
-        {!conversationId ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Empty image={<MessageOutlined style={{ fontSize: 40, opacity: 0.4 }} />} description={t('selectOrCreateChat')} />
-          </div>
-        ) : (
-          <ChatPane key={conversationId} conversationId={conversationId} />
+        {showChat && (
+          !conversationId ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Empty image={<MessageOutlined style={{ fontSize: 40, opacity: 0.4 }} />} description={t('selectOrCreateChat')} />
+            </div>
+          ) : (
+            <ChatPane key={conversationId} conversationId={conversationId} />
+          )
         )}
       </div>
     </PageLayout>
