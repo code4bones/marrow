@@ -759,6 +759,40 @@ export const GET_GIT_PIPELINE_STATUS = gql`
   }
 `;
 
+// ── Environment Variables (Marrow-native, not GitLab -- see git.variable_* above) ──
+
+export const GET_ENVIRONMENT_VARIABLES = gql`
+  query GetEnvironmentVariables($project: String) {
+    environmentVariables(project: $project) {
+      id scope key value secret description createdAt updatedAt
+    }
+  }
+`;
+
+export const SET_ENVIRONMENT_VARIABLE = gql`
+  mutation SetEnvironmentVariable($key: String!, $value: String!, $project: String, $secret: Boolean, $description: String) {
+    setEnvironmentVariable(key: $key, value: $value, project: $project, secret: $secret, description: $description) {
+      id scope key value secret description createdAt updatedAt
+    }
+  }
+`;
+
+export const DELETE_ENVIRONMENT_VARIABLE = gql`
+  mutation DeleteEnvironmentVariable($key: String!, $project: String) {
+    deleteEnvironmentVariable(key: $key, project: $project)
+  }
+`;
+
+// Single-key, on-demand lookup -- used to reveal one row's real value (or
+// to prefill the edit form with it) without unmasking the whole list.
+export const GET_ENVIRONMENT_VARIABLE = gql`
+  query GetEnvironmentVariable($key: String!, $project: String, $redact: Boolean) {
+    environmentVariable(key: $key, project: $project, redact: $redact) {
+      id scope key value secret description createdAt updatedAt
+    }
+  }
+`;
+
 // T-MEMORY-084: global admin on/off switch for the credits economy.
 export const GET_CREDIT_SETTINGS = gql`
   query GetCreditSettings {

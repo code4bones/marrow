@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Form, Input, Popconfirm, Select, Spin, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Form, Input, Popconfirm, Select, Spin, Tabs, Tag, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DeleteProjectButton } from '../../../features/project/DeleteProjectButton';
 import { ProjectInviteLink } from '../../../features/project/ProjectInviteLink';
+import { EnvironmentVariablesSection } from '../../../features/environment-variables/EnvironmentVariablesSection';
 import {
   APPROVE_PROJECT_MEMBER,
   GET_PENDING_PROJECT_MEMBERS,
@@ -228,16 +229,33 @@ export function ProjectSettingsPage() {
   const isOwner = Boolean(user && data?.project && data.project.ownerUserId === user.id);
   const canManage = Boolean(user?.role === 'admin' || isOwner);
 
+  const tabs = [
+    {
+      key: 'general',
+      label: t('generalSettings'),
+      children: (
+        <>
+          <RenameSection slug={slug} canManage={canManage} />
+          <InviteSection slug={slug} canManage={canManage} />
+          <MembersSection slug={slug} canManage={canManage} ownerUserId={data?.project.ownerUserId ?? null} />
+          <DangerZoneSection slug={slug} canManage={canManage} />
+        </>
+      ),
+    },
+    {
+      key: 'envVars',
+      label: t('projectVars'),
+      children: <EnvironmentVariablesSection project={slug} canManage={canManage} />,
+    },
+  ];
+
   return (
     <PageLayout
       title={t('settings')}
       slug={slug}
       headerExtra={isOwner ? <Tag color="blue">{t('youAreOwner')}</Tag> : undefined}
     >
-      <RenameSection slug={slug} canManage={canManage} />
-      <InviteSection slug={slug} canManage={canManage} />
-      <MembersSection slug={slug} canManage={canManage} ownerUserId={data?.project.ownerUserId ?? null} />
-      <DangerZoneSection slug={slug} canManage={canManage} />
+      <Tabs items={tabs} />
     </PageLayout>
   );
 }

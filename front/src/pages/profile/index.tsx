@@ -28,6 +28,7 @@ import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
 import { PersonalTokenPanel } from '../../features/auth/PersonalTokenPanel';
+import { EnvironmentVariablesSection } from '../../features/environment-variables/EnvironmentVariablesSection';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
@@ -1257,6 +1258,7 @@ export function ProfilePage() {
     { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><DesktopNotificationsSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
+    { key: 'envVars', label: t('envVars'), children: <EnvironmentVariablesSection canManage /> },
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),
   ];
 

@@ -133,6 +133,20 @@ export interface GitCredential {
   lastUsedAt: string | null;
 }
 
+// Marrow-native "Environment Variables" -- NOT GitLab's (those stay JSON
+// via gitVariablesList/gitVariable). scope: 'user' = common/profile-scoped
+// (private to the owner), 'project' = shared with every project member.
+export interface EnvironmentVariable {
+  id: string;
+  scope: 'user' | 'project';
+  key: string;
+  value: string;
+  secret: boolean;
+  description: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface Decision {
   id: string;
   projectId: string | null;
