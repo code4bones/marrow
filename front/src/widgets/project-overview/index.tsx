@@ -102,6 +102,53 @@ function ClickableStat({ to, children }: { to: string; children: React.ReactNode
   );
 }
 
+// T-context (2026-09-14, owner's ask): on mobile the 2-per-row Statistic
+// grid below (T-MEMORY-130's own earlier mobile fix) still ran to 4 rows
+// of full label+value blocks, eating close to half the viewport and
+// leaving almost no room for the Timeline underneath ("занимают половину
+// экрана, так что области таймлайна почти и не видно"). Mobile now renders
+// this single-line badge/chip instead -- icon + short label + value in one
+// row, flex-wrapping onto at most 2 rows total instead of 4. Desktop is
+// unchanged (still the full Statistic grid below).
+function StatChip({ to, icon, label, value, color, newCount }: { to: string; icon?: React.ReactNode; label: string; value: number; color: string; newCount?: number }) {
+  const navigate = useNavigate();
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(to)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          navigate(to);
+        }
+      }}
+      style={{
+        position: 'relative',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 8px',
+        borderRadius: 12,
+        background: `${color}1a`,
+        border: `1px solid ${color}55`,
+        color,
+        fontSize: 12,
+        lineHeight: 1.4,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {icon && <span style={{ fontSize: 12, display: 'flex' }}>{icon}</span>}
+      <span style={{ opacity: 0.85 }}>{label}</span>
+      <span style={{ fontWeight: 700 }}>{value}</span>
+      {!!newCount && (
+        <span style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: '50%', background: '#177ddc', border: '1px solid #141414' }} />
+      )}
+    </div>
+  );
+}
+
 function taskColumns(t: (key: string) => string): ColumnsType<Task> {
   return [
     {
@@ -293,8 +340,8 @@ export function ProjectOverview({ slug }: { slug: string }) {
           </div>
         )}
         <style>{`.project-overview-stat:hover { background: rgba(255, 255, 255, 0.06); }`}</style>
-        <Row gutter={isMobile ? [8, 12] : 24} wrap>
-          {[
+        {(() => {
+          const items = [
             {
               key: 'openTasks',
               to: `/projects/${slug}/tasks`,
@@ -303,80 +350,105 @@ export function ProjectOverview({ slug }: { slug: string }) {
               // completions included, which pulls this exact number in the
               // opposite direction of "open" -- pairing it with this stat
               // specifically read as if N tasks had just become open.
+              label: t('openTasksStat'),
               title: <StatTitle label={t('openTasksStat')} newCount={0} />,
               value: counts.openTasks,
+              newCount: 0,
               prefix: <CalendarOutlined style={{ color: STAT_COLOR_TASK }} />,
               color: STAT_COLOR_TASK,
             },
             {
               key: 'allTasks',
               to: `/projects/${slug}/tasks`,
+              label: t('allTasks'),
               title: <StatTitle label={t('allTasks')} newCount={newTaskCount} />,
               value: counts.tasks,
+              newCount: newTaskCount,
               color: STAT_COLOR_TASK,
             },
             {
               key: 'decisions',
               to: `/projects/${slug}/decisions`,
+              label: t('decisions'),
               title: <StatTitle label={t('decisions')} newCount={newDecisionCount} />,
               value: counts.decisions,
+              newCount: newDecisionCount,
               prefix: <ApartmentOutlined style={{ color: STAT_COLOR_DECISION }} />,
               color: STAT_COLOR_DECISION,
             },
             {
               key: 'artifacts',
               to: `/projects/${slug}/artifacts`,
+              label: t('artifacts'),
               title: <StatTitle label={t('artifacts')} newCount={newArtifactCount} />,
               value: counts.artifacts,
+              newCount: newArtifactCount,
               prefix: <DatabaseOutlined style={{ color: STAT_COLOR_ARTIFACT }} />,
               color: STAT_COLOR_ARTIFACT,
             },
             {
               key: 'skills',
               to: `/projects/${slug}/skills`,
+              label: t('skills'),
               title: t('skills'),
               value: counts.skills,
+              newCount: 0,
               prefix: <BulbOutlined style={{ color: STAT_COLOR_SKILL }} />,
               color: STAT_COLOR_SKILL,
             },
             {
               key: 'events',
               to: `/projects/${slug}/events`,
+              label: t('events'),
               title: <StatTitle label={t('events')} newCount={newEventCount} />,
               value: counts.events,
+              newCount: newEventCount,
               prefix: <ThunderboltOutlined style={{ color: STAT_COLOR_EVENT }} />,
               color: STAT_COLOR_EVENT,
             },
             {
               key: 'memory',
               to: `/projects/${slug}/memory`,
+              label: t('memory'),
               title: <StatTitle label={t('memory')} newCount={newMemoryCount} />,
               value: counts.items,
+              newCount: newMemoryCount,
               color: STAT_COLOR_MEMORY,
             },
             {
               key: 'faults',
               to: `/projects/${slug}/faults`,
+              label: t('faults'),
               title: t('faults'),
               value: counts.faults,
+              newCount: 0,
               prefix: <BugOutlined />,
               color: '#ff4d4f',
             },
-          ].map((item) => (
-            // T-context (2026-08-26, owner's ask: mobile PWA layout follow-up,
-            // "верхний блок со статистикой не умещается"): the desktop row is
-            // content-sized and never wraps (there's always room), which on a
-            // phone meant 7 stats spilling past the viewport edge with no
-            // obvious way to reach the rest. Mobile instead wraps into a
-            // 2-per-row grid (span=12 of 24) so everything is visible without
-            // any horizontal scrolling.
-            <Col key={item.key} {...(isMobile ? { span: 12 } : {})}>
-              <ClickableStat to={item.to}>
-                <Statistic title={item.title} value={item.value} prefix={item.prefix} valueStyle={{ fontSize: 20, color: item.color }} />
-              </ClickableStat>
-            </Col>
-          ))}
-        </Row>
+          ];
+
+          if (isMobile) {
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {items.map((item) => (
+                  <StatChip key={item.key} to={item.to} icon={item.prefix} label={item.label} value={item.value} color={item.color} newCount={item.newCount} />
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <Row gutter={24} wrap>
+              {items.map((item) => (
+                <Col key={item.key}>
+                  <ClickableStat to={item.to}>
+                    <Statistic title={item.title} value={item.value} prefix={item.prefix} valueStyle={{ fontSize: 20, color: item.color }} />
+                  </ClickableStat>
+                </Col>
+              ))}
+            </Row>
+          );
+        })()}
       </div>
 
       {/* Tabs: Timeline | Kanban | Summary — timeline first (I-PMEM-011):
