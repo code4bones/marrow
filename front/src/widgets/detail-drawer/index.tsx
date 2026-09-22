@@ -3,7 +3,7 @@ import { Alert, Divider, Drawer, Skeleton, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { GET_ARTIFACT_TEXT, GET_RECORD, GET_RECORD_LINKS } from '../../shared/api/queries';
 import type {
-  Artifact, Decision, Event, Link, MemoryRecord, Project, RecordWrapper, Skill, Task,
+  Artifact, Decision, Event, Link, MemoryRecord, Project, RecordPayload, RecordWrapper, Skill, Task,
 } from '../../shared/model/types';
 import { ENTITY_COLOR, type EntityType } from '../../shared/lib/entityId';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
@@ -48,6 +48,25 @@ const KIND_TYPE: Record<string, EntityType> = {
   MEMORY: 'memory', EVENT: 'event', LINK: 'link', PROJECT: 'project',
   SKILL: 'skill',
 };
+
+// "Which version of the underlying project does this record belong to" --
+// projectVersion for the five content record kinds, lastVersion (the
+// project's own current/actual version) for a Project record itself.
+function recordVersion(record: RecordPayload | null | undefined): string | null {
+  if (!record) return null;
+  switch (record.__typename) {
+    case 'Task':
+    case 'Decision':
+    case 'Artifact':
+    case 'MemoryRecord':
+    case 'Skill':
+      return record.projectVersion;
+    case 'Project':
+      return record.lastVersion;
+    default:
+      return null;
+  }
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -352,23 +371,15 @@ function LinksSection({ id }: { id: string }) {
   );
 }
 
-function DrawerContent({ id }: { id: string }) {
+function DrawerContent({ id, wrapper }: { id: string; wrapper: RecordWrapper }) {
   const { t } = useTranslation('common');
-  const { data, loading, error } = useQuery<{ record: RecordWrapper }>(GET_RECORD, {
-    variables: { id },
-  });
-
-  if (loading) return <Skeleton active />;
-  if (error) return <Alert type="error" message={error.message} />;
-  if (!data?.record) return <Alert type="warning" message={t('recordNotFound')} />;
-
   return (
     <>
-      <RecordBody wrapper={data.record} />
+      <RecordBody wrapper={wrapper} />
       <LinksSection id={id} />
       <Divider style={{ margin: '8px 0 12px' }} />
       <Field label={t('remarks')}>
-        <RemarkPanel id={id} projectId={data.record.projectId} />
+        <RemarkPanel id={id} projectId={wrapper.projectId} />
       </Field>
     </>
   );
@@ -379,11 +390,16 @@ export function DetailDrawer() {
   const { selectedRecordId, selectedRecordType, detailDrawerOpen, closeDetailDrawer } =
     useWorkspaceStore();
   const isMobile = useIsMobile();
+  const { data, loading, error } = useQuery<{ record: RecordWrapper }>(GET_RECORD, {
+    variables: { id: selectedRecordId },
+    skip: !selectedRecordId,
+  });
 
   const kind = (selectedRecordType ?? 'unknown').toUpperCase();
   const entityType = KIND_TYPE[kind] ?? 'unknown';
   const accentColor = ENTITY_COLOR[entityType];
   const label = kindLabel(t)[kind] ?? selectedRecordType ?? t('kindRecord');
+  const version = recordVersion(data?.record.record);
 
   return (
     <Drawer
@@ -395,19 +411,29 @@ export function DetailDrawer() {
       styles={{ header: { borderBottom: `2px solid ${accentColor}` }, body: { paddingTop: 20 } }}
       title={
         selectedRecordId ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Tag style={{
-              fontSize: 11, fontFamily: 'monospace',
-              background: 'transparent', border: `1px solid ${accentColor}`, color: accentColor,
-            }}>
-              {label}
-            </Tag>
-            <Text code style={{ fontSize: 13 }}>{selectedRecordId}</Text>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Tag style={{
+                fontSize: 11, fontFamily: 'monospace',
+                background: 'transparent', border: `1px solid ${accentColor}`, color: accentColor,
+              }}>
+                {label}
+              </Tag>
+              <Text code style={{ fontSize: 13 }}>{selectedRecordId}</Text>
+            </div>
+            {version && (
+              <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{version}</Tag>
+            )}
           </div>
         ) : null
       }
     >
-      {selectedRecordId && <DrawerContent id={selectedRecordId} />}
+      {selectedRecordId && loading && <Skeleton active />}
+      {selectedRecordId && error && <Alert type="error" message={error.message} />}
+      {selectedRecordId && !loading && !error && !data?.record && (
+        <Alert type="warning" message={t('recordNotFound')} />
+      )}
+      {selectedRecordId && data?.record && <DrawerContent id={selectedRecordId} wrapper={data.record} />}
     </Drawer>
   );
 }

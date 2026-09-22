@@ -19,6 +19,7 @@ export interface Project {
   status: string;
   rootPath: string | null;
   ownerUserId: string | null;
+  lastVersion: string | null;
   createdBy: string | null;
   pinned: boolean;
   createdAt: string | null;
@@ -61,6 +62,7 @@ export interface Task {
   forbiddenFiles: string[];
   dependsOn: string[];
   notes: string | null;
+  projectVersion: string | null;
   activeClaimCount: number;
   createdBy: string | null;
   assigneeUserId: string | null;
@@ -191,6 +193,7 @@ export interface Decision {
   tags: string[];
   supersedesId: string | null;
   milestone: string | null;
+  projectVersion: string | null;
   createdBy: string | null;
   assigneeUserId: string | null;
   assigneeDiffersFromOwner: boolean;
@@ -210,6 +213,7 @@ export interface Artifact {
   sizeBytes: number | null;
   sha256: string | null;
   tags: string[];
+  projectVersion: string | null;
   downloadPath: string | null;
   archivedAt: string | null;
   createdBy: string | null;
@@ -257,6 +261,7 @@ export interface MemoryRecord {
   excerpt: string | null;
   status: string;
   tags: string[];
+  projectVersion: string | null;
   rank: number | null;
   createdBy: string | null;
   createdAt: string | null;
@@ -284,6 +289,7 @@ export interface Skill {
   body: string;
   status: string;
   tags: string[];
+  projectVersion: string | null;
   activationCount: number;
   lastActivatedAt: string | null;
   archivedAt: string | null;

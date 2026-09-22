@@ -6,7 +6,7 @@ import { gql } from '@apollo/client/core';
 export const GET_PROJECTS_PAGE = gql`
   query GetProjectsPage($status: String, $sort: String, $search: String, $limit: Int!, $offset: Int!) {
     projectsPage(status: $status, sort: $sort, search: $search, pagination: { limit: $limit, offset: $offset }) {
-      items { id slug title description status rootPath createdBy pinned updatedAt }
+      items { id slug title description status rootPath lastVersion createdBy pinned updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -89,7 +89,7 @@ export const GET_TASKS_PAGE = gql`
       sortDirection: $sortDirection
       pagination: { limit: $limit, offset: $offset }
     ) {
-      items { id title status priority milestone scope notes dependsOn activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt }
+      items { id title status priority milestone scope notes projectVersion dependsOn activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -98,7 +98,7 @@ export const GET_TASKS_PAGE = gql`
 export const GET_DECISIONS_PAGE = gql`
   query GetDecisionsPage($project: String, $status: String, $milestone: String, $limit: Int!, $offset: Int!) {
     decisionsPage(project: $project, status: $status, milestone: $milestone, pagination: { limit: $limit, offset: $offset }) {
-      items { id title status context decision rationale tags milestone createdBy assigneeUserId assigneeDiffersFromOwner updatedAt }
+      items { id title status context decision rationale tags milestone projectVersion createdBy assigneeUserId assigneeDiffersFromOwner updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -107,7 +107,7 @@ export const GET_DECISIONS_PAGE = gql`
 export const GET_ARTIFACTS_PAGE = gql`
   query GetArtifactsPage($project: String, $status: String, $limit: Int!, $offset: Int!) {
     artifactsPage(project: $project, status: $status, pagination: { limit: $limit, offset: $offset }) {
-      items { id path title scope contentType sizeBytes status tags createdBy updatedAt }
+      items { id path title scope contentType sizeBytes status tags projectVersion createdBy updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -120,7 +120,7 @@ export const GET_ARTIFACTS_PAGE = gql`
 export const GET_SKILLS_PAGE = gql`
   query GetSkillsPage($project: String, $status: String, $query: String, $limit: Int!, $offset: Int!) {
     skillsPage(project: $project, status: $status, query: $query, pagination: { limit: $limit, offset: $offset }) {
-      items { id name description body status tags scope activationCount lastActivatedAt createdBy updatedAt }
+      items { id name description body status tags scope projectVersion activationCount lastActivatedAt createdBy updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -389,19 +389,19 @@ export const GET_RECORD = gql`
         __typename
         ... on Task {
           id title status priority milestone scope
-          acceptance allowedFiles forbiddenFiles dependsOn notes
+          acceptance allowedFiles forbiddenFiles dependsOn notes projectVersion
           activeClaimCount createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
         }
         ... on Decision {
           id title status context decision rationale
-          consequences tags supersedesId createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
+          consequences tags supersedesId projectVersion createdBy assigneeUserId assigneeDiffersFromOwner createdAt updatedAt
         }
         ... on Artifact {
           id path title scope description status
-          contentType sizeBytes tags downloadPath createdBy createdAt updatedAt
+          contentType sizeBytes tags projectVersion downloadPath createdBy createdAt updatedAt
         }
         ... on MemoryRecord {
-          id type title status excerpt body tags createdBy createdAt updatedAt fromAgent toAgent
+          id type title status excerpt body tags projectVersion createdBy createdAt updatedAt fromAgent toAgent
         }
         ... on Event {
           id type title relatedId credentialId createdAt
@@ -410,11 +410,11 @@ export const GET_RECORD = gql`
           id fromId toId relation createdBy createdAt
         }
         ... on Skill {
-          id name description body status tags scope
+          id name description body status tags scope projectVersion
           activationCount lastActivatedAt archivedAt createdBy createdAt updatedAt
         }
         ... on Project {
-          id slug title description status rootPath createdBy updatedAt
+          id slug title description status rootPath lastVersion createdBy updatedAt
         }
       }
     }
@@ -440,7 +440,7 @@ export const GET_MEMORY = gql`
 export const GET_MEMORY_ITEMS_PAGE = gql`
   query GetMemoryItemsPage($project: String, $type: String, $status: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     memoryItemsPage(project: $project, type: $type, status: $status, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {
-      items { id type title status excerpt tags createdBy createdAt updatedAt }
+      items { id type title status excerpt tags projectVersion createdBy createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }

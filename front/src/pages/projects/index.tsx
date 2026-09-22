@@ -137,7 +137,12 @@ export function ProjectsPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                       <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
-                      <PinButton project={p} onDone={() => refetch()} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {p.lastVersion && (
+                          <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.lastVersion}</Tag>
+                        )}
+                        <PinButton project={p} onDone={() => refetch()} />
+                      </div>
                     </div>
                     <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
                   </Card>
@@ -246,7 +251,12 @@ export function ProjectsPage() {
                     <StatusBadge status={p.status} />
                     <PinButton project={p} onDone={() => refetch()} />
                   </div>
-                  <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
+                    {p.lastVersion && (
+                      <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.lastVersion}</Tag>
+                    )}
+                  </div>
                   <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
                 </List.Item>
               )}
