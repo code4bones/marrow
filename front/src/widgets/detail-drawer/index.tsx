@@ -31,6 +31,7 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 import { RoleBadge } from '../../shared/ui/RoleBadge';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
+import { VersionTag } from '../../shared/ui/VersionTag';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 
 const { Text, Paragraph } = Typography;
@@ -411,19 +412,17 @@ export function DetailDrawer() {
       styles={{ header: { borderBottom: `2px solid ${accentColor}` }, body: { paddingTop: 20 } }}
       title={
         selectedRecordId ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflow: 'hidden' }}>
               <Tag style={{
-                fontSize: 11, fontFamily: 'monospace',
+                flexShrink: 0, fontSize: 11, fontFamily: 'monospace',
                 background: 'transparent', border: `1px solid ${accentColor}`, color: accentColor,
               }}>
                 {label}
               </Tag>
-              <Text code style={{ fontSize: 13 }}>{selectedRecordId}</Text>
+              <Text code style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedRecordId}</Text>
             </div>
-            {version && (
-              <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{version}</Tag>
-            )}
+            {version && <VersionTag value={version} />}
           </div>
         ) : null
       }

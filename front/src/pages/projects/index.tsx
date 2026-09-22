@@ -16,6 +16,7 @@ import { useRealtimeStore } from '../../shared/model/realtime.store';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { Timestamp } from '../../shared/ui/Timestamp';
+import { VersionTag } from '../../shared/ui/VersionTag';
 import { ProjectOverview } from '../../widgets/project-overview';
 
 // T-MEMORY-086: pin toggle -- stops the click from also bubbling to the
@@ -137,10 +138,8 @@ export function ProjectsPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                       <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {p.lastVersion && (
-                          <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.lastVersion}</Tag>
-                        )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        {p.lastVersion && <VersionTag value={p.lastVersion} maxWidth={70} />}
                         <PinButton project={p} onDone={() => refetch()} />
                       </div>
                     </div>
@@ -251,11 +250,9 @@ export function ProjectsPage() {
                     <StatusBadge status={p.status} />
                     <PinButton project={p} onDone={() => refetch()} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
                     <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
-                    {p.lastVersion && (
-                      <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.lastVersion}</Tag>
-                    )}
+                    {p.lastVersion && <VersionTag value={p.lastVersion} maxWidth={90} />}
                   </div>
                   <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
                 </List.Item>
