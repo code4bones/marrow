@@ -8,7 +8,8 @@ export function compactProject(project: Row) {
     slug: String(project.slug),
     title: String(project.title),
     status: String(project.status),
-    description: shortText(stringOrNull(project.description), 240)
+    description: shortText(stringOrNull(project.description), 240),
+    lastVersion: stringOrNull(project.last_version)
   };
 }
 
@@ -22,6 +23,7 @@ export function projectOut(row: Row) {
     status: String(row.status),
     rootPath: stringOrNull(row.root_path),
     ownerUserId: stringOrNull(row.owner_user_id),
+    lastVersion: stringOrNull(row.last_version),
     createdBy: stringOrNull(row.created_by),
     // T-MEMORY-086: only set on rows that came through listProjects' pin
     // join -- every other caller's row simply lacks the column, so this

@@ -210,6 +210,9 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (typeof input.ownerUserId === "string" && context.sessionRole === "admin") {
       patch.owner_user_id = input.ownerUserId;
     }
+    if (input.lastVersion !== undefined) {
+      patch.last_version = stringOrNull(input.lastVersion);
+    }
     const [row] = await this.db("projects").where({ id: project.id }).update(patch).returning("*");
     await this.recordEventForProject(row.id, {
       type: "project.updated",

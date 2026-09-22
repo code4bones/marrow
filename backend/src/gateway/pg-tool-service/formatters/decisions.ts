@@ -31,6 +31,7 @@ export function decisionOut(row: Row) {
     supersedesId: stringOrNull(row.supersedes_id),
     summary: stringOrNull(row.summary),
     milestone: stringOrNull(row.milestone),
+    projectVersion: stringOrNull(row.project_version),
     createdBy: stringOrNull(row.created_by),
     assigneeUserId: stringOrNull(row.assignee_user_id),
     assigneeDiffersFromOwner: assigneeDiffersFromOwner(stringOrNull(row.assignee_user_id), row.created_by),

@@ -18,7 +18,11 @@ export const createTaskSchema = z.object({
   forbiddenFiles: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
-  assignee: z.string().nullable().optional()
+  assignee: z.string().nullable().optional(),
+  // Which version of the underlying project this task belongs to -- agent-
+  // supplied (e.g. read from package.json), not server-derived. Distinct
+  // from the internal `version` revision counter every record already has.
+  projectVersion: z.string().nullable().optional()
 });
 
 export const listTasksSchema = z.object({

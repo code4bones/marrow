@@ -282,7 +282,7 @@ const typeDefs = `#graphql
 
   type Mutation {
     createProject(input: CreateProjectInput!): Project!
-    updateProject(id: ID, slug: String, title: String, description: String, rootPath: String, ownerUserId: String): Project!
+    updateProject(id: ID, slug: String, title: String, description: String, rootPath: String, ownerUserId: String, lastVersion: String): Project!
     regenerateProjectInviteLink(id: ID, slug: String): ProjectInviteLink!
     claimProjectInviteLink(code: String!): ClaimProjectInviteLinkResult!
     approveProjectMember(project: String, userId: ID!, role: String!): [ProjectMember!]!
@@ -473,6 +473,7 @@ const typeDefs = `#graphql
     dependsOn: [String!]
     notes: String
     assignee: String
+    projectVersion: String
   }
 
   input TaskClaimInput {
@@ -508,6 +509,7 @@ const typeDefs = `#graphql
     tags: [String!]
     summary: String
     links: [RecordLinkInput!]
+    projectVersion: String
   }
 
   input UpdateMemoryInput {
@@ -533,6 +535,7 @@ const typeDefs = `#graphql
     milestone: String
     assignee: String
     links: [RecordLinkInput!]
+    projectVersion: String
   }
 
   input RecordSkillInput {
@@ -543,6 +546,7 @@ const typeDefs = `#graphql
     status: String
     tags: [String!]
     links: [RecordLinkInput!]
+    projectVersion: String
   }
 
   input UpdateSkillInput {
@@ -579,6 +583,7 @@ const typeDefs = `#graphql
     text: String!
     tags: [String!]
     overwrite: Boolean
+    projectVersion: String
   }
 
   input UpdateArtifactMetadataInput {
@@ -598,6 +603,7 @@ const typeDefs = `#graphql
     status: String!
     rootPath: String
     ownerUserId: String
+    lastVersion: String
     createdBy: String
     pinned: Boolean!
     createdAt: String
@@ -829,6 +835,7 @@ const typeDefs = `#graphql
     status: String!
     tags: [String!]!
     summary: String
+    projectVersion: String
     rank: Float
     createdBy: String
     createdAt: String
@@ -877,6 +884,7 @@ const typeDefs = `#graphql
     forbiddenFiles: [String!]
     dependsOn: [String!]
     notes: String
+    projectVersion: String
     activeClaimCount: Int!
     createdBy: String
     assigneeUserId: String
@@ -945,6 +953,7 @@ const typeDefs = `#graphql
     supersedesId: String
     summary: String
     milestone: String
+    projectVersion: String
     createdBy: String
     assigneeUserId: String
     assigneeDiffersFromOwner: Boolean!
@@ -987,6 +996,7 @@ const typeDefs = `#graphql
     body: String
     status: String!
     tags: [String!]!
+    projectVersion: String
     activationCount: Int!
     lastActivatedAt: String
     archivedAt: String
@@ -1032,6 +1042,7 @@ const typeDefs = `#graphql
     sizeBytes: Int!
     sha256: String
     tags: [String!]!
+    projectVersion: String
     downloadPath: String!
     archivedAt: String
     archivedBy: String

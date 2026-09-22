@@ -23,7 +23,10 @@ export const createMemorySchema = z.object({
   // highlight in search results — see I-MEMORY-022 step 5. Optional: no
   // backfill requirement for existing records.
   summary: z.string().optional(),
-  links: recordLinksInputSchema
+  links: recordLinksInputSchema,
+  // Which version of the underlying project this item belongs to --
+  // agent-supplied, distinct from the internal `version` revision counter.
+  projectVersion: z.string().nullable().optional()
 });
 
 export const updateMemorySchema = z.object({

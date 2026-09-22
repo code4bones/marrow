@@ -140,7 +140,11 @@ const updateProjectSchema = projectLookupSchema.extend({
   rootPath: z.string().min(1).optional(),
   // Ownership reassignment escape hatch (e.g. the owner left) -- only ever
   // honored when the caller is a system admin; silently ignored otherwise.
-  ownerUserId: z.string().optional()
+  ownerUserId: z.string().optional(),
+  // Current/actual version of the underlying project (e.g. from
+  // package.json) -- distinct from the internal `version` revision counter.
+  // Set null to clear.
+  lastVersion: z.string().nullable().optional()
 });
 // T-MEMORY-086: per-user server-side prefs -- pin state, and a generic
 // scalar key/value store (projects-list sort order, and a per-project
@@ -267,7 +271,10 @@ const artifactPutSchema = z.object({
   contentType: z.string().min(1).optional(),
   contentBase64: z.string().min(1),
   tags: z.array(z.string()).optional(),
-  overwrite: z.boolean().optional()
+  overwrite: z.boolean().optional(),
+  // Which version of the underlying project this artifact belongs to --
+  // agent-supplied, distinct from the internal `version` revision counter.
+  projectVersion: z.string().nullable().optional()
 });
 const artifactPutTextSchema = z.object({
   id: z.string().min(1).optional(),
@@ -279,7 +286,8 @@ const artifactPutTextSchema = z.object({
   contentType: z.string().min(1).optional(),
   text: z.string(),
   tags: z.array(z.string()).optional(),
-  overwrite: z.boolean().optional()
+  overwrite: z.boolean().optional(),
+  projectVersion: z.string().nullable().optional()
 });
 const artifactSearchSchema = z.object({
   query: z.string().min(1).optional(),
@@ -379,7 +387,10 @@ const skillRecordSchema = z.object({
   body: z.string().min(1),
   status: skillStatusSchema.optional(),
   tags: z.array(z.string()).optional(),
-  links: recordLinksInputSchema
+  links: recordLinksInputSchema,
+  // Which version of the underlying project this skill belongs to --
+  // agent-supplied, distinct from the internal `version` revision counter.
+  projectVersion: z.string().nullable().optional()
 });
 const skillListSchema = z.object({
   project: z.string().nullable().optional(),
@@ -1183,7 +1194,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.update",
     description:
-      "Rename a shared project (title/description). Only this project's owner or a system admin can rename -- ownerUserId may also be set, but only takes effect for an admin caller (ownership reassignment).",
+      "Rename a shared project (title/description). Only this project's owner or a system admin can rename -- ownerUserId may also be set, but only takes effect for an admin caller (ownership reassignment). lastVersion sets the project's current/actual version (e.g. from package.json) -- shown in the web UI next to the project's slug; pass null to clear.",
     schema: updateProjectSchema,
     access: "write"
   },
@@ -1289,14 +1300,14 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "memory.create",
-    description: "Create a project or common memory item in the shared gateway database.",
+    description: "Create a project or common memory item in the shared gateway database. projectVersion optionally records which version of the underlying project this item belongs to.",
     schema: createMemorySchema,
     access: "write"
   },
   {
     name: "memory.upsert",
     description:
-      "Create or update a memory item idempotently. Match by id when provided, otherwise by scope + type + title to avoid duplicate shared records.",
+      "Create or update a memory item idempotently. Match by id when provided, otherwise by scope + type + title to avoid duplicate shared records. projectVersion optionally records which version of the underlying project this item belongs to.",
     schema: memoryUpsertSchema,
     access: "write"
   },
@@ -1346,7 +1357,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.put",
     description:
-      "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
+      "Store or update a shared artifact file on the gateway from base64 bytes. Use this for binary files or exact byte transport; prefer artifact.put_text for Markdown/text. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true. projectVersion optionally records which version of the underlying project this artifact belongs to.",
     schema: artifactPutSchema,
     outputSchema: output(artifactOutputDataSchema),
     access: "write"
@@ -1354,7 +1365,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.put_text",
     description:
-      "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true.",
+      "Store or update a shared UTF-8 text/Markdown artifact on the gateway without base64. Prefer this for templates, docs, handoffs, and other text files. Existing scope/path conflicts return ARTIFACT_CONFLICT unless overwrite=true. projectVersion optionally records which version of the underlying project this artifact belongs to.",
     schema: artifactPutTextSchema,
     outputSchema: output(artifactOutputDataSchema),
     access: "write"
@@ -1418,7 +1429,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "skill.record",
     description:
-      "Record a reusable skill (agent-loadable markdown instructions) for a project or common scope. A skill is added by pasting/typing its body directly, or -- on the frontend -- by dropping a .md file whose text gets read into the body field before this call. Body is always text, never binary. Duplicate names in the same scope return SKILL_CONFLICT.",
+      "Record a reusable skill (agent-loadable markdown instructions) for a project or common scope. A skill is added by pasting/typing its body directly, or -- on the frontend -- by dropping a .md file whose text gets read into the body field before this call. Body is always text, never binary. Duplicate names in the same scope return SKILL_CONFLICT. projectVersion optionally records which version of the underlying project this skill belongs to.",
     schema: skillRecordSchema,
     access: "write"
   },
@@ -1459,7 +1470,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.create",
-    description: "Create a shared executable task for a project. REQUIRED CHECK before every call: is this task part of a batch of related work -- several tasks for the same refactor/feature, or a follow-up to a task created earlier in this conversation? If yes, this is not optional: set milestone to a short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the task is genuinely standalone, with no siblings past or future. assignee hands this task to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username), and it resolves against current project members; omit it to default to the creator, or pass null to explicitly leave it unassigned. When the user says something like \"assign this to X\" / \"назначь на X\", set assignee to X.",
+    description: "Create a shared executable task for a project. REQUIRED CHECK before every call: is this task part of a batch of related work -- several tasks for the same refactor/feature, or a follow-up to a task created earlier in this conversation? If yes, this is not optional: set milestone to a short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") and reuse the exact same string on every task in that batch, so they group under one heading in the Tasks list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the task is genuinely standalone, with no siblings past or future. assignee hands this task to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username), and it resolves against current project members; omit it to default to the creator, or pass null to explicitly leave it unassigned. When the user says something like \"assign this to X\" / \"назначь на X\", set assignee to X. projectVersion optionally records which version of the underlying project this task belongs to -- read it from the project's own package.json/pyproject.toml/etc. if it has one, or set explicitly; omit if not applicable.",
     schema: createTaskSchema,
     access: "write"
   },
@@ -1575,7 +1586,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "decision.record",
-    description: "Record a shared project or common decision. REQUIRED CHECK before every call: does this decision belong to the same refactor/feature as other tasks/decisions created together, or is it a follow-up to one created earlier in this conversation? If yes, this is not optional: set milestone to the exact same short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") used across that whole batch, so they group under one heading in the Decisions list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the decision is genuinely standalone, with no siblings past or future. assignee hands this decision to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username); omit it to default to the creator, or pass null to explicitly leave it unassigned. Requires a project-scoped decision (not a common one).",
+    description: "Record a shared project or common decision. REQUIRED CHECK before every call: does this decision belong to the same refactor/feature as other tasks/decisions created together, or is it a follow-up to one created earlier in this conversation? If yes, this is not optional: set milestone to the exact same short, stable, git-commit-subject-style name (e.g. \"Refactor auth module\") used across that whole batch, so they group under one heading in the Decisions list and Timeline -- do not wait for the user to ask for this grouping. Only leave milestone unset when the decision is genuinely standalone, with no siblings past or future. assignee hands this decision to a specific project member instead of the creator -- pass their email, or a distinguishing fragment of it (e.g. a username); omit it to default to the creator, or pass null to explicitly leave it unassigned. Requires a project-scoped decision (not a common one). projectVersion optionally records which version of the underlying project this decision belongs to.",
     schema: recordDecisionSchema,
     access: "write"
   },

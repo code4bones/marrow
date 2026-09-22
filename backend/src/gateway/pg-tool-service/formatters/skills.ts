@@ -11,6 +11,7 @@ export function skillOut(row: Row) {
     body: String(row.body),
     status: String(row.status),
     tags: stringArray(row.tags),
+    projectVersion: stringOrNull(row.project_version),
     activationCount: Number(row.activation_count ?? 0),
     lastActivatedAt: dateStringOrNull(row.last_activated_at),
     archivedAt: dateStringOrNull(row.archived_at),

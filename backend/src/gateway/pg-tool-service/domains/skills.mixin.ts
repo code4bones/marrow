@@ -28,6 +28,7 @@ export function SkillsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       tags: jsonStringArray(input.tags),
       activation_count: 0,
       last_activated_at: null,
+      project_version: stringOrNull(input.projectVersion),
       created_by: context.clientId,
       updated_by: context.clientId,
       source_instance_id: context.clientId,

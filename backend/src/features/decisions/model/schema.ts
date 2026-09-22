@@ -16,7 +16,10 @@ export const recordDecisionSchema = z.object({
   summary: z.string().optional(),
   milestone: z.string().optional(),
   assignee: z.string().nullable().optional(),
-  links: recordLinksInputSchema
+  links: recordLinksInputSchema,
+  // Which version of the underlying project this decision belongs to --
+  // agent-supplied, distinct from the internal `version` revision counter.
+  projectVersion: z.string().nullable().optional()
 });
 
 export const listDecisionsSchema = z.object({

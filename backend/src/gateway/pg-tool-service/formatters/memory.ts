@@ -16,6 +16,7 @@ export function itemOut(row: Row) {
     status: String(row.status),
     tags: stringArray(row.tags),
     summary: stringOrNull(row.summary),
+    projectVersion: stringOrNull(row.project_version),
     createdBy: stringOrNull(row.created_by),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)

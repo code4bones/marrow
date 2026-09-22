@@ -36,6 +36,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       status: typeof input.status === "string" ? input.status : "current",
       tags: jsonStringArray(input.tags),
       summary: stringOrNull(input.summary),
+      project_version: stringOrNull(input.projectVersion),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -68,6 +69,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       body: String(input.body),
       status: typeof input.status === "string" ? input.status : existing.status,
       tags: jsonStringArray(Array.isArray(input.tags) ? input.tags : existing.tags),
+      project_version: input.projectVersion !== undefined ? stringOrNull(input.projectVersion) : existing.project_version,
       updated_by: context.clientId,
       source_instance_id: context.clientId,
       updated_at: nowIso(),

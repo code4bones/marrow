@@ -39,6 +39,7 @@ export function taskOut(row: Row) {
     forbiddenFiles: stringArray(row.forbidden_files),
     dependsOn: stringArray(row.depends_on),
     notes: stringOrNull(row.notes),
+    projectVersion: stringOrNull(row.project_version),
     activeClaimCount: Number(row.active_claim_count ?? 0),
     createdBy: stringOrNull(row.created_by),
     assigneeUserId: stringOrNull(row.assignee_user_id),

@@ -23,6 +23,7 @@ export function artifactOut(row: Row) {
     sizeBytes: Number(row.size_bytes ?? 0),
     sha256: String(row.sha256),
     tags: stringArray(row.tags),
+    projectVersion: stringOrNull(row.project_version),
     downloadPath: `/artifacts/${encodeURIComponent(String(row.id))}/download`,
     archivedAt: dateStringOrNull(row.archived_at),
     archivedBy: stringOrNull(row.archived_by),

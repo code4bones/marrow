@@ -68,6 +68,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       depends_on: jsonStringArray(input.dependsOn),
       notes: stringOrNull(input.notes),
       assignee_user_id: assigneeUserId,
+      project_version: stringOrNull(input.projectVersion),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now

@@ -130,6 +130,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       archived_by: existing?.archived_by ?? null,
       archive_reason: existing?.archive_reason ?? null,
       tags: jsonStringArray(input.tags),
+      project_version: input.projectVersion !== undefined ? stringOrNull(input.projectVersion) : (existing?.project_version ?? null),
       created_by: existing?.created_by ?? context.clientId,
       updated_by: context.clientId,
       source_instance_id: context.clientId,

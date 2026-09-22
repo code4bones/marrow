@@ -81,6 +81,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       summary: stringOrNull(input.summary),
       milestone: stringOrNull(input.milestone),
       assignee_user_id: assigneeUserId,
+      project_version: stringOrNull(input.projectVersion),
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
