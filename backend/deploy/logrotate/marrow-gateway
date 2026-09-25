@@ -1,0 +1,16 @@
+# Marrow gateway file log (LOG_DIR of the backend container, bind-mounted from
+# /home/code4bones/devel/project-mem/logs). The app keeps the file open, so
+# copytruncate is used (no signal/reopen needed); a few lines written during the
+# copy may be lost, which is fine for an operational log.
+/home/code4bones/devel/project-mem/logs/project-memory-gateway.log {
+    su code4bones code4bones
+    daily
+    maxsize 50M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    copytruncate
+}

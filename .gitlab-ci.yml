@@ -78,6 +78,7 @@ backend:deploy:
     - docker rm "$BACKEND_CONTAINER_NAME" || true
     - >
       docker run -d --name "$BACKEND_CONTAINER_NAME" --restart unless-stopped --network host
+      --log-opt max-size=20m --log-opt max-file=5
       -v "$DEPLOY_ENV_FILE:/app/.env"
       -v "$DEPLOY_ARTIFACT_DIR:/app/.artifacts"
       -v "$DEPLOY_LOG_DIR:/app/logs"

@@ -40,3 +40,28 @@ To change the retention count, edit the `tail -n +4` in `.gitlab-ci.yml`'s
   post-monorepo-merge (D-MEMORY-023) and were cleaned up manually once; the
   retention rule above only recognizes the `backend-vX.Y.Z` tag shape, so a
   stray manual tag would need manual removal too.
+
+## Log rotation
+
+The backend writes logs in two places, and both are bounded:
+
+1. **Docker's own container log** (the console stream, `docker logs marrow-gw`).
+   `docker run` in `backend:deploy` passes `--log-opt max-size=20m --log-opt max-file=5`
+   (json-file driver), so it never exceeds ~100 MB. Each deploy recreates the
+   container anyway; the cap matters for a long-lived one.
+2. **The file log** (`LOG_DIR`, bind-mounted as `$DEPLOY_LOG_DIR` ->
+   `/app/logs/project-memory-gateway.log`). `backend/deploy/logrotate/marrow-gateway`
+   is the host's logrotate rule: daily, or earlier once the file passes 50 MB,
+   14 rotations kept, compressed. The app keeps the file open, so it uses
+   `copytruncate` (no reopen signal needed; a few lines written during the copy may
+   be lost). Install it once on the deploy host -- CI does not do this:
+
+       sudo cp backend/deploy/logrotate/marrow-gateway /etc/logrotate.d/marrow-gateway
+       sudo logrotate -d /etc/logrotate.d/marrow-gateway   # dry run
+
+   The `su` line matters: the log directory is group-writable, which logrotate
+   refuses to rotate in without it. Adjust the path and owner to your host.
+
+Log level is `LOG_LEVEL` in the deploy env file (pino names: `debug`, `info`,
+`warn`, `error` -- not `warning`); production runs `warn`.
+
