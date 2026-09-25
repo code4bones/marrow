@@ -39,12 +39,14 @@ export function LoginPage() {
   // its outcome as query params instead.
   useEffect(() => {
     const totpUserId = searchParams.get('pendingTotpUserId');
+    const totpChallenge = searchParams.get('pendingTotpToken');
     if (totpUserId) {
-      setPendingTotpUserId(totpUserId);
+      setPendingTotpUserId(totpUserId, totpChallenge);
     }
     if (totpUserId || searchParams.get('error')) {
       setSearchParams((params) => {
         params.delete('pendingTotpUserId');
+        params.delete('pendingTotpToken');
         params.delete('error');
         return params;
       }, { replace: true });

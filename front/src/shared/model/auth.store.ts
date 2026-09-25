@@ -123,6 +123,8 @@ interface AuthState {
   bootstrapNeeded: boolean | null;
   /** Set after a login() call returns pending_totp — second login step is needed. */
   pendingTotpUserId: string | null;
+  /** Signed proof (from the same pending_totp response) that the password step happened -- the second step sends it back. */
+  pendingTotpChallenge: string | null;
   /** T-MEMORY-051: last known notifications_seen_at, kept in sync by fetchNotificationsSeenAt/markNotificationsSeen — the nav-rail badge reads this to compute unreadCount. */
   notificationsSeenAt: string | null;
 
@@ -130,7 +132,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   loginTotp: (code: string) => Promise<void>;
   /** Populates the second-login-step state from a GitHub-callback redirect (?pendingTotpUserId=...) instead of a login() response. */
-  setPendingTotpUserId: (userId: string | null) => void;
+  setPendingTotpUserId: (userId: string | null, challenge?: string | null) => void;
   bootstrapAdmin: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
@@ -263,6 +265,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   bootstrapNeeded: null,
   pendingTotpUserId: null,
+  pendingTotpChallenge: null,
   notificationsSeenAt: null,
 
   initialize: async () => {
@@ -307,21 +310,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!response.ok) {
       throw new Error(body.error?.message ?? 'Login failed.');
     }
-    const data = body.data as { status: string; user?: AuthUser; userId?: string };
+    const data = body.data as { status: string; user?: AuthUser; userId?: string; challenge?: string };
     if (data.status === 'pending_totp') {
-      set({ pendingTotpUserId: data.userId ?? null });
+      set({ pendingTotpUserId: data.userId ?? null, pendingTotpChallenge: data.challenge ?? null });
       return;
     }
     const user = requireUser(data);
     if (user) {
-      set({ status: 'authenticated', user, pendingTotpUserId: null });
+      set({ status: 'authenticated', user, pendingTotpUserId: null, pendingTotpChallenge: null });
     }
   },
 
-  setPendingTotpUserId: (userId) => set({ pendingTotpUserId: userId }),
+  setPendingTotpUserId: (userId, challenge = null) => set({ pendingTotpUserId: userId, pendingTotpChallenge: challenge }),
 
   loginTotp: async (code) => {
     const userId = get().pendingTotpUserId;
+    const challenge = get().pendingTotpChallenge;
     if (!userId) {
       throw new Error('No login in progress — start over from the sign-in form.');
     }
@@ -329,7 +333,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId, code }),
+      body: JSON.stringify(challenge ? { userId, code, challenge } : { userId, code }),
     });
     const body = await readJson(response);
     if (!response.ok) {
@@ -338,7 +342,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const data = body.data as { status: string; user?: AuthUser };
     const user = requireUser(data);
     if (user) {
-      set({ status: 'authenticated', user, pendingTotpUserId: null });
+      set({ status: 'authenticated', user, pendingTotpUserId: null, pendingTotpChallenge: null });
     }
   },
 
@@ -362,7 +366,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
-    set({ status: 'unauthenticated', user: null, pendingTotpUserId: null });
+    set({ status: 'unauthenticated', user: null, pendingTotpUserId: null, pendingTotpChallenge: null });
   },
 
   registerStart: (email, password) =>
