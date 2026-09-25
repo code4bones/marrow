@@ -92,11 +92,17 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
   }
 
   protected async resolveGitCredentialReader(context: NormalizedGatewayRequestContext): Promise<string> {
-    // T-MEMORY-052: sessionSource, not just sessionUserId presence -- an
-    // OAuth connector's resolved identity must still fall through to the
-    // admin fallback below, same as before that task widened sessionUserId
-    // to also cover OAuth for project-membership purposes.
-    if (context.sessionUserId && context.sessionSource !== "oauth") {
+    // SEC-7: any caller with a real user identity -- session cookie,
+    // personal token AND an OAuth connector (which carries its owner's
+    // userId since T-MEMORY-052) -- reads only ITS OWN credentials. This used
+    // to send every OAuth caller to the oldest admin's stored PAT, so a
+    // role=member user's self-registered connector could list unmasked CI/CD
+    // variables, read job traces and download artifacts through the admin's
+    // token. Callers with no user identity at all (the static MCP_TOKEN,
+    // admin-tier by definition) still fall back to the instance owner's
+    // credentials. A single-owner install that wants the old behaviour for
+    // OAuth connectors opts back in with GIT_OAUTH_ADMIN_FALLBACK=1.
+    if (context.sessionUserId && (context.sessionSource !== "oauth" || process.env.GIT_OAUTH_ADMIN_FALLBACK !== "1")) {
       return context.sessionUserId;
     }
     const owner = await this.db("users").select("id").where({ role: "admin" }).orderBy("created_at", "asc").first();

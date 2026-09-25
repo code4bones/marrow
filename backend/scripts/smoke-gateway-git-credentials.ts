@@ -725,6 +725,30 @@ try {
     last_used_at: null
   });
   try {
+    // SEC-7 (T-MEMORY-171): by default an OAuth bearer is scoped to ITS OWN
+    // credentials -- here member A's, who has none for GOOD_HOST -- and must
+    // not borrow the instance admin's PAT.
+    delete process.env.GIT_OAUTH_ADMIN_FALLBACK;
+    const oauthOwnList = expectData<{ credentials: Array<{ id: string; host: string }> }>(
+      unwrap(await callTool("git.credential_list", {}, oauthHeaders(oauthAccessToken)))
+    );
+    assert(
+      !oauthOwnList.credentials.some((credential) => credential.id === fallbackCredentialId),
+      "SEC-7: a member's OAuth bearer must NOT see the instance admin's git credentials by default."
+    );
+    const oauthPipelineDenied = await callTool(
+      "git.pipeline_status",
+      { host: GOOD_HOST, project: "group/project", ref: "main" },
+      oauthHeaders(oauthAccessToken)
+    );
+    assert(
+      (oauthPipelineDenied.json as ToolResponse<unknown>).ok === false,
+      "SEC-7: a member's OAuth bearer must NOT be able to use the admin's PAT for git.pipeline_status by default."
+    );
+    console.log("ok - SEC-7: by default an OAuth bearer uses only its own owner's git credentials, not the admin's PAT");
+
+    // Opt-in legacy behaviour for single-owner installs.
+    process.env.GIT_OAUTH_ADMIN_FALLBACK = "1";
     const oauthList = expectData<{ credentials: Array<{ id: string; host: string }> }>(
       unwrap(await callTool("git.credential_list", {}, oauthHeaders(oauthAccessToken)))
     );
@@ -758,6 +782,7 @@ try {
     // script's own disposable seeded users -- it must not linger in that
     // real account's credential list regardless of whether the assertions
     // above passed.
+    delete process.env.GIT_OAUTH_ADMIN_FALLBACK;
     await db("git_credentials").where({ id: fallbackCredentialId }).del();
   }
 
