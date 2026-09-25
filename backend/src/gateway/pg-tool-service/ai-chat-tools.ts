@@ -80,10 +80,14 @@ export function aiChatToolSpecs() {
   });
 }
 
-// Tools whose schema has a `redact` switch (env/git variables, job traces):
-// the model must never be the one deciding whether secrets come back in
-// plaintext, so the loop forces redact:true on these.
-export function aiChatRedactTools(): ReadonlySet<string> {
+// Tools whose schema has a `redact` switch (env/git variables, job traces).
+// The owner decided (2026-09-25) that Ask Marrow, like an MCP agent, may ask
+// for the UNMASKED values -- a human asking "what is X?" gets the real value.
+// What the loop guards instead is the follow-up: once a call has returned
+// unmasked secrets, write tools are switched off for the rest of that answer
+// (see callExposesSecrets + service.ts), so a prompt injected into some record
+// cannot make the model copy a secret into a record other members can read.
+export function aiChatSecretReadTools(): ReadonlySet<string> {
   const names = new Set<string>();
   for (const spec of aiChatToolSpecs()) {
     const properties = (z.toJSONSchema(spec.schema) as { properties?: Record<string, unknown> }).properties ?? {};
@@ -92,4 +96,16 @@ export function aiChatRedactTools(): ReadonlySet<string> {
     }
   }
   return names;
+}
+
+// True when this call asks a secret-carrying tool for unmasked values
+// (redact:false). Omitting `redact` keeps the tool's masked default.
+export function callExposesSecrets(toolName: string, args: unknown, secretTools: ReadonlySet<string>): boolean {
+  return (
+    secretTools.has(toolName) &&
+    args !== null &&
+    typeof args === "object" &&
+    !Array.isArray(args) &&
+    (args as Record<string, unknown>).redact === false
+  );
 }

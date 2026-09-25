@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { gatewayToolSpecs } from "../src/gateway/tool-definitions.js";
 import {
   AI_CHAT_ALLOWED_WRITE_TOOLS,
-  aiChatRedactTools,
-  aiChatToolSpecs
+  aiChatSecretReadTools,
+  aiChatToolSpecs,
+  callExposesSecrets
 } from "../src/gateway/pg-tool-service/ai-chat-tools.js";
 
 // T-MEMORY-167: Ask Marrow's tool-use loop runs with the human's authority
@@ -48,12 +49,21 @@ describe("aiChatToolSpecs", () => {
     }
   });
 
-  it("forces redaction on every offered tool that has a redact switch", () => {
-    const redact = aiChatRedactTools();
-    expect(redact.has("env.variable_get")).toBe(true);
-    expect(redact.has("env.variables_list")).toBe(true);
-    expect(redact.has("git.variable_get")).toBe(true);
-    expect(redact.has("git.variables_list")).toBe(true);
-    expect(redact.has("git.job_trace")).toBe(true);
+  it("recognises the secret-carrying tools (the ones with a redact switch)", () => {
+    const secretTools = aiChatSecretReadTools();
+    for (const name of ["env.variable_get", "env.variables_list", "git.variable_get", "git.variables_list", "git.job_trace"]) {
+      expect(secretTools.has(name), name).toBe(true);
+    }
+    expect(secretTools.has("task.list")).toBe(false);
+  });
+
+  it("flags a call as exposing secrets only when it asks for redact:false", () => {
+    const secretTools = aiChatSecretReadTools();
+    expect(callExposesSecrets("env.variable_get", { key: "K", redact: false }, secretTools)).toBe(true);
+    expect(callExposesSecrets("env.variable_get", { key: "K" }, secretTools)).toBe(false); // masked default
+    expect(callExposesSecrets("env.variable_get", { key: "K", redact: true }, secretTools)).toBe(false);
+    expect(callExposesSecrets("task.list", { redact: false }, secretTools)).toBe(false); // not a secret tool
+    expect(callExposesSecrets("env.variable_get", null, secretTools)).toBe(false);
+    expect(callExposesSecrets("env.variable_get", [false], secretTools)).toBe(false);
   });
 });
