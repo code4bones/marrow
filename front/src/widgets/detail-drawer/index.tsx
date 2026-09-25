@@ -97,14 +97,24 @@ function StringFiles({ items, label }: { items: string[]; label: string }) {
 function ArtifactTextPreview({ id }: { id: string }) {
   const { t } = useTranslation('common');
   const { data, loading, error } = useQuery<{
-    artifactText: { text: string; textInfo: { truncated: boolean } }
+    artifactText: { text: string; textInfo: { truncated: boolean; isMarkdown: boolean } }
   }>(GET_ARTIFACT_TEXT, { variables: { id } });
 
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
   if (error) return <Alert type="warning" message={t('textPreviewUnavailable')} />;
   const at = data!.artifactText;
+  const label = at.textInfo.truncated ? t('contentTruncated') : t('content');
+  if (at.textInfo.isMarkdown) {
+    return (
+      <Field label={label}>
+        <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+          <Markdown>{at.text}</Markdown>
+        </div>
+      </Field>
+    );
+  }
   return (
-    <Field label={at.textInfo.truncated ? t('contentTruncated') : t('content')}>
+    <Field label={label}>
       <pre style={{
         background: 'rgba(255,255,255,0.04)', border: '1px solid #303030',
         borderRadius: 4, padding: 12, fontSize: 12,
