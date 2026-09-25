@@ -12,7 +12,7 @@
 // extra env var, and matches the task record's own note that this was an
 // implementation decision to make, not settled by the spec.
 import { AppError } from "../shared/errors.js";
-import { assertPublicGitHost, gitHostProblem } from "./git-host-safety.js";
+import { assertPublicGitHost, gitHostProblem, pinnedFetch } from "./git-host-safety.js";
 import { aesGcmDecrypt, aesGcmEncrypt, loadAesGcmKey } from "./crypto.js";
 
 function gitCredentialEncryptionKey(): Buffer {
@@ -319,12 +319,16 @@ async function gitlabRequest(
 ): Promise<Response> {
   // The real fetch only: injected test doubles talk to fake hosts that would
   // not resolve.
-  if (httpFetch === globalThis.fetch) {
+  const realFetch = httpFetch === globalThis.fetch;
+  if (realFetch) {
     await assertPublicGitHost(host);
   }
+  // The real fetch also goes through the pinned agent, so the address that was
+  // checked is the address that is connected to (no DNS-rebinding window).
+  const doFetch: GitHttpFetch = realFetch ? (pinnedFetch as unknown as GitHttpFetch) : httpFetch;
   let response: Response;
   try {
-    response = await httpFetch(url.toString(), {
+    response = await doFetch(url.toString(), {
       // Never follow redirects: a public host must not be able to bounce the
       // request (with the PAT header) to an internal address.
       redirect: "manual",

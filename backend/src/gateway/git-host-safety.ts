@@ -1,5 +1,7 @@
+import { lookup as lookupCallback, type LookupAddress, type LookupOptions } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
 import { AppError } from "../shared/errors.js";
 
 // The git `host` string is user-supplied (git.credential_create) and is put
@@ -109,4 +111,54 @@ export async function assertPublicGitHost(host: string): Promise<void> {
       host
     });
   }
+}
+
+// --- Connect-time pinning (DNS rebinding) ------------------------------------
+//
+// assertPublicGitHost above resolves the name and checks the answer, but the
+// HTTP client then resolves it AGAIN to connect: an attacker who runs the DNS
+// for their own domain can answer with a public address for the check and with
+// 127.0.0.1 / 169.254.169.254 for the connection. This agent closes that gap
+// by doing the check INSIDE the resolver the socket uses: the connection goes
+// to exactly the addresses that were validated (TLS still verifies the
+// certificate against the original hostname, since the URL is untouched).
+// IP-literal hosts never reach a resolver, so assertPublicGitHost (which does
+// handle literals) remains the first line of defence for those.
+
+type LookupCallback = (error: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
+
+export function guardedLookup(hostname: string, options: LookupOptions, callback: LookupCallback): void {
+  lookupCallback(hostname, { ...options, all: true }, (error, addresses) => {
+    if (error) {
+      callback(error, "", 0);
+      return;
+    }
+    const list = addresses as LookupAddress[];
+    if (process.env.GIT_ALLOW_PRIVATE_HOSTS !== "1" && (list.length === 0 || list.some((entry) => isNonPublicAddress(entry.address)))) {
+      const refused: NodeJS.ErrnoException = new Error(`Git host ${hostname} resolves to a non-public address, which is not allowed.`);
+      refused.code = "ECONNREFUSED";
+      callback(refused, "", 0);
+      return;
+    }
+    if (options.all) {
+      callback(null, list);
+      return;
+    }
+    callback(null, list[0].address, list[0].family);
+  });
+}
+
+const pinnedAgent = new Agent({ connect: { lookup: guardedLookup } });
+
+// fetch() with the guarded resolver. Uses undici's own fetch together with
+// undici's own Agent (mixing Node's bundled fetch with a package Agent is not
+// supported across versions).
+export function pinnedFetch(input: string | URL, init: Record<string, unknown> = {}): Promise<Response> {
+  // An IP literal never goes through a resolver, so refuse a non-public one
+  // here (the URL parser has already normalised 0x7f.1 / 2130706433 / [::1]).
+  const bareHost = new URL(String(input)).hostname.replace(/^\[|\]$/g, "");
+  if (isIP(bareHost) && process.env.GIT_ALLOW_PRIVATE_HOSTS !== "1" && isNonPublicAddress(bareHost)) {
+    return Promise.reject(new AppError("VALIDATION_ERROR", `Git host ${bareHost} is a non-public address, which is not allowed.`, { host: bareHost }));
+  }
+  return undiciFetch(input, { ...init, dispatcher: pinnedAgent } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
 }
