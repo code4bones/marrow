@@ -86,6 +86,14 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       created_at: now,
       updated_at: now
     };
+    if (row.supersedes_id) {
+      // Superseding flips ANOTHER decision's status, so it needs the same
+      // membership check supersedeDecision does (SEC-4).
+      const superseded = await this.db("decisions").select("project_id").where({ id: row.supersedes_id }).first();
+      if (superseded?.project_id) {
+        await this.assertProjectMember(String(superseded.project_id), context);
+      }
+    }
     await this.db("decisions").insert(row);
     if (row.supersedes_id) {
       await this.db("decisions").where({ id: row.supersedes_id }).update({ status: "superseded", updated_at: nowIso() });

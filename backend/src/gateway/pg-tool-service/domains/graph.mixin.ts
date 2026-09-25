@@ -137,7 +137,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
 
     const pendingIds = Array.from(knownIds).filter((id) => !nodes.has(id));
     if (pendingIds.length > 0) {
-      const expandedNodes = await this.graphNodesByIds(pendingIds);
+      const expandedNodes = await this.graphNodesByIds(pendingIds, context);
       for (const node of expandedNodes) {
         addNode(node);
       }
@@ -158,7 +158,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
       .orderBy("created_at", "desc");
   }
 
-  protected async graphNodesByIds(ids: string[]): Promise<GraphNode[]> {
+  protected async graphNodesByIds(ids: string[], context?: NormalizedGatewayRequestContext): Promise<GraphNode[]> {
     const uniqueIds = Array.from(new Set(ids.filter((id) => id.length > 0)));
     if (uniqueIds.length === 0) {
       return [];
@@ -175,12 +175,26 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
       this.db("artifacts").select("id", "title", "status", "project_id", "path", "created_by", "created_at").whereIn("id", uniqueIds)
     ]);
 
+    // A link can point at a record in a project the caller is not a member
+    // of (links only check that both ends exist); never turn that into a
+    // node with the foreign record's title/status/assignee (SEC-4).
+    let visible = (_projectId: string | null): boolean => true;
+    if (context?.sessionRole === "member" && context.sessionUserId) {
+      const memberOf = new Set(
+        (await this.db("project_members").select("project_id").where({ user_id: context.sessionUserId, status: "active" })).map(
+          (row: Row) => String(row.project_id)
+        )
+      );
+      visible = (projectId) => projectId === null || memberOf.has(projectId);
+    }
+    const inScope = (row: Row) => visible(row.project_id ? String(row.project_id) : null);
+
     return [
-      ...projects.map((row) => graphNodeOut("PROJECT", row)),
-      ...items.map((row) => graphNodeOut("MEMORY", row)),
-      ...tasks.map((row) => graphNodeOut("TASK", row)),
-      ...decisions.map((row) => graphNodeOut("DECISION", row)),
-      ...artifacts.map((row) => graphNodeOut("ARTIFACT", row))
+      ...projects.filter((row) => visible(String(row.id))).map((row) => graphNodeOut("PROJECT", row)),
+      ...items.filter(inScope).map((row) => graphNodeOut("MEMORY", row)),
+      ...tasks.filter(inScope).map((row) => graphNodeOut("TASK", row)),
+      ...decisions.filter(inScope).map((row) => graphNodeOut("DECISION", row)),
+      ...artifacts.filter(inScope).map((row) => graphNodeOut("ARTIFACT", row))
     ];
   }
 

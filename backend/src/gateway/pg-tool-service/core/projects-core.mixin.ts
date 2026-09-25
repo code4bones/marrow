@@ -406,6 +406,42 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return Boolean(membership);
   }
 
+  // Which project a record (project/item/task/decision/artifact/skill/event/
+  // link, by id) belongs to; null = common scope or no such record.
+  protected async recordProjectId(id: string): Promise<string | null> {
+    if (await this.db("projects").select("id").where({ id }).first()) {
+      return id;
+    }
+    for (const table of ["items", "tasks", "decisions", "artifacts", "skills", "events", "links"]) {
+      const row = await this.db(table).select("project_id").where({ id }).first();
+      if (row) {
+        return row.project_id ? String(row.project_id) : null;
+      }
+    }
+    return null;
+  }
+
+  // True when a role=member caller is not an active member of the project
+  // the record lives in (SEC-4: by-id links/graph/context reads used to
+  // skip this). Admin, static-token and anonymous callers are never hidden
+  // from anything, same bypass rules as assertProjectMember.
+  protected async isRecordHiddenFrom(id: string, context?: NormalizedGatewayRequestContext): Promise<boolean> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return false;
+    }
+    const projectId = await this.recordProjectId(id);
+    return projectId !== null && !(await this.isMemberOfProject(projectId, context.sessionUserId));
+  }
+
+  // assertRecordExists + visibility: a record in a project the caller is
+  // not a member of answers exactly like a record that does not exist.
+  protected async assertRecordAccessible(id: string, context?: NormalizedGatewayRequestContext): Promise<void> {
+    await this.assertRecordExists(id);
+    if (await this.isRecordHiddenFrom(id, context)) {
+      throw new AppError("LINK_NOT_FOUND", `Linked record ${id} does not exist.`, { id });
+    }
+  }
+
   // Query-builder counterpart of assertProjectMember for list/search
   // endpoints that scan many projects (project.list, project.resolve)
   // instead of resolving one specific id/slug.
@@ -620,7 +656,11 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       }, context);
     }
     return {
-      project: projectOut(projectRow),
+      // A not-yet-approved claimant only learns what the invite page already
+      // showed (id/slug/title), not rootPath/description/owner.
+      project: alreadyMember
+        ? projectOut(projectRow)
+        : { id: String(projectRow.id), slug: String(projectRow.slug), title: String(projectRow.title) },
       joined: alreadyMember,
       pendingApproval: !alreadyMember
     };

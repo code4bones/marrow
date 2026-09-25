@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { AppError } from "../../../shared/errors.js";
 import { asNullableString } from "../formatters/common.js";
 import { eventOut } from "../formatters/events.js";
@@ -17,6 +18,27 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     }, context);
   }
 
+  // No `project` argument = the global feed: a role=member caller only gets
+  // common events plus those of projects they are an ACTIVE member of (a
+  // pending-approval invite claimant is not a member yet).
+  protected applyEventMembershipFilter<T extends Knex.QueryBuilder>(
+    query: T,
+    context?: NormalizedGatewayRequestContext
+  ): T {
+    if (context?.sessionRole === "member" && context.sessionUserId) {
+      const sessionUserId = context.sessionUserId;
+      query.where((builder) => {
+        builder
+          .whereNull("project_id")
+          .orWhereIn(
+            "project_id",
+            this.db("project_members").select("project_id").where({ user_id: sessionUserId, status: "active" })
+          );
+      });
+    }
+    return query;
+  }
+
   protected async listEvents(input: Row, context?: NormalizedGatewayRequestContext) {
     let query = this.db("events").select("*");
     if (input.project !== undefined) {
@@ -26,6 +48,8 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         const project = await this.resolveProject(input.project, context);
         query = query.where("project_id", project.id);
       }
+    } else {
+      this.applyEventMembershipFilter(query, context);
     }
     if (input.relatedId) {
       query = query.andWhere("related_id", String(input.relatedId));
@@ -42,21 +66,11 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
         const project = await this.resolveProject(input.project, context);
         base.where("project_id", project.id);
       }
-    } else if (context?.sessionRole === "member" && context.sessionUserId) {
-      // T-MEMORY-051: no `project` argument means the global notifications
-      // feed -- without this, a role=member session would see events from
-      // every project system-wide, including ones it was never added to.
-      // Mirrors applyProjectMembershipFilter's project_members subquery
-      // (projects-core.mixin.ts), adapted for events.project_id (not
-      // projects.id) and for the fact that a NULL project_id (a
-      // common/global-scope event) is visible to every member, not just
-      // members of one particular project.
-      const sessionUserId = context.sessionUserId;
-      base.where((builder) => {
-        builder
-          .whereNull("project_id")
-          .orWhereIn("project_id", this.db("project_members").select("project_id").where({ user_id: sessionUserId }));
-      });
+    } else {
+      // T-MEMORY-051: the global notifications feed must not show a role=member
+      // session events from projects it was never added to (SEC-4: nor from
+      // ones it only has a pending invite claim on).
+      this.applyEventMembershipFilter(base, context);
     }
     if (input.relatedId) {
       base.andWhere("related_id", String(input.relatedId));

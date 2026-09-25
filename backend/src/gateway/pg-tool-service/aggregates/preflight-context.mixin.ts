@@ -187,7 +187,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
     const includeCommon = input.includeCommon !== false;
 
     const source = input.taskId
-      ? await this.preflight({ taskId: input.taskId, includeCommon, limits })
+      ? await this.preflight({ taskId: input.taskId, includeCommon, limits }, context)
       : await this.preflightByQuery(
           {
             query: input.query,

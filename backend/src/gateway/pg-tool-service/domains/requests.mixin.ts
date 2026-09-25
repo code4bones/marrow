@@ -93,8 +93,26 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     );
   }
 
-  protected async getRequest(id: string) {
+  // A request lives under the ASKED project, but the asking project's
+  // members read the thread too -- so either side's active members may
+  // access it; anyone else gets the same "does not exist" as a bad id.
+  protected async assertRequestAccess(row: Row, context?: NormalizedGatewayRequestContext): Promise<void> {
+    if (!context || context.sessionRole !== "member" || !context.sessionUserId) {
+      return;
+    }
+    if (row.project_id && (await this.isMemberOfProject(String(row.project_id), context.sessionUserId))) {
+      return;
+    }
+    const askedBy = await this.db("links").select("to_id").where({ from_id: String(row.id), relation: "asked_by" }).first();
+    if (askedBy && (await this.isMemberOfProject(String(askedBy.to_id), context.sessionUserId))) {
+      return;
+    }
+    throw new AppError("ITEM_NOT_FOUND", `Request ${String(row.id)} does not exist.`, { id: String(row.id) });
+  }
+
+  protected async getRequest(id: string, context?: NormalizedGatewayRequestContext) {
     const row = await this.requestRow(id);
+    await this.assertRequestAccess(row, context);
     const item = itemOut(row);
 
     const askedByLink = await this.listLinks({ id, direction: "from", relation: "asked_by" });
@@ -120,6 +138,7 @@ export function RequestsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
   protected async createReply(input: Row, context: NormalizedGatewayRequestContext) {
     const requestId = String(input.requestId);
     const request = await this.requestRow(requestId);
+    await this.assertRequestAccess(request, context);
 
     let parentId = requestId;
     if (input.parentId) {

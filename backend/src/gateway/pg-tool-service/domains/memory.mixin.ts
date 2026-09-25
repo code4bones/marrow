@@ -180,7 +180,7 @@ export function MemoryMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     projectId: string | null,
     context: NormalizedGatewayRequestContext
   ) {
-    await this.assertRecordExists(toId);
+    await this.assertRecordAccessible(toId, context);
     const existing = await this.db("links")
       .where({ from_id: fromId, to_id: toId, relation })
       .first();

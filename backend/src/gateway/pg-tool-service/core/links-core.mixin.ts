@@ -18,8 +18,8 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
   return class extends Base {
 
   protected async createLink(input: Row, context: NormalizedGatewayRequestContext) {
-    await this.assertRecordExists(String(input.fromId));
-    await this.assertRecordExists(String(input.toId));
+    await this.assertRecordAccessible(String(input.fromId), context);
+    await this.assertRecordAccessible(String(input.toId), context);
     const project = input.project === null ? null : await this.resolveProject(input.project, context);
     const row = {
       id: await this.nextId("links", project ? `L-${projectKeyFromId(project.id)}` : "L-COMMON"),
@@ -62,7 +62,7 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
         if (!toId || !relation) {
           continue;
         }
-        await this.assertRecordExists(toId);
+        await this.assertRecordAccessible(toId, context);
         const row = {
           id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
           project_id: projectId,
@@ -121,9 +121,32 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
       .map(({ id, type, title }) => ({ id, type, title }));
   }
 
-  protected async listLinks(input: Row) {
+  // Links a role=member caller may see: their own projects' links plus
+  // common ones. Others pass through untouched.
+  protected applyLinkMembershipFilter<T extends Knex.QueryBuilder>(
+    query: T,
+    context?: NormalizedGatewayRequestContext
+  ): T {
+    if (context?.sessionRole === "member" && context.sessionUserId) {
+      const userId = context.sessionUserId;
+      query.where((builder) => {
+        builder
+          .whereNull("links.project_id")
+          .orWhereIn(
+            "links.project_id",
+            this.db("project_members").select("project_id").where({ user_id: userId, status: "active" })
+          );
+      });
+    }
+    return query;
+  }
+
+  protected async listLinks(input: Row, context?: NormalizedGatewayRequestContext) {
+    if (await this.isRecordHiddenFrom(String(input.id), context)) {
+      return [];
+    }
     const direction = input.direction ?? "both";
-    let query = this.db("links").select("*");
+    let query = this.applyLinkMembershipFilter(this.db("links").select("*"), context);
     if (direction === "from") {
       query = query.where("from_id", String(input.id));
     } else if (direction === "to") {
@@ -161,7 +184,11 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
 
   protected async linksPage(input: Row, context?: NormalizedGatewayRequestContext) {
     const base = this.db("links");
+    this.applyLinkMembershipFilter(base, context);
     if (input.id) {
+      if (await this.isRecordHiddenFrom(String(input.id), context)) {
+        base.whereRaw("1 = 0");
+      }
       const direction = input.direction ?? "both";
       if (direction === "from") {
         base.where("from_id", String(input.id));

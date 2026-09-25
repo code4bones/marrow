@@ -80,7 +80,7 @@ export function HandoffsMixin<TBase extends Constructor<MemoryInstance>>(Base: T
     projectId: string | null,
     context: NormalizedGatewayRequestContext
   ) {
-    await this.assertRecordExists(toId);
+    await this.assertRecordAccessible(toId, context);
     const row = {
       id: await this.nextId("links", projectId ? `L-${projectKeyFromId(projectId)}` : "L-COMMON"),
       project_id: projectId,

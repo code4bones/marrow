@@ -328,7 +328,7 @@ export class PgToolService extends ComposedService {
         case "link.create":
           return ok("Link created.", { link: await this.createLink(parsed, requestContext) });
         case "link.list":
-          return ok("Links listed.", { links: await this.listLinks(parsed) });
+          return ok("Links listed.", { links: await this.listLinks(parsed, requestContext) });
         case "link.delete":
           return ok("Link deleted.", await this.deleteLink(parsed, requestContext));
         case "preflight":
@@ -350,7 +350,7 @@ export class PgToolService extends ComposedService {
         case "request.list":
           return ok("Requests listed.", { requests: await this.listRequests(parsed, requestContext) });
         case "request.get":
-          return ok("Request loaded.", await this.getRequest(String(parsed.id)));
+          return ok("Request loaded.", await this.getRequest(String(parsed.id), requestContext));
         case "reply.create":
           return ok("Reply created.", await this.createReply(parsed, requestContext));
         case "git.credential_create":
