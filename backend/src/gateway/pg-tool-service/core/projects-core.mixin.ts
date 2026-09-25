@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
+import { projectSlugProblem } from "../../../features/projects/model/slug.js";
 import { createProjectId } from "../../../shared/ids/id.service.js";
 import { artifactAbsolutePath } from "../formatters/artifacts.js";
 import { currentProjectKey, stringOrNull, writeActorFields } from "../formatters/common.js";
@@ -201,6 +202,10 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       patch.root_path = stringOrNull(input.rootPath);
     }
     if (typeof input.slug === "string" && input.slug !== project.slug) {
+      const slugProblem = projectSlugProblem(input.slug);
+      if (slugProblem) {
+        throw new AppError("VALIDATION_ERROR", slugProblem);
+      }
       const clash = await this.db("projects").where({ slug: input.slug }).whereNot({ id: project.id }).first();
       if (clash) {
         throw new AppError("VALIDATION_ERROR", `Project slug "${input.slug}" is already in use.`);

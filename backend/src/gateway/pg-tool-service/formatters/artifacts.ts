@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import path from "node:path";
+import { projectSlugProblem } from "../../../features/projects/model/slug.js";
 import { AppError } from "../../../shared/errors.js";
 import { dateStringOrNull, stringArray, stringOrNull, tokenEfficiencyBase } from "./common.js";
 import type { Row } from "../types.js";
@@ -165,6 +166,13 @@ export function normalizeArtifactPath(value: string): string {
 
 
 export function artifactStoragePath(projectSlug: string | null, artifactPath: string): string {
+  // The slug is the first directory of the on-disk path: refuse anything that
+  // is not a single plain segment, so a crafted slug ("victim/docs", ".",
+  // "x/..") can never steer a write or delete into another project's (or the
+  // common) directory. Defense in depth behind the slug schema (SEC-5).
+  if (projectSlug !== null && projectSlugProblem(projectSlug) !== null) {
+    throw new AppError("VALIDATION_ERROR", "Project slug is not a safe storage directory name.", { projectSlug });
+  }
   return path.posix.join(projectSlug ?? "common", artifactPath);
 }
 

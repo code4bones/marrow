@@ -1,9 +1,10 @@
 import * as z from "zod/v4";
+import { projectSlugSchema } from "./slug.js";
 
 export const projectStatusSchema = z.enum(["active", "paused", "archived"]);
 
 export const createProjectSchema = z.object({
-  slug: z.string().min(1),
+  slug: projectSlugSchema,
   title: z.string().min(1),
   description: z.string().optional(),
   rootPath: z.string().optional()
