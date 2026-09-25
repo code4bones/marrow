@@ -17,6 +17,7 @@ import {
   clearSessionCookieHeader,
   getSessionToken,
   isForwardedHttps,
+  parseCookies,
   sessionCookieHeader,
   type AuthFacade,
   type SessionIdentity
@@ -24,6 +25,7 @@ import {
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import { graphqlDocumentTier } from "./graphql-scope.js";
 import { isAllowedWsOrigin } from "./private-events.js";
+import { startOAuthBinding, verifyOAuthBinding } from "./oauth-state-binding.js";
 import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import { generatePkce, telegramAuthorizeUrl, resolveTelegramUser, type TelegramOidcUser } from "./telegram-oidc.js";
@@ -1646,9 +1648,15 @@ async function handleAuthRoute(
     // page (never an arbitrary path/host) so this can't become an
     // open-redirect primitive.
     const returnTo = intent === "login" ? safeGithubReturnTo(queryString(requestUrl, "returnTo")) : null;
-    const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo);
+    const binding = startOAuthBinding(
+      await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo),
+      isForwardedHttps(request)
+    );
     logGithubOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri, returnTo });
-    response.writeHead(302, { location: githubAuthorizeUrl(state, redirectUri) });
+    response.writeHead(302, {
+      location: githubAuthorizeUrl(binding.state, redirectUri),
+      ...(binding.setCookie ? { "set-cookie": binding.setCookie } : {})
+    });
     response.end();
     return true;
   }
@@ -1671,7 +1679,13 @@ async function handleAuthRoute(
     let linkUserId: string | null;
     let returnTo: string | null;
     try {
-      ({ intent, userId: linkUserId, returnTo } = await auth.consumeOAuthState(state));
+      const binding = verifyOAuthBinding(state, parseCookies(request));
+      if (!binding.ok) {
+        // Burn the state (single use) but refuse: this browser did not start the flow.
+        await auth.consumeOAuthState(binding.raw).catch(() => undefined);
+        throw new AppError("VALIDATION_ERROR", "This sign-in attempt did not start in this browser. Please start again from the sign-in page.");
+      }
+      ({ intent, userId: linkUserId, returnTo } = await auth.consumeOAuthState(binding.raw));
     } catch (error) {
       logGithubOauth("callback", { outcome: "invalid_state", error: error instanceof Error ? error.message : String(error) });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "GitHub sign-in failed.")}`);
@@ -1795,17 +1809,21 @@ async function handleAuthRoute(
     const returnTo = intent === "login" ? safeGithubReturnTo(queryString(requestUrl, "returnTo")) : null;
     const { verifier, challenge } = generatePkce();
     let authorizeUrl: string;
+    let binding: { state: string; setCookie: string | null };
     try {
       const redirectUri = telegramRedirectUri();
-      const state = await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo, verifier);
-      authorizeUrl = telegramAuthorizeUrl(state, challenge, redirectUri);
+      binding = startOAuthBinding(
+        await auth.mintOAuthState(intent, intent === "link" ? sessionAuth!.userId : null, returnTo, verifier),
+        isForwardedHttps(request)
+      );
+      authorizeUrl = telegramAuthorizeUrl(binding.state, challenge, redirectUri);
       logTelegramOauth("start", { intent, hasSession: Boolean(sessionAuth), redirectUri, returnTo });
     } catch (error) {
       logTelegramOauth("start", { intent, outcome: "config_missing", error: error instanceof Error ? error.message : String(error) });
       send(400, fail(error));
       return true;
     }
-    response.writeHead(302, { location: authorizeUrl });
+    response.writeHead(302, { location: authorizeUrl, ...(binding.setCookie ? { "set-cookie": binding.setCookie } : {}) });
     response.end();
     return true;
   }
@@ -1829,7 +1847,12 @@ async function handleAuthRoute(
     let returnTo: string | null;
     let codeVerifier: string | null;
     try {
-      ({ intent, userId: linkUserId, returnTo, codeVerifier } = await auth.consumeOAuthState(state));
+      const binding = verifyOAuthBinding(state, parseCookies(request));
+      if (!binding.ok) {
+        await auth.consumeOAuthState(binding.raw).catch(() => undefined);
+        throw new AppError("VALIDATION_ERROR", "This sign-in attempt did not start in this browser. Please start again from the sign-in page.");
+      }
+      ({ intent, userId: linkUserId, returnTo, codeVerifier } = await auth.consumeOAuthState(binding.raw));
     } catch (error) {
       logTelegramOauth("callback", { outcome: "invalid_state", error: error instanceof Error ? error.message : String(error) });
       redirectTo(`/login?error=${encodeURIComponent(error instanceof Error ? error.message : "Telegram sign-in failed.")}`);

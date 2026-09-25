@@ -1698,7 +1698,7 @@ export function isForwardedHttps(request: IncomingMessage): boolean {
   return value?.split(",")[0]?.trim().toLowerCase() === "https";
 }
 
-function parseCookies(request: IncomingMessage): Record<string, string> {
+export function parseCookies(request: IncomingMessage): Record<string, string> {
   const header = request.headers.cookie;
   if (!header) {
     return {};
