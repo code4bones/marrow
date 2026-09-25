@@ -12,6 +12,7 @@
 // extra env var, and matches the task record's own note that this was an
 // implementation decision to make, not settled by the spec.
 import { AppError } from "../shared/errors.js";
+import { assertPublicGitHost, gitHostProblem } from "./git-host-safety.js";
 import { aesGcmDecrypt, aesGcmEncrypt, loadAesGcmKey } from "./crypto.js";
 
 function gitCredentialEncryptionKey(): Buffer {
@@ -85,6 +86,10 @@ interface GitlabJob {
 }
 
 function gitlabBaseUrl(host: string): string {
+  const problem = gitHostProblem(host);
+  if (problem) {
+    throw new AppError("VALIDATION_ERROR", problem, { host });
+  }
   return `https://${host}/api/v4`;
 }
 
@@ -312,9 +317,17 @@ async function gitlabRequest(
   host: string,
   init?: { method: string; body?: unknown }
 ): Promise<Response> {
+  // The real fetch only: injected test doubles talk to fake hosts that would
+  // not resolve.
+  if (httpFetch === globalThis.fetch) {
+    await assertPublicGitHost(host);
+  }
   let response: Response;
   try {
     response = await httpFetch(url.toString(), {
+      // Never follow redirects: a public host must not be able to bounce the
+      // request (with the PAT header) to an internal address.
+      redirect: "manual",
       method: init?.method ?? "GET",
       headers: {
         "PRIVATE-TOKEN": token,
@@ -327,6 +340,13 @@ async function gitlabRequest(
       "GATEWAY_ERROR",
       `Could not reach GitLab host ${host}: ${error instanceof Error ? error.message : String(error)}`,
       { host }
+    );
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new AppError(
+      "GATEWAY_ERROR",
+      `GitLab host ${host} answered with a redirect (HTTP ${response.status}), which is not followed.`,
+      { host, status: response.status }
     );
   }
   if (response.status === 401 || response.status === 403) {

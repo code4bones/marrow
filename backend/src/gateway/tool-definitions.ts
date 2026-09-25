@@ -15,6 +15,7 @@ import {
   searchMemorySchema,
   updateMemorySchema
 } from "../features/memory/model/schema.js";
+import { gitHostProblem } from "./git-host-safety.js";
 import { preflightSchema } from "../features/preflight/model/schema.js";
 import { recordLinksInputSchema } from "../features/memory/model/schema.js";
 import {
@@ -550,7 +551,12 @@ const replyCreateSchema = z.object({
 // answer yet, so these tools refuse to guess rather than operate on
 // nobody's/the-wrong-person's credentials).
 const gitCredentialCreateSchema = z.object({
-  host: z.string().min(1),
+  host: z.string().min(1).superRefine((host, ctx) => {
+    const problem = gitHostProblem(host);
+    if (problem) {
+      ctx.addIssue({ code: "custom", message: problem });
+    }
+  }),
   label: z.string().min(1),
   token: z.string().min(1)
 });
