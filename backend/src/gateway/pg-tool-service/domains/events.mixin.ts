@@ -87,6 +87,8 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
     if (current.project_id) {
       await this.assertProjectMember(String(current.project_id), context);
     }
+    // The audit trail: admin-only when it is common-scope.
+    this.assertCommonScopeDeleteAllowed(current, null, context);
     await this.db("events").where({ id }).del();
     await this.recordEventForProject(current.project_id, {
       type: "event.deleted",

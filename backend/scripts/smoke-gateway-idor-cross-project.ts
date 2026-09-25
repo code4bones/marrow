@@ -4,6 +4,8 @@
 // event.list without a project, request.get / reply.create, link.create /
 // link.list, decision.record{supersedesId}, projectGraph via a cross-project
 // link. Positive controls make sure the legitimate paths still work.
+// It also covers SEC-8 (T-MEMORY-172): common-scope deletes, credit IDOR,
+// gateway.clients user directory, client-id impersonation.
 // Same style as smoke-gateway-scopes.ts (ephemeral local gateway, real
 // Postgres -- point POSTGRES_* at a DEDICATED test database, never a live one).
 import { randomUUID } from "node:crypto";
@@ -162,6 +164,73 @@ try {
   const victimDecision = await db("decisions").where({ id: decisionB }).first();
   assert(victimDecision?.status === "accepted", `The foreign decision must stay accepted, is: ${victimDecision?.status}`);
   console.log("ok - foreign decision was not flipped to superseded");
+
+  // ---- SEC-8 ---------------------------------------------------------------
+  // A second member, so there is another user's identity/wallet to target.
+  const otherEmail = `gateway-idor-smoke-other-${unique}@example.test`;
+  const otherUserId = randomUUID();
+  await db("users").insert({
+    id: otherUserId, email: otherEmail, password_hash: await hashPassword(memberPassword),
+    email_verified_at: now, totp_enabled: false, role: "member", status: "active", created_at: now, updated_at: now
+  });
+  const otherCookie = await login(otherEmail, memberPassword);
+  unwrap(await callTool("project.list", {}, sessionHeaders(otherCookie))); // creates the user:<other> client row
+  try {
+    // common-scope deletes
+    const commonByStatic = expectData<{ item: { id: string } }>(
+      unwrap(await callTool("memory.create", { common: true, type: "note", title: "Shared rule", body: "common" }, staticHeaders()))
+    ).item.id;
+    const commonByMember = expectData<{ item: { id: string } }>(
+      unwrap(await asMember("memory.create", { common: true, type: "note", title: "Member's own common note", body: "mine" }))
+    ).item.id;
+    const denied = (await asMember("memory.delete", { id: commonByStatic })).json as ToolResponse<unknown>;
+    assert(denied.ok === false && denied.error.code === "UNAUTHORIZED", `A member must not delete someone else's common record: ${JSON.stringify(denied).slice(0, 200)}`);
+    assert(await db("items").where({ id: commonByStatic }).first(), "The common record must still exist.");
+    console.log("ok - member cannot delete a common-scope record they did not author");
+    const own = (await asMember("memory.delete", { id: commonByMember })).json as ToolResponse<unknown>;
+    assert(own.ok === true, `A member must still be able to delete their own common record: ${JSON.stringify(own).slice(0, 200)}`);
+    console.log("ok - member can delete their own common-scope record");
+    const commonEvent = await db("events").whereNull("project_id").first();
+    if (commonEvent) {
+      const evDenied = (await asMember("event.delete", { id: commonEvent.id })).json as ToolResponse<unknown>;
+      assert(evDenied.ok === false, "A member must not delete a common-scope (audit) event.");
+      assert(await db("events").where({ id: commonEvent.id }).first(), "The common event must still exist.");
+      console.log("ok - member cannot delete a common-scope event");
+    }
+    await db("items").where({ id: commonByStatic }).del();
+
+    // credits IDOR
+    const credDenied = (await asMember("credit.history", { userId: otherUserId })).json as ToolResponse<unknown>;
+    assert(credDenied.ok === false && credDenied.error.code === "UNAUTHORIZED", "credit.history for another user must be denied to a member.");
+    const credBalanceDenied = (await asMember("credit.balance", { userId: otherUserId })).json as ToolResponse<unknown>;
+    assert(credBalanceDenied.ok === false, "credit.balance for another user must be denied to a member.");
+    assert(unwrap(await asMember("credit.balance", {})).ok, "A member must still read their own balance.");
+    assert(unwrap(await asMember("credit.balance", { userId: memberUserId })).ok, "A member must still read their own balance by explicit id.");
+    console.log("ok - credit.balance/history are self-only for members");
+
+    // user directory
+    const clientsSeen = expectData<{ clients: { id: string }[] }>(unwrap(await asMember("gateway.clients", { limit: 100 }))).clients;
+    assert(!clientsSeen.some((client) => client.id === `user:${otherUserId}`), "gateway.clients leaked another user's client row (email label).");
+    const staticSeen = expectData<{ clients: { id: string }[] }>(unwrap(await callTool("gateway.clients", { limit: 100 }, staticHeaders()))).clients;
+    assert(staticSeen.some((client) => client.id === `user:${otherUserId}`), "Control: the static token should still see every client.");
+    const getOther = (await asMember("gateway.client_get", { id: `user:${otherUserId}` })).json as ToolResponse<unknown>;
+    assert(getOther.ok === false, "gateway.client_get on another user's client must be denied to a member.");
+    console.log("ok - gateway.clients / client_get do not expose other users to a member");
+
+    // client-id impersonation
+    const spoofed = expectData<{ item: { id: string } }>(
+      unwrap(await callTool("memory.create", { project: projectA, type: "note", title: "Spoof", body: "x" }, {
+        ...sessionHeaders(memberCookie), "x-project-memory-client-id": `user:${otherUserId}`
+      }))
+    ).item.id;
+    const spoofRow = await db("items").where({ id: spoofed }).first();
+    assert(spoofRow?.created_by === `user:${memberUserId}`, `Impersonation: created_by was ${spoofRow?.created_by}, expected user:${memberUserId}.`);
+    console.log("ok - an authenticated member cannot claim another user's client id");
+  } finally {
+    await db("sessions").where({ user_id: otherUserId }).del();
+    await db("gateway_clients").where({ id: `user:${otherUserId}` }).del();
+    await db("users").where({ id: otherUserId }).del();
+  }
 } finally {
   if (memberUserId) {
     await db("project_members").where({ user_id: memberUserId }).del();

@@ -496,6 +496,7 @@ export function DecisionsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     if (current.project_id) {
       await this.assertProjectMember(String(current.project_id), context);
     }
+    this.assertCommonScopeDeleteAllowed(current, current.created_by, context);
 
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {

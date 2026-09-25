@@ -143,9 +143,9 @@ export class PgToolService extends ComposedService {
         case "gateway.status":
           return ok("Gateway status loaded.", { status: await this.gatewayStatus() });
         case "gateway.clients":
-          return ok("Gateway clients listed.", { clients: await this.listClients(parsed) });
+          return ok("Gateway clients listed.", { clients: await this.listClients(parsed, requestContext) });
         case "gateway.client_get":
-          return ok("Gateway client loaded.", { client: await this.getClient(parsed) });
+          return ok("Gateway client loaded.", { client: await this.getClient(parsed, requestContext) });
         case "gateway.client_forget":
           return ok("Gateway client forgotten.", await this.forgetClient(parsed));
         case "gateway.client_prune":
@@ -439,7 +439,7 @@ export class PgToolService extends ComposedService {
       case "projects":
         return this.projectsPage(parsed, requestContext);
       case "gatewayClients":
-        return this.gatewayClientsPage(parsed);
+        return this.gatewayClientsPage(parsed, requestContext);
       case "memoryItems":
         return this.memoryItemsPage(parsed, requestContext);
       case "memorySearch":

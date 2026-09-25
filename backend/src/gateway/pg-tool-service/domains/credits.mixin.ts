@@ -14,6 +14,11 @@ export function CreditsMixin<TBase extends Constructor<BaseService>>(Base: TBase
   return class extends Base {
   protected resolveCreditUserId(input: Row, context: NormalizedGatewayRequestContext): string {
     const requested = typeof input.userId === "string" && input.userId.length > 0 ? input.userId : null;
+    // SEC-8: a wallet and its transaction history are the owner's (or an
+    // admin's) to read -- a role=member caller could pass any user's id.
+    if (requested && context.sessionRole === "member" && requested !== context.sessionUserId) {
+      throw new AppError("UNAUTHORIZED", "You can only read your own credit balance and history.");
+    }
     const userId = requested ?? context.sessionUserId;
     if (!userId) {
       throw new AppError(

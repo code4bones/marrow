@@ -426,6 +426,29 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return null;
   }
 
+  // Common-scope records (project_id NULL) belong to nobody's project, so
+  // assertProjectMember has nothing to check -- which used to let ANY member
+  // hard-delete shared records, the audit trail included (SEC-8). A member
+  // may delete one only if they authored it (authorId = the row's created_by
+  // as `user:<id>`); pass null for records that must be admin-only (events).
+  // Admin / static-token / anonymous callers are not restricted here.
+  protected assertCommonScopeDeleteAllowed(
+    row: Row,
+    authorId: unknown,
+    context: NormalizedGatewayRequestContext
+  ): void {
+    if (row.project_id || context.sessionRole !== "member") {
+      return;
+    }
+    if (authorId && context.sessionUserId && String(authorId) === `user:${context.sessionUserId}`) {
+      return;
+    }
+    throw new AppError(
+      "UNAUTHORIZED",
+      "Only an admin (or the author, for records other than events) can delete a common-scope record."
+    );
+  }
+
   // True when a role=member caller is not an active member of the project
   // the record lives in (SEC-4: by-id links/graph/context reads used to
   // skip this). Admin, static-token and anonymous callers are never hidden

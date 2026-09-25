@@ -2126,7 +2126,18 @@ function requestContext(
   options: GatewayServerOptions
 ): GatewayRequestContext {
   const requestUrl = parseRequestUrl(request);
-  const explicitClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
+  const requestedClientId = headerString(request, "x-project-memory-client-id") ?? queryString(requestUrl, "client_id");
+  // SEC-8: an authenticated user's records/events are attributed to
+  // `user:<their id>` (and credits, default assignee and the gateway_clients
+  // row hang off that id). A caller-chosen client id must not be able to
+  // claim ANOTHER identity's namespace, so for authenticated callers the
+  // reserved prefixes are ignored. (Static-token / anonymous agents keep
+  // choosing their own ids, as before.)
+  const RESERVED_CLIENT_ID_PREFIX = /^(user|static|anonymous):/i;
+  const explicitClientId =
+    requestedClientId && (sessionAuth || personalTokenAuth || oauthOwner) && RESERVED_CLIENT_ID_PREFIX.test(requestedClientId)
+      ? null
+      : requestedClientId;
   // Static MCP_TOKEN requests otherwise fell through to a fresh
   // `anonymous:${requestId}` on every single request -- no stable identity
   // at all, unlike a session (`user:<id>`) or an explicit client-id header.

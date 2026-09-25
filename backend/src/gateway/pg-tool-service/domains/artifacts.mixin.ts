@@ -541,6 +541,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
   protected async deleteArtifact(input: Row, context: NormalizedGatewayRequestContext) {
     const current = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const id = String(current.id);
+    this.assertCommonScopeDeleteAllowed(current, current.created_by, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
       deletedLinks = await this.deleteLinksForRecord(id, trx);

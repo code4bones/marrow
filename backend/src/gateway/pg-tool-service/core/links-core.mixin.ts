@@ -169,6 +169,7 @@ export function LinksCoreMixin<TBase extends Constructor<ProjectsCoreInstance>>(
     if (current.project_id) {
       await this.assertProjectMember(String(current.project_id), context);
     }
+    this.assertCommonScopeDeleteAllowed(current, current.created_by, context);
     await this.db("links").where({ id }).del();
     const event = await this.recordEventForProject(stringOrNull(current.project_id), {
       type: "link.deleted",

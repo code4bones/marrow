@@ -244,6 +244,7 @@ export function SkillsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
   protected async deleteSkill(input: Row, context: NormalizedGatewayRequestContext) {
     const current = await this.skillRowById(String(input.id), context);
     const id = String(current.id);
+    this.assertCommonScopeDeleteAllowed(current, current.created_by, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
       deletedLinks = await this.deleteLinksForRecord(id, trx);

@@ -1,15 +1,28 @@
+import type { Knex } from "knex";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { createActorLabelsFacade } from "../../actor-labels.js";
 import { currentProjectKey, stringArray } from "../formatters/common.js";
 import { anonymousClientTtlSeconds, clientOut, compactClient, cutoffFromSeconds } from "../formatters/clients.js";
-import { anonymousClientPrefix, staticTokenClientId, type Row } from "../types.js";
+import { anonymousClientPrefix, staticTokenClientId, type NormalizedGatewayRequestContext, type Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
 
 export function ClientsMixin<TBase extends Constructor<BaseService>>(Base: TBase) {
   return class extends Base {
-  protected async listClients(input: Row) {
-    let query = this.db("gateway_clients").select("*").orderBy("updated_at", "desc");
+  // SEC-8: gateway_clients rows of session / token / OAuth callers are
+  // `user:<id>` with the user's EMAIL as the label -- listing them handed any
+  // member the whole user directory. A role=member caller sees agent/static
+  // clients and its own `user:<id>` row, not other users'.
+  protected applyClientVisibility<T extends Knex.QueryBuilder>(query: T, context?: NormalizedGatewayRequestContext): T {
+    if (context?.sessionRole === "member" && context.sessionUserId) {
+      const own = `user:${context.sessionUserId}`;
+      query.where((builder) => builder.where("id", "not like", "user:%").orWhere("id", own));
+    }
+    return query;
+  }
+
+  protected async listClients(input: Row, context?: NormalizedGatewayRequestContext) {
+    let query = this.applyClientVisibility(this.db("gateway_clients").select("*").orderBy("updated_at", "desc"), context);
     if (typeof input.anonymous === "boolean") {
       query = input.anonymous
         ? query.where("id", "like", `${anonymousClientPrefix}%`)
@@ -22,8 +35,8 @@ export function ClientsMixin<TBase extends Constructor<BaseService>>(Base: TBase
     return input.compact === true ? rows.map(compactClient) : rows.map(clientOut);
   }
 
-  protected async gatewayClientsPage(input: Row) {
-    const base = this.db("gateway_clients");
+  protected async gatewayClientsPage(input: Row, context?: NormalizedGatewayRequestContext) {
+    const base = this.applyClientVisibility(this.db("gateway_clients"), context);
     if (typeof input.anonymous === "boolean") {
       if (input.anonymous) {
         base.where("id", "like", `${anonymousClientPrefix}%`);
@@ -37,8 +50,12 @@ export function ClientsMixin<TBase extends Constructor<BaseService>>(Base: TBase
     return this.pageRows(base, input, (query) => query.select("*").orderBy("updated_at", "desc"), clientOut);
   }
 
-  protected async getClient(input: Row) {
-    const row = await this.clientRow(String(input.id));
+  protected async getClient(input: Row, context?: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    if (context?.sessionRole === "member" && id.startsWith("user:") && id !== `user:${context.sessionUserId}`) {
+      throw new AppError("NOT_FOUND", `Client ${id} does not exist.`, { id });
+    }
+    const row = await this.clientRow(id);
     return {
       ...clientOut(row),
       currentProjectId: await this.getKv(currentProjectKey(String(row.id)))
