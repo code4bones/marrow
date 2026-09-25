@@ -1594,7 +1594,11 @@ export async function createGatewayGraphqlServer(): Promise<GatewayGraphqlServer
   const server = new ApolloServer<GatewayGraphqlContext>({
     schema: gatewaySchema,
     introspection: true,
-    csrfPrevention: false
+    csrfPrevention: false,
+    // Automatic persisted queries let a request carry only a sha256 hash and
+    // no query text, which the scope gate in http-server.ts cannot classify
+    // (it would treat it as a read). Nothing here uses APQ, so refuse it.
+    persistedQueries: false
   });
   await server.start();
   return {

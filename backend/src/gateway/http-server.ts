@@ -22,6 +22,7 @@ import {
   type SessionIdentity
 } from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
+import { graphqlDocumentTier } from "./graphql-scope.js";
 import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import { generatePkce, telegramAuthorizeUrl, resolveTelegramUser, type TelegramOidcUser } from "./telegram-oidc.js";
@@ -2082,19 +2083,18 @@ function mcpToolName(value: unknown): string | undefined {
   return typeof value.params.name === "string" ? value.params.name : undefined;
 }
 
-// The regex-based `/\bmutation\b/i` check can't distinguish a delete
-// mutation from a create/update one by text alone, so admin-tier mutations
-// (the *.delete equivalents, see ADMIN_GRAPHQL_MUTATION_NAMES in graphql.ts)
-// need a second, name-specific check to require memory:admin like their
-// REST/MCP tool counterparts do.
-const ADMIN_GRAPHQL_MUTATION_PATTERN = new RegExp(`\\b(${ADMIN_GRAPHQL_MUTATION_NAMES.join("|")})\\s*\\(`);
-
+// Admin-tier mutations (see ADMIN_GRAPHQL_MUTATION_NAMES in graphql.ts) need
+// memory:admin like their REST/MCP tool counterparts. The tier is decided
+// from the parsed document (graphql-scope.ts), not from the raw text -- a
+// regex over the text is bypassable with tokens GraphQL ignores (commas,
+// comments).
 function graphqlRequiredScopes(request: IncomingMessage, body: unknown): string[] {
   const queries = graphqlQueryTexts(request, body);
-  if (queries.some((query) => ADMIN_GRAPHQL_MUTATION_PATTERN.test(query))) {
+  const tiers = queries.map((query) => graphqlDocumentTier(query, ADMIN_GRAPHQL_MUTATION_NAMES));
+  if (tiers.includes("admin")) {
     return [READ_SCOPE, WRITE_SCOPE, ADMIN_SCOPE];
   }
-  if (queries.some((query) => /\bmutation\b/i.test(query))) {
+  if (tiers.includes("write")) {
     return [READ_SCOPE, WRITE_SCOPE];
   }
   return [READ_SCOPE];
