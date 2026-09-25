@@ -2683,10 +2683,33 @@ function isSensitiveFormKey(key: string): boolean {
   return ["code", "code_verifier", "client_secret", "password"].includes(key.toLowerCase());
 }
 
-function isSensitiveKey(key: string): boolean {
-  return /authorization|cookie|token|secret|password|private[_-]?key|api[_-]?key|client[_-]?secret|code_verifier|magic/i.test(
+// `value` / `variables` are how env.variable_set, git.variable_set and
+// git.pipeline_trigger carry secrets -- names the key-based match below would
+// otherwise miss, writing every env/CI value into the request log (SEC-10).
+export function isSensitiveKey(key: string): boolean {
+  return /authorization|cookie|token|secret|password|private[_-]?key|api[_-]?key|client[_-]?secret|code_verifier|magic|^value$|^variables$/i.test(
     key
   );
+}
+
+// One-time tokens travel in query strings (/auth/claim?token=,
+// /auth/register/pending?token=, OAuth ?code=&state=): keep the path and the
+// parameter names in the log, drop the values.
+export function redactUrlForLog(rawUrl: string | undefined): string | undefined {
+  if (!rawUrl || !rawUrl.includes("?")) {
+    return rawUrl;
+  }
+  try {
+    const parsed = new URL(rawUrl, "http://localhost");
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/token|code|state|secret|password|key|verifier|magic/i.test(key)) {
+        parsed.searchParams.set(key, "[REDACTED]");
+      }
+    }
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return rawUrl.split("?")[0];
+  }
 }
 
 function isBase64ContentKey(key: string): boolean {
@@ -2719,7 +2742,7 @@ function logRequest(
     {
       requestId,
       method: request.method,
-      url: request.url,
+      url: redactUrlForLog(request.url),
       status,
       durationMs,
       clientId: context.clientId,
