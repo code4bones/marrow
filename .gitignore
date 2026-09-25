@@ -1,7 +1,34 @@
+# --- Secrets and local session markers -------------------------------------
+.env
+.env.*
+!.env.example
 .mcpsession.json
-.tellymcp/log.jsonl
+.cresume
+.resume
 
+# --- Local tooling state and scratch ---------------------------------------
 .tellymcp
 .mcp-xchange/
+.debug/
 brand-icons/
-.cresume
+
+# --- Claude Code: local state only (shared config such as .claude/skills/
+# --- stays trackable) ------------------------------------------------------
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+.claude/routines/.state/
+.claude/worktrees/
+.claude/checkpoints/
+.claude/mailbox/
+.claude/agent-registry.json
+.claude/agent-memory-local
+.claude/first-run
+.claude/assistant-daemon-state.json
+
+# --- Build output, dependencies, logs, editor/OS noise ---------------------
+node_modules/
+dist/
+*.log
+.DS_Store
+.idea/
