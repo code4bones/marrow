@@ -1085,7 +1085,7 @@ async function handleAuthRoute(
     clearLoginAttempts(emailKey);
     clearLoginAttempts(ipKey);
     if (result.status === "pending_totp") {
-      send(200, { ok: true, data: { status: "pending_totp", userId: result.userId } }, {
+      send(200, { ok: true, data: { status: "pending_totp", userId: result.userId, challenge: result.challenge } }, {
         requestBody: { email: body.email }
       });
       return true;
@@ -1436,9 +1436,13 @@ async function handleAuthRoute(
   // no email in this body) alongside client IP.
 
   if (request.method === "POST" && requestPath === "/auth/login/2fa") {
-    const body = (await readJson(request)) as { userId?: unknown; code?: unknown };
+    const body = (await readJson(request)) as { userId?: unknown; code?: unknown; challenge?: unknown };
     if (typeof body.userId !== "string" || typeof body.code !== "string") {
       send(400, fail(new AppError("VALIDATION_ERROR", "userId and code are required.")));
+      return true;
+    }
+    if (body.challenge !== undefined && typeof body.challenge !== "string") {
+      send(400, fail(new AppError("VALIDATION_ERROR", "challenge must be a string.")));
       return true;
     }
 
@@ -1457,10 +1461,12 @@ async function handleAuthRoute(
       return true;
     }
 
-    const result = await auth.loginTotp(body.userId, body.code, {
-      userAgent: headerString(request, "user-agent"),
-      ip
-    });
+    const result = await auth.loginTotp(
+      body.userId,
+      body.code,
+      { userAgent: headerString(request, "user-agent"), ip },
+      body.challenge as string | undefined
+    );
     clearLoginAttempts(userKey);
     clearLoginAttempts(ipKey);
     response.setHeader("set-cookie", sessionCookieHeader(result.token, isForwardedHttps(request)));
@@ -1709,7 +1715,7 @@ async function handleAuthRoute(
       }
       if (result.status === "pending_totp") {
         logGithubOauth("callback", { intent, outcome: "pending_totp", githubId: githubUser.githubId, userId: result.userId });
-        redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
+        redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}&pendingTotpToken=${encodeURIComponent(result.challenge)}`);
         return true;
       }
       logGithubOauth("callback", { intent, outcome: "session", githubId: githubUser.githubId, userId: result.user.id, returnTo });
@@ -1868,7 +1874,7 @@ async function handleAuthRoute(
         // loginViaTelegram never actually returns this branch (no password
         // step to re-challenge) -- handled only for LoginResult exhaustiveness.
         logTelegramOauth("callback", { intent, outcome: "pending_totp", telegramId: telegramUser.telegramId, userId: result.userId });
-        redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}`);
+        redirectTo(`/login?pendingTotpUserId=${encodeURIComponent(result.userId)}&pendingTotpToken=${encodeURIComponent(result.challenge)}`);
         return true;
       }
       logTelegramOauth("callback", { intent, outcome: "session", telegramId: telegramUser.telegramId, userId: result.user.id, returnTo });
@@ -2687,7 +2693,7 @@ function isSensitiveFormKey(key: string): boolean {
 // git.pipeline_trigger carry secrets -- names the key-based match below would
 // otherwise miss, writing every env/CI value into the request log (SEC-10).
 export function isSensitiveKey(key: string): boolean {
-  return /authorization|cookie|token|secret|password|private[_-]?key|api[_-]?key|client[_-]?secret|code_verifier|magic|^value$|^variables$/i.test(
+  return /authorization|cookie|token|secret|password|private[_-]?key|api[_-]?key|client[_-]?secret|code_verifier|magic|challenge|^value$|^variables$/i.test(
     key
   );
 }

@@ -11,6 +11,7 @@ import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
 import { createCreditsFacade } from "./credits.js";
 import { redirectUriProblem } from "./redirect-uri.js";
+import { issueTotpChallenge, totpChallengeRequired, verifyTotpChallenge } from "./totp-challenge.js";
 import {
   base32Encode,
   buildOtpauthUrl,
@@ -19,7 +20,8 @@ import {
   generateRecoveryCodes,
   generateTotpSecret,
   hashRecoveryCode,
-  verifyTotpCode
+  verifyTotpCode,
+  verifyTotpCodeStep
 } from "./totp.js";
 
 const scrypt = promisify(scryptCallback) as (
@@ -76,7 +78,7 @@ interface RequestMeta {
 
 type LoginResult =
   | { status: "session"; token: string; user: { id: string; email: string; role: string } }
-  | { status: "pending_totp"; userId: string };
+  | { status: "pending_totp"; userId: string; challenge: string };
 
 type SessionLoginResult = { status: "session"; token: string; user: { id: string; email: string; role: string } };
 
@@ -229,7 +231,7 @@ export function createAuthFacade(db: Knex) {
     if (user.totp_enabled) {
       // Second step is POST /auth/login/2fa (loginTotp below) — TOTP code or
       // an unused recovery code, keyed off this userId.
-      return { status: "pending_totp", userId: user.id };
+      return { status: "pending_totp", userId: user.id, challenge: issueTotpChallenge(user.id) };
     }
 
     const rawSessionToken = await issueSession(user.id, meta);
@@ -328,13 +330,42 @@ export function createAuthFacade(db: Knex) {
   }
 
   /** Second step of login for totp_enabled accounts — code is a 6-digit TOTP or an unused recovery code. */
-  async function loginTotp(userId: string, code: string, meta: RequestMeta): Promise<SessionLoginResult> {
+  // A TOTP code is good for its 30 s step (+/- 1): without this, a phished or
+  // shoulder-surfed code could be replayed for ~90 s. Per user and purpose,
+  // in memory -- this gateway is a single instance, and a restart only
+  // reopens the window for the code's remaining lifetime.
+  const lastAcceptedTotpStep = new Map<string, number>();
+  function acceptTotpStep(purpose: "login" | "elevate", userId: string, step: number | null): boolean {
+    if (step === null) {
+      return false;
+    }
+    const key = `${purpose}:${userId}`;
+    const last = lastAcceptedTotpStep.get(key);
+    if (last !== undefined && step <= last) {
+      return false;
+    }
+    lastAcceptedTotpStep.set(key, step);
+    return true;
+  }
+
+  async function loginTotp(
+    userId: string,
+    code: string,
+    meta: RequestMeta,
+    challenge?: string
+  ): Promise<SessionLoginResult> {
+    // The password step must have happened (SEC-9/11). A present-but-wrong
+    // challenge is always refused; a missing one only while the front-end that
+    // sends it is still rolling out (TOTP_CHALLENGE_REQUIRED).
+    if (challenge !== undefined ? !verifyTotpChallenge(userId, challenge) : totpChallengeRequired()) {
+      throw new AppError("UNAUTHORIZED", "Invalid or expired code.");
+    }
     const user = await db("users").where({ id: userId }).first();
     if (!user || !user.totp_enabled || !user.totp_secret) {
       throw new AppError("UNAUTHORIZED", "Invalid or expired code.");
     }
 
-    let matched = verifyTotpCode(decryptSecret(user.totp_secret), code);
+    let matched = acceptTotpStep("login", userId, verifyTotpCodeStep(decryptSecret(user.totp_secret), code));
     if (!matched) {
       const hashes: string[] = user.totp_recovery_code_hashes ?? [];
       const candidateHash = hashRecoveryCode(code);
@@ -416,7 +447,7 @@ export function createAuthFacade(db: Knex) {
       );
     }
     const secretBase32 = decryptSecret(user.totp_secret);
-    if (!verifyTotpCode(secretBase32, code)) {
+    if (!acceptTotpStep("elevate", user.id as string, verifyTotpCodeStep(secretBase32, code))) {
       throw new AppError("UNAUTHORIZED", "Invalid verification code.");
     }
 

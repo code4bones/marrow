@@ -94,9 +94,17 @@ function hotp(secret: Buffer, counter: number): string {
  * codes total) to tolerate clock drift between server and authenticator app.
  */
 export function verifyTotpCode(secretBase32: string, code: string, windowSteps = 1): boolean {
+  return verifyTotpCodeStep(secretBase32, code, windowSteps) !== null;
+}
+
+/**
+ * Same check, but returns the time step the code belongs to (or null), so a
+ * caller can refuse to accept the same step twice (replay).
+ */
+export function verifyTotpCodeStep(secretBase32: string, code: string, windowSteps = 1): number | null {
   const normalized = code.trim();
   if (!/^\d{6}$/.test(normalized)) {
-    return false;
+    return null;
   }
   const secret = base32Decode(secretBase32);
   const currentStep = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
@@ -105,10 +113,10 @@ export function verifyTotpCode(secretBase32: string, code: string, windowSteps =
     const expected = hotp(secret, currentStep + delta);
     const expectedBuf = Buffer.from(expected, "utf8");
     if (expectedBuf.length === candidateBuf.length && timingSafeEqual(expectedBuf, candidateBuf)) {
-      return true;
+      return currentStep + delta;
     }
   }
-  return false;
+  return null;
 }
 
 /**
