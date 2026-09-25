@@ -1216,7 +1216,7 @@ async function handleAuthRoute(
       send(400, fail(new AppError("VALIDATION_ERROR", "currentPassword and newPassword are required.")));
       return true;
     }
-    await auth.changePassword(sessionAuth.userId, body.currentPassword, body.newPassword);
+    await auth.changePassword(sessionAuth.userId, body.currentPassword, body.newPassword, sessionAuth.sessionId);
     send(200, { ok: true, data: { changed: true } });
     return true;
   }
@@ -2435,6 +2435,10 @@ async function resolveOAuthOwner(options: GatewayServerOptions, request: Incomin
   }
   const owner = await options.auth.identifyOAuthOwner(baseAuth.subject);
   if (!owner) {
+    return null;
+  }
+  // A token whose connector was deleted or regenerated is revoked (SEC-9).
+  if (!(await options.auth.oauthClientActive(baseAuth.clientId))) {
     return null;
   }
   return { ...owner, clientId: baseAuth.clientId };

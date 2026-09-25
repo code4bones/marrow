@@ -155,6 +155,8 @@ export function createAuthFacade(db: Knex) {
         throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
       }
       await db("users").where({ id: userId }).update({ password_hash: passwordHash, updated_at: now });
+      // A password reset means the old credential may be compromised.
+      await revokeUserSessions(userId);
     }
 
     await db("tokens").where({ id: tokenRow.id }).update({ used_at: now });
@@ -463,7 +465,12 @@ export function createAuthFacade(db: Knex) {
     return user;
   }
 
-  async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  async function changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepSessionId?: string
+  ): Promise<void> {
     await requirePasswordMatch(userId, currentPassword);
     if (newPassword.length < 8) {
       throw new AppError("VALIDATION_ERROR", "Password must be at least 8 characters.");
@@ -471,6 +478,7 @@ export function createAuthFacade(db: Knex) {
     await db("users")
       .where({ id: userId })
       .update({ password_hash: await hashPassword(newPassword), updated_at: new Date() });
+    await revokeUserSessions(userId, keepSessionId);
   }
 
   // --- Open self-registration + admin approval (T-MEMORY-038, D-MEMORY-016) ---
@@ -1078,6 +1086,18 @@ export function createAuthFacade(db: Knex) {
     await db("sessions").where({ token_hash: hashToken(rawToken) }).update({ revoked_at: new Date() });
   }
 
+  // SEC-9: a password change/reset used to leave every existing session
+  // alive (30 days), so a stolen cookie survived the victim "fixing" their
+  // account. Revoke all of the user's sessions, optionally keeping the one
+  // that is performing the change.
+  async function revokeUserSessions(userId: string, exceptSessionId?: string): Promise<void> {
+    const query = db("sessions").where({ user_id: userId }).whereNull("revoked_at");
+    if (exceptSessionId) {
+      query.whereNot({ id: exceptSessionId });
+    }
+    await query.update({ revoked_at: new Date() });
+  }
+
   async function identifyFromRequest(request: IncomingMessage): Promise<SessionIdentity | null> {
     const rawToken = parseCookies(request)[SESSION_COOKIE_NAME];
     if (!rawToken) {
@@ -1505,6 +1525,19 @@ export function createAuthFacade(db: Knex) {
   // (never a real users.id) -- both cases are handled identically by the
   // caller (http-server.ts's isAuthorizedForScopes), which fails closed
   // (401) rather than silently downgrading to write scope.
+  // SEC-9: an OAuth access token is a stateless 30-day JWT, so deleting or
+  // regenerating a connector (which the UI presents as revoking a leaked
+  // credential) did nothing to tokens already minted from it. The JWT carries
+  // the connector's client_id; regenerate rotates that value and delete drops
+  // the row, so "the client_id still exists" is the revocation check.
+  async function oauthClientActive(clientId: string): Promise<boolean> {
+    if (!clientId) {
+      return false;
+    }
+    const row = await db("oauth_clients").select("id").where({ client_id: clientId }).first();
+    return Boolean(row);
+  }
+
   async function identifyOAuthOwner(userId: string): Promise<{ userId: string; role: string; email: string } | null> {
     if (!userId) {
       return null;
@@ -1573,6 +1606,8 @@ export function createAuthFacade(db: Knex) {
     notificationsSeenAt,
     markNotificationsSeen,
     identifyOAuthOwner,
+    oauthClientActive,
+    revokeUserSessions,
     registerViaGithub,
     pendingRegistrationContext,
     mintOAuthState,

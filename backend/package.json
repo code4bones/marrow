@@ -1,6 +1,6 @@
 {
   "name": "@deadragdoll/marrow-back",
-  "version": "1.97.44",
+  "version": "1.97.45",
   "description": "Shared MCP memory gateway and local-first project memory server for coding agents.",
   "type": "module",
   "engines": {
@@ -42,6 +42,7 @@
     "smoke:gateway:auth": "node dist/scripts/smoke-gateway-auth.js",
     "smoke:gateway:registration": "node dist/scripts/smoke-gateway-registration.js",
     "smoke:gateway:scopes": "node dist/scripts/smoke-gateway-scopes.js",
+    "smoke:gateway:revocation": "node dist/scripts/smoke-gateway-revocation.js",
     "smoke:gateway:idor-cross-project": "node dist/scripts/smoke-gateway-idor-cross-project.js",
     "smoke:gateway:subscriptions": "node dist/scripts/smoke-gateway-subscriptions.js",
     "smoke:gateway:elevation": "node dist/scripts/smoke-gateway-elevation.js",
