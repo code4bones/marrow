@@ -3,7 +3,9 @@
 // recent and that plugin's compatibility with it is unconfirmed, and a
 // hand-rolled worker sidesteps precache staleness entirely by never
 // hardcoding a build's hashed asset filenames. Runtime-caches only.
-const RUNTIME_CACHE = 'marrow-runtime-v1';
+// v2: also drops the v1 cache, which could hold authenticated /api/* responses
+// (SEC-10) -- the activate handler deletes every cache but this one.
+const RUNTIME_CACHE = 'marrow-runtime-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -30,6 +32,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Never cache API responses: they are per-user and authenticated, a
+  // network-first cache fallback would keep serving them after logout or to
+  // the next person on a shared profile (SEC-10).
+  if (url.pathname.startsWith('/api/')) return;
 
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
