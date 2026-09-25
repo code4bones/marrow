@@ -32,11 +32,13 @@ describe("totp challenge", () => {
     expect(verifyTotpChallenge(user, `${expires}.${mac.toUpperCase()}`, now)).toBe(false);
   });
 
-  it("is only mandatory when TOTP_CHALLENGE_REQUIRED=1", () => {
+  it("is mandatory unless the emergency switch TOTP_CHALLENGE_REQUIRED=0 is set", () => {
     delete process.env.TOTP_CHALLENGE_REQUIRED;
-    expect(totpChallengeRequired()).toBe(false);
+    expect(totpChallengeRequired()).toBe(true);
     process.env.TOTP_CHALLENGE_REQUIRED = "1";
     expect(totpChallengeRequired()).toBe(true);
+    process.env.TOTP_CHALLENGE_REQUIRED = "0";
+    expect(totpChallengeRequired()).toBe(false);
     delete process.env.TOTP_CHALLENGE_REQUIRED;
   });
 });

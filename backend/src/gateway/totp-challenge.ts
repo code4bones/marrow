@@ -39,9 +39,10 @@ export function verifyTotpChallenge(userId: string, challenge: string, nowMs = D
   return expected.length === presented.length && timingSafeEqual(expected, presented);
 }
 
-// 2FA is mandatory-challenge once every client sends it. Until the front-end
-// release that carries the challenge is live everywhere, a missing challenge
-// is still accepted (a PRESENT but wrong one never is).
+// The challenge is mandatory (the front-end that sends it has been live since
+// web v0.68.35 and a login through it was confirmed). TOTP_CHALLENGE_REQUIRED=0
+// is an emergency switch to accept a missing challenge again; a PRESENT but
+// wrong challenge is refused either way.
 export function totpChallengeRequired(): boolean {
-  return process.env.TOTP_CHALLENGE_REQUIRED === "1";
+  return process.env.TOTP_CHALLENGE_REQUIRED !== "0";
 }

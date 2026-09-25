@@ -317,11 +317,13 @@ async function loginSession(email: string, password: string, totpSecret: string)
   const loginResponse = await postJson(`${started.url}/auth/login`, { email, password });
   assert(loginResponse.status === 200, `Login failed for ${email}. Status: ${loginResponse.status}`);
   const userId = readNestedString(loginResponse.body, ["data", "userId"]);
+  // SEC-11: the second step must present the challenge the password step returned.
+  const challenge = readNestedString(loginResponse.body, ["data", "challenge"]);
 
   const totpResponse = await fetch(`${started.url}/auth/login/2fa`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId, code: currentTotpCode(totpSecret) })
+    body: JSON.stringify({ userId, code: currentTotpCode(totpSecret), challenge })
   });
   assert(totpResponse.status === 200, `TOTP login failed for ${email}. Status: ${totpResponse.status}`);
   const cookie = totpResponse.headers.get("set-cookie")?.split(";")[0];

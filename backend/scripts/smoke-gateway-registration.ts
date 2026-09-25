@@ -176,7 +176,7 @@ try {
     body: JSON.stringify({ email: applicantEmail, password: applicantPassword })
   });
   assert(loginAfterApprove.status === 200, `Login after approve failed. Status: ${loginAfterApprove.status}`);
-  const loginAfterApproveBody = (await loginAfterApprove.json()) as { data: { status: string; userId?: string } };
+  const loginAfterApproveBody = (await loginAfterApprove.json()) as { data: { status: string; userId?: string; challenge: string } };
   assert(loginAfterApproveBody.data.status === "pending_totp", "Login after approve should return pending_totp (totp_enabled=true).");
   const loginUserId = loginAfterApproveBody.data.userId as string;
   assert(loginUserId === applicantUserId, "pending_totp userId mismatch.");
@@ -185,7 +185,7 @@ try {
   const login2faWrong = await fetch(`${started.url}/auth/login/2fa`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: loginUserId, code: "000000" })
+    body: JSON.stringify({ userId: loginUserId, code: "000000", challenge: loginAfterApproveBody.data.challenge })
   });
   assert(login2faWrong.status === 401, `Wrong login/2fa code was not rejected. Status: ${login2faWrong.status}`);
   console.log("ok - auth login/2fa rejects a wrong TOTP code");
@@ -194,7 +194,7 @@ try {
   const login2fa = await fetch(`${started.url}/auth/login/2fa`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: loginUserId, code: login2faCode })
+    body: JSON.stringify({ userId: loginUserId, code: login2faCode, challenge: loginAfterApproveBody.data.challenge })
   });
   assert(login2fa.status === 200, `POST /auth/login/2fa failed. Status: ${login2fa.status}`);
   const applicantCookie = sessionCookieFrom(login2fa);
@@ -227,13 +227,13 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: applicantEmail, password: applicantPassword })
   });
-  const loginBeforeRecoveryBody = (await loginBeforeRecovery.json()) as { data: { userId: string } };
+  const loginBeforeRecoveryBody = (await loginBeforeRecovery.json()) as { data: { userId: string; challenge: string } };
 
   const recoveryCode = confirmBody.data.recoveryCodes[0];
   const recoveryLogin = await fetch(`${started.url}/auth/login/2fa`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: loginBeforeRecoveryBody.data.userId, code: recoveryCode })
+    body: JSON.stringify({ userId: loginBeforeRecoveryBody.data.userId, code: recoveryCode, challenge: loginBeforeRecoveryBody.data.challenge })
   });
   assert(recoveryLogin.status === 200, `Recovery-code login/2fa failed. Status: ${recoveryLogin.status}`);
   const recoveryCookie = sessionCookieFrom(recoveryLogin);
@@ -245,11 +245,11 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: applicantEmail, password: applicantPassword })
   });
-  const loginBeforeRecoveryReplayBody = (await loginBeforeRecoveryReplay.json()) as { data: { userId: string } };
+  const loginBeforeRecoveryReplayBody = (await loginBeforeRecoveryReplay.json()) as { data: { userId: string; challenge: string } };
   const recoveryReplay = await fetch(`${started.url}/auth/login/2fa`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: loginBeforeRecoveryReplayBody.data.userId, code: recoveryCode })
+    body: JSON.stringify({ userId: loginBeforeRecoveryReplayBody.data.userId, code: recoveryCode, challenge: loginBeforeRecoveryReplayBody.data.challenge })
   });
   assert(recoveryReplay.status === 401, `Reusing a recovery code was not rejected. Status: ${recoveryReplay.status}`);
   console.log("ok - auth login/2fa recovery codes are single-use");

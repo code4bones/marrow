@@ -69,16 +69,17 @@ try {
   assert(nextStep.status === 200, `a later step's code must still work, got ${nextStep.status}`);
   console.log("ok - a used TOTP step is refused again, the next step's code works");
 
-  // --- rollout compatibility: missing challenge accepted until required ----------
-  assert((await secondStep(userB.id, totpCode(userB.secret))).status === 200, "legacy: missing challenge is accepted while not required");
-  console.log("ok - a missing challenge is still accepted during rollout (legacy front-end)");
+  // --- the challenge is mandatory by default ------------------------------------
+  const challengeB2 = await passwordStep(userB);
+  assert((await secondStep(userB.id, totpCode(userB.secret))).status === 401, "a missing challenge must be refused by default");
+  assert((await secondStep(userB.id, totpCode(userB.secret), challengeB2)).status === 200, "valid challenge + code must log in (the refusal above must not burn the TOTP step)");
+  console.log("ok - a missing challenge is refused by default, a valid one works");
 
-  process.env.TOTP_CHALLENGE_REQUIRED = "1";
+  // --- emergency switch: TOTP_CHALLENGE_REQUIRED=0 accepts a missing challenge again
+  process.env.TOTP_CHALLENGE_REQUIRED = "0";
   try {
-    const challengeC = await passwordStep(userC);
-    assert((await secondStep(userC.id, totpCode(userC.secret))).status === 401, "required: a missing challenge must be refused");
-    assert((await secondStep(userC.id, totpCode(userC.secret), challengeC)).status === 200, "required: valid challenge + code must log in (the refusal above must not burn the TOTP step)");
-    console.log("ok - with TOTP_CHALLENGE_REQUIRED=1 a missing challenge is refused, a valid one works");
+    assert((await secondStep(userC.id, totpCode(userC.secret))).status === 200, "with the emergency switch a missing challenge is accepted");
+    console.log("ok - TOTP_CHALLENGE_REQUIRED=0 (emergency switch) accepts a missing challenge; a wrong one is still refused");
   } finally {
     delete process.env.TOTP_CHALLENGE_REQUIRED;
   }
