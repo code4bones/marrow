@@ -226,6 +226,32 @@ try {
     const spoofRow = await db("items").where({ id: spoofed }).first();
     assert(spoofRow?.created_by === `user:${memberUserId}`, `Impersonation: created_by was ${spoofRow?.created_by}, expected user:${memberUserId}.`);
     console.log("ok - an authenticated member cannot claim another user's client id");
+
+    // private common-scope events (SEC-8/11): visible to their author and admins only
+    const mkEvent = async (type: string, createdBy: string) => {
+      const id = `E-COMMON-SMOKE-${type.replace(/\W/g, "")}-${createdBy.replace(/\W/g, "")}-${unique}`;
+      await db("events").insert({
+        id, project_id: null, type, title: `smoke ${type}`, body: null, related_id: null, agent_name: null,
+        target_user_ids: JSON.stringify([]), created_by: createdBy, source_instance_id: createdBy, created_at: new Date().toISOString()
+      });
+      return id;
+    };
+    const otherPrivate = await mkEvent("git_credential.created", `user:${otherUserId}`);
+    const ownPrivate = await mkEvent("git_credential.created", `user:${memberUserId}`);
+    const publicCommon = await mkEvent("item.created", `user:${otherUserId}`);
+    try {
+      const seenIds = async (headers: Record<string, string>) =>
+        expectData<{ events: { id: string }[] }>(unwrap(await callTool("event.list", { limit: 100 }, headers))).events.map((event) => event.id);
+      const memberSees = await seenIds(sessionHeaders(memberCookie));
+      assert(!memberSees.includes(otherPrivate), "A member must not see another user's private common event (git credential).");
+      assert(memberSees.includes(ownPrivate), "A member must still see their own private common events.");
+      assert(memberSees.includes(publicCommon), "Ordinary common events stay visible to members.");
+      const staticSees = await seenIds(staticHeaders());
+      assert(staticSees.includes(otherPrivate) && staticSees.includes(ownPrivate), "Admin-tier callers see every common event.");
+      console.log("ok - private common events (git/env/user housekeeping) are visible to admins and their author only");
+    } finally {
+      await db("events").whereIn("id", [otherPrivate, ownPrivate, publicCommon]).del();
+    }
   } finally {
     await db("sessions").where({ user_id: otherUserId }).del();
     await db("gateway_clients").where({ id: `user:${otherUserId}` }).del();

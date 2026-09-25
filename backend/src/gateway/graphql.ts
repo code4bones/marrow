@@ -7,6 +7,7 @@ import type { ToolResponse } from "../shared/mcp/tool-response.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import type { GatewayRequestContext } from "./pg-tool-service.js";
 import { GATEWAY_EVENT_TOPIC, gatewayEvents, type GatewayEventEnvelope } from "./event-bus.js";
+import { isCommonEventVisibleTo } from "./private-events.js";
 import { agentFromTags, FROM_AGENT_PREFIX, TO_AGENT_PREFIX } from "./pg-tool-service/formatters/requests.js";
 
 type Row = Record<string, unknown>;
@@ -1575,6 +1576,15 @@ async function* filteredGatewayEvents(context: GatewaySubscriptionContext): Asyn
   for await (const envelope of events) {
     const projectId = envelope.payload.projectId;
     const normalizedProjectId = typeof projectId === "string" ? projectId : null;
+    if (
+      normalizedProjectId === null &&
+      !isCommonEventVisibleTo(context.sessionIdentity, {
+        type: String(envelope.payload.type ?? envelope.event),
+        credentialId: typeof envelope.payload.credentialId === "string" ? envelope.payload.credentialId : null
+      })
+    ) {
+      continue;
+    }
     if (await context.isProjectVisible(normalizedProjectId)) {
       yield envelope;
     }

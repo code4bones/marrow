@@ -23,6 +23,7 @@ import {
 } from "./auth.js";
 import { gatewayToolRequiredScopes } from "./tool-definitions.js";
 import { graphqlDocumentTier } from "./graphql-scope.js";
+import { isAllowedWsOrigin } from "./private-events.js";
 import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import { generatePkce, telegramAuthorizeUrl, resolveTelegramUser, type TelegramOidcUser } from "./telegram-oidc.js";
@@ -250,6 +251,14 @@ export async function startGatewayServer(
 
   server.on("upgrade", (request, socket, head) => {
     if (!isGraphqlRequestPath(parseRequestUrl(request).pathname)) {
+      socket.destroy();
+      return;
+    }
+    // A cookie session rides on a browser's WS handshake, so a foreign page
+    // must not be able to open the feed for a logged-in visitor (SEC-11).
+    const configuredOrigins = (process.env.GRAPHQL_CORS_ORIGIN ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    if (!isAllowedWsOrigin(headerString(request, "origin"), headerString(request, "host"), configuredOrigins)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }

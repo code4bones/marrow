@@ -2,6 +2,7 @@ import type { Knex } from "knex";
 import { AppError } from "../../../shared/errors.js";
 import { asNullableString } from "../formatters/common.js";
 import { eventOut } from "../formatters/events.js";
+import { privateCommonEventPrefixes } from "../../private-events.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
 import { type Tier1Instance } from "../core/links-core.mixin.js";
@@ -29,7 +30,18 @@ export function EventsMixin<TBase extends Constructor<Tier1Instance>>(Base: TBas
       const sessionUserId = context.sessionUserId;
       query.where((builder) => {
         builder
-          .whereNull("project_id")
+          // Common events, minus other people's private setup/admin ones (private-events.ts).
+          .where((common) => {
+            common.whereNull("project_id").andWhere((visible) => {
+              visible
+                .whereNot((privateEvents) => {
+                  for (const prefix of privateCommonEventPrefixes()) {
+                    privateEvents.orWhere("type", "like", `${prefix}%`);
+                  }
+                })
+                .orWhere("created_by", `user:${sessionUserId}`);
+            });
+          })
           .orWhereIn(
             "project_id",
             this.db("project_members").select("project_id").where({ user_id: sessionUserId, status: "active" })
