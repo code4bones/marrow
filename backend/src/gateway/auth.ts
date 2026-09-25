@@ -10,6 +10,7 @@ import type { IncomingMessage } from "node:http";
 import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
 import { createCreditsFacade } from "./credits.js";
+import { redirectUriProblem } from "./redirect-uri.js";
 import {
   base32Encode,
   buildOtpauthUrl,
@@ -1290,7 +1291,12 @@ export function createAuthFacade(db: Knex) {
     if (!row) {
       return null;
     }
-    return { label: (row.label as string | null) ?? null, redirectUri: (row.redirect_uri as string | null) ?? null };
+    const storedRedirectUri = (row.redirect_uri as string | null) ?? null;
+    return {
+      label: (row.label as string | null) ?? null,
+      // Never hand the consent page a scheme it must not navigate to.
+      redirectUri: storedRedirectUri && !redirectUriProblem(storedRedirectUri) ? storedRedirectUri : null
+    };
   }
 
   /**
@@ -1306,6 +1312,10 @@ export function createAuthFacade(db: Knex) {
     label: string,
     redirectUri: string
   ): Promise<{ id: string; clientId: string; clientSecret: string; redirectUri: string; createdAt: Date }> {
+    const redirectProblem = redirectUriProblem(redirectUri);
+    if (redirectProblem) {
+      throw new AppError("VALIDATION_ERROR", redirectProblem);
+    }
     const now = new Date();
     const id = randomUUID();
     const clientId = newOpaqueToken();
@@ -1393,6 +1403,12 @@ export function createAuthFacade(db: Knex) {
     updates: { label?: string | null; redirectUri?: string }
   ): Promise<OAuthClientRow> {
     await requireOwnedOAuthClient(userId, id);
+    if (updates.redirectUri !== undefined) {
+      const redirectProblem = redirectUriProblem(updates.redirectUri);
+      if (redirectProblem) {
+        throw new AppError("VALIDATION_ERROR", redirectProblem);
+      }
+    }
     const patch: Record<string, unknown> = {};
     if (updates.label !== undefined) patch.label = updates.label;
     if (updates.redirectUri !== undefined) patch.redirect_uri = updates.redirectUri;

@@ -13,6 +13,7 @@ import {
 import type { IncomingMessage } from "node:http";
 import type { Knex } from "knex";
 import { hashToken } from "./auth.js";
+import { redirectUriProblem } from "./redirect-uri.js";
 
 export type OAuthAuthResult =
   | { ok: true; clientId: string; scopes: string[]; subject: string }
@@ -315,6 +316,11 @@ async function validateAuthorizeParams(
   // no longer consulted here at all.
   const redirectUri = params.get("redirect_uri") ?? "";
   if (!clientRow.redirect_uri || redirectUri !== clientRow.redirect_uri) {
+    return { ok: false, error: "redirect_uri is not allowed." };
+  }
+  // A row registered before scheme validation existed (e.g. javascript:...)
+  // must never be authorizable, even though it matches exactly.
+  if (redirectUriProblem(String(clientRow.redirect_uri))) {
     return { ok: false, error: "redirect_uri is not allowed." };
   }
 
