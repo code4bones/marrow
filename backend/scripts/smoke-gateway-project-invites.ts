@@ -151,24 +151,45 @@ try {
   assert(!noMembershipYet, "Denied static-token claim attempt must be a true no-op.");
   console.log('ok - project.invite_claim over the static token fails clearly ("requires a logged-in session"), not a silent no-op');
 
-  // --- Claim: member A joins via the invite link ---------------------------
-  const claimResult = expectData<{ project: { id: string; slug: string }; joined: boolean }>(
+  // --- Claim: since T-MEMORY-110 an invite claim is a REQUEST, not a join -----
+  const claimResult = expectData<{ project: { id: string; slug: string }; joined: boolean; pendingApproval: boolean }>(
     unwrap(await callTool("project.invite_claim", { code: firstLink.code }, sessionHeaders(memberACookie)))
   );
-  assert(claimResult.joined === true, "First-time claim should report joined:true.");
+  assert(claimResult.joined === false && claimResult.pendingApproval === true, "A first-time claim must report joined:false, pendingApproval:true (the owner/admin approves).");
   assert(claimResult.project.id === projectId, "Claim result should return the invited project.");
-  const membershipRow = await db("project_members").where({ project_id: projectId, user_id: memberAUserId }).first();
-  assert(membershipRow, "project.invite_claim should insert a project_members row for the claiming user.");
-  console.log("ok - project.invite_claim adds a project_members row and reports joined:true on first claim");
+  const pendingRow = await db("project_members").where({ project_id: projectId, user_id: memberAUserId }).first();
+  assert(pendingRow?.status === "pending_approval", `project.invite_claim should insert a pending_approval row, got: ${JSON.stringify(pendingRow)}`);
+  console.log("ok - project.invite_claim files a pending_approval request and reports joined:false, pendingApproval:true on first claim");
 
-  // --- Claim again: idempotent, no duplicate, no error ----------------------
-  const reclaimResult = expectData<{ project: { id: string }; joined: boolean }>(
+  // A pending claimant is not a member yet: the project is invisible to them.
+  const pendingProjectGet = await callTool("project.get", { id: projectId }, sessionHeaders(memberACookie));
+  assert((pendingProjectGet.json as ToolResponse<unknown>).ok === false, "A pending-approval claimant must not be able to read the project yet.");
+  console.log("ok - a pending-approval claimant cannot read the project until approved");
+
+  // --- Claiming again while pending: idempotent, no duplicate -------------------
+  const pendingReclaim = expectData<{ joined: boolean; pendingApproval: boolean }>(
     unwrap(await callTool("project.invite_claim", { code: firstLink.code }, sessionHeaders(memberACookie)))
   );
-  assert(reclaimResult.joined === false, "Re-claiming an already-joined project should report joined:false, not error.");
+  assert(pendingReclaim.joined === false && pendingReclaim.pendingApproval === true, "Re-claiming while pending must stay pending, not error.");
+  const pendingCount = await db("project_members").where({ project_id: projectId, user_id: memberAUserId }).count<{ count: string }[]>("project_id as count").first();
+  assert(Number(pendingCount?.count ?? 0) === 1, "Re-claiming while pending must not duplicate the project_members row.");
+  console.log("ok - re-claiming while pending is a friendly no-op: still pending, no duplicate row, no error");
+
+  // --- The owner/admin approves; only then is the claimant a member ----------------
+  const approved = await callTool("project.approve_member", { project: projectId, userId: memberAUserId, role: "developer" }, sessionHeaders(adminCookie));
+  assert((approved.json as ToolResponse<unknown>).ok === true, `The admin approving a pending member failed: ${JSON.stringify(approved.json).slice(0, 300)}`);
+  const membershipRow = await db("project_members").where({ project_id: projectId, user_id: memberAUserId }).first();
+  assert(membershipRow?.status === "active", `Approval should activate the membership, got: ${JSON.stringify(membershipRow)}`);
+  console.log("ok - project.approve_member activates the pending membership");
+
+  // --- Claim again as an active member: joined:true, no duplicate, no error ---------
+  const reclaimResult = expectData<{ project: { id: string }; joined: boolean; pendingApproval: boolean }>(
+    unwrap(await callTool("project.invite_claim", { code: firstLink.code }, sessionHeaders(memberACookie)))
+  );
+  assert(reclaimResult.joined === true && reclaimResult.pendingApproval === false, "Re-claiming as an already-approved member should report joined:true, pendingApproval:false, not error.");
   const membershipCount = await db("project_members").where({ project_id: projectId, user_id: memberAUserId }).count<{ count: string }[]>("project_id as count").first();
   assert(Number(membershipCount?.count ?? 0) === 1, "Re-claiming must not duplicate the project_members row.");
-  console.log("ok - re-claiming an already-joined project is a friendly no-op: joined:false, no duplicate row, no error");
+  console.log("ok - re-claiming as an approved member is a friendly no-op: joined:true, no duplicate row, no error");
 
   // --- A joined-via-invite member is NOT the owner: update/delete/regenerate
   // all reject with UNAUTHORIZED (the project survives the admin created it,
@@ -245,13 +266,17 @@ try {
   console.log("ok - claiming a never-issued code fails cleanly (PROJECT_INVITE_NOT_FOUND)");
 
   // --- Member B claims the NEW code successfully ----------------------------
-  const memberBClaim = expectData<{ project: { id: string }; joined: boolean }>(
+  const memberBClaim = expectData<{ project: { id: string }; joined: boolean; pendingApproval: boolean }>(
     unwrap(await callTool("project.invite_claim", { code: regenerated.code }, sessionHeaders(memberBCookie)))
   );
-  assert(memberBClaim.joined === true, "Member B's first claim with the regenerated code should report joined:true.");
+  assert(memberBClaim.joined === false && memberBClaim.pendingApproval === true, "Member B's first claim with the regenerated code should file a pending request.");
+  const memberBPending = await db("project_members").where({ project_id: projectId, user_id: memberBUserId }).first();
+  assert(memberBPending?.status === "pending_approval", "Member B should be pending_approval after claiming with the regenerated code.");
+  const memberBApproved = await callTool("project.approve_member", { project: projectId, userId: memberBUserId, role: "developer" }, sessionHeaders(adminCookie));
+  assert((memberBApproved.json as ToolResponse<unknown>).ok === true, "The admin approving member B failed.");
   const memberBMembership = await db("project_members").where({ project_id: projectId, user_id: memberBUserId }).first();
-  assert(memberBMembership, "Member B should now be a project member via the regenerated code.");
-  console.log("ok - the regenerated code works: member B successfully joins with it");
+  assert(memberBMembership?.status === "active", "Member B should be an active project member once approved.");
+  console.log("ok - the regenerated code works: member B files a request with it and is a member once approved");
 
   // --- GraphQL, exercised on a SECOND project that member B creates (and
   // therefore owns) itself -- proves ownership, not admin scope, is what
@@ -289,14 +314,22 @@ try {
   assert(graphqlRegenerated.regenerateProjectInviteLink.code !== graphqlLink.projectInviteLink.code, "GraphQL regenerateProjectInviteLink should produce a new code.");
   console.log("ok - GraphQL regenerateProjectInviteLink mutation issues a fresh code for the project's owner");
 
-  const graphqlClaim = await graphql<{ claimProjectInviteLink: { project: { id: string }; joined: boolean } }>(
-    `mutation Claim($code: String!) { claimProjectInviteLink(code: $code) { project { id } joined } }`,
+  const graphqlClaim = await graphql<{ claimProjectInviteLink: { project: { id: string }; joined: boolean; pendingApproval: boolean } }>(
+    `mutation Claim($code: String!) { claimProjectInviteLink(code: $code) { project { id } joined pendingApproval } }`,
     { code: graphqlRegenerated.regenerateProjectInviteLink.code },
     memberACookie
   );
-  assert(graphqlClaim.claimProjectInviteLink.joined === true, "Member A's first claim on project B should report joined:true.");
+  assert(graphqlClaim.claimProjectInviteLink.joined === false && graphqlClaim.claimProjectInviteLink.pendingApproval === true, "Member A's first claim on project B should be a pending request.");
   assert(graphqlClaim.claimProjectInviteLink.project.id === projectBId, "GraphQL claimProjectInviteLink returned the wrong project.");
-  console.log("ok - GraphQL claimProjectInviteLink mutation lets member A join project B, still not its owner");
+  // Project B's owner (member B) approves member A -- still not an owner.
+  await graphql<{ approveProjectMember: unknown }>(
+    `mutation Approve($project: String, $userId: ID!, $role: String!) { approveProjectMember(project: $project, userId: $userId, role: $role) { userId } }`,
+    { project: projectBId, userId: memberAUserId, role: "developer" },
+    memberBCookie
+  );
+  const memberAOnB = await db("project_members").where({ project_id: projectBId, user_id: memberAUserId }).first();
+  assert(memberAOnB?.status === "active", "Member A should be an active member of project B once its owner approves.");
+  console.log("ok - GraphQL claimProjectInviteLink files a request; project B's owner approves member A, who is still not its owner");
 
   const graphqlMemberRenameAttempt = await fetch(`${started.url}${normalizedApiEndpoint() ?? ""}/graphql`, {
     method: "POST",

@@ -153,13 +153,13 @@ try {
 
   // --- Regression: OAuth admin-tier call with no elevation header at all
   // is still denied exactly like before this task -----------------------
-  const noHeaderDelete = await callTool("memory.delete", { id: itemAId }, oauthHeaders(oauthAccessToken));
+  const noHeaderDelete = await callTool("gateway.client_forget", { id: itemAId }, oauthHeaders(oauthAccessToken));
   assert(
     noHeaderDelete.status === 403,
     `OAuth admin-tier call with no elevation header must still be denied. Status: ${noHeaderDelete.status}`
   );
   assertInsufficientScope(noHeaderDelete, "OAuth call with no elevation header");
-  console.log("ok - OAuth bearer with no elevation header is still denied on memory.delete (D-MEMORY-017 decision 2 unchanged)");
+  console.log("ok - OAuth bearer with no elevation header is still denied on gateway.client_forget (D-MEMORY-017 decision 2 unchanged)");
 
   // --- Wrong password is rejected, nothing minted -----------------------
   const wrongPassword = await postJson(`${started.url}/auth/elevate`, {
@@ -215,26 +215,26 @@ try {
 
   // --- The grant, attached to the OAuth request, lets exactly one
   // admin-tier call through even though the bearer itself is read+write --
-  const elevatedDelete = await callTool("memory.delete", { id: itemAId }, oauthHeaders(oauthAccessToken, grantToken));
+  const elevatedDelete = await callTool("gateway.client_forget", { id: itemAId }, oauthHeaders(oauthAccessToken, grantToken));
   assert(
     elevatedDelete.status === 200,
-    `OAuth call carrying a valid elevation grant should succeed on memory.delete. Status: ${elevatedDelete.status}, body: ${JSON.stringify(elevatedDelete.json)}`
+    `OAuth call carrying a valid elevation grant should succeed on gateway.client_forget. Status: ${elevatedDelete.status}, body: ${JSON.stringify(elevatedDelete.json)}`
   );
   const elevatedDeleteBody = elevatedDelete.json as ToolResponse<unknown>;
-  assert(elevatedDeleteBody.ok === true, `Elevated OAuth memory.delete did not actually execute. ${JSON.stringify(elevatedDeleteBody)}`);
-  const itemARow = await db("items").where({ id: itemAId }).first();
-  assert(!itemARow, "Elevated OAuth memory.delete did not actually delete the row.");
+  assert(elevatedDeleteBody.ok === true, `Elevated OAuth gateway.client_forget did not actually execute. ${JSON.stringify(elevatedDeleteBody)}`);
+  const itemARow = await db("gateway_clients").where({ id: itemAId }).first();
+  assert(!itemARow, "Elevated OAuth gateway.client_forget did not actually remove the probe client row.");
   itemAId = undefined;
   console.log("ok - OAuth read+write bearer + valid elevation grant authorizes exactly the admin-tier call it was minted for");
 
   // --- Reuse of the same (now-consumed) grant is rejected ------------------
-  const reusedGrant = await callTool("memory.delete", { id: itemBId }, oauthHeaders(oauthAccessToken, grantToken));
+  const reusedGrant = await callTool("gateway.client_forget", { id: itemBId }, oauthHeaders(oauthAccessToken, grantToken));
   assert(
     reusedGrant.status === 403,
     `Reusing an already-consumed elevation grant must be denied. Status: ${reusedGrant.status}`
   );
   assertInsufficientScope(reusedGrant, "reused elevation grant");
-  const itemBRowAfterReuse = await db("items").where({ id: itemBId }).first();
+  const itemBRowAfterReuse = await db("gateway_clients").where({ id: itemBId }).first();
   assert(itemBRowAfterReuse, "Item must survive a denied (reused-grant) delete attempt.");
   console.log("ok - a second admin-tier call reusing the same elevation grant is denied, single-use enforced");
 
@@ -242,7 +242,8 @@ try {
   const expiredGrantResponse = await postJson(`${started.url}/auth/elevate`, {
     email: adminEmail,
     password: adminPassword,
-    code: currentTotpCode(adminTotpSecret)
+    // The first grant already consumed this step's code (replay guard) -> next step.
+    code: currentTotpCode(adminTotpSecret, 1)
   });
   assert(expiredGrantResponse.status === 200, "Minting a second elevation grant (for the expiry test) failed.");
   const expiredGrantToken = readNestedString(expiredGrantResponse.body, ["data", "token"]);
@@ -252,15 +253,15 @@ try {
     .update({ expires_at: backdated });
   assert(expiredRows === 1, "Could not backdate the elevation grant's expires_at for the expiry test.");
 
-  const expiredCall = await callTool("memory.delete", { id: itemBId }, oauthHeaders(oauthAccessToken, expiredGrantToken));
+  const expiredCall = await callTool("gateway.client_forget", { id: itemBId }, oauthHeaders(oauthAccessToken, expiredGrantToken));
   assert(expiredCall.status === 403, `An expired elevation grant must be denied. Status: ${expiredCall.status}`);
   assertInsufficientScope(expiredCall, "expired elevation grant");
-  const itemBRowAfterExpiry = await db("items").where({ id: itemBId }).first();
+  const itemBRowAfterExpiry = await db("gateway_clients").where({ id: itemBId }).first();
   assert(itemBRowAfterExpiry, "Item must survive a denied (expired-grant) delete attempt.");
   console.log("ok - an expired elevation grant is denied even though it was never redeemed");
 
   // --- A garbage/unknown token in the header is denied, not a crash -------
-  const garbageCall = await callTool("memory.delete", { id: itemCId }, oauthHeaders(oauthAccessToken, "not-a-real-grant-token"));
+  const garbageCall = await callTool("gateway.client_forget", { id: itemCId }, oauthHeaders(oauthAccessToken, "not-a-real-grant-token"));
   assert(garbageCall.status === 403, `An unknown elevation token must be denied cleanly. Status: ${garbageCall.status}`);
   assertInsufficientScope(garbageCall, "unknown elevation token");
   console.log("ok - an unrecognized elevation token is denied cleanly (no 500, no bypass)");
@@ -268,13 +269,13 @@ try {
   console.log(`Gateway elevation smoke test passed using ${started.url}`);
 } finally {
   if (itemAId) {
-    await db("items").where({ id: itemAId }).del();
+    await db("gateway_clients").where({ id: itemAId }).del();
   }
   if (itemBId) {
-    await db("items").where({ id: itemBId }).del();
+    await db("gateway_clients").where({ id: itemBId }).del();
   }
   if (itemCId) {
-    await db("items").where({ id: itemCId }).del();
+    await db("gateway_clients").where({ id: itemCId }).del();
   }
   if (projectId) {
     await db("events").where({ project_id: projectId }).del();
@@ -296,17 +297,15 @@ try {
   await service.close();
 }
 
+// Each admin-tier probe needs its own untouched target. gateway.client_forget is
+// write-tier now (membership/ownership decides), so the admin-tier tool used
+// throughout is gateway.client_forget, which removes one gateway_clients row
+// -- observable and independent of any project data.
 async function createItem(label: string): Promise<string> {
-  const created = expectData<{ item: { id: string } }>(
-    unwrap(
-      await callTool(
-        "memory.create",
-        { project: projectId, type: "note", title: `Elevation Smoke Item ${label}`, body: "seeded for step-up elevation smoke test" },
-        staticHeaders()
-      )
-    )
-  );
-  return created.item.id;
+  const id = `elevation-smoke-probe-${label}-${unique}`;
+  await callTool("gateway.version", {}, { ...staticHeaders(), "x-project-memory-client-id": id });
+  assert(await db("gateway_clients").where({ id }).first(), `Probe client ${id} was not created.`);
+  return id;
 }
 
 // T-MEMORY-0xx SSO: session-cookie login (POST /auth/login, then
@@ -439,9 +438,12 @@ function sha256Hex(value: string): string {
  * truncation, 30s step, 6 digits) without importing its private hotp()
  * helper, same approach as scripts/smoke-gateway-registration.ts.
  */
-function currentTotpCode(secretBase32: string): string {
+// stepOffset: a TOTP step is single-use per purpose (replay guard), so a second
+// elevation inside the same 30 s step needs the NEXT step's code (the server
+// accepts +/- 1 step of drift).
+function currentTotpCode(secretBase32: string, stepOffset = 0): string {
   const secret = base32Decode(secretBase32);
-  const counter = Math.floor(Date.now() / 1000 / 30);
+  const counter = Math.floor(Date.now() / 1000 / 30) + stepOffset;
   const counterBuf = Buffer.alloc(8);
   counterBuf.writeUInt32BE(Math.floor(counter / 2 ** 32), 0);
   counterBuf.writeUInt32BE(counter >>> 0, 4);

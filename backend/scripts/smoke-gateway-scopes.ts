@@ -116,25 +116,41 @@ try {
   memberMemoryId = memberCreateData.item.id;
   console.log("ok - role=member session (write scope) can create a memory item");
 
-  const memberDelete = await callTool("memory.delete", { id: memberMemoryId }, sessionHeaders(memberCookie));
+  // Deleting records is write-tier now (ownership/membership decides, not a
+  // blanket admin gate) -- a genuinely admin-tier tool is the probe for the
+  // INSUFFICIENT_SCOPE behaviour: gateway.client_forget removes a client row,
+  // which is observable and touches no project data.
+  const probeClientId = `scopes-smoke-probe-${unique}`;
+  await callTool("gateway.version", {}, { ...staticHeaders(), "x-project-memory-client-id": probeClientId });
+  assert(await db("gateway_clients").where({ id: probeClientId }).first(), "The probe client row must exist before the denial test.");
+  const memberForget = await callTool("gateway.client_forget", { id: probeClientId }, sessionHeaders(memberCookie));
   assert(
-    memberDelete.status === 403,
-    `Write-only credential deleting should return 403, not a silent no-op or generic 401. Status: ${memberDelete.status}`
+    memberForget.status === 403,
+    `Write-only credential on an admin-tier tool should return 403, not a silent no-op or generic 401. Status: ${memberForget.status}`
   );
-  const memberDeleteBody = memberDelete.json as { error?: { code?: string; message?: string } };
+  const memberForgetBody = memberForget.json as { error?: { code?: string; message?: string } };
   assert(
-    memberDeleteBody.error?.code === "INSUFFICIENT_SCOPE",
-    `Delete with write-only session should fail with INSUFFICIENT_SCOPE, got: ${JSON.stringify(memberDeleteBody)}`
+    memberForgetBody.error?.code === "INSUFFICIENT_SCOPE",
+    `Admin-tier tool with a write-only session should fail with INSUFFICIENT_SCOPE, got: ${JSON.stringify(memberForgetBody)}`
   );
   assert(
-    /admin/i.test(memberDeleteBody.error?.message ?? "") && /write/i.test(memberDeleteBody.error?.message ?? ""),
-    `Insufficient-scope message should name both tiers, not the generic missing-token text. Got: ${memberDeleteBody.error?.message}`
+    /admin/i.test(memberForgetBody.error?.message ?? "") && /write/i.test(memberForgetBody.error?.message ?? ""),
+    `Insufficient-scope message should name both tiers, not the generic missing-token text. Got: ${memberForgetBody.error?.message}`
   );
-  const stillThere = await db("items").where({ id: memberMemoryId }).first();
-  assert(stillThere, "Item must not have been deleted by a write-only (insufficient-scope) request.");
-  console.log("ok - role=member session (write scope) gets a clear INSUFFICIENT_SCOPE error on memory.delete, item untouched");
+  assert(await db("gateway_clients").where({ id: probeClientId }).first(), "The probe client must not have been removed by a write-only (insufficient-scope) request.");
+  console.log("ok - role=member session (write scope) gets a clear INSUFFICIENT_SCOPE error on an admin-tier tool (gateway.client_forget), target untouched");
 
-  // --- Admin session: admin-tier delete succeeds --------------------------
+  // The current model: a member may delete records of a project they belong to.
+  const memberOwnNote = expectData<{ item: { id: string } }>(
+    unwrap(await callTool("memory.create", { project: projectAId, type: "note", title: "Member deletable note", body: "x" }, sessionHeaders(memberCookie)))
+  ).item.id;
+  const memberOwnDelete = await callTool("memory.delete", { id: memberOwnNote }, sessionHeaders(memberCookie));
+  assert(memberOwnDelete.status === 200 && (memberOwnDelete.json as ToolResponse<unknown>).ok === true, `A member must be able to delete a record in their own project (write tier): ${JSON.stringify(memberOwnDelete.json).slice(0, 200)}`);
+  assert(!(await db("items").where({ id: memberOwnNote }).first()), "The member's own-project record must be gone.");
+  console.log("ok - role=member session can delete a record in a project it belongs to (memory.delete is write-tier)");
+  await db("gateway_clients").where({ id: probeClientId }).del();
+
+  // --- Admin session: hard-delete succeeds --------------------------------
   const adminCreate = expectData<{ item: { id: string } }>(
     unwrap(
       await callTool(

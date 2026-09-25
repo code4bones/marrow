@@ -160,27 +160,29 @@ try {
   memberMemoryId = createdViaToken.item.id;
   console.log("ok - memory.create succeeds over a member's personal-token bearer (write scope granted)");
 
-  const deleteAttempt = await callTool("memory.delete", { id: memberMemoryId }, personalTokenHeaders(memberFirst.token));
+  // memory.delete is write-tier now (membership/ownership decides), so a real
+  // admin-tier tool is the probe here: gateway.client_forget removes a client row.
+  const probeClientId = `personal-tokens-smoke-probe-${unique}`;
+  await callTool("gateway.version", {}, { ...staticHeaders(), "x-project-memory-client-id": probeClientId });
+  assert(await db("gateway_clients").where({ id: probeClientId }).first(), "The probe client row must exist before the denial test.");
+  const deleteAttempt = await callTool("gateway.client_forget", { id: probeClientId }, personalTokenHeaders(memberFirst.token));
   const deleteAttemptBody = deleteAttempt.json as ToolResponse<unknown>;
   assert(
     deleteAttempt.status === 403 && deleteAttemptBody.ok === false && deleteAttemptBody.error.code === "INSUFFICIENT_SCOPE",
-    `memory.delete over a member's personal token should be denied with INSUFFICIENT_SCOPE (write, not admin), got: HTTP ${deleteAttempt.status} ${JSON.stringify(deleteAttemptBody)}`
+    `An admin-tier tool over a member's personal token should be denied with INSUFFICIENT_SCOPE (write, not admin), got: HTTP ${deleteAttempt.status} ${JSON.stringify(deleteAttemptBody)}`
   );
-  const stillThere = await db("items").where({ id: memberMemoryId }).first();
-  assert(stillThere, "The item must survive the denied delete attempt.");
-  console.log("ok - memory.delete over a member's personal token is denied with a clear INSUFFICIENT_SCOPE (403), same as a role=member session -- scope is role-derived, not a blanket bearer privilege");
+  assert(await db("gateway_clients").where({ id: probeClientId }).first(), "The target must survive the denied admin-tier attempt.");
+  console.log("ok - an admin-tier tool over a member's personal token is denied with a clear INSUFFICIENT_SCOPE (403), same as a role=member session -- scope is role-derived, not a blanket bearer privilege");
 
   // --- Admin's personal token gets admin tier, same as an admin session ---
   const adminCreated = await createPersonalToken(adminCookie, null);
   assert(adminCreated.label === null, "Omitting a label should store/return null, not an empty string or a placeholder.");
-  const adminDeleteAttempt = await callTool("memory.delete", { id: memberMemoryId }, personalTokenHeaders(adminCreated.token));
-  assert(adminDeleteAttempt.status === 200, `memory.delete over an admin's personal token should succeed (admin tier). Got HTTP ${adminDeleteAttempt.status}: ${JSON.stringify(adminDeleteAttempt.json)}`);
+  const adminDeleteAttempt = await callTool("gateway.client_forget", { id: probeClientId }, personalTokenHeaders(adminCreated.token));
+  assert(adminDeleteAttempt.status === 200, `An admin-tier tool over an admin's personal token should succeed (admin tier). Got HTTP ${adminDeleteAttempt.status}: ${JSON.stringify(adminDeleteAttempt.json)}`);
   const adminDeleteBody = adminDeleteAttempt.json as ToolResponse<unknown>;
-  assert(adminDeleteBody.ok === true, `memory.delete over an admin's personal token should succeed (admin tier). Got: ${JSON.stringify(adminDeleteBody)}`);
-  const deletedRow = await db("items").where({ id: memberMemoryId }).first();
-  assert(!deletedRow, "memory.delete over an admin's personal token should actually remove the row.");
-  memberMemoryId = undefined;
-  console.log("ok - memory.delete over an admin's personal token succeeds (admin tier) -- scope tier is role-derived, matching resolveScopeTier's session behavior exactly; unlabeled create stores label:null");
+  assert(adminDeleteBody.ok === true, `An admin-tier tool over an admin's personal token should succeed (admin tier). Got: ${JSON.stringify(adminDeleteBody)}`);
+  assert(!(await db("gateway_clients").where({ id: probeClientId }).first()), "gateway.client_forget over an admin's personal token should actually remove the row.");
+  console.log("ok - an admin-tier tool over an admin's personal token succeeds (admin tier) -- scope tier is role-derived, matching resolveScopeTier's session behavior exactly; unlabeled create stores label:null");
 
   // --- Project-membership filtering applies to a personal-token bearer,
   // same as a session (unlike OAuth/static-token/anonymous, which bypass it) --

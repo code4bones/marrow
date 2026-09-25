@@ -540,15 +540,14 @@ try {
   // per-project owner concept: ownership, not a blanket admin-tier gate,
   // now decides who may delete -- see assertProjectOwnerOrAdmin in
   // projects-core.mixin.ts), so it's no longer a generic admin-tier probe.
-  // memory.delete stays access:"admin" unconditionally, so it's used here
-  // instead to prove the actual point of this section: a member-role OAuth
-  // token is still denied on a genuinely admin-tier tool, no elevation
-  // involved. Common-scope (project: null) so this is unaffected by any
-  // project-membership/ownership logic either.
-  const memoryForMemberDenial = expectData<{ item: { id: string } }>(
-    unwrap(await callTool("memory.create", { common: true, type: "note", title: "OAuth Smoke Member Denial", body: "probe" }, staticHeaders()))
-  );
-  const memberDelete = await callTool("memory.delete", { id: memoryForMemberDenial.item.id }, oauthHeaders(memberAccessToken));
+  // memory.delete is write-tier too now, so gateway.client_forget (removes a
+  // gateway_clients row: observable, touches no project data) is the probe
+  // for a genuinely admin-tier tool -- a member-role OAuth token must still be
+  // denied on it, no elevation involved.
+  const denialProbeClientId = `oauth-smoke-denial-probe-${unique}`;
+  await callTool("gateway.version", {}, { ...staticHeaders(), "x-project-memory-client-id": denialProbeClientId });
+  assert(await db("gateway_clients").where({ id: denialProbeClientId }).first(), "The probe client row must exist before the denial test.");
+  const memberDelete = await callTool("gateway.client_forget", { id: denialProbeClientId }, oauthHeaders(memberAccessToken));
   assert(
     memberDelete.status === 403,
     `A member-role user's OAuth token must still be denied on an admin-tier tool. Status: ${memberDelete.status}`
@@ -557,10 +556,9 @@ try {
     readNestedString(memberDelete.json, ["error", "code"]) === "INSUFFICIENT_SCOPE",
     `Member OAuth admin-tier denial should be INSUFFICIENT_SCOPE. Body: ${JSON.stringify(memberDelete.json)}`
   );
-  const memoryStillThere = await db("items").where({ id: memoryForMemberDenial.item.id }).first();
-  assert(memoryStillThere, "Memory item must survive a denied member-OAuth memory.delete attempt.");
-  await callTool("memory.delete", { id: memoryForMemberDenial.item.id }, staticHeaders());
-  console.log("ok - a member-role user's OAuth token gets INSUFFICIENT_SCOPE on an admin-tier tool (memory.delete), no elevation involved");
+  assert(await db("gateway_clients").where({ id: denialProbeClientId }).first(), "The target must survive a denied member-OAuth admin-tier attempt.");
+  await db("gateway_clients").where({ id: denialProbeClientId }).del();
+  console.log("ok - a member-role user's OAuth token gets INSUFFICIENT_SCOPE on an admin-tier tool (gateway.client_forget), no elevation involved");
 
   // --- T-MEMORY-052: project-membership filtering must treat an OAuth
   // connector's real identity the same as that user's session/personal
