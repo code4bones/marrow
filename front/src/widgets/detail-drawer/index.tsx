@@ -417,7 +417,7 @@ export function DetailDrawer() {
       open={detailDrawerOpen}
       onClose={closeDetailDrawer}
       placement={isMobile ? 'bottom' : 'right'}
-      width={isMobile ? '100%' : 520}
+      width={isMobile ? '100%' : 700}
       height={isMobile ? '90%' : undefined}
       styles={{ header: { borderBottom: `2px solid ${accentColor}` }, body: { paddingTop: 20 } }}
       title={
