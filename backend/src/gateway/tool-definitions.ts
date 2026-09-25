@@ -1103,8 +1103,9 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.diagnostics",
     description:
-      "Return safe gateway diagnostics including readiness, migrations, record counts, artifact settings, and logging settings without exposing secrets.",
-    schema: emptySchema
+      "Return safe gateway diagnostics including readiness, migrations, record counts, artifact settings, and logging settings without exposing secrets. Admin-only: it reveals server paths and runtime configuration.",
+    schema: emptySchema,
+    access: "admin"
   },
   {
     name: "gateway.connector_info",
@@ -1115,8 +1116,9 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "gateway.backup_manifest",
     description:
-      "Return the safe backup surface for operators: PostgreSQL identity, required tables, artifact directory, counts, sizes, and migration state without exposing secrets.",
-    schema: emptySchema
+      "Return the safe backup surface for operators: PostgreSQL identity, required tables, artifact directory, counts, sizes, and migration state without exposing secrets. Admin-only: it reveals the database host/user and server paths.",
+    schema: emptySchema,
+    access: "admin"
   },
   {
     name: "gateway.manuals",

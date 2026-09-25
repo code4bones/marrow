@@ -128,11 +128,11 @@ export class PgToolService extends ComposedService {
         case "gateway.version":
           return ok("Gateway version loaded.", { version: await this.gatewayVersion() });
         case "gateway.diagnostics":
-          return ok("Gateway diagnostics loaded.", { diagnostics: await this.gatewayDiagnostics() });
+          return ok("Gateway diagnostics loaded.", { diagnostics: await this.gatewayDiagnostics(requestContext) });
         case "gateway.connector_info":
           return ok("Gateway connector info loaded.", { connectorInfo: await this.gatewayConnectorInfo() });
         case "gateway.backup_manifest":
-          return ok("Gateway backup manifest loaded.", { manifest: await this.gatewayBackupManifest() });
+          return ok("Gateway backup manifest loaded.", { manifest: await this.gatewayBackupManifest(requestContext) });
         case "gateway.manuals": {
           const manuals = await this.gatewayManuals(parsed);
           return ok("Project Memory manuals loaded.", {

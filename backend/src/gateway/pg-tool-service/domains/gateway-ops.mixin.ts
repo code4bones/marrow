@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { nowIso } from "../../../shared/dates.js";
+import { AppError } from "../../../shared/errors.js";
 import { anonymousClientTtlSeconds } from "../formatters/clients.js";
 import { connectionSnippets } from "../formatters/common.js";
 import { migrationField, packageRoot, readBundledManual, readPackageMetadata } from "../formatters/gateway-ops.js";
@@ -212,7 +213,20 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
     };
   }
 
-  protected async gatewayDiagnostics() {
+  // The database host/user/name, server directories and runtime config are
+  // operator material: a role=member caller (session, personal token or OAuth)
+  // gets none of it. Enforced HERE, not only by the tool's admin tier, because
+  // the GraphQL `gatewayDiagnostics` query reaches this method without the
+  // tool-tier check (SEC-11). No-identity callers (static token, dev mode) keep
+  // access as before.
+  protected assertServerInternalsAllowed(context: NormalizedGatewayRequestContext | undefined, what: string): void {
+    if (context?.sessionRole === "member") {
+      throw new AppError("UNAUTHORIZED", `${what} is only available to admins.`);
+    }
+  }
+
+  protected async gatewayDiagnostics(context?: NormalizedGatewayRequestContext) {
+    this.assertServerInternalsAllowed(context, "Gateway diagnostics");
     const [version, readiness, status, migrations] = await Promise.all([
       this.gatewayVersion(),
       this.readiness(),
@@ -267,7 +281,8 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
     };
   }
 
-  protected async gatewayBackupManifest() {
+  protected async gatewayBackupManifest(context?: NormalizedGatewayRequestContext) {
+    this.assertServerInternalsAllowed(context, "The backup manifest");
     const [version, migrations, artifacts] = await Promise.all([
       this.gatewayVersion(),
       this.migrationStatus(),

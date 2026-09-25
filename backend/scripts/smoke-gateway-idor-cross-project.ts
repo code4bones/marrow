@@ -217,6 +217,22 @@ try {
     assert(getOther.ok === false, "gateway.client_get on another user's client must be denied to a member.");
     console.log("ok - gateway.clients / client_get do not expose other users to a member");
 
+    // server internals (SEC-11): DB host/user/paths are admin material
+    for (const tool of ["gateway.diagnostics", "gateway.backup_manifest"]) {
+      const denied = await asMember(tool, {});
+      assert(denied.status === 403 || (denied.json as ToolResponse<unknown>).ok === false, `${tool} must be refused to a member.`);
+      const okForStatic = (await callTool(tool, {}, staticHeaders())).json as ToolResponse<unknown>;
+      assert(okForStatic.ok === true, `${tool} must still work for the static admin-tier token: ${JSON.stringify(okForStatic).slice(0, 200)}`);
+    }
+    const gqlDiagnostics = await fetch(`${started.url}/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: memberCookie },
+      body: JSON.stringify({ query: "{ gatewayDiagnostics }" })
+    });
+    const gqlBody = (await gqlDiagnostics.json()) as { data?: { gatewayDiagnostics?: unknown }; errors?: unknown[] };
+    assert(!gqlBody.data?.gatewayDiagnostics && Array.isArray(gqlBody.errors) && gqlBody.errors.length > 0, "The GraphQL gatewayDiagnostics query must be refused to a member too (it bypasses the tool tier).");
+    console.log("ok - gateway.diagnostics / backup_manifest are admin-only (MCP tier and the GraphQL query), the static token still works");
+
     // client-id impersonation
     const spoofed = expectData<{ item: { id: string } }>(
       unwrap(await callTool("memory.create", { project: projectA, type: "note", title: "Spoof", body: "x" }, {
