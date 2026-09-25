@@ -45,6 +45,17 @@ const OAUTH_PARAM_NAMES = [
  * is an external-redirect target, not in-app navigation -- modeled on
  * pages/claim, not on the authenticated app shell's routes.
  */
+// Only http(s) is a legitimate connector callback; anything else (notably
+// `javascript:`/`data:`) must never reach window.location.
+function parseHttpUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export function OAuthAuthorizePage() {
   const { t } = useTranslation('auth');
   const location = useLocation();
@@ -211,7 +222,11 @@ export function OAuthAuthorizePage() {
       if (!response.ok || body.ok === false || !body.data?.redirectUri) {
         throw new Error(body.error?.message ?? t('couldNotAuthorizeApplication'));
       }
-      window.location.href = body.data.redirectUri;
+      const approved = parseHttpUrl(body.data.redirectUri);
+      if (!approved) {
+        throw new Error(t('couldNotAuthorizeApplication'));
+      }
+      window.location.href = approved.toString();
     } catch (err) {
       setDecisionError(err instanceof Error ? err.message : t('couldNotAuthorizeApplication'));
       setDeciding(false);
@@ -219,7 +234,14 @@ export function OAuthAuthorizePage() {
   };
 
   const onDeny = () => {
-    const target = new URL(redirectUri);
+    // Prefer the server-registered redirect_uri over the query string (which
+    // anyone can craft), and never navigate to anything but http(s): a
+    // `javascript:` URL here would run script on this origin.
+    const target = parseHttpUrl(clientInfo?.redirectUri || redirectUri);
+    if (!target) {
+      setDecisionError(t('couldNotAuthorizeApplication'));
+      return;
+    }
     target.searchParams.set('error', 'access_denied');
     const state = searchParams.get('state');
     if (state) {
