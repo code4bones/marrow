@@ -26,6 +26,7 @@ import {
   projectLookupSchema,
   projectMembersSchema,
   rejectProjectMemberSchema,
+  removeProjectMemberSchema,
   updateProjectMemberRoleSchema
 } from "../features/projects/model/schema.js";
 import {
@@ -1265,6 +1266,12 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     name: "project.update_member_role",
     description: "Change an already-active member's role (pm/developer/tester). Only this project's owner or a system admin can do this.",
     schema: updateProjectMemberRoleSchema,
+    access: "write"
+  },
+  {
+    name: "project.remove_member",
+    description: "Remove an already-active member from the project (the row is deleted; they lose access immediately). Refuses to remove the project's owner. Only this project's owner or a system admin can do this.",
+    schema: removeProjectMemberSchema,
     access: "write"
   },
   {

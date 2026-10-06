@@ -398,6 +398,35 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     return this.listProjectMembers({ project: project.id }, context);
   }
 
+  // T-MEMORY-180: the approve/reject/role UI had no way to walk back an
+  // already-active member -- only pending_approval rows could be rejected.
+  // Same owner/admin gate as the other three; additionally refuses to ever
+  // remove the project's own owner (there's no project_members row for the
+  // owner at all in the common case -- resolveProjectRole always resolves
+  // them to "pm" directly off projects.owner_user_id -- so this guards the
+  // rare case where an owner also kept an explicit membership row).
+  protected async removeProjectMember(input: Row, context: NormalizedGatewayRequestContext) {
+    const project = await this.resolveProject(input.project, context);
+    await this.assertProjectOwnerOrAdmin(project, context);
+    const userId = String(input.userId);
+    if (project.ownerUserId === userId) {
+      throw new AppError("VALIDATION_ERROR", "The project owner can't be removed from their own project.", { projectId: project.id, userId });
+    }
+    const deleted = await this.db("project_members")
+      .where({ project_id: project.id, user_id: userId, status: "active" })
+      .del();
+    if (!deleted) {
+      throw new AppError("NOT_FOUND", "This user is not an active member of this project.", { projectId: project.id, userId });
+    }
+    await this.recordEventForProject(project.id, {
+      type: "project.member_removed",
+      title: `Project member removed: ${userId}`,
+      related_id: project.id,
+      target_user_ids: [userId]
+    }, context);
+    return this.listProjectMembers({ project: project.id }, context);
+  }
+
   // Shared single-row membership query, used by both assertProjectMember
   // above (REST/MCP/GraphQL request path) and isProjectVisibleToSession below
   // (WS subscription event filtering, T-MEMORY-042) -- one query, two

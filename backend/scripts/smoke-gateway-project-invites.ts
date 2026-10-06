@@ -278,6 +278,41 @@ try {
   assert(memberBMembership?.status === "active", "Member B should be an active project member once approved.");
   console.log("ok - the regenerated code works: member B files a request with it and is a member once approved");
 
+  // --- Removing an active member revokes access immediately (T-MEMORY-180) ---
+  const removeAttemptByMemberA = await callTool("project.remove_member", { project: projectId, userId: memberBUserId }, sessionHeaders(memberACookie));
+  const removeAttemptByMemberABody = removeAttemptByMemberA.json as ToolResponse<unknown>;
+  assert(
+    removeAttemptByMemberABody.ok === false && removeAttemptByMemberABody.error.code === "UNAUTHORIZED",
+    `project.remove_member by a non-owner member should fail with UNAUTHORIZED, got: ${JSON.stringify(removeAttemptByMemberABody)}`
+  );
+  console.log("ok - project.remove_member rejects a non-owner member");
+
+  const ownerRemoveSelfAttempt = await callTool("project.remove_member", { project: projectId, userId: adminUserId }, sessionHeaders(adminCookie));
+  const ownerRemoveSelfBody = ownerRemoveSelfAttempt.json as ToolResponse<unknown>;
+  assert(
+    ownerRemoveSelfBody.ok === false && ownerRemoveSelfBody.error.code === "VALIDATION_ERROR",
+    `project.remove_member should refuse to remove the project's owner, got: ${JSON.stringify(ownerRemoveSelfBody)}`
+  );
+  console.log("ok - project.remove_member refuses to remove the project's owner");
+
+  const removed = await callTool("project.remove_member", { project: projectId, userId: memberBUserId }, sessionHeaders(adminCookie));
+  assert((removed.json as ToolResponse<unknown>).ok === true, `The admin removing an active member failed: ${JSON.stringify(removed.json).slice(0, 300)}`);
+  const removedRow = await db("project_members").where({ project_id: projectId, user_id: memberBUserId }).first();
+  assert(!removedRow, "project.remove_member should delete the project_members row.");
+  console.log("ok - project.remove_member removes an active member's row");
+
+  const removedCanSeeProject = await callTool("project.get", { id: projectId }, sessionHeaders(memberBCookie));
+  assert((removedCanSeeProject.json as ToolResponse<unknown>).ok === false, "A removed member must lose access to the project immediately.");
+  console.log("ok - a removed member immediately loses access to the project");
+
+  const removeAgainAttempt = await callTool("project.remove_member", { project: projectId, userId: memberBUserId }, sessionHeaders(adminCookie));
+  const removeAgainBody = removeAgainAttempt.json as ToolResponse<unknown>;
+  assert(
+    removeAgainBody.ok === false && removeAgainBody.error.code === "NOT_FOUND",
+    `Removing an already-removed member should fail cleanly with NOT_FOUND, got: ${JSON.stringify(removeAgainBody)}`
+  );
+  console.log("ok - removing an already-removed member fails cleanly (NOT_FOUND), not a silent no-op");
+
   // --- GraphQL, exercised on a SECOND project that member B creates (and
   // therefore owns) itself -- proves ownership, not admin scope, is what
   // GraphQL's updateProject/projectInviteLink/regenerateProjectInviteLink/

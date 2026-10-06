@@ -178,6 +178,8 @@ export class PgToolService extends ComposedService {
           return ok("Project member rejected.", await this.rejectProjectMember(parsed, requestContext));
         case "project.update_member_role":
           return ok("Project member role updated.", await this.updateProjectMemberRole(parsed, requestContext));
+        case "project.remove_member":
+          return ok("Project member removed.", await this.removeProjectMember(parsed, requestContext));
         case "project.delete":
           return ok("Project deleted.", await this.deleteProject(parsed, requestContext));
         case "project.resolve":

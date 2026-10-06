@@ -55,3 +55,8 @@ export const updateProjectMemberRoleSchema = z.object({
   userId: z.string().min(1),
   role: projectMemberRoleSchema
 });
+
+export const removeProjectMemberSchema = z.object({
+  project: z.string().optional(),
+  userId: z.string().min(1)
+});

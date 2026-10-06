@@ -289,6 +289,7 @@ const typeDefs = `#graphql
     approveProjectMember(project: String, userId: ID!, role: String!): [ProjectMember!]!
     rejectProjectMember(project: String, userId: ID!): Boolean!
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
+    removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
     pinProject(id: ID, slug: String, pinned: Boolean!): Project!
 
@@ -1422,6 +1423,8 @@ const resolvers = {
     },
     updateProjectMemberRole: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.update_member_role", cleanInput(args))).members,
+    removeProjectMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.remove_member", cleanInput(args))).members,
     deleteProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.delete", requireOne(cleanInput(args), ["id", "slug"], "deleteProject")),
     pinProject: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
