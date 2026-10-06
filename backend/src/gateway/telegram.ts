@@ -69,10 +69,27 @@ const EVENT_LABELS: Record<string, [icon: string, label: string]> = {
   "task.blocked": ["🚫", "Задача заблокирована"],
   "task.cancelled": ["❌", "Задача отменена"],
   "task.status_changed": ["🔄", "Статус задачи изменён"],
+  "task.deleted": ["🗑️", "Задача удалена"],
   "decision.recorded": ["🆕", "Новое решение"],
   "decision.assigned": ["📌", "Назначено решение"],
   "decision.status_changed": ["🔄", "Статус решения изменён"],
-  "decision.archived": ["🗄️", "Решение архивировано"]
+  "decision.archived": ["🗄️", "Решение архивировано"],
+  "decision.superseded": ["♻️", "Решение заменено"],
+  "decision.deleted": ["🗑️", "Решение удалено"],
+  // T-MEMORY-181: project.created/updated get the broadened "every active
+  // member" default fallback (see allProjectMembersNotifyTargets in
+  // base.ts) same as any other entry here. project.deleted/member_requested
+  // already carry explicit target_user_ids from their call sites (the
+  // project row -- and with it project_members -- is gone by the time
+  // project.deleted is recorded), so their presence here only supplies the
+  // display label/icon, not the delivery decision.
+  "project.created": ["🆕", "Новый проект"],
+  "project.updated": ["✏️", "Проект обновлён"],
+  "project.deleted": ["🗑️", "Проект удалён"],
+  "project.member_requested": ["🙋", "Заявка на вступление в проект"],
+  "project.member_approved": ["✅", "Заявка одобрена"],
+  "project.member_removed": ["🚪", "Вы исключены из проекта"],
+  "user.registration_pending": ["🆕", "Новая регистрация ожидает одобрения"]
 };
 
 // T-MEMORY-111 follow-up: completeTask/updateTaskStatus pass acceptance

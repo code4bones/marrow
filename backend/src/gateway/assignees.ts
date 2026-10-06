@@ -86,7 +86,7 @@ export function assigneeDiffersFromOwner(assigneeUserId: string | null | undefin
 // alone would have made this notify path silent almost always. Only a real
 // cookie session for that same user counts as "they just watched this
 // happen themselves, no need to also ping their phone."
-function isInteractiveSelfAction(context: NormalizedGatewayRequestContext, candidateUserId: string): boolean {
+export function isInteractiveSelfAction(context: NormalizedGatewayRequestContext, candidateUserId: string): boolean {
   return context.sessionSource === "cookie" && context.sessionUserId === candidateUserId;
 }
 
@@ -121,6 +121,28 @@ export function lifecycleNotifyTargets(
 ): string[] {
   const owner = userIdFromClientId(createdByClientId);
   const candidates = [owner, assigneeUserId ?? null];
+  return Array.from(
+    new Set(candidates.filter((id): id is string => id !== null && !isInteractiveSelfAction(context, id)))
+  );
+}
+
+// T-MEMORY-181 (owner's ask): the single-owner default was too narrow for a
+// team project -- CRUD lifecycle events on tasks/decisions/the project
+// itself now notify every active member, not just the owner. Resolves the
+// project's current roster (project_members, status=active) plus its owner
+// (who doesn't necessarily hold a project_members row of their own -- same
+// owner-is-implicit-member precedent as resolveProjectRole), deduped, minus
+// whoever is watching it happen live in their own browser right now.
+export async function allProjectMembersNotifyTargets(
+  db: Knex,
+  projectId: string,
+  context: NormalizedGatewayRequestContext
+): Promise<string[]> {
+  const project = await db("projects").where({ id: projectId }).select("owner_user_id").first();
+  const memberRows = await db("project_members")
+    .where({ project_id: projectId, status: "active" })
+    .select<{ user_id: string }[]>("user_id");
+  const candidates = [project?.owner_user_id ? String(project.owner_user_id) : null, ...memberRows.map((row) => String(row.user_id))];
   return Array.from(
     new Set(candidates.filter((id): id is string => id !== null && !isInteractiveSelfAction(context, id)))
   );

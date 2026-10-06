@@ -1555,7 +1555,12 @@ async function handleAuthRoute(
       return true;
     }
     const result = await auth.registerConfirm(body.token, body.code);
-    await service.recordSystemEvent("user.registration_pending", `Awaiting approval: ${result.email}`);
+    await service.recordSystemEvent(
+      "user.registration_pending",
+      `Awaiting approval: ${result.email}`,
+      null,
+      await service.activeAdminUserIds()
+    );
     send(200, { ok: true, data: result });
     return true;
   }

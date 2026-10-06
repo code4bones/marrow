@@ -7,7 +7,7 @@ import { defaultGatewayOutputSchema, gatewayToolSpecs } from "../tool-definition
 import { GATEWAY_EVENT_TOPIC, gatewayEvents } from "../event-bus.js";
 import type { GitHttpFetch } from "../git-credentials.js";
 import type { LlmHttpFetch } from "../llm-providers/index.js";
-import { assigneeNotifyTarget } from "../assignees.js";
+import { allProjectMembersNotifyTargets } from "../assignees.js";
 import { isDefaultNotifyEventType, notifyTelegram } from "../telegram.js";
 import { anonymousClientTtlSeconds, cutoffFromSeconds } from "./formatters/clients.js";
 import { currentProjectKey, jsonStringArray, paginationInput, stringArray } from "./formatters/common.js";
@@ -125,9 +125,8 @@ export class BaseService {
     //
     // T-context (owner's ask, 2026-08-22): a caller that never set
     // target_user_ids at all (`undefined`, not an explicitly computed `[]`
-    // -- the two are deliberately distinct) gets a default fallback of "the
-    // project owner, unless they're the one who just did this" for every
-    // event type curated as notify-worthy (see isDefaultNotifyEventType).
+    // -- the two are deliberately distinct) gets a default fallback for
+    // every event type curated as notify-worthy (see isDefaultNotifyEventType).
     // This is what makes new call sites (and existing ones that never got
     // around to it, like decision.recorded) notify-worthy for free, with no
     // further wiring, instead of every domain needing its own bespoke
@@ -145,14 +144,18 @@ export class BaseService {
     // a real interactive browser click by the owner counts as "they just
     // watched this happen, no need to also ping their phone" -- an agent
     // session resolving to the same user id still notifies.
+    //
+    // T-MEMORY-181 (owner's ask, 2026-10-06): the fallback used to be just
+    // the project owner, which meant a team project's other members never
+    // heard about CRUD lifecycle events at all unless a call site happened
+    // to pass them as an explicit assignee/creator target. Now falls back
+    // to every active member of the project (allProjectMembersNotifyTargets
+    // -- owner included, same per-member self-action filtering as before).
     let targetUserIds: string[];
     if (input.target_user_ids !== undefined) {
       targetUserIds = Array.from(new Set(stringArray(input.target_user_ids)));
     } else if (projectId && isDefaultNotifyEventType(String(input.type))) {
-      const project = await this.db("projects").where({ id: projectId }).select("owner_user_id").first();
-      const ownerUserId = project?.owner_user_id ? String(project.owner_user_id) : null;
-      const ownerNotifyTarget = assigneeNotifyTarget(ownerUserId, context);
-      targetUserIds = ownerNotifyTarget ? [ownerNotifyTarget] : [];
+      targetUserIds = await allProjectMembersNotifyTargets(this.db, projectId, context);
     } else {
       targetUserIds = [];
     }

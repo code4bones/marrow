@@ -161,6 +161,18 @@ try {
   assert(pendingRow?.status === "pending_approval", `project.invite_claim should insert a pending_approval row, got: ${JSON.stringify(pendingRow)}`);
   console.log("ok - project.invite_claim files a pending_approval request and reports joined:false, pendingApproval:true on first claim");
 
+  // --- T-MEMORY-181: the owner now gets pinged (Telegram target_user_ids) ---
+  const memberRequestedEvent = await db("events")
+    .where({ project_id: projectId, type: "project.member_requested" })
+    .orderBy("created_at", "desc")
+    .first();
+  const memberRequestedTargets = (memberRequestedEvent?.target_user_ids ?? []) as string[];
+  assert(
+    memberRequestedTargets.includes(String(adminUserId)),
+    `project.member_requested should target the project owner for notification, got: ${JSON.stringify(memberRequestedTargets)}`
+  );
+  console.log("ok - project.member_requested targets the project owner for notification (T-MEMORY-181)");
+
   // A pending claimant is not a member yet: the project is invisible to them.
   const pendingProjectGet = await callTool("project.get", { id: projectId }, sessionHeaders(memberACookie));
   assert((pendingProjectGet.json as ToolResponse<unknown>).ok === false, "A pending-approval claimant must not be able to read the project yet.");
@@ -231,6 +243,22 @@ try {
   );
   assert(renamed.project.title === "Invites Smoke Project (renamed by owner)", "project.update should apply the new title.");
   console.log("ok - the project's owner (here, the admin who created it) can rename it");
+
+  // --- T-MEMORY-181: project.updated's default fallback (no explicit
+  // target_user_ids at its call site) now notifies every active member, not
+  // just the owner -- member A is active by this point, the owner is the
+  // one clicking (interactive cookie session), so target_user_ids should be
+  // exactly [memberA], excluding the self-acting owner. -------------------
+  const projectUpdatedEvent = await db("events")
+    .where({ project_id: projectId, type: "project.updated" })
+    .orderBy("created_at", "desc")
+    .first();
+  const projectUpdatedTargets = (projectUpdatedEvent?.target_user_ids ?? []) as string[];
+  assert(
+    projectUpdatedTargets.includes(String(memberAUserId)) && !projectUpdatedTargets.includes(String(adminUserId)),
+    `project.updated should default-notify every active member except the self-acting owner, got: ${JSON.stringify(projectUpdatedTargets)}`
+  );
+  console.log("ok - project.updated's default notify fallback reaches every active member, not just the owner (T-MEMORY-181)");
 
   const rootPathUpdated = expectData<{ project: { id: string; rootPath: string | null } }>(
     unwrap(await callTool("project.update", { id: projectId, rootPath: "/tmp/invites-smoke-new-root" }, sessionHeaders(adminCookie)))

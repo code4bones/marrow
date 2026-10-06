@@ -121,6 +121,23 @@ try {
   assert(applicantRow.totp_enabled === true, "Newly confirmed self-registration should have totp_enabled=true.");
   assert(!applicantRow.email_verified_at, "Self-registered accounts should not have email_verified_at set.");
 
+  // --- T-MEMORY-181: active admins get pinged (Telegram target_user_ids)
+  // when a new self-registration lands in pending_approval -- previously
+  // this event was recorded at common scope with no target at all, so it
+  // structurally could never reach anyone's Telegram. ----------------------
+  const registrationPendingEvent = await db("events")
+    .where({ type: "user.registration_pending" })
+    .andWhere("title", "like", `%${applicantEmail}%`)
+    .orderBy("created_at", "desc")
+    .first();
+  assert(registrationPendingEvent, "register/confirm should record a user.registration_pending event.");
+  const registrationPendingTargets = (registrationPendingEvent?.target_user_ids ?? []) as string[];
+  assert(
+    registrationPendingTargets.includes(adminUserId),
+    `user.registration_pending should target every active admin, got: ${JSON.stringify(registrationPendingTargets)}`
+  );
+  console.log("ok - user.registration_pending targets every active admin for notification (T-MEMORY-181)");
+
   const confirmReplay = await fetch(`${started.url}/auth/register/confirm`, {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -418,8 +418,23 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
   // registration lifecycle change through the same gatewayEvents WS publish
   // every other mutation already uses (T-MEMORY-042), so the admin-facing
   // pending-approvals badge updates live instead of on a poll.
-  async recordSystemEvent(type: string, title: string, relatedId: string | null = null): Promise<void> {
-    await this.recordEventForProject(null, { type, title, related_id: relatedId }, SYSTEM_REGISTRATION_CONTEXT);
+  // targetUserIds defaults to [] (explicit, not undefined) -- a common-scope
+  // event (projectId: null) can never use recordEventForProject's default
+  // "every active project member" fallback (there's no project to resolve a
+  // roster from), so every registration-lifecycle event that wants to
+  // actually reach anyone's Telegram must say who, here.
+  async recordSystemEvent(type: string, title: string, relatedId: string | null = null, targetUserIds: string[] = []): Promise<void> {
+    await this.recordEventForProject(null, { type, title, related_id: relatedId, target_user_ids: targetUserIds }, SYSTEM_REGISTRATION_CONTEXT);
+  }
+
+  // T-MEMORY-181: who should learn a new self-registration is waiting on
+  // them -- every active admin, not just whichever one happens to open the
+  // admin pending-users page. Telegram is the only push channel this
+  // backend has (no email subsystem), so this is the one chance to reach
+  // them proactively instead of relying on a poll/visit.
+  async activeAdminUserIds(): Promise<string[]> {
+    const rows = await this.db("users").where({ role: "admin", status: "active" }).select<{ id: string }[]>("id");
+    return rows.map((row) => String(row.id));
   }
 
   };

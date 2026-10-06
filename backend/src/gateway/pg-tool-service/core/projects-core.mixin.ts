@@ -5,6 +5,7 @@ import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectSlugProblem } from "../../../features/projects/model/slug.js";
 import { createProjectId } from "../../../shared/ids/id.service.js";
+import { allProjectMembersNotifyTargets, isInteractiveSelfAction } from "../../assignees.js";
 import { artifactAbsolutePath } from "../formatters/artifacts.js";
 import { currentProjectKey, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { compactProject, projectInviteLinkOut, projectOut, scoreProjectCandidate } from "../formatters/projects.js";
@@ -555,6 +556,12 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       });
     }
 
+    // Captured before the transaction below removes the project (and its
+    // project_members rows with it) -- project.deleted is recorded at
+    // common scope (project_id: null, see below) specifically because the
+    // project row is already gone by then, so this is the last point the
+    // roster can still be resolved for the notify-everyone fallback.
+    const notifyTargets = await allProjectMembersNotifyTargets(this.db, project.id, context);
     const artifactRows = await this.db("artifacts").select("storage_path").where({ project_id: project.id });
     let currentProjectKeys = 0;
     await this.db.transaction(async (trx) => {
@@ -579,7 +586,8 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     await this.recordEventForProject(null, {
       type: "project.deleted",
       title: `Project deleted: ${String(project.title)}`,
-      related_id: project.id
+      related_id: project.id,
+      target_user_ids: notifyTargets
     }, context);
 
     return {
@@ -706,10 +714,16 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
         status: "pending_approval",
         created_at: nowIso()
       });
+      // T-MEMORY-181: the owner used to learn about this only by happening
+      // to look at the Pending Requests screen -- now also pings their
+      // Telegram, same self-action nuance as everywhere else (only a live
+      // cookie-session click by the owner themselves is excluded).
+      const ownerUserId = projectRow.owner_user_id ? String(projectRow.owner_user_id) : null;
       await this.recordEventForProject(String(projectRow.id), {
         type: "project.member_requested",
         title: `Membership requested via invite link: ${String(projectRow.title)}`,
-        related_id: String(projectRow.id)
+        related_id: String(projectRow.id),
+        target_user_ids: ownerUserId && !isInteractiveSelfAction(context, ownerUserId) ? [ownerUserId] : []
       }, context);
     }
     return {
