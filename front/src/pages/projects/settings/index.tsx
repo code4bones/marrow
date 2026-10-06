@@ -12,6 +12,7 @@ import {
   GET_PROJECT_MEMBERS,
   GET_PROJECT_SETTINGS,
   REJECT_PROJECT_MEMBER,
+  REMOVE_PROJECT_MEMBER,
   UPDATE_PROJECT,
   UPDATE_PROJECT_MEMBER_ROLE,
 } from '../../../shared/api/queries';
@@ -123,6 +124,10 @@ function MembersSection({ slug, canManage, ownerUserId }: { slug: string; canMan
     onCompleted: () => { message.success(t('memberRoleUpdated')); void refetchMembers(); },
     onError: (e) => message.error(e.message),
   });
+  const [removeMember, { loading: removing }] = useMutation(REMOVE_PROJECT_MEMBER, {
+    onCompleted: () => { message.success(t('memberRemoved')); void refetchMembers(); },
+    onError: (e) => message.error(e.message),
+  });
 
   const pending = pendingData?.pendingProjectMembers ?? [];
   const members = (membersData?.projectMembers ?? []).filter((m) => m.userId !== ownerUserId);
@@ -184,6 +189,14 @@ function MembersSection({ slug, canManage, ownerUserId }: { slug: string; canMan
             loading={changingRole}
             onChange={(role) => changeRole({ variables: { project: slug, userId: member.userId, role } })}
           />
+          <Popconfirm
+            title={t('removeMemberConfirmTitle')}
+            okText={t('remove')}
+            okButtonProps={{ danger: true, loading: removing }}
+            onConfirm={() => removeMember({ variables: { project: slug, userId: member.userId } })}
+          >
+            <Button size="small" danger>{t('remove')}</Button>
+          </Popconfirm>
         </div>
       ))}
     </Card>

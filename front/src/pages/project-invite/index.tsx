@@ -24,7 +24,11 @@ interface InviteContextResponse {
 }
 
 interface ClaimResult {
-  claimProjectInviteLink: { project: { id: string; slug: string; title: string }; joined: boolean };
+  claimProjectInviteLink: {
+    project: { id: string; slug: string; title: string };
+    joined: boolean;
+    pendingApproval: boolean;
+  };
 }
 
 /**
@@ -34,8 +38,11 @@ interface ClaimResult {
  * page can show "You're invited to join {projectTitle}" before asking for
  * login; if no valid session, render the login/TOTP form in place (reusing
  * TotpLoginStep exactly like oauth-authorize does); once authenticated, a
- * single "Join project" confirm button calls claimProjectInviteLink, then
- * navigates to /projects/{slug}.
+ * single "Join project" confirm button calls claimProjectInviteLink. A
+ * first-time claim lands in pending_approval (project.member_requested, see
+ * projects-core.mixin.ts) -- the caller isn't a member yet, so this shows a
+ * "request sent" screen instead of navigating; only an already-active member
+ * (joined=true) navigates straight to /projects/{slug}.
  */
 export function ProjectInvitePage() {
   const { t } = useTranslation('auth');
@@ -55,6 +62,7 @@ export function ProjectInvitePage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [pendingApprovalProject, setPendingApprovalProject] = useState<{ title: string } | null>(null);
 
   const [claim, { loading: joining }] = useMutation<ClaimResult>(CLAIM_PROJECT_INVITE_LINK);
 
@@ -153,9 +161,14 @@ export function ProjectInvitePage() {
     setJoinError(null);
     try {
       const result = await claim({ variables: { code } });
-      const project = result.data?.claimProjectInviteLink.project;
+      const data = result.data?.claimProjectInviteLink;
+      const project = data?.project;
       if (!project) {
         throw new Error(t('couldNotJoinProject'));
+      }
+      if (data.pendingApproval) {
+        setPendingApprovalProject({ title: project.title });
+        return;
       }
       setSelectedProject(project.slug);
       navigate(`/projects/${project.slug}`);
@@ -163,6 +176,17 @@ export function ProjectInvitePage() {
       setJoinError(err instanceof Error ? err.message : t('couldNotJoinProject'));
     }
   };
+
+  if (pendingApprovalProject) {
+    return (
+      <CenteredCard width={440}>
+        <Title level={4} style={{ marginBottom: 4 }}>
+          {t('joinRequestSent', { project: pendingApprovalProject.title })}
+        </Title>
+        <Text type="secondary">{t('joinRequestSentDescription')}</Text>
+      </CenteredCard>
+    );
+  }
 
   return (
     <CenteredCard width={440}>

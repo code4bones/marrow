@@ -3,27 +3,52 @@ import { ArrowLeftOutlined, FolderOpenOutlined, UserOutlined } from '@ant-design
 import { Avatar, Badge, Button, Divider, Dropdown, Menu, Tooltip, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { GET_GATEWAY_VERSION } from '../../shared/api/queries';
+import { useTelegramBotUsername } from '../../shared/lib/useTelegramBotUsername';
 import { MarrowMark } from '../../shared/ui/MarrowMark';
+import { TelegramMark } from '../../shared/ui/TelegramMark';
 import { useNavData } from './useNavData';
 
 interface GatewayVersionData {
   gatewayVersion: { packageVersion?: string } | null;
 }
 
-/** "front vX.Y.Z · back vA.B.C" under the logo — silently omits the back half until the query resolves. */
+/** "front vX.Y.Z · back vA.B.C" under the logo, with a Telegram-bot link pinned to the right edge of the same row — the link silently omits itself until useTelegramBotUsername resolves (null while loading or when TELEGRAM_BOT_TOKEN is unset). */
 function VersionLine() {
+  const { t } = useTranslation('nav');
   const { data } = useQuery<GatewayVersionData>(GET_GATEWAY_VERSION, { fetchPolicy: 'cache-first' });
   const backVersion = data?.gatewayVersion?.packageVersion;
+  const telegramUsername = useTelegramBotUsername();
   return (
-    <Tooltip title={backVersion ? `Frontend v${__APP_VERSION__} · Backend v${backVersion}` : `Frontend v${__APP_VERSION__}`}>
-      <Typography.Text
-        type="secondary"
-        style={{ fontSize: 10, letterSpacing: 0.3, display: 'block', marginTop: 2, cursor: 'default' }}
-      >
-        v{__APP_VERSION__}
-        {backVersion ? ` · api v${backVersion}` : ''}
-      </Typography.Text>
-    </Tooltip>
+    <Typography.Text
+      type="secondary"
+      style={{
+        fontSize: 10,
+        letterSpacing: 0.3,
+        marginTop: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <Tooltip title={backVersion ? `Frontend v${__APP_VERSION__} · Backend v${backVersion}` : `Frontend v${__APP_VERSION__}`}>
+        <span style={{ cursor: 'default' }}>
+          v{__APP_VERSION__}
+          {backVersion ? ` · api v${backVersion}` : ''}
+        </span>
+      </Tooltip>
+      {telegramUsername && (
+        <Tooltip title={t('openTelegramBot')}>
+          <a
+            href={`https://t.me/${telegramUsername}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: 'inherit', display: 'inline-flex', marginLeft: 8 }}
+          >
+            <TelegramMark size={13} />
+          </a>
+        </Tooltip>
+      )}
+    </Typography.Text>
   );
 }
 

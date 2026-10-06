@@ -246,6 +246,16 @@ export const UPDATE_PROJECT_MEMBER_ROLE = gql`
   }
 `;
 
+export const REMOVE_PROJECT_MEMBER = gql`
+  mutation RemoveProjectMember($project: String, $userId: ID!) {
+    removeProjectMember(project: $project, userId: $userId) {
+      userId
+      email
+      role
+    }
+  }
+`;
+
 export const DELETE_TASK = gql`
   mutation DeleteTask($id: ID!, $reason: String) {
     deleteTask(id: $id, reason: $reason) {
@@ -377,6 +387,7 @@ export const CLAIM_PROJECT_INVITE_LINK = gql`
     claimProjectInviteLink(code: $code) {
       project { id slug title }
       joined
+      pendingApproval
     }
   }
 `;
