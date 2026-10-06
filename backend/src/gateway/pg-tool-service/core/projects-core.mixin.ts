@@ -9,7 +9,7 @@ import { allProjectMembersNotifyTargets, isInteractiveSelfAction } from "../../a
 import { artifactAbsolutePath } from "../formatters/artifacts.js";
 import { currentProjectKey, stringOrNull, writeActorFields } from "../formatters/common.js";
 import { compactProject, projectInviteLinkOut, projectOut, scoreProjectCandidate } from "../formatters/projects.js";
-import type { NormalizedGatewayRequestContext, Row } from "../types.js";
+import { staticTokenClientId, type NormalizedGatewayRequestContext, type Row } from "../types.js";
 import { type Constructor, BaseService } from "../base.js";
 
 // T-MEMORY-110: per-project role. See resolveProjectRole/assertTaskPermission
@@ -53,6 +53,17 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     const now = nowIso();
     const baseId = createProjectId(String(input.slug));
     const id = await this.uniqueProjectId(baseId);
+    // T-MEMORY-183: context.sessionUserId is undefined for a static-token
+    // (shared MCP_TOKEN) caller -- the common case for an agent connection
+    // -- which left owner_user_id permanently null for every project an
+    // agent created this way (confirmed live: ~dozens of existing projects,
+    // including this one). The static token already has a registered human
+    // owner (gateway_clients.owner_user_id for staticTokenClientId, set by
+    // ensureStaticTokenCredential -- the oldest admin account), so fall
+    // back to that instead of leaving the project ownerless. A session/
+    // personal-token/OAuth caller is unaffected: sessionUserId is already
+    // set for all three.
+    const ownerUserId = context.sessionUserId ?? (await this.staticTokenOwnerUserId());
     const row = {
       id,
       slug: String(input.slug),
@@ -60,7 +71,7 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       description: stringOrNull(input.description),
       status: "active",
       root_path: stringOrNull(input.rootPath),
-      owner_user_id: context.sessionUserId ?? null,
+      owner_user_id: ownerUserId ?? null,
       ...writeActorFields(context),
       created_at: now,
       updated_at: now
@@ -74,10 +85,10 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     // creating a project was never one of them. Admin callers don't need
     // this (they bypass the membership filter entirely) but it's harmless
     // and consistent to record it for them too.
-    if (context.sessionUserId) {
+    if (ownerUserId) {
       await this.db("project_members").insert({
         project_id: id,
-        user_id: context.sessionUserId,
+        user_id: ownerUserId,
         created_at: now
       });
     }
@@ -87,6 +98,15 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
       related_id: id
     }, context);
     return projectOut(row);
+  }
+
+  // T-MEMORY-183: the one human the shared static MCP_TOKEN is registered
+  // to (ensureStaticTokenCredential, clients.mixin.ts -- the oldest admin
+  // account at the time the token was first used). null if that row
+  // somehow doesn't exist or was never given an owner.
+  protected async staticTokenOwnerUserId(): Promise<string | null> {
+    const row = await this.db("gateway_clients").where({ id: staticTokenClientId }).select("owner_user_id").first();
+    return row?.owner_user_id ? String(row.owner_user_id) : null;
   }
 
   // T-MEMORY-086/088: shared by listProjects and projectsPage -- a pinned
