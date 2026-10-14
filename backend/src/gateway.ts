@@ -6,6 +6,7 @@ import { createAuthFacade } from "./gateway/auth.js";
 import { createOAuthFacadeFromEnv } from "./gateway/oauth.js";
 import { PgToolService } from "./gateway/pg-tool-service.js";
 import { startTelegramBot, type TelegramBotHandle } from "./gateway/telegram-bot.js";
+import { TellyInboxOutboxDispatcher, tellyInboxConfigFromEnv } from "./gateway/telly-inbox.js";
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 
@@ -55,9 +56,12 @@ async function main(): Promise<void> {
   } catch (error) {
     logger.warn({ error }, "telegram bot failed to start; continuing without it");
   }
+  const tellyInboxOutbox = new TellyInboxOutboxDispatcher(db, tellyInboxConfigFromEnv(), logger);
+  tellyInboxOutbox.start();
 
   const shutdown = async () => {
     logger.info("project memory gateway shutting down");
+    tellyInboxOutbox.stop();
     await telegramBot?.stop();
     await started.stop();
     await service.close();

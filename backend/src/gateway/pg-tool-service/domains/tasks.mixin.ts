@@ -3,7 +3,8 @@ import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
-import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, stringArray, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
+import { enqueueTellyTaskOffer, tellyInboxEnabled } from "../../telly-inbox.js";
+import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, shortText, stringArray, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
   appendText,
@@ -104,14 +105,17 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       record_title: row.title
     }, context);
     const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
-    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
-      await this.recordEventForProject(project.id, {
+    const createAssignmentActor = await this.assignmentActorUserId(context);
+    const createAssignmentIsExternal = Boolean(assigneeUserId && createAssignmentActor && assigneeUserId !== createAssignmentActor);
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by) || createAssignmentIsExternal) {
+      const event = await this.recordEventForProject(project.id, {
         type: "task.assigned",
         title: `Task assigned: ${row.title}`,
         related_id: row.id,
         target_user_ids: createNotifyTarget ? [createNotifyTarget] : [],
         record_title: row.title
       }, context);
+      await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
     }
     return taskOut(row);
   }
@@ -665,16 +669,66 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       })
       .returning("*");
     const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
-    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by)) {
-      await this.recordEventForProject(String(row.project_id), {
+    const reassignAssignmentActor = await this.assignmentActorUserId(context);
+    const reassignAssignmentIsExternal = Boolean(assigneeUserId && reassignAssignmentActor && assigneeUserId !== reassignAssignmentActor);
+    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by) || reassignAssignmentIsExternal) {
+      const event = await this.recordEventForProject(String(row.project_id), {
         type: "task.assigned",
         title: `Task assigned: ${String(row.title)}`,
         related_id: id,
         target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : [],
         record_title: row.title
       }, context);
+      const project = await this.db("projects").where({ id: String(row.project_id) }).select("id", "title").first();
+      if (project) {
+        await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
+      }
     }
     return taskOut(row);
+  }
+
+  // The actual delivery is intentionally outside the task mutation path: the
+  // source-side durable outbox lets assignment succeed when TellyMCP is down.
+  // Telly itself receives a complete snapshot and performs no outbound MCP
+  // call in v1.
+  protected async enqueueTellyTaskOfferIfEligible(
+    event: Row,
+    project: Row,
+    task: Row,
+    recipientUserId: string | null,
+    context: NormalizedGatewayRequestContext
+  ): Promise<void> {
+    if (!recipientUserId || !tellyInboxEnabled()) {
+      return;
+    }
+    const actorUserId = await this.assignmentActorUserId(context);
+    if (!actorUserId || actorUserId === recipientUserId) {
+      return;
+    }
+    const summarySource = stringOrNull(task.scope) ?? stringOrNull(task.acceptance) ?? stringOrNull(task.notes);
+    await enqueueTellyTaskOffer(this.db, {
+      sourceEventId: String(event.id),
+      projectId: String(project.id),
+      projectTitle: String(project.title),
+      taskId: String(task.id),
+      title: String(task.title),
+      summary: summarySource ? shortText(summarySource, 600) : null,
+      status: String(task.status),
+      priority: Number(task.priority ?? 100),
+      milestone: stringOrNull(task.milestone),
+      acceptance: stringOrNull(task.acceptance),
+      recipientUserId,
+      actorUserId
+    });
+  }
+
+  protected async assignmentActorUserId(context: NormalizedGatewayRequestContext): Promise<string | null> {
+    const direct = context.sessionUserId ?? context.ownerUserId ?? userIdFromClientId(context.clientId);
+    if (direct) {
+      return direct;
+    }
+    const client = await this.db("gateway_clients").where({ id: context.clientId }).select("owner_user_id").first();
+    return stringOrNull(client?.owner_user_id);
   }
 
   protected async claimTask(input: Row, context: NormalizedGatewayRequestContext) {
