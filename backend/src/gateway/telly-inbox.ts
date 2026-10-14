@@ -11,6 +11,7 @@ import type { Row } from "./pg-tool-service/types.js";
 // a durable source-side outbox and speaks to Telly through standard MCP.
 export const tellyInboxIntegration = "tellymcp";
 export const tellyInboxTaskOfferKind = "work.offer";
+export const tellyInboxPutTool = "inbox_put";
 
 type DeliveryStatus = "pending" | "sending" | "delivered" | "failed";
 
@@ -96,18 +97,9 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
     // Marrow to render the Telegram prompt or process the answer.
     display: {
       title: input.title,
-      summary: input.summary,
-      status: input.status,
-      priority: input.priority,
-      milestone: input.milestone,
-      acceptance: input.acceptance,
-      project: {
-        id: input.projectId,
-        title: input.projectTitle
-      },
-      task: {
-        id: input.taskId
-      }
+      // TellyMCP's v1 public schema requires a string when summary is
+      // present; omit it rather than sending JSON null.
+      ...(input.summary ? { summary: input.summary } : {})
     },
     metadata: {
       actorUserId: input.actorUserId
@@ -156,7 +148,7 @@ export class TellyInboxMcpClient implements TellyInboxToolClient {
     const client = new Client({ name: "marrow-tellymcp-outbox", version: "1.0.0" });
     try {
       await client.connect(transport);
-      const result = await client.callTool({ name: "inbox.put", arguments: message });
+      const result = await client.callTool({ name: tellyInboxPutTool, arguments: message });
       if (result.isError) {
         throw new Error(mcpErrorText(result.content));
       }
@@ -309,5 +301,5 @@ function mcpErrorText(content: unknown): string {
       return text;
     }
   }
-  return "TellyMCP inbox.put returned an MCP error.";
+  return "TellyMCP inbox_put returned an MCP error.";
 }

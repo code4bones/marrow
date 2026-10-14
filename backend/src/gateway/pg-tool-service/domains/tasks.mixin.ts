@@ -705,7 +705,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     if (!actorUserId || actorUserId === recipientUserId) {
       return;
     }
-    const summarySource = stringOrNull(task.scope) ?? stringOrNull(task.acceptance) ?? stringOrNull(task.notes);
+    const summarySource = [
+      stringOrNull(task.scope),
+      `Status: ${String(task.status)}; priority: ${Number(task.priority ?? 100)}.`,
+      stringOrNull(task.milestone) ? `Milestone: ${String(task.milestone)}.` : null,
+      stringOrNull(task.acceptance) ? `Acceptance: ${String(task.acceptance)}` : null,
+      stringOrNull(task.notes)
+    ].filter((part): part is string => Boolean(part)).join("\n");
     await enqueueTellyTaskOffer(this.db, {
       sourceEventId: String(event.id),
       projectId: String(project.id),

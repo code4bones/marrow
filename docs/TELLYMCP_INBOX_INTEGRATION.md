@@ -9,7 +9,7 @@ Marrow-specific domain logic into TellyMCP.
 1. A project member assigns a Marrow task to another member.
 2. Marrow validates that the assignment is eligible for delivery, records its
    normal task/event state, and persists an outgoing delivery job.
-3. The Marrow dispatcher calls TellyMCP's `inbox.put` MCP tool.
+3. The Marrow dispatcher calls TellyMCP's `inbox_put` MCP tool.
 4. TellyMCP persists the generic inbox record, wakes its worker through
    PostgreSQL `NOTIFY`, resolves the recipient and their preferred live agent
    session, and renders the supplied display snapshot.
@@ -102,13 +102,7 @@ Illustrative message envelope:
   "requiresAcceptance": true,
   "display": {
     "title": "Implement the inbox delivery",
-    "summary": "Add a durable delivery worker.",
-    "status": "todo",
-    "priority": 50,
-    "milestone": "Telly inbox",
-    "acceptance": "The dispatcher retries safely.",
-    "project": { "id": "P-MARROW-42", "title": "Marrow" },
-    "task": { "id": "T-MARROW-123" }
+    "summary": "Status: todo; priority: 50. Add a durable delivery worker."
   }
 }
 ```
@@ -122,7 +116,7 @@ The envelope must be versioned before implementation (for example,
 
 ## Required generic TellyMCP capabilities
 
-- `inbox.put`: durable insert, deduplicated by
+- `inbox_put`: durable insert, deduplicated by
   `(source.integration, source.messageId)`.
 - `inbox.responses` (or an equivalent cursor-based read API): lets a source
   retrieve accepted/rejected/delivered/failed outcomes.
@@ -183,7 +177,7 @@ mutation. The distinction remains explicit:
 
 The Marrow task mutation must not fail merely because TellyMCP is temporarily
 unavailable. It persists a local outbox item before attempting remote delivery,
-and a dispatcher retries `inbox.put` with the event id as its idempotency key.
+and a dispatcher retries `inbox_put` with the event id as its idempotency key.
 
 The local Marrow outbox outcome should be visible in Marrow for diagnosis:
 
@@ -202,7 +196,7 @@ continues normally when they are absent.
 
 - `TELLYMCP_INBOX_MCP_URL`: TellyMCP Streamable HTTP MCP endpoint, normally
   its `/mcp` URL.
-- `TELLYMCP_INBOX_BEARER_TOKEN`: credential scoped to `inbox.put`.
+- `TELLYMCP_INBOX_BEARER_TOKEN`: credential scoped to `inbox_put`.
 - `TELLYMCP_INBOX_POLL_INTERVAL_MS` (optional): outbox polling interval;
   default `10000`, bounded to 1–300 seconds.
 - `TELLYMCP_INBOX_MAX_ATTEMPTS` (optional): delivery retry budget; default
@@ -214,6 +208,6 @@ continues normally when they are absent.
    TellyMCP.
 2. Add explicit identity and preferred-session route bindings.
 3. Add Marrow assignment-offer/outbox records and the `task.assigned` →
-   `inbox.put` dispatcher, including the complete `display` snapshot.
+   `inbox_put` dispatcher, including the complete `display` snapshot.
 4. On acceptance, write an xchange record, nudge the selected agent, and
    verify that it claims/updates the task through existing Marrow tools.

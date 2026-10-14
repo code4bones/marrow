@@ -28,16 +28,28 @@ describe("TellyMCP inbox offer payload (T-MEMORY-184)", () => {
       requiresAcceptance: true,
       display: {
         title: "Connect the generic inbox",
-        summary: "Deliver assignments to TellyMCP.",
-        status: "todo",
-        priority: 50,
-        milestone: "Telly inbox",
-        acceptance: "An agent can be nudged after approval.",
-        project: { id: "P-MEMORY", title: "Marrow" },
-        task: { id: "T-MEMORY-184" }
+        summary: "Deliver assignments to TellyMCP."
       }
     });
     expect(payload).not.toHaveProperty("operations");
+  });
+
+  it("omits a missing summary instead of sending null to TellyMCP", () => {
+    const payload = tellyInboxTaskOfferPayload({
+      sourceEventId: "E-MEMORY-184-null-summary",
+      projectId: "P-MEMORY",
+      projectTitle: "Marrow",
+      taskId: "T-MEMORY-184",
+      title: "Title only",
+      summary: null,
+      status: "todo",
+      priority: 100,
+      milestone: null,
+      acceptance: null,
+      recipientUserId: "user-recipient",
+      actorUserId: "user-assigner"
+    });
+    expect(payload.display).toEqual({ title: "Title only" });
   });
 
   it("only enables delivery when both endpoint and dedicated credential exist", () => {
