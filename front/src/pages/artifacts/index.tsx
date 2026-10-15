@@ -13,6 +13,7 @@ import { GET_ARTIFACTS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -34,6 +35,7 @@ function sizeLabel(bytes: number | null) {
 export function ArtifactsPage() {
   const { t } = useTranslation('artifacts');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const { page, pageSize, offset, onChange } = usePage();
 
   const { data, loading, error, refetch } = useQuery<{ artifactsPage: Paginated<Artifact> }>(GET_ARTIFACTS_PAGE, {

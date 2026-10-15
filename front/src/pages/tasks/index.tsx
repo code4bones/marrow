@@ -12,6 +12,7 @@ import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { canPerform } from '../../shared/lib/taskPermissions';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import { useMyProjectRole } from '../../shared/lib/useMyProjectRole';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
@@ -55,6 +56,7 @@ const DEFAULT_SORT = 'UPDATED_AT:DESC';
 export function TasksPage() {
   const { t } = useTranslation('tasks');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   // T-MEMORY-103: Project Overview's Timeline/Kanban/Summary row links
   // straight into this tab (?tab=kanban) since there was previously no way
   // to find the Kanban view except opening Tasks and noticing the tab

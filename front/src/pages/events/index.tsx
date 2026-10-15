@@ -9,6 +9,7 @@ import { RecordEventModal } from '../../features/event/RecordEventModal';
 import { GET_EVENTS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import { shortAuthor } from '../../shared/lib/shortAuthor';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -21,6 +22,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 export function EventsPage() {
   const { t } = useTranslation('events');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const { page, pageSize, offset, onChange } = usePage(100);
 
   const { data, loading, error, refetch } = useQuery<{ eventsPage: Paginated<Event> }>(GET_EVENTS_PAGE, {

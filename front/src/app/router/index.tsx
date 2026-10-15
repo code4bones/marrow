@@ -76,16 +76,26 @@ export function AppRouter() {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:slug" element={<ProjectsPage />} />
 
-        {/* Project sections */}
-        <Route path="projects/:slug/tasks"      element={<TasksPage />} />
-        <Route path="projects/:slug/decisions"  element={<DecisionsPage />} />
-        <Route path="projects/:slug/faults"     element={<FaultsPage />} />
-        <Route path="projects/:slug/artifacts"  element={<ArtifactsPage />} />
-        <Route path="projects/:slug/skills"     element={<SkillsPage />} />
-        <Route path="projects/:slug/events"     element={<EventsPage />} />
-        <Route path="projects/:slug/memory"     element={<MemoryPage />} />
-        <Route path="projects/:slug/links"      element={<LinksPage />} />
-        <Route path="projects/:slug/settings"   element={<ProjectSettingsPage />} />
+        {/* Project sections. The /:recordId variant renders the same list
+            page but also opens the DetailDrawer via useRecordDeepLink, so a
+            direct link to one record (e.g. shared from Telegram) works. */}
+        <Route path="projects/:slug/tasks"                element={<TasksPage />} />
+        <Route path="projects/:slug/tasks/:recordId"       element={<TasksPage />} />
+        <Route path="projects/:slug/decisions"             element={<DecisionsPage />} />
+        <Route path="projects/:slug/decisions/:recordId"   element={<DecisionsPage />} />
+        <Route path="projects/:slug/faults"                element={<FaultsPage />} />
+        <Route path="projects/:slug/faults/:recordId"      element={<FaultsPage />} />
+        <Route path="projects/:slug/artifacts"             element={<ArtifactsPage />} />
+        <Route path="projects/:slug/artifacts/:recordId"   element={<ArtifactsPage />} />
+        <Route path="projects/:slug/skills"                element={<SkillsPage />} />
+        <Route path="projects/:slug/skills/:recordId"      element={<SkillsPage />} />
+        <Route path="projects/:slug/events"                element={<EventsPage />} />
+        <Route path="projects/:slug/events/:recordId"      element={<EventsPage />} />
+        <Route path="projects/:slug/memory"                element={<MemoryPage />} />
+        <Route path="projects/:slug/memory/:recordId"      element={<MemoryPage />} />
+        <Route path="projects/:slug/links"                 element={<LinksPage />} />
+        <Route path="projects/:slug/links/:recordId"       element={<LinksPage />} />
+        <Route path="projects/:slug/settings"              element={<ProjectSettingsPage />} />
 
         {/* Global */}
         <Route path="common"        element={<CommonPage />} />

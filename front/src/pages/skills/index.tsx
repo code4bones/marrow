@@ -10,6 +10,7 @@ import { UpdateSkillDrawer } from '../../features/skill/UpdateSkillDrawer';
 import { GET_SKILLS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { Paginated, Skill } from '../../shared/model/types';
@@ -21,6 +22,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 export function SkillsPage() {
   const { t } = useTranslation('skills');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const { page, pageSize, offset, onChange } = usePage();
 
   const { data, loading, error, refetch } = useQuery<{ skillsPage: Paginated<Skill> }>(GET_SKILLS_PAGE, {

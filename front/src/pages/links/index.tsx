@@ -9,6 +9,7 @@ import { DeleteLinkButton } from '../../features/link/DeleteLinkButton';
 import { GET_LINKS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import type { Link, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -17,6 +18,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 export function LinksPage() {
   const { t } = useTranslation('links');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const [relation, setRelation] = useState('');
   const [includeCommon, setIncludeCommon] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();

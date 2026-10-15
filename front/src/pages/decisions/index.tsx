@@ -11,6 +11,7 @@ import { GET_DECISIONS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { isNewSince } from '../../shared/lib/isNewSince';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
@@ -37,6 +38,7 @@ function statusOptions(t: (key: string) => string) {
 export function DecisionsPage() {
   const { t } = useTranslation('decisions');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const [status, setStatus] = useState('');
   const [groupByMilestone, setGroupByMilestone] = useState(false);
   const { page, pageSize, offset, onChange } = usePage();

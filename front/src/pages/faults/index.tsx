@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import { GET_FAULTS_PAGE } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { usePage } from '../../shared/lib/usePage';
+import { useRecordDeepLink } from '../../shared/lib/useRecordDeepLink';
 import type { MemoryRecord, Paginated } from '../../shared/model/types';
 import { PageLayout } from '../../shared/ui/PageLayout';
 import { RecordLink } from '../../shared/ui/RecordLink';
@@ -39,6 +40,7 @@ function buildColumns(t: (key: string) => string, labelFor: (id: string | null |
 export function FaultsPage() {
   const { t } = useTranslation('faults');
   const { slug } = useParams<{ slug: string }>();
+  useRecordDeepLink();
   const [search, setSearch] = useState('');
   const { page, pageSize, offset, onChange } = usePage();
 
