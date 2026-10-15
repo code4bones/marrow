@@ -715,6 +715,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     await enqueueTellyTaskOffer(this.db, {
       sourceEventId: String(event.id),
       projectId: String(project.id),
+      projectSlug: String(project.slug),
       projectTitle: String(project.title),
       taskId: String(task.id),
       title: String(task.title),

@@ -130,7 +130,7 @@ export function isDefaultNotifyEventType(type: string): boolean {
   return type in EVENT_LABELS;
 }
 
-function marrowWebUrl(): string | null {
+export function marrowWebUrl(): string | null {
   const explicit = process.env.MARROW_WEB_URL?.trim().replace(/\/+$/, "");
   if (explicit) {
     return explicit;

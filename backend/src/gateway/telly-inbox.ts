@@ -5,6 +5,7 @@ import type { Knex } from "knex";
 import { nowIso } from "../shared/dates.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import type { Row } from "./pg-tool-service/types.js";
+import { marrowWebUrl } from "./telegram.js";
 
 // T-MEMORY-184: this module deliberately knows the *generic* inbox contract
 // only. TellyMCP owns inbox persistence, routing, and its worker; Marrow owns
@@ -25,6 +26,7 @@ export type TellyInboxConfig = {
 export type TellyInboxTaskOfferInput = {
   sourceEventId: string;
   projectId: string;
+  projectSlug: string;
   projectTitle: string;
   taskId: string;
   title: string;
@@ -36,6 +38,26 @@ export type TellyInboxTaskOfferInput = {
   recipientUserId: string;
   actorUserId: string;
 };
+
+// IDs only -- this becomes literal PTY input on TellyMCP's side (typed into
+// the agent's console once a human approves), so it must not carry
+// task.title/notes/scope free text that any project member could set.
+function tellyInboxConsoleText(input: Pick<TellyInboxTaskOfferInput, "taskId" | "projectId">): string {
+  return (
+    `Marrow: check task ${input.taskId} in project ${input.projectId} ` +
+    "through your own authenticated connection before doing any work."
+  );
+}
+
+// /projects/:slug/tasks/:id opens that task straight into the web app's
+// detail drawer (see front/src/shared/lib/useRecordDeepLink.ts) -- null
+// when MARROW_WEB_URL/PROJECT_MEMORY_PUBLIC_URL isn't configured, same as
+// the link marrowWebUrl() already builds for Marrow's own Telegram
+// notifications.
+function tellyInboxTaskUrl(input: Pick<TellyInboxTaskOfferInput, "projectSlug" | "taskId">): string | undefined {
+  const webUrl = marrowWebUrl();
+  return webUrl ? `${webUrl}/projects/${input.projectSlug}/tasks/${input.taskId}` : undefined;
+}
 
 export type TellyInboxToolClient = {
   put(message: Row): Promise<unknown>;
@@ -97,10 +119,15 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
     // Marrow to render the Telegram prompt or process the answer.
     display: {
       title: input.title,
-      // TellyMCP's v1 public schema requires a string when summary is
-      // present; omit it rather than sending JSON null.
-      ...(input.summary ? { summary: input.summary } : {})
+      // TellyMCP's v1 public schema requires a string when summary/url are
+      // present; omit rather than sending JSON null.
+      ...(input.summary ? { summary: input.summary } : {}),
+      ...(tellyInboxTaskUrl(input) ? { url: tellyInboxTaskUrl(input) } : {})
     },
+    // TellyMCP relays this verbatim as PTY input once approved -- it does
+    // not compose it. See tellyInboxConsoleText's own comment for why this
+    // must stay IDs-only.
+    consoleText: tellyInboxConsoleText(input),
     metadata: {
       actorUserId: input.actorUserId
     }
