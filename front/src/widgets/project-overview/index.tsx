@@ -12,7 +12,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { GET_EVENTS_PAGE, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
+import { GET_EVENTS_PAGE, GET_PROJECT_GROUP_MEMBERS, GET_PROJECT_SUMMARY } from '../../shared/api/queries';
 import { ShareProjectButton } from '../../features/project/ShareProjectButton';
 import { GlobalSearchBox } from './GlobalSearchBox';
 import { ProjectGraphView } from '../graph-view/ProjectGraphView';
@@ -266,6 +266,13 @@ export function ProjectOverview({ slug }: { slug: string }) {
   );
   useRefetchOnVersion(useRealtimeStore((s) => s.eventsVersion), refetchNewEvents);
 
+  // Projects list's own grouping data (small, unfiltered by design) --
+  // reused here just to look up this one project's group key, if any, for
+  // the {GroupName}/{ProjectName} title.
+  const { data: groupData } = useQuery<{ projectGroupMembers: { key: string; projectId: string }[] }>(
+    GET_PROJECT_GROUP_MEMBERS,
+  );
+
   // `&& !data`, not just `loading` -- Apollo's refetch() (T-MEMORY-051's
   // own realtime hook right above) can flip loading back to true for the
   // *background* refetch too, not only the true first load. Gating on
@@ -293,6 +300,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
 
   const s = data!.projectSummary;
   const { counts } = s;
+  const groupKey = groupData?.projectGroupMembers.find((m) => m.projectId === s.project.id)?.key;
 
   // Owner's expectation: opening a section (Tasks, Decisions, ...) clears
   // that section's own badge here, not a global "mark everything as read"
@@ -338,6 +346,11 @@ export function ProjectOverview({ slug }: { slug: string }) {
                 style={{ marginBottom: 0, flexShrink: 0, cursor: 'pointer' }}
                 onClick={() => setSelectedRecord(s.project.id, 'project')}
               >
+                {groupKey && (
+                  <Typography.Text type="secondary" style={{ fontSize: 'inherit', fontWeight: 'normal' }}>
+                    {groupKey}/
+                  </Typography.Text>
+                )}
                 {s.project.title}
               </Typography.Title>
             </Tooltip>
