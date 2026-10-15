@@ -457,6 +457,19 @@ export const GET_MEMORY_ITEMS_PAGE = gql`
   }
 `;
 
+// T-context (owner's ask, 2026-10-15): "project group" is a plain
+// (key, projectId) membership row -- no visual entity of its own, just
+// enough for the Projects list to cluster co-visible members of the same
+// key together with a connector, regardless of sort/search order.
+// Membership itself is managed by the agent via the project_group.*
+// MCP tools (no "add to group" UI -- Marrow stays agent-first here), this
+// is just what the Projects list reads to cluster co-visible members.
+export const GET_PROJECT_GROUP_MEMBERS = gql`
+  query GetProjectGroupMembers {
+    projectGroupMembers { key projectId }
+  }
+`;
+
 export const GET_LINKS_PAGE = gql`
   query GetLinksPage($project: String, $relation: String, $includeCommon: Boolean, $limit: Int!, $offset: Int!) {
     linksPage(project: $project, relation: $relation, includeCommon: $includeCommon, pagination: { limit: $limit, offset: $offset }) {

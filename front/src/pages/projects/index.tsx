@@ -2,13 +2,13 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Col, Input, List, Pagination, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import type { PaginationProps } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
 import { ResizeHandle } from '../../shared/ui/ResizeHandle';
-import { GET_PROJECTS_PAGE, PIN_PROJECT } from '../../shared/api/queries';
+import { GET_PROJECT_GROUP_MEMBERS, GET_PROJECTS_PAGE, PIN_PROJECT } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { usePage } from '../../shared/lib/usePage';
@@ -41,6 +41,97 @@ function PinButton({ project, onDone }: { project: Project; onDone: () => void }
         }}
       />
     </Tooltip>
+  );
+}
+
+// Owner's ask (2026-10-15): a project_group membership is purely logical
+// (no folder, no separate entity on screen) -- its only visual effect is
+// pulling co-visible members of the same `key` adjacent to each other in
+// this already-sorted/searched list (at the position of whichever member
+// appears first) so GroupConnector can be drawn between them. A member
+// whose group-mate didn't make this page (filtered out by search, on a
+// different page) just renders as an ordinary solo row -- no connector to
+// something off-screen.
+function groupProjectsByMembership(
+  projects: Project[],
+  members: { key: string; projectId: string }[],
+): Project[][] {
+  const keyByProjectId = new Map<string, string>();
+  for (const m of members) {
+    // A project in more than one group keeps its first membership here --
+    // picking one key is enough for this visual-only clustering.
+    if (!keyByProjectId.has(m.projectId)) keyByProjectId.set(m.projectId, m.key);
+  }
+  const groups: Project[][] = [];
+  const groupIndexByKey = new Map<string, number>();
+  for (const p of projects) {
+    const key = keyByProjectId.get(p.id);
+    if (key === undefined) {
+      groups.push([p]);
+      continue;
+    }
+    let idx = groupIndexByKey.get(key);
+    if (idx === undefined) {
+      idx = groups.length;
+      groupIndexByKey.set(key, idx);
+      groups.push([]);
+    }
+    groups[idx].push(p);
+  }
+  return groups;
+}
+
+// Timeline's own connector between stacked cards (DecisionTimeline.tsx's
+// GapRow) is the same idea at a bigger scale -- a plain dashed line, no
+// canvas/library, just enough to read as "these belong together."
+function GroupConnector() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <div style={{ width: 1, height: 8, borderLeft: '1px dashed #595959' }} />
+    </div>
+  );
+}
+
+function ProjectRow({
+  project,
+  active,
+  author,
+  onClick,
+  onPinDone,
+}: {
+  project: Project;
+  active: boolean;
+  author: string | undefined;
+  onClick: () => void;
+  onPinDone: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: 'pointer',
+        padding: '8px 10px',
+        borderRadius: 4,
+        background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 2,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+        <Typography.Text strong style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {project.title}
+        </Typography.Text>
+        <StatusBadge status={project.status} />
+        <PinButton project={project} onDone={onPinDone} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
+        <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{project.slug}</Tag>
+        {project.lastVersion && <VersionTag value={project.lastVersion} maxWidth={90} />}
+      </div>
+      <Timestamp value={project.updatedAt} author={author} />
+    </div>
   );
 }
 
@@ -99,10 +190,18 @@ export function ProjectsPage() {
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.projectsVersion), refetch);
 
-  const projects = data?.projectsPage.items ?? [];
+  const { data: groupData } = useQuery<{ projectGroupMembers: { key: string; projectId: string }[] }>(
+    GET_PROJECT_GROUP_MEMBERS,
+  );
+
+  const projects = useMemo(() => data?.projectsPage.items ?? [], [data]);
   const pageInfo = data?.projectsPage.pageInfo;
   const totalPages = pageInfo?.totalCount ? Math.ceil(pageInfo.totalCount / pageSize) : 1;
   const { labelFor } = useActorLabels(projects.map((p) => p.createdBy));
+  const groupedProjects = useMemo(
+    () => groupProjectsByMembership(projects, groupData?.projectGroupMembers ?? []),
+    [projects, groupData],
+  );
 
   // T-context (2026-08-26, owner's ask: mobile PWA layout, "на стартовом
   // экране плитки проектов, все идет через проваливание в них"): mobile
@@ -275,35 +374,23 @@ export function ProjectsPage() {
             {loading && <Skeleton active style={{ padding: 8 }} />}
             {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
             {data && (
-              <List<Project>
-                dataSource={projects}
-                rowKey="id"
-                renderItem={(p) => (
-                  <List.Item
-                    onClick={() => navigate(`/projects/${p.slug}`)}
-                    style={{
-                      cursor: 'pointer',
-                      padding: '8px 10px',
-                      borderRadius: 4,
-                      background: slug === p.slug ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      gap: 2,
-                      border: 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                      <Typography.Text strong style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.title}
-                      </Typography.Text>
-                      <StatusBadge status={p.status} />
-                      <PinButton project={p} onDone={() => refetch()} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
-                      <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
-                      {p.lastVersion && <VersionTag value={p.lastVersion} maxWidth={90} />}
-                    </div>
-                    <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
+              <List<Project[]>
+                dataSource={groupedProjects}
+                rowKey={(group) => group[0].id}
+                renderItem={(group) => (
+                  <List.Item style={{ padding: 0, border: 'none', display: 'block' }}>
+                    {group.map((p, i) => (
+                      <div key={p.id}>
+                        {i > 0 && <GroupConnector />}
+                        <ProjectRow
+                          project={p}
+                          active={slug === p.slug}
+                          author={labelFor(p.createdBy)}
+                          onClick={() => navigate(`/projects/${p.slug}`)}
+                          onPinDone={() => refetch()}
+                        />
+                      </div>
+                    ))}
                   </List.Item>
                 )}
               />
