@@ -25,6 +25,7 @@
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.11",
     "react-markdown": "^10.1.0",
+    "react-resizable-panels": "^4.14.5",
     "react-router-dom": "^7.18.0",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.14"

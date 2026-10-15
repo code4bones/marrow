@@ -55,3 +55,20 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+/* Splitters between panels (left sidebar | project list | workspace) */
+[data-separator] {
+  outline: none;
+}
+[data-separator]:hover .resize-handle-line,
+[data-separator]:active .resize-handle-line {
+  background: #1668dc;
+}
+
+/* Pagination in narrow containers (e.g. the projects sidebar list): wrap
+   instead of overflowing the container when prev/items/next/size-changer
+   don't all fit on one line. */
+.ant-pagination.pagination-wrap {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}

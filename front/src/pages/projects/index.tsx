@@ -4,7 +4,9 @@ import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutli
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Group, Panel, useDefaultLayout } from 'react-resizable-panels';
 import { CreateProjectModal } from '../../features/project/CreateProjectModal';
+import { ResizeHandle } from '../../shared/ui/ResizeHandle';
 import { GET_PROJECTS_PAGE, PIN_PROJECT } from '../../shared/api/queries';
 import { useActorLabels } from '../../shared/lib/useActorLabels';
 import { useIsMobile } from '../../shared/lib/useIsMobile';
@@ -47,6 +49,7 @@ export function ProjectsPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const setSelectedProject = useWorkspaceStore((s) => s.setSelectedProject);
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: 'marrow:projects-page' });
 
   useEffect(() => {
     if (slug) setSelectedProject(slug);
@@ -149,6 +152,7 @@ export function ProjectsPage() {
               ))}
             </Row>
             <Pagination
+              className="pagination-wrap"
               size="small"
               current={page}
               pageSize={pageSize}
@@ -165,113 +169,125 @@ export function ProjectsPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <Group
+      orientation="horizontal"
+      defaultLayout={defaultLayout}
+      onLayoutChanged={onLayoutChanged}
+      style={{ height: '100%' }}
+    >
       {/* Left: project list */}
-      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #303030' }}>
-        <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {/* Icon toggle, not a dropdown -- owner: a full-width Select here
-              read as oversized for a binary choice in this narrow sidebar.
-              Left-aligned, separate from New Project on the right -- owner:
-              glued together on one side read as one control. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Tooltip title={t('sortAlphabetical')}>
-              <Button
-                size="small"
-                type={sort === 'slug' ? 'primary' : 'text'}
-                icon={<SortAscendingOutlined />}
-                onClick={() => { setSort('slug'); onChange(1, pageSize); }}
-              />
-            </Tooltip>
-            <Tooltip title={t('sortNewestFirst')}>
-              <Button
-                size="small"
-                type={sort === 'createdAt' ? 'primary' : 'text'}
-                icon={<ClockCircleOutlined />}
-                onClick={() => { setSort('createdAt'); onChange(1, pageSize); }}
-              />
-            </Tooltip>
+      <Panel id="list" defaultSize="22" minSize="15" maxSize="40">
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* Icon toggle, not a dropdown -- owner: a full-width Select here
+                read as oversized for a binary choice in this narrow sidebar.
+                Left-aligned, separate from New Project on the right -- owner:
+                glued together on one side read as one control. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Tooltip title={t('sortAlphabetical')}>
+                <Button
+                  size="small"
+                  type={sort === 'slug' ? 'primary' : 'text'}
+                  icon={<SortAscendingOutlined />}
+                  onClick={() => { setSort('slug'); onChange(1, pageSize); }}
+                />
+              </Tooltip>
+              <Tooltip title={t('sortNewestFirst')}>
+                <Button
+                  size="small"
+                  type={sort === 'createdAt' ? 'primary' : 'text'}
+                  icon={<ClockCircleOutlined />}
+                  onClick={() => { setSort('createdAt'); onChange(1, pageSize); }}
+                />
+              </Tooltip>
+            </div>
+            <CreateProjectModal onDone={() => refetch()} />
           </div>
-          <CreateProjectModal onDone={() => refetch()} />
-        </div>
 
-        <div style={{ padding: '0 16px 8px' }}>
-          <Input.Search
-            placeholder={t('searchProjectsPlaceholder')}
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); onChange(1, pageSize); }}
-            allowClear
-            size="small"
-          />
-        </div>
-
-        {/* T-MEMORY-088 follow-up: owner explicitly wanted the pager right
-            under the search box, not List's own default bottom-of-list
-            placement (List has no built-in "pagination at top" option,
-            unlike Table's pagination.position) -- rendered as a standalone
-            Pagination here instead of passed to List's `pagination` prop. */}
-        <div style={{ padding: '0 16px 8px' }}>
-          <Pagination
-            size="small"
-            current={page}
-            pageSize={pageSize}
-            total={pageInfo?.totalCount}
-            onChange={onChange}
-            showSizeChanger
-            pageSizeOptions={['10', '20', '50']}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
-          {loading && <Skeleton active style={{ padding: 8 }} />}
-          {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
-          {data && (
-            <List<Project>
-              dataSource={projects}
-              rowKey="id"
-              renderItem={(p) => (
-                <List.Item
-                  onClick={() => navigate(`/projects/${p.slug}`)}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '8px 10px',
-                    borderRadius: 4,
-                    background: slug === p.slug ? 'rgba(255,255,255,0.06)' : 'transparent',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: 2,
-                    border: 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                    <Typography.Text strong style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.title}
-                    </Typography.Text>
-                    <StatusBadge status={p.status} />
-                    <PinButton project={p} onDone={() => refetch()} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
-                    <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
-                    {p.lastVersion && <VersionTag value={p.lastVersion} maxWidth={90} />}
-                  </div>
-                  <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
-                </List.Item>
-              )}
+          <div style={{ padding: '0 16px 8px' }}>
+            <Input.Search
+              placeholder={t('searchProjectsPlaceholder')}
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); onChange(1, pageSize); }}
+              allowClear
+              size="small"
             />
-          )}
+          </div>
+
+          {/* T-MEMORY-088 follow-up: owner explicitly wanted the pager right
+              under the search box, not List's own default bottom-of-list
+              placement (List has no built-in "pagination at top" option,
+              unlike Table's pagination.position) -- rendered as a standalone
+              Pagination here instead of passed to List's `pagination` prop. */}
+          <div style={{ padding: '0 16px 8px' }}>
+            <Pagination
+              className="pagination-wrap"
+              size="small"
+              current={page}
+              pageSize={pageSize}
+              total={pageInfo?.totalCount}
+              onChange={onChange}
+              showSizeChanger
+              pageSizeOptions={['10', '20', '50']}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
+            {loading && <Skeleton active style={{ padding: 8 }} />}
+            {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
+            {data && (
+              <List<Project>
+                dataSource={projects}
+                rowKey="id"
+                renderItem={(p) => (
+                  <List.Item
+                    onClick={() => navigate(`/projects/${p.slug}`)}
+                    style={{
+                      cursor: 'pointer',
+                      padding: '8px 10px',
+                      borderRadius: 4,
+                      background: slug === p.slug ? 'rgba(255,255,255,0.06)' : 'transparent',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: 2,
+                      border: 'none',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                      <Typography.Text strong style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.title}
+                      </Typography.Text>
+                      <StatusBadge status={p.status} />
+                      <PinButton project={p} onDone={() => refetch()} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
+                      <Tag color="orange" style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{p.slug}</Tag>
+                      {p.lastVersion && <VersionTag value={p.lastVersion} maxWidth={90} />}
+                    </div>
+                    <Timestamp value={p.updatedAt} author={labelFor(p.createdBy)} />
+                  </List.Item>
+                )}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </Panel>
+
+      <ResizeHandle />
 
       {/* Right: project content */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {slug ? (
-          <ProjectOverview key={slug} slug={slug} />
-        ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography.Text type="secondary">{t('selectAProject')}</Typography.Text>
-          </div>
-        )}
-      </div>
-    </div>
+      <Panel id="workspace" minSize="30">
+        <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {slug ? (
+            <ProjectOverview key={slug} slug={slug} />
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Typography.Text type="secondary">{t('selectAProject')}</Typography.Text>
+            </div>
+          )}
+        </div>
+      </Panel>
+    </Group>
   );
 }
