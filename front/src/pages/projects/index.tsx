@@ -154,6 +154,8 @@ export function ProjectsPage() {
             <Pagination
               className="pagination-wrap"
               size="small"
+              showLessItems
+              locale={{ items_per_page: '' }}
               current={page}
               pageSize={pageSize}
               total={pageInfo?.totalCount}
@@ -223,6 +225,8 @@ export function ProjectsPage() {
             <Pagination
               className="pagination-wrap"
               size="small"
+              showLessItems
+              locale={{ items_per_page: '' }}
               current={page}
               pageSize={pageSize}
               total={pageInfo?.totalCount}
