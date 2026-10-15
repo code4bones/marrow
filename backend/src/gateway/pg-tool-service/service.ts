@@ -9,6 +9,7 @@ import { aiChatSecretReadTools, aiChatToolSpecs, callExposesSecrets } from "./ai
 import { BaseService } from "./base.js";
 import { ProjectsCoreMixin } from "./core/projects-core.mixin.js";
 import { LinksCoreMixin } from "./core/links-core.mixin.js";
+import { ProjectGroupMixin } from "./domains/project-group.mixin.js";
 import { MemoryMixin } from "./domains/memory.mixin.js";
 import { ArtifactsMixin } from "./domains/artifacts.mixin.js";
 import { DecisionsMixin } from "./domains/decisions.mixin.js";
@@ -65,8 +66,10 @@ const ComposedService = GlobalSearchMixin(
                                     DecisionsMixin(
                                       ArtifactsMixin(
                                         MemoryMixin(
-                                          LinksCoreMixin(
-                                            ProjectsCoreMixin(BaseService)
+                                          ProjectGroupMixin(
+                                            LinksCoreMixin(
+                                              ProjectsCoreMixin(BaseService)
+                                            )
                                           )
                                         )
                                       )
@@ -333,6 +336,12 @@ export class PgToolService extends ComposedService {
           return ok("Links listed.", { links: await this.listLinks(parsed, requestContext) });
         case "link.delete":
           return ok("Link deleted.", await this.deleteLink(parsed, requestContext));
+        case "project_group.add_member":
+          return ok("Project added to group.", { member: await this.addProjectGroupMember(parsed, requestContext) });
+        case "project_group.remove_member":
+          return ok("Project removed from group.", { removed: await this.removeProjectGroupMember(parsed, requestContext) });
+        case "project_group.members":
+          return ok("Project group members listed.", { members: await this.projectGroupMembers() });
         case "preflight":
           return ok("Preflight context loaded.", await this.preflight(parsed, requestContext));
         case "preflight.by_query":

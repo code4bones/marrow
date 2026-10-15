@@ -238,6 +238,10 @@ const typeDefs = `#graphql
       pagination: PaginationInput
     ): PaginatedLinks!
 
+    # Every project_group row, unfiltered (small by design -- see the
+    # resolver). The Projects list groups the ones whose key it shares.
+    projectGroupMembers: [ProjectGroupMember!]!
+
     # T-MEMORY-044: requires a browser session (context.sessionUserId) --
     # static token, OAuth, and anonymous callers get a clear
     # "requires a logged-in session" error, not an empty/guessed result. See
@@ -341,6 +345,9 @@ const typeDefs = `#graphql
 
     createLink(input: CreateLinkInput!): Link!
     deleteLink(id: ID!, reason: String): DeleteLinkResult!
+
+    addProjectGroupMember(key: String!, projectId: String!): ProjectGroupMember!
+    removeProjectGroupMember(key: String!, projectId: String!): Boolean!
 
     # T-MEMORY-044: deliberately NOT in ADMIN_GRAPHQL_MUTATION_NAMES below --
     # unlike the other delete* mutations, this one can only ever delete the
@@ -1192,6 +1199,13 @@ const typeDefs = `#graphql
     pageInfo: PageInfo!
   }
 
+  type ProjectGroupMember {
+    key: String!
+    projectId: String!
+    createdBy: String
+    createdAt: String
+  }
+
   type DeleteLinkResult {
     deletedLink: Link!
     event: Event!
@@ -1363,6 +1377,8 @@ const resolvers = {
       (await callTool<Row>(context, "link.list", cleanInput(args))).links,
     linksPage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await pageQuery(context, "links", cleanInput(args)),
+    projectGroupMembers: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project_group.members", {})).members,
     gitCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
     gitPipelineStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1505,6 +1521,10 @@ const resolvers = {
       (await callTool<Row>(context, "link.create", cleanInput(args.input as Row))).link,
     deleteLink: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "link.delete", cleanInput(args)),
+    addProjectGroupMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project_group.add_member", cleanInput(args))).member,
+    removeProjectGroupMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project_group.remove_member", cleanInput(args))).removed,
     createGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.credential_create", cleanInput(args)),
     deleteGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {

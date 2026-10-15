@@ -263,6 +263,11 @@ const decisionArchiveSchema = idReasonSchema;
 const decisionDeleteSchema = idReasonSchema;
 const eventDeleteSchema = idReasonSchema;
 const linkDeleteSchema = idReasonSchema;
+const projectGroupMemberSchema = z.object({
+  key: z.string().min(1),
+  projectId: z.string().min(1)
+});
+const projectGroupMembersSchema = z.object({});
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -1689,6 +1694,24 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     schema: linkDeleteSchema,
     outputSchema: output(deleteRecordSchema.extend({ deletedLink: looseRecordSchema })),
     access: "write"
+  },
+  {
+    name: "project_group.add_member",
+    description: "Add a project to a logical project group (key is a free-text label you pick, e.g. an ecosystem name) -- purely informational, no visual folder. The Projects list clusters co-visible members of the same key together with a connector.",
+    schema: projectGroupMemberSchema,
+    access: "write"
+  },
+  {
+    name: "project_group.remove_member",
+    description: "Remove a project from a logical project group.",
+    schema: projectGroupMemberSchema,
+    outputSchema: output(z.object({ removed: z.boolean() })),
+    access: "write"
+  },
+  {
+    name: "project_group.members",
+    description: "List every project_group membership row (small, unfiltered by design).",
+    schema: projectGroupMembersSchema
   },
   {
     name: "preflight",
