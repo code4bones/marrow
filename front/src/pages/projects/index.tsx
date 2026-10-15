@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Col, Input, List, Pagination, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
+import type { PaginationProps } from 'antd';
 import { ClockCircleOutlined, PushpinFilled, PushpinOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -43,6 +44,36 @@ function PinButton({ project, onDone }: { project: Project; onDone: () => void }
   );
 }
 
+// Below this page count, antd's own `showLessItems` truncation gives up and
+// shows every page number (rc-pagination's "allPages <= 3 + bufferSize*2"
+// check, bufferSize=1 here -- threshold 5) -- too wide for the 240px
+// sidebar even at just 5 pages. Takes over purely for that narrow window;
+// a page count above it already gets antd's own jump-prev/jump-next
+// truncation, left untouched here.
+const COMPACT_THRESHOLD = 5;
+
+function compactPageItemRender(current: number, totalPages: number): NonNullable<PaginationProps['itemRender']> {
+  return (page, type, element) => {
+    if (type !== 'page' || totalPages > COMPACT_THRESHOLD) return element;
+
+    const isBoundary = page === 1 || page === totalPages;
+    const isNeighbor = Math.abs(page - current) <= 1;
+    if (isBoundary || isNeighbor) return element;
+
+    // One inert "…" per hidden run, placed right after the left run or
+    // right before the right one; every other hidden page renders nothing.
+    const isGapMarker = (page === 2 && current > 3) || (page === totalPages - 1 && current < totalPages - 2);
+    if (isGapMarker) {
+      return (
+        <span onClick={(e) => e.stopPropagation()} style={{ cursor: 'default', padding: '0 4px' }}>
+          …
+        </span>
+      );
+    }
+    return null;
+  };
+}
+
 export function ProjectsPage() {
   const { t } = useTranslation('projects');
   const { slug } = useParams<{ slug: string }>();
@@ -70,6 +101,7 @@ export function ProjectsPage() {
 
   const projects = data?.projectsPage.items ?? [];
   const pageInfo = data?.projectsPage.pageInfo;
+  const totalPages = pageInfo?.totalCount ? Math.ceil(pageInfo.totalCount / pageSize) : 1;
   const { labelFor } = useActorLabels(projects.map((p) => p.createdBy));
 
   // T-context (2026-08-26, owner's ask: mobile PWA layout, "на стартовом
@@ -155,6 +187,7 @@ export function ProjectsPage() {
               className="pagination-wrap"
               size="small"
               showLessItems
+              itemRender={compactPageItemRender(page, totalPages)}
               locale={{ items_per_page: '' }}
               current={page}
               pageSize={pageSize}
@@ -226,6 +259,7 @@ export function ProjectsPage() {
               className="pagination-wrap"
               size="small"
               showLessItems
+              itemRender={compactPageItemRender(page, totalPages)}
               locale={{ items_per_page: '' }}
               current={page}
               pageSize={pageSize}
