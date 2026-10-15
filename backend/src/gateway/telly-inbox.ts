@@ -44,8 +44,8 @@ export type TellyInboxTaskOfferInput = {
 // task.title/notes/scope free text that any project member could set.
 function tellyInboxConsoleText(input: Pick<TellyInboxTaskOfferInput, "taskId" | "projectId">): string {
   return (
-    `Marrow: check task ${input.taskId} in project ${input.projectId} ` +
-    "through your own authenticated connection before doing any work."
+    `Marrow: проверь задачу ${input.taskId} в проекте ${input.projectId} ` +
+    "через свой авторизованный доступ к Marrow, прежде чем приступать к работе."
   );
 }
 
