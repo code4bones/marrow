@@ -48,60 +48,69 @@ function PinButton({ project, onDone }: { project: Project; onDone: () => void }
 // (no folder, no separate entity on screen) -- its only visual effect is
 // pulling co-visible members of the same `key` adjacent to each other in
 // this already-sorted/searched list (at the position of whichever member
-// appears first) so GroupConnector can be drawn between them. A member
-// whose group-mate didn't make this page (filtered out by search, on a
-// different page) just renders as an ordinary solo row -- no connector to
-// something off-screen.
+// appears first) and giving them a shared accent color (see
+// groupAccentColor). A member whose group-mate didn't make this page
+// (filtered out by search, on a different page) just renders as an
+// ordinary solo row -- nothing to mark it with.
+interface ProjectGroup {
+  key: string | null;
+  projects: Project[];
+}
+
 function groupProjectsByMembership(
   projects: Project[],
   members: { key: string; projectId: string }[],
-): Project[][] {
+): ProjectGroup[] {
   const keyByProjectId = new Map<string, string>();
   for (const m of members) {
     // A project in more than one group keeps its first membership here --
     // picking one key is enough for this visual-only clustering.
     if (!keyByProjectId.has(m.projectId)) keyByProjectId.set(m.projectId, m.key);
   }
-  const groups: Project[][] = [];
+  const groups: ProjectGroup[] = [];
   const groupIndexByKey = new Map<string, number>();
   for (const p of projects) {
     const key = keyByProjectId.get(p.id);
     if (key === undefined) {
-      groups.push([p]);
+      groups.push({ key: null, projects: [p] });
       continue;
     }
     let idx = groupIndexByKey.get(key);
     if (idx === undefined) {
       idx = groups.length;
       groupIndexByKey.set(key, idx);
-      groups.push([]);
+      groups.push({ key, projects: [] });
     }
-    groups[idx].push(p);
+    groups[idx].projects.push(p);
   }
   return groups;
 }
 
-// Timeline's own connector between stacked cards (DecisionTimeline.tsx's
-// GapRow) is the same idea at a bigger scale -- a plain dashed line, no
-// canvas/library, just enough to read as "these belong together."
-function GroupConnector() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      <div style={{ width: 1, height: 8, borderLeft: '1px dashed #595959' }} />
-    </div>
-  );
+// Same dark-theme accent palette as ENTITY_COLOR (entityId.ts), picked
+// deterministically from the group's key (a plain string hash) so the same
+// group always gets the same color across reloads, without storing one.
+const GROUP_ACCENT_COLORS = ['#177ddc', '#9254de', '#13a8a8', '#d89614', '#52c41a', '#eb2f96', '#fa8c16', '#2f54eb'];
+
+function groupAccentColor(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return GROUP_ACCENT_COLORS[Math.abs(hash) % GROUP_ACCENT_COLORS.length];
 }
 
 function ProjectRow({
   project,
   active,
   author,
+  accentColor,
   onClick,
   onPinDone,
 }: {
   project: Project;
   active: boolean;
   author: string | null | undefined;
+  accentColor: string | undefined;
   onClick: () => void;
   onPinDone: () => void;
 }) {
@@ -112,6 +121,7 @@ function ProjectRow({
         cursor: 'pointer',
         padding: '8px 10px',
         borderRadius: 4,
+        borderLeft: accentColor ? `3px solid ${accentColor}` : '3px solid transparent',
         background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
         display: 'flex',
         flexDirection: 'column',
@@ -374,25 +384,28 @@ export function ProjectsPage() {
             {loading && <Skeleton active style={{ padding: 8 }} />}
             {error && <Alert type="error" message={error.message} style={{ margin: 8 }} />}
             {data && (
-              <List<Project[]>
+              <List<ProjectGroup>
                 dataSource={groupedProjects}
-                rowKey={(group) => group[0].id}
-                renderItem={(group) => (
-                  <List.Item style={{ padding: 0, border: 'none', display: 'block' }}>
-                    {group.map((p, i) => (
-                      <div key={p.id}>
-                        {i > 0 && <GroupConnector />}
+                rowKey={(group) => group.projects[0].id}
+                renderItem={(group) => {
+                  const accentColor =
+                    group.key && group.projects.length > 1 ? groupAccentColor(group.key) : undefined;
+                  return (
+                    <List.Item style={{ padding: 0, border: 'none', display: 'block' }}>
+                      {group.projects.map((p) => (
                         <ProjectRow
+                          key={p.id}
                           project={p}
                           active={slug === p.slug}
                           author={labelFor(p.createdBy)}
+                          accentColor={accentColor}
                           onClick={() => navigate(`/projects/${p.slug}`)}
                           onPinDone={() => refetch()}
                         />
-                      </div>
-                    ))}
-                  </List.Item>
-                )}
+                      ))}
+                    </List.Item>
+                  );
+                }}
               />
             )}
           </div>
