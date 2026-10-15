@@ -21,6 +21,7 @@ import { isNewSince } from '../../shared/lib/isNewSince';
 import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useAuthStore } from '../../shared/model/auth.store';
+import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { PREFIX_MAP, useRealtimeStore, type VersionKey } from '../../shared/model/realtime.store';
 import { useSectionSeenStore, type SectionKey } from '../../shared/model/sectionSeen.store';
 import type { Artifact, Decision, Event, Paginated, ProjectSummary, Task } from '../../shared/model/types';
@@ -230,6 +231,7 @@ export function ProjectOverview({ slug }: { slug: string }) {
   const { t } = useTranslation('projects');
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
   const [overviewTab, setOverviewTab] = useState('timeline');
   // I-MEMORY-128: memoized -- apollo.ts's global `cache-and-network` fires a
   // real network request on every query re-execution, and an inline object
@@ -330,9 +332,15 @@ export function ProjectOverview({ slug }: { slug: string }) {
       <div style={{ padding: isMobile ? '12px 12px 8px' : '20px 24px 16px', borderBottom: '1px solid #303030', flexShrink: 0 }}>
         {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
-            <Typography.Title level={4} style={{ marginBottom: 0, flexShrink: 0 }}>
-              {s.project.title}
-            </Typography.Title>
+            <Tooltip title={t('openProjectDetails')}>
+              <Typography.Title
+                level={4}
+                style={{ marginBottom: 0, flexShrink: 0, cursor: 'pointer' }}
+                onClick={() => setSelectedRecord(s.project.id, 'project')}
+              >
+                {s.project.title}
+              </Typography.Title>
+            </Tooltip>
             <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
               <GlobalSearchBox slug={slug} />
             </div>
