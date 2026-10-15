@@ -101,7 +101,7 @@ function ProjectRow({
 }: {
   project: Project;
   active: boolean;
-  author: string | undefined;
+  author: string | null | undefined;
   onClick: () => void;
   onPinDone: () => void;
 }) {
