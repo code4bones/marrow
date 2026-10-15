@@ -38,6 +38,25 @@ export function ProjectGroupMixin<TBase extends Constructor<Tier1Instance>>(Base
     return deleted > 0;
   }
 
+  // Renames every member row in one update (not a remove+re-add dance --
+  // atomic, and doesn't risk losing a row if a step fails partway).
+  // Membership is checked against every project currently under oldKey,
+  // same "must be a member of what you're touching" spirit as add/remove.
+  protected async renameProjectGroup(input: Row, context: NormalizedGatewayRequestContext) {
+    const oldKey = requiredString(input, "oldKey");
+    const newKey = requiredString(input, "newKey");
+    const members = await this.db("project_group").where({ key: oldKey }).select("*");
+    if (members.length === 0) {
+      throw new AppError("VALIDATION_ERROR", `No project_group members found for key "${oldKey}".`, { input });
+    }
+    for (const member of members) {
+      await this.assertProjectMember(String(member.project_id), context);
+    }
+    await this.db("project_group").where({ key: oldKey }).update({ key: newKey });
+    const renamed = await this.db("project_group").where({ key: newKey }).select("*");
+    return renamed.map(projectGroupMemberOut);
+  }
+
   // Unfiltered by design (I-context 2026-10-15): this is small (one row per
   // project per group, no group ever expected to run into the hundreds) and
   // read for pure UI clustering -- the Projects list only ever renders

@@ -268,6 +268,10 @@ const projectGroupMemberSchema = z.object({
   projectId: z.string().min(1)
 });
 const projectGroupMembersSchema = z.object({});
+const projectGroupRenameSchema = z.object({
+  oldKey: z.string().min(1),
+  newKey: z.string().min(1)
+});
 const artifactPutSchema = z.object({
   id: z.string().min(1).optional(),
   project: z.string().nullable().optional(),
@@ -1697,7 +1701,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "project_group.add_member",
-    description: "Add a project to a logical project group (key is a free-text label you pick, e.g. an ecosystem name) -- purely informational, no visual folder. The Projects list clusters co-visible members of the same key together with a connector.",
+    description: "Add a project to a logical project group (key is a free-text label you pick, e.g. an ecosystem name) -- purely informational, no visual folder. The Projects list clusters co-visible members of the same key together and shares an accent border color between them.",
     schema: projectGroupMemberSchema,
     access: "write"
   },
@@ -1712,6 +1716,13 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     name: "project_group.members",
     description: "List every project_group membership row (small, unfiltered by design).",
     schema: projectGroupMembersSchema
+  },
+  {
+    name: "project_group.rename",
+    description: "Rename a project group -- updates the key for every current member in one shot (not a remove+re-add).",
+    schema: projectGroupRenameSchema,
+    outputSchema: output(z.object({ members: z.array(looseRecordSchema) })),
+    access: "write"
   },
   {
     name: "preflight",

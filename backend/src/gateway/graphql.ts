@@ -348,6 +348,7 @@ const typeDefs = `#graphql
 
     addProjectGroupMember(key: String!, projectId: String!): ProjectGroupMember!
     removeProjectGroupMember(key: String!, projectId: String!): Boolean!
+    renameProjectGroup(oldKey: String!, newKey: String!): [ProjectGroupMember!]!
 
     # T-MEMORY-044: deliberately NOT in ADMIN_GRAPHQL_MUTATION_NAMES below --
     # unlike the other delete* mutations, this one can only ever delete the
@@ -1525,6 +1526,8 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.add_member", cleanInput(args))).member,
     removeProjectGroupMember: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project_group.remove_member", cleanInput(args))).removed,
+    renameProjectGroup: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
     createGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.credential_create", cleanInput(args)),
     deleteGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {

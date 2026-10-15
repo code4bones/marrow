@@ -342,6 +342,8 @@ export class PgToolService extends ComposedService {
           return ok("Project removed from group.", { removed: await this.removeProjectGroupMember(parsed, requestContext) });
         case "project_group.members":
           return ok("Project group members listed.", { members: await this.projectGroupMembers() });
+        case "project_group.rename":
+          return ok("Project group renamed.", { members: await this.renameProjectGroup(parsed, requestContext) });
         case "preflight":
           return ok("Preflight context loaded.", await this.preflight(parsed, requestContext));
         case "preflight.by_query":
