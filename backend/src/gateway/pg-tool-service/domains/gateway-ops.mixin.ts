@@ -21,6 +21,7 @@ const SYSTEM_REGISTRATION_CONTEXT: NormalizedGatewayRequestContext = {
   sessionRole: null,
   sessionSource: null,
   ownerUserId: null,
+  oauthConnector: null,
   agentName: null
 };
 

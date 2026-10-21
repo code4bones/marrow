@@ -467,6 +467,16 @@ try {
   assert(invalidCodexCimdResponse.status === 400, "Codex CIMD must not accept a loopback callback with a different path.");
   console.log("ok - Codex CIMD accepts its pinned native callback with a dynamic loopback port only");
 
+  const cimdConnections = await cookieRequest("GET", "/auth/profile/cimd-connections", adminCookie);
+  assert(cimdConnections.status === 200, `CIMD connection audit endpoint failed: ${JSON.stringify(cimdConnections.body)}`);
+  const connectors = (readNestedArray(cimdConnections.body, ["data"]) as Array<Record<string, unknown>>).map((row) => row.connector);
+  assert(connectors.includes("chatgpt") && connectors.includes("codex"), "CIMD connections must record both verified OpenAI client logins.");
+  assert(
+    readNestedString(cimdConnections.body, ["data", "0", "accountEmail"]) === adminEmail,
+    "CIMD connection state must identify the Marrow account that authorized it."
+  );
+  console.log("ok - profile exposes safe per-user ChatGPT and Codex CIMD connection state");
+
   // ChatGPT's public metadata endpoint can be served as a Cloudflare HTML
   // challenge to Node/undici. A fresh facade must retain the one documented
   // ChatGPT callback in that delivery-failure case, without widening its

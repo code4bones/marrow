@@ -250,6 +250,22 @@ export class BaseService {
       mergeRow.owner_user_id = context.ownerUserId;
     }
     await this.db("gateway_clients").insert(insertRow).onConflict("id").merge(mergeRow);
+    if (context.ownerUserId && context.oauthConnector) {
+      // Login normally records the connection. Upserting here also observes
+      // already-valid bearer tokens issued before this audit table existed,
+      // so users do not have to re-authorize merely to make Profile truthful.
+      await this.db("oauth_cimd_connections")
+        .insert({
+          owner_user_id: context.ownerUserId,
+          connector: context.oauthConnector,
+          client_id: `observed:${context.oauthConnector}`,
+          connected_at: now,
+          last_authenticated_at: now,
+          last_seen_at: now
+        })
+        .onConflict(["owner_user_id", "connector"])
+        .merge({ last_seen_at: now });
+    }
   }
 
   protected async cleanupExpiredAnonymousClients(): Promise<void> {

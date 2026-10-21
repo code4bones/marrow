@@ -93,14 +93,20 @@ const authorizeRequiredParams = [
   "code_challenge_method"
 ];
 
-function cimdClientInfo(clientId: string): { label: string; fallbackRedirectUris: string[] } | undefined {
+export type CimdConnector = "chatgpt" | "codex";
+
+function cimdClientInfo(clientId: string): { connector: CimdConnector; label: string; fallbackRedirectUris: string[] } | undefined {
   if (clientId === CHATGPT_CIMD_CLIENT_ID) {
-    return { label: "ChatGPT", fallbackRedirectUris: [CHATGPT_CIMD_REDIRECT_URI] };
+    return { connector: "chatgpt", label: "ChatGPT", fallbackRedirectUris: [CHATGPT_CIMD_REDIRECT_URI] };
   }
   if (clientId === CODEX_CIMD_CLIENT_ID) {
-    return { label: "Codex", fallbackRedirectUris: CODEX_CIMD_REDIRECT_URIS };
+    return { connector: "codex", label: "Codex", fallbackRedirectUris: CODEX_CIMD_REDIRECT_URIS };
   }
   return undefined;
+}
+
+export function cimdConnectorForClient(clientId: string | undefined): CimdConnector | undefined {
+  return clientId ? cimdClientInfo(clientId)?.connector : undefined;
 }
 
 function isCimdClientId(clientId: string): boolean {
@@ -372,6 +378,27 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
       codes.set(code, record);
 
       const accessToken = issueJwt(config, record);
+      const connector = cimdConnectorForClient(record.clientId);
+      if (connector) {
+        // This drives the Profile → Connections status only. Failing to
+        // write an observation must never invalidate an otherwise valid
+        // OAuth login/token response.
+        const now = new Date();
+        await db("oauth_cimd_connections")
+          .insert({
+            owner_user_id: record.ownerUserId,
+            connector,
+            client_id: record.clientId,
+            connected_at: now,
+            last_authenticated_at: now,
+            last_seen_at: null
+          })
+          .onConflict(["owner_user_id", "connector"])
+          .merge({ client_id: record.clientId, last_authenticated_at: now })
+          .catch(() => {
+            // Best effort; see comment above.
+          });
+      }
       return {
         status: 200,
         body: {

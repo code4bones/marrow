@@ -83,6 +83,16 @@ export interface OAuthClientSecretResult {
   createdAt: string;
 }
 
+/** A verified OpenAI CIMD connection. Its bearer stays in ChatGPT/Codex, so
+ * Profile exposes only this safe, server-side connection audit. */
+export interface CimdConnection {
+  connector: 'chatgpt' | 'codex';
+  accountEmail: string;
+  connectedAt: string;
+  lastAuthenticatedAt: string;
+  lastSeenAt: string | null;
+}
+
 /** T-MEMORY-051: null = never viewed the notifications page — every event counts as unread. */
 export interface NotificationsStatus {
   seenAt: string | null;
@@ -176,6 +186,8 @@ interface AuthState {
 
   /** This user's OAuth connector credentials (client id + secret hint per named connector), for the web-connector (Claude.ai/ChatGPT) tabs of the Connect section — replaces the old one-per-user OAuth client id/secret pair. */
   fetchOAuthClients: () => Promise<OAuthClient[]>;
+  /** Safe audit rows for the fixed OpenAI CIMD public clients. */
+  fetchCimdConnections: () => Promise<CimdConnection[]>;
   /** Creates a brand-new, independent credential — never touches any of this user's other credentials (the fix for the old "regenerating one invalidates all" problem). clientSecret is returned exactly once (shown-once). */
   createOAuthClient: (label: string, redirectUri: string) => Promise<OAuthClientSecretResult>;
   /** Rotates client_id AND client_secret for one specific credential (by id), invalidating only that credential's previous pair — every other credential keeps working unchanged. clientSecret is returned exactly once (shown-once); clientId is not secret and stays visible via fetchOAuthClients afterward. */
@@ -501,6 +513,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error(body.error?.message ?? 'Could not load your OAuth connector credentials.');
     }
     return body.data as OAuthClient[];
+  },
+
+  fetchCimdConnections: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/cimd-connections`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error?.message ?? 'Could not load your OpenAI connector connections.');
+    }
+    return body.data as CimdConnection[];
   },
 
   createOAuthClient: (label, redirectUri) =>

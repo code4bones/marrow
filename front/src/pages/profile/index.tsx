@@ -38,6 +38,7 @@ import { Timestamp } from '../../shared/ui/Timestamp';
 import { CodeBlock } from '../../shared/ui/CodeBlock';
 import { API_BASE_URL } from '../../shared/config/env';
 import {
+  type CimdConnection,
   type GithubLinkStatus,
   type OAuthClient,
   type PersonalToken,
@@ -188,9 +189,8 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * "Set the token in the shell" as a real, copy-pasteable
  * `export MARROW_MCP_TOKEN="..."` command right after generating it --
  * handled by PersonalTokenPanel's own `exportVarName` prop now (see
- * features/auth/PersonalTokenPanel.tsx), one instance per CLI connection
- * (Claude Code, Codex) instead of a single shared token both tabs used to
- * point at.
+ * features/auth/PersonalTokenPanel.tsx) for the legacy Claude Code setup.
+ * Codex uses the separate CIMD + PKCE flow documented in its own panel.
  */
 
 /**
@@ -201,18 +201,17 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  *
  * The MCP endpoint is derived from API_BASE_URL (same source the app already
  * uses for every /auth/* call — see shared/config/env.ts), so it always
- * reflects the real deployed host instead of a placeholder. The Claude
- * Code / Codex bearer token is this user's own personal Marrow API token
- * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
- * shared secret. Claude.ai uses a per-user OAuth client credential, while
- * ChatGPT uses its own verified CIMD public client and PKCE: a user only
- * supplies the MCP URL and then signs into Marrow in the OAuth window.
- * Neither web path relies on an admin-issued shared credential.
+ * reflects the real deployed host instead of a placeholder. Claude Code
+ * still supports a personal-token setup. ChatGPT and Codex use verified
+ * CIMD public clients and PKCE: a user supplies the MCP URL, then signs
+ * into Marrow in the OAuth window. Neither OpenAI path relies on an
+ * admin-issued shared credential.
  */
 /**
- * "Which of my chats are actually connected right now" — pulled together
- * from data already fetched elsewhere on this page (OAuth credential
- * lastUsedAt, personal-token lastUsedAt), no new backend endpoint needed.
+ * "Which of my chats are actually connected right now" combines legacy
+ * credential metadata with the safe server-side CIMD
+ * connection audit. CIMD clients own their bearer tokens, so a stored
+ * client secret can never be used to infer their connection state.
  * Reported live: after generating a Codex/Claude credential successfully,
  * there was no single place to see "yes, this is connected" across all
  * services at once without opening each service's own tab.
@@ -228,16 +227,19 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
   const { t } = useTranslation('profile');
   const fetchOAuthClients = useAuthStore((s) => s.fetchOAuthClients);
+  const fetchCimdConnections = useAuthStore((s) => s.fetchCimdConnections);
   const deleteOAuthClient = useAuthStore((s) => s.deleteOAuthClient);
   const fetchPersonalTokens = useAuthStore((s) => s.fetchPersonalTokens);
   const regeneratePersonalToken = useAuthStore((s) => s.regeneratePersonalToken);
   const [clients, setClients] = useState<OAuthClient[] | null>(null);
   const [tokens, setTokens] = useState<PersonalToken[] | null>(null);
+  const [cimdConnections, setCimdConnections] = useState<CimdConnection[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = () => {
     fetchOAuthClients().then(setClients).catch(() => setClients([]));
     fetchPersonalTokens().then(setTokens).catch(() => setTokens([]));
+    fetchCimdConnections().then(setCimdConnections).catch(() => setCimdConnections([]));
   };
   // refreshKey: bumped by ConnectSection whenever any OAuthClientPanel/
   // PersonalTokenPanel instance below finishes a create/regenerate/delete/
@@ -252,7 +254,10 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
   const claude = findClient('Claude.ai');
   const findToken = (label: string) => tokens?.find((tk) => tk.label === label) ?? null;
   const claudeCli = findToken('Claude Code (CLI)');
-  const codexCli = findToken('Codex (CLI)');
+  const cimdConnection = (connector: CimdConnection['connector']) =>
+    cimdConnections?.find((connection) => connection.connector === connector) ?? null;
+  const codexCli = cimdConnection('codex');
+  const chatGpt = cimdConnection('chatgpt');
 
   const revokeOAuth = async (id: string) => {
     setBusyId(id);
@@ -284,6 +289,7 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
     busy?: boolean;
     statusLabel?: string;
     statusColor?: string;
+    accountEmail?: string | null;
   }[] = [
     {
       key: 'claude-cli',
@@ -298,10 +304,9 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
       key: 'codex-cli',
       name: t('codexCliConnectionName'),
       connected: Boolean(codexCli),
-      lastUsed: codexCli?.lastUsedAt ?? null,
-      onRevoke: codexCli ? () => void regenerateToken(codexCli.id) : undefined,
+      lastUsed: codexCli?.lastSeenAt ?? codexCli?.lastAuthenticatedAt ?? null,
       revokeLabel: t('regenerate'),
-      busy: codexCli ? busyId === codexCli.id : false,
+      accountEmail: codexCli?.accountEmail,
     },
     {
       key: 'claude-web',
@@ -315,14 +320,10 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
     {
       key: 'chatgpt-web',
       name: t('chatgptWebConnectionName'),
-      // CIMD is ChatGPT's public-client registration model, not a user-owned
-      // oauth_clients credential, so this card cannot infer a live link from
-      // a stored client secret.
-      connected: false,
-      lastUsed: null,
+      connected: Boolean(chatGpt),
+      lastUsed: chatGpt?.lastSeenAt ?? chatGpt?.lastAuthenticatedAt ?? null,
       revokeLabel: t('revoke'),
-      statusLabel: t('cimd'),
-      statusColor: 'blue',
+      accountEmail: chatGpt?.accountEmail,
     },
   ];
 
@@ -346,7 +347,8 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
             </Tag>
             {row.connected && (
               <Text type="secondary" style={{ fontSize: 12.5, marginLeft: 8 }}>
-                {t('lastUsed')} <Timestamp value={row.lastUsed} />
+                {row.accountEmail ? t('connectedAs', { email: row.accountEmail }) : null}
+                {row.lastUsed && <> · {t('lastUsed')} <Timestamp value={row.lastUsed} /></>}
               </Text>
             )}
           </div>
@@ -383,11 +385,8 @@ function ConnectSection() {
     '  --header "Authorization: Bearer $MARROW_MCP_TOKEN"',
   ].join('\n');
 
-  const codexCmd = [
-    'codex mcp add marrow \\',
-    `  --url "${urlFor('codex')}" \\`,
-    '  --bearer-token-env-var MARROW_MCP_TOKEN',
-  ].join('\n');
+  const codexCmd = `codex mcp add marrow --url "${mcpUrl}"`;
+  const codexLoginCmd = 'codex mcp login marrow --oauth-client-registration cimd';
 
   // Bare mcpUrl, deliberately WITHOUT the ?client_id=/client_label=/client_kind=
   // query params urlFor() appends for the CLI paths above: those identify a
@@ -458,10 +457,10 @@ function ConnectSection() {
           <Text type="secondary" style={{ display: 'block', fontSize: 12.5, marginBottom: 12 }}>
             {t('codexCliIntro')}
           </Text>
-          <PersonalTokenPanel fixedLabel="Codex (CLI)" exportVarName="MARROW_MCP_TOKEN" onChanged={bumpSummary} />
-          <Step n={1}>{t('setTokenInShellCodex')}</Step>
-          <Step n={2}>{t('registerMarrowAsMcp')}</Step>
+          <Step n={1}>{t('registerMarrowAsMcp')}</Step>
           <CodeBlock code={codexCmd} />
+          <Step n={2}>{t('codexCimdLogin')}</Step>
+          <CodeBlock code={codexLoginCmd} />
           <Step n={3}>
             {t('restartCodexAsk')} <Text code>gateway.status</Text> {t('and')}{' '}
             <Text code>gateway.version</Text>.

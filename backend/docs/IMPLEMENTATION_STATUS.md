@@ -174,6 +174,12 @@ its official native-app CIMD document and may substitute only a dynamic port on
 its declared `localhost`/`127.0.0.1` callback (RFC 8252); scheme, host, path,
 and query remain exact. Arbitrary CIMD URLs and callbacks are still rejected.
 
+Profile → Connections records successful authentication for the fixed ChatGPT
+and Codex CIMD clients separately, keyed to the real Marrow user. It displays
+that user's account email plus last activity without storing or exposing their
+bearer token. Existing bearer tokens are observed on their next MCP call, so a
+user need not re-authorize merely for the UI to become accurate.
+
 Claude Custom Connectors reject dots in tool names. When a gateway MCP request
 uses `client_kind` containing `claude`, the MCP tool list exposes Claude-safe
 aliases such as `project_create`, `artifact_read_text`, and `gateway_status`.

@@ -1331,6 +1331,23 @@ export function createAuthFacade(db: Knex) {
     return rows.map(toOAuthClientRow);
   }
 
+  type CimdConnectionRow = {
+    connector: "chatgpt" | "codex";
+    connectedAt: string;
+    lastAuthenticatedAt: string;
+    lastSeenAt: string | null;
+  };
+
+  async function listCimdConnections(userId: string): Promise<CimdConnectionRow[]> {
+    const rows = await db("oauth_cimd_connections").where({ owner_user_id: userId }).orderBy("connector");
+    return rows.map((row) => ({
+      connector: row.connector as CimdConnectionRow["connector"],
+      connectedAt: new Date(row.connected_at as string).toISOString(),
+      lastAuthenticatedAt: new Date(row.last_authenticated_at as string).toISOString(),
+      lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at as string).toISOString() : null
+    }));
+  }
+
   // T-MEMORY-059 (whitebox pentest finding #4, I-MEMORY-055): the consent
   // screen showed the raw opaque client_id instead of a human-recognizable
   // app name, undermining informed consent. Public/unauthenticated by
@@ -1628,6 +1645,7 @@ export function createAuthFacade(db: Knex) {
     regeneratePersonalToken,
     deletePersonalToken,
     listOAuthClients,
+    listCimdConnections,
     oauthClientPublicInfo,
     createOAuthClient,
     regenerateOAuthClient,

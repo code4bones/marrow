@@ -70,6 +70,10 @@ export interface GatewayRequestContext {
   // gateway_clients attribution, not just "do we know who this is".
   // Absent for every non-OAuth auth source.
   ownerUserId?: string;
+  // Set only for one of Marrow's fixed OpenAI CIMD public clients. Unlike
+  // clientId (which is user:<id> for every authenticated request), this
+  // preserves which connector actually used the OAuth bearer.
+  oauthConnector?: "chatgpt" | "codex";
 }
 
 export interface NormalizedGatewayRequestContext {
@@ -80,6 +84,7 @@ export interface NormalizedGatewayRequestContext {
   sessionRole: string | null;
   sessionSource: "cookie" | "personal_token" | "oauth" | null;
   ownerUserId: string | null;
+  oauthConnector: "chatgpt" | "codex" | null;
   // T-context (2026-09-02): a caller's self-declared agent name (e.g.
   // "backend"/"front"), lifted out of the raw tool input's top-level
   // `agent` field in service.ts's call() -- not part of auth/session

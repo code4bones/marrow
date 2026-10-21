@@ -12,7 +12,7 @@ import { fail } from "../shared/mcp/tool-response.js";
 import { staticTokenClientId, type GatewayRequestContext, type PgToolService } from "./pg-tool-service.js";
 import type { AppLogger } from "../shared/logging/logger.js";
 import { createGatewayMcpServer } from "./mcp-server.js";
-import type { OAuthFacade } from "./oauth.js";
+import { cimdConnectorForClient, type OAuthFacade } from "./oauth.js";
 import {
   clearSessionCookieHeader,
   getSessionToken,
@@ -1325,6 +1325,21 @@ async function handleAuthRoute(
     return true;
   }
 
+  // The two OpenAI CIMD public clients deliberately have no per-user
+  // oauth_clients credentials. This separate, session-only read model lets
+  // Profile → Connections show the actual Marrow account that authorized
+  // ChatGPT/Codex without exposing a bearer or pretending a client secret
+  // exists.
+  if (request.method === "GET" && requestPath === "/auth/profile/cimd-connections") {
+    if (!sessionAuth) {
+      send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
+      return true;
+    }
+    const result = await auth.listCimdConnections(sessionAuth.userId);
+    send(200, { ok: true, data: result.map((connection) => ({ ...connection, accountEmail: sessionAuth.email })) });
+    return true;
+  }
+
   if (request.method === "POST" && requestPath === "/auth/profile/oauth-clients") {
     if (!sessionAuth) {
       send(401, fail(new AppError("UNAUTHORIZED", "No active session.")));
@@ -2255,7 +2270,8 @@ function requestContext(
     // sessionUserId now also carries it) because touchClient() (base.ts)
     // wants "was this OAuth" for gateway_clients attribution, not just "do
     // we know who this is".
-    ownerUserId: oauthOwner?.userId
+    ownerUserId: oauthOwner?.userId,
+    oauthConnector: cimdConnectorForClient(oauthOwner?.clientId)
   };
 }
 
