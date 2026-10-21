@@ -28,7 +28,7 @@ Implemented capabilities:
 - temporary anonymous gateway client scopes for requests without `client_id`
 - configurable cleanup for temporary anonymous gateway clients and their current-project keys
 - operator client management through `gateway.client_get`, `gateway.client_forget`, and `gateway.client_prune`
-- gateway diagnostics and onboarding: `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.manuals(audience="onboarding")`, `gateway.status`, `gateway.clients`
+- gateway diagnostics and onboarding: `auth.whoami` (server-verified current identity, also `auth_whoami` for Claude), `gateway.about`, `gateway.version`, `gateway.diagnostics`, `gateway.backup_manifest`, `gateway.manuals`, `gateway.manuals(audience="onboarding")`, `gateway.status`, `gateway.clients`
 - gateway memory-quality tools: `memory.upsert`, `memory.hygiene_report`, `failed_attempt.record`, `decision.supersede`, `project.resolve`, `project.summary`
 - preflight `knownFaults` alias for failed attempts that should stop repeated mistakes
 - artifact metadata in PostgreSQL and artifact bytes on gateway filesystem

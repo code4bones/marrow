@@ -20,6 +20,8 @@ const SYSTEM_REGISTRATION_CONTEXT: NormalizedGatewayRequestContext = {
   sessionUserId: null,
   sessionRole: null,
   sessionSource: null,
+  authType: "anonymous",
+  authenticatedEmail: null,
   ownerUserId: null,
   oauthConnector: null,
   agentName: null
@@ -211,6 +213,33 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
       runtime: {
         processName: process.env.PM2_NAME ?? "pm3m-gateway"
       }
+    };
+  }
+
+  // T-MEMORY-192: an MCP client cannot inspect its own Authorization header,
+  // OAuth token or browser cookie.  Give it a deliberately small, safe view
+  // of the server-resolved identity instead.  Do not derive any field here
+  // from tool arguments, x-project-memory-client-*, or clientLabel: all
+  // identity fields arrive from http-server.ts after credential validation.
+  protected authWhoami(context: NormalizedGatewayRequestContext) {
+    const hasVerifiedUser =
+      (context.authType === "oauth" || context.authType === "session" || context.authType === "personal_token") &&
+      Boolean(context.sessionUserId && context.authenticatedEmail);
+    return {
+      authenticated: context.authType !== "anonymous",
+      authType: context.authType,
+      user: hasVerifiedUser
+        ? {
+            id: context.sessionUserId,
+            email: context.authenticatedEmail,
+            role: context.sessionRole
+          }
+        : null,
+      // This identifier is fixed by the gateway's CIMD client allowlist,
+      // unlike client id/label/kind/user-agent, which can all be supplied by
+      // an MCP caller. Omitting those caller-controlled values also means
+      // this endpoint can never reflect an accidental secret from a header.
+      connector: context.oauthConnector
     };
   }
 

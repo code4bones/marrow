@@ -1099,6 +1099,12 @@ function output(dataSchema: z.ZodType): z.ZodType {
 
 const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
+    name: "auth.whoami",
+    description:
+      "Return the current request's server-verified Marrow identity, role, and authentication type without exposing OAuth tokens, cookies, credentials, or secrets. Claude-compatible clients receive this tool as auth_whoami.",
+    schema: emptySchema
+  },
+  {
     name: "gateway.about",
     description:
       "Explain what Marrow is, how agents should use it, and which first tools to call after connecting.",

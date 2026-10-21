@@ -160,6 +160,7 @@ try {
     "Claude-safe MCP tool names did not match Claude's frontend regex."
   );
   assert(claudeToolNames.includes("gateway_status"), "Claude-safe gateway_status tool was not listed.");
+  assert(claudeToolNames.includes("auth_whoami"), "Claude-safe auth_whoami tool was not listed.");
   assert(claudeToolNames.includes("project_create"), "Claude-safe project_create tool was not listed.");
   assert(claudeToolNames.includes("project_delete"), "Claude-safe project_delete tool was not listed.");
   assert(claudeToolNames.includes("task_delete"), "Claude-safe task_delete tool was not listed.");
@@ -173,6 +174,15 @@ try {
     arguments: {}
   });
   assertOk(claudeStatusResult.structuredContent, "gateway_status alias failed.");
+  const claudeWhoamiResult = await claudeClient.callTool({
+    name: "auth_whoami",
+    arguments: {}
+  });
+  assertOk(claudeWhoamiResult.structuredContent, "Claude-safe auth_whoami alias failed.");
+  assert(
+    readNestedString(claudeWhoamiResult.structuredContent, ["data", "identity", "authType"]) === "static_token",
+    "Claude-safe auth_whoami did not report the server-selected static bearer."
+  );
   console.log("ok - gateway MCP HTTP listed Claude-safe tool aliases");
 
   const aboutResult = await client.callTool({

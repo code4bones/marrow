@@ -294,6 +294,8 @@ export function normalizeContext(context: GatewayRequestContext): NormalizedGate
     sessionUserId: context.sessionUserId ?? null,
     sessionRole: context.sessionRole ?? null,
     sessionSource: context.sessionSource ?? null,
+    authType: context.authType ?? "anonymous",
+    authenticatedEmail: context.authenticatedEmail ?? null,
     ownerUserId: context.ownerUserId ?? null,
     oauthConnector: context.oauthConnector ?? null,
     // Not an auth-context field -- service.ts's call() sets this from the

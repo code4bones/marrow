@@ -2239,6 +2239,18 @@ function requestContext(
           : isStaticTokenAuth
             ? "static-token"
             : "anonymous");
+  // Keep this precedence in lockstep with isAuthorized().  auth.whoami must
+  // describe the credential that was actually accepted, not merely another
+  // credential that happened to be attached to the same HTTP request.
+  const authType = isStaticTokenAuth
+    ? "static_token"
+    : sessionAuth
+      ? "session"
+      : personalTokenAuth
+        ? "personal_token"
+        : oauthOwner
+          ? "oauth"
+          : "anonymous";
   return {
     clientId,
     clientLabel,
@@ -2265,6 +2277,8 @@ function requestContext(
     sessionUserId: identity?.userId ?? oauthOwner?.userId,
     sessionRole: identity?.role ?? oauthOwner?.role,
     sessionSource: sessionAuth ? "cookie" : personalTokenAuth ? "personal_token" : oauthOwner ? "oauth" : undefined,
+    authType,
+    authenticatedEmail: identity?.email ?? oauthOwner?.email,
     // The real Marrow user behind an OAuth-sourced request specifically --
     // kept as its own field (distinct from sessionUserId above, even though
     // sessionUserId now also carries it) because touchClient() (base.ts)

@@ -10,6 +10,7 @@ Local SQLite stdio mode exposes the core project-memory tools.
 
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 
+* `auth.whoami` (`auth_whoami` for Claude-compatible clients)
 * `gateway.about`
 * `gateway.version`
 * `gateway.diagnostics`
@@ -147,6 +148,7 @@ docs/AUTH.md.
 
 | Tool | Scope | | Tool | Scope |
 |---|---|---|---|---|
+| `auth.whoami` | read | |  |  |
 | `gateway.about` | read | | `task.create` | write |
 | `gateway.version` | read | | `task.list` | read |
 | `gateway.diagnostics` | read | | `task.get` | read |
@@ -301,6 +303,46 @@ Use this when a developer or agent asks what `project-memory` / `marrow` is, how
 to start, which tools to call first, or how to connect another MCP client.
 
 ---
+
+### `auth.whoami`
+
+Return the identity that the gateway verified for the current request. This is
+intended for ChatGPT, Codex, Claude, and other MCP clients that cannot inspect
+their own OAuth bearer or browser session. It does not accept an identity as
+input and never returns a bearer token, cookie, client secret, or credential
+material.
+
+Claude-compatible transports expose the same operation as `auth_whoami`
+(without a dot); all other clients use `auth.whoami`.
+
+Input:
+
+```json
+{}
+```
+
+OAuth/session/personal-token example:
+
+```json
+{
+  "identity": {
+    "authenticated": true,
+    "authType": "oauth",
+    "user": {
+      "id": "<server-resolved-user-id>",
+      "email": "person@example.com",
+      "role": "admin"
+    },
+    "connector": "chatgpt"
+  }
+}
+```
+
+For a static bearer, `authenticated` is `true`, `authType` is
+`"static_token"`, and `user` is `null` because a shared static bearer has no
+individual Marrow user. On a deployment which permits unauthenticated MCP
+requests, `authType` is `"anonymous"`; deployments with OAuth/static-token
+protection reject an unauthenticated request before this tool runs.
 
 ### `gateway.version`
 

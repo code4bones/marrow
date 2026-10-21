@@ -126,6 +126,8 @@ export class PgToolService extends ComposedService {
       const parsed = spec.schema.parse(input ?? {}) as Row;
       await this.touchClient(requestContext, { cleanupAnonymous: canonicalToolName !== "gateway.client_prune" });
       switch (canonicalToolName) {
+        case "auth.whoami":
+          return ok("Current authentication identity loaded.", { identity: this.authWhoami(requestContext) });
         case "gateway.about":
           return ok("Project Memory overview loaded.", { about: this.gatewayAbout() });
         case "gateway.version":

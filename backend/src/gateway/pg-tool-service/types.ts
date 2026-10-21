@@ -61,6 +61,17 @@ export interface GatewayRequestContext {
   // filtering, git-credential *reads*) treats all three sources alike and
   // ignores this field. Absent only for static-token/anonymous callers.
   sessionSource?: "cookie" | "personal_token" | "oauth";
+  // Authentication method selected by http-server.ts using the same
+  // precedence as its authorization gate.  This is deliberately separate
+  // from sessionUserId: a request may carry an incidental cookie alongside a
+  // static bearer, but the static bearer is the credential that authorized
+  // the call and must not be presented by auth.whoami as that cookie's user.
+  authType?: "oauth" | "static_token" | "session" | "personal_token" | "anonymous";
+  // Server-resolved email for a user-authenticated request. Never populate
+  // this from client_label, headers, tool input, or JWT claims returned to the
+  // caller: auth.whoami only reports the identity the server actually looked
+  // up for this request.
+  authenticatedEmail?: string;
   // The real Marrow user behind an OAuth-sourced request, resolved fresh
   // from the bearer's JWT `sub` on every request (see resolveOAuthOwner in
   // http-server.ts). Since T-MEMORY-052 this is also the source
@@ -83,6 +94,8 @@ export interface NormalizedGatewayRequestContext {
   sessionUserId: string | null;
   sessionRole: string | null;
   sessionSource: "cookie" | "personal_token" | "oauth" | null;
+  authType: "oauth" | "static_token" | "session" | "personal_token" | "anonymous";
+  authenticatedEmail: string | null;
   ownerUserId: string | null;
   oauthConnector: "chatgpt" | "codex" | null;
   // T-context (2026-09-02): a caller's self-declared agent name (e.g.

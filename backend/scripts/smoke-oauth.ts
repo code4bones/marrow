@@ -256,6 +256,8 @@ try {
     unauthorized.headers.get("www-authenticate")?.includes("/.well-known/oauth-protected-resource"),
     "Missing auth did not return OAuth resource metadata challenge."
   );
+  const anonymousWhoami = await postJson(`${started.url}/call`, { tool: "auth.whoami", input: {} });
+  assert(anonymousWhoami.status === 401, "auth.whoami must respect this deployment's OAuth authentication policy for anonymous requests.");
   console.log("ok - oauth auth challenge");
 
   // --- GET /oauth/authorize: validates params, then 302s to the FRONTEND
@@ -338,6 +340,25 @@ try {
     "OAuth access token's exp should reflect a ~30-day TTL."
   );
   console.log("ok - oauth token exchange: JWT sub is the real logged-in admin's userId, with a real ~30-day exp claim");
+
+  // T-MEMORY-192: auth.whoami must rely exclusively on the credential the
+  // server accepted. It must never echo the bearer itself, a cookie, or the
+  // caller-controlled client label/header.
+  const oauthWhoami = await callTool("auth.whoami", {}, oauthHeaders(adminAccessToken));
+  assert(oauthWhoami.status === 200, `OAuth auth.whoami failed. Status: ${oauthWhoami.status}`);
+  assert(readNestedBoolean(oauthWhoami.json, ["data", "identity", "authenticated"]) === true, "OAuth auth.whoami must be authenticated.");
+  assert(readNestedString(oauthWhoami.json, ["data", "identity", "authType"]) === "oauth", "OAuth auth.whoami reported the wrong authType.");
+  assert(readNestedString(oauthWhoami.json, ["data", "identity", "user", "id"]) === adminUserId, "OAuth auth.whoami returned the wrong server-resolved user id.");
+  assert(readNestedString(oauthWhoami.json, ["data", "identity", "user", "email"]) === adminEmail, "OAuth auth.whoami returned the wrong server-resolved email.");
+  assert(readNestedString(oauthWhoami.json, ["data", "identity", "user", "role"]) === "admin", "OAuth auth.whoami returned the wrong role.");
+  assert(!JSON.stringify(oauthWhoami.json).includes(adminAccessToken), "auth.whoami must never expose an OAuth bearer.");
+
+  const staticWhoami = await callTool("auth.whoami", {}, staticHeaders());
+  assert(staticWhoami.status === 200, `Static-token auth.whoami failed. Status: ${staticWhoami.status}`);
+  assert(readNestedString(staticWhoami.json, ["data", "identity", "authType"]) === "static_token", "Static auth.whoami reported the wrong authType.");
+  assert(readNested(staticWhoami.json, ["data", "identity", "user"]) === null, "Static auth.whoami must not invent a user identity.");
+  assert(!JSON.stringify(staticWhoami.json).includes(staticToken), "auth.whoami must never expose a static bearer.");
+  console.log("ok - auth.whoami reports only server-verified OAuth/static identity and never credentials; anonymous access follows policy");
 
   const mcpResourceCode = await requestAuthorizationCode(
     (() => {
@@ -1033,8 +1054,12 @@ async function assertMcpWriteCall(mcpClientId: string | null, bearerToken: strin
     await client.connect(transport);
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name);
+    assert(toolNames.includes("auth.whoami"), "OAuth MCP tool list did not include auth.whoami.");
     assert(toolNames.includes("gateway.status"), "OAuth MCP tool list did not include canonical gateway.status.");
     assert(!toolNames.includes("gateway_status"), "OAuth MCP tool list unexpectedly used Claude-safe aliases.");
+    const whoami = await client.callTool({ name: "auth.whoami", arguments: {} });
+    assert(readNestedBoolean(whoami.structuredContent, ["data", "identity", "authenticated"]) === true, "OAuth MCP auth.whoami was not authenticated.");
+    assert(readNestedString(whoami.structuredContent, ["data", "identity", "authType"]) === "oauth", "OAuth MCP auth.whoami reported the wrong authType.");
     const result = await client.callTool({
       name: "event.record",
       arguments: { project: null, type: "oauth-smoke.mcp-write-probe" }
