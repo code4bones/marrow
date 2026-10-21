@@ -224,6 +224,9 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     clientInfo(clientId: string) {
       return clientId === CHATGPT_CIMD_CLIENT_ID ? { label: "ChatGPT", redirectUri: null } : undefined;
     },
+    isCimdClient(clientId: string) {
+      return clientId === CHATGPT_CIMD_CLIENT_ID;
+    },
     challengeHeader(requiredScopes: string[] = ["memory:read"], resource?: string) {
       return `Bearer resource_metadata="${protectedResourceMetadataUrl(config, resource)}", scope="${requiredScopes.join(" ")}"`;
     },

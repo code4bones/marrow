@@ -2480,8 +2480,12 @@ async function resolveOAuthOwner(options: GatewayServerOptions, request: Incomin
   if (!owner) {
     return null;
   }
-  // A token whose connector was deleted or regenerated is revoked (SEC-9).
-  if (!(await options.auth.oauthClientActive(baseAuth.clientId))) {
+  // Stored connector credentials can be revoked by deleting/regenerating
+  // their DB row. ChatGPT CIMD is the one fixed, public client instead: it
+  // has no oauth_clients row by design, and was verified (metadata + PKCE)
+  // before this JWT was minted. Requiring a DB row for it discarded every
+  // valid CIMD bearer after successful browser authorization.
+  if (!options.oauth.isCimdClient(baseAuth.clientId) && !(await options.auth.oauthClientActive(baseAuth.clientId))) {
     return null;
   }
   return { ...owner, clientId: baseAuth.clientId };

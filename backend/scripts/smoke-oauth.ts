@@ -406,6 +406,25 @@ try {
   assert(jwtPayload(readNestedString(cimdToken.body, ["access_token"])).client_id === chatGptCimdClientId, "CIMD JWT did not retain ChatGPT client_id.");
   console.log("ok - ChatGPT CIMD uses verified metadata + PKCE without client_secret");
 
+  // Match ChatGPT's next step after the browser redirect: exchange a CIMD
+  // code for the concrete MCP resource, then initialize/list/call without a
+  // caller-supplied client_id or kind. This exercises the exact OAuth bearer
+  // path that action discovery uses rather than only the browser exchange.
+  const cimdMcpAuthorizeUrl = new URL(cimdAuthorizeUrl);
+  cimdMcpAuthorizeUrl.searchParams.set("resource", mcpResourceUrl);
+  const cimdMcpCode = await requestAuthorizationCode(cimdMcpAuthorizeUrl, adminCookie, "oauth-smoke-cimd-mcp-state");
+  const cimdMcpToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: cimdMcpCode,
+    redirect_uri: chatGptCimdRedirectUri,
+    client_id: chatGptCimdClientId,
+    code_verifier: codeVerifier,
+    resource: mcpResourceUrl
+  });
+  assert(cimdMcpToken.status === 200, `CIMD MCP-resource token exchange failed: ${JSON.stringify(cimdMcpToken.body)}`);
+  await assertMcpWriteCall(null, readNestedString(cimdMcpToken.body, ["access_token"]));
+  console.log("ok - ChatGPT CIMD OAuth bearer initializes, discovers tools, and calls MCP without client metadata");
+
   const invalidCimdRedirect = new URL(cimdAuthorizeUrl);
   invalidCimdRedirect.searchParams.set("redirect_uri", "https://chatgpt.com/connector_platform_oauth_redirect-not-declared");
   const invalidCimdResponse = await fetch(invalidCimdRedirect, { redirect: "manual" });
@@ -949,17 +968,23 @@ async function callTool(tool: string, input: unknown, headers: Record<string, st
   return { status: response.status, json: await response.json() };
 }
 
-async function assertMcpWriteCall(mcpClientId: string, bearerToken: string): Promise<void> {
+async function assertMcpWriteCall(mcpClientId: string | null, bearerToken: string): Promise<void> {
   const endpoint = new URL(`${started.url}/mcp`);
-  endpoint.searchParams.set("client_id", mcpClientId);
-  endpoint.searchParams.set("client_label", "OAuth Smoke MCP Client");
-  endpoint.searchParams.set("client_kind", "oauth-smoke");
+  if (mcpClientId) {
+    endpoint.searchParams.set("client_id", mcpClientId);
+    endpoint.searchParams.set("client_label", "OAuth Smoke MCP Client");
+    endpoint.searchParams.set("client_kind", "oauth-smoke");
+  }
   const transport = new StreamableHTTPClientTransport(endpoint, {
     requestInit: { headers: { authorization: `Bearer ${bearerToken}` } }
   });
   const client = new Client({ name: "project-memory-oauth-smoke", version: "0.1.0" });
   try {
     await client.connect(transport);
+    const tools = await client.listTools();
+    const toolNames = tools.tools.map((tool) => tool.name);
+    assert(toolNames.includes("gateway.status"), "OAuth MCP tool list did not include canonical gateway.status.");
+    assert(!toolNames.includes("gateway_status"), "OAuth MCP tool list unexpectedly used Claude-safe aliases.");
     const result = await client.callTool({
       name: "event.record",
       arguments: { project: null, type: "oauth-smoke.mcp-write-probe" }

@@ -166,6 +166,11 @@ clients can continue using the gateway base resource. The gateway also serves
 RFC 8414 path-insertion discovery routes such as
 `/.well-known/oauth-authorization-server/api` when nginx forwards them.
 
+The fixed ChatGPT CIMD public client is intentionally not an `oauth_clients`
+database row. Its bearer is accepted after the metadata, PKCE, signature,
+resource, expiry, and active-user checks; database-row revocation remains in
+force for stored Claude and legacy connector credentials.
+
 Claude Custom Connectors reject dots in tool names. When a gateway MCP request
 uses `client_kind` containing `claude`, the MCP tool list exposes Claude-safe
 aliases such as `project_create`, `artifact_read_text`, and `gateway_status`.
@@ -174,9 +179,9 @@ internally. Non-Claude clients continue to receive canonical dotted names.
 
 Every listed gateway tool also publishes its required OAuth scopes in the MCP
 compatibility field `_meta.securitySchemes`. This is used by ChatGPT's CIMD
-action discovery; it does not alter the two name sets: Codex and other
-non-Claude clients retain canonical dotted names, while Claude receives only
-underscore aliases.
+action discovery; it does not alter the two existing name sets: Codex and
+other non-Claude clients retain canonical dotted names, while Claude receives
+only underscore aliases.
 
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
