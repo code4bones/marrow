@@ -89,9 +89,16 @@ assert(oauth, "OAuth facade was not created.");
 // cache, exact redirect-URI validation and public PKCE exchange without a
 // live-network dependency.
 const originalFetch = globalThis.fetch;
+let chatGptCimdFetchBlocked = false;
 globalThis.fetch = async (input, init) => {
   const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
   if (url === chatGptCimdClientId) {
+    if (chatGptCimdFetchBlocked) {
+      return new Response("<html>Cloudflare bot challenge</html>", {
+        status: 403,
+        headers: { "content-type": "text/html" }
+      });
+    }
     return new Response(
       JSON.stringify({
         redirect_uris: [chatGptCimdRedirectUri],
@@ -404,6 +411,29 @@ try {
   const invalidCimdResponse = await fetch(invalidCimdRedirect, { redirect: "manual" });
   assert(invalidCimdResponse.status === 400, "CIMD redirect URI absent from metadata should be rejected.");
   console.log("ok - ChatGPT CIMD accepts only the exact redirect URI from its metadata document");
+
+  // ChatGPT's public metadata endpoint can be served as a Cloudflare HTML
+  // challenge to Node/undici. A fresh facade must retain the one documented
+  // ChatGPT callback in that delivery-failure case, without widening its
+  // redirect allowlist.
+  chatGptCimdFetchBlocked = true;
+  const fallbackOauth = createOAuthFacadeFromEnv({
+    ...process.env,
+    PROJECT_MEMORY_PUBLIC_URL: publicUrl,
+    PROJECT_MEMORY_OAUTH_ISSUER: publicUrl,
+    PROJECT_MEMORY_OAUTH_AUDIENCE: publicUrl,
+    PROJECT_MEMORY_ALLOWED_REDIRECT_URIS: redirectUri,
+    PROJECT_MEMORY_AUTH_CODE_TTL_SECONDS: "300",
+    PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM: smokePrivateKeyPem,
+    PROJECT_MEMORY_OAUTH_KEY_ID: smokeKeyId
+  }, db);
+  assert(fallbackOauth, "Fallback OAuth facade was not created.");
+  const fallbackAuthorize = await fallbackOauth.authorizeRedirectUrl(cimdAuthorizeUrl);
+  assert(fallbackAuthorize.ok, "CIMD fallback did not accept ChatGPT's documented stable callback after a metadata 403.");
+  const fallbackInvalid = await fallbackOauth.authorizeRedirectUrl(invalidCimdRedirect);
+  assert(!fallbackInvalid.ok, "CIMD fallback widened the ChatGPT redirect allowlist.");
+  chatGptCimdFetchBlocked = false;
+  console.log("ok - ChatGPT CIMD retains only its pinned stable callback when metadata delivery returns 403/HTML");
 
   // --- Per-connector credential independence (multi-credential rewrite) ---
   // Credential B completes the full authorize+token flow on its own,

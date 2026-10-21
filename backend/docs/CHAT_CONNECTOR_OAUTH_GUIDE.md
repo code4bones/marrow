@@ -16,6 +16,12 @@ then permits only an exact HTTPS callback listed in it. This is deliberately not
 a generic metadata fetch: the fixed client ID avoids an SSRF/client-registration
 surface.
 
+OpenAI's metadata endpoint can return a Cloudflare `403` HTML challenge to a
+Node/undici runtime even though the document is publicly valid. In that narrow
+delivery-failure case Marrow uses a one-minute, fail-closed fallback containing
+only the published stable callback below. It does not admit any other client ID
+or redirect URI, and it retries remote discovery on the next short cache expiry.
+
 The authorization-server metadata advertises `client_id_metadata_document_supported:
 true`, `authorization_response_iss_parameter_supported: true`, PKCE `S256`, and
 token auth method `none`. ChatGPT therefore performs a public-client

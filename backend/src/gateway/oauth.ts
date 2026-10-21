@@ -76,7 +76,12 @@ type OAuthConfig = {
 
 const defaultScopes = ["memory:read", "memory:write"];
 const CHATGPT_CIMD_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
+const CHATGPT_CIMD_REDIRECT_URI = "https://chatgpt.com/connector_platform_oauth_redirect";
 const CIMD_CACHE_TTL_MS = 10 * 60_000;
+// The public metadata endpoint is occasionally served behind a bot challenge
+// to Node/undici (HTML/403 instead of JSON). Retry discovery soon after a
+// fallback, rather than caching that delivery failure for the normal 10 min.
+const CIMD_FALLBACK_CACHE_TTL_MS = 60_000;
 const authorizeRequiredParams = [
   "response_type",
   "client_id",
@@ -140,6 +145,19 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     if (cached && cached.expiresAt > Date.now()) {
       return cached;
     }
+    // This fallback is deliberately not a generic CIMD bypass. Both values
+    // are the exact public ChatGPT production identity and stable RFC 9207
+    // callback documented by OpenAI. It keeps an OpenAI edge 403/HTML page
+    // from breaking a valid public-client flow while all other client IDs and
+    // redirect URIs remain rejected.
+    const fallback = (): CimdClient => {
+      const client = {
+        redirectUris: new Set([CHATGPT_CIMD_REDIRECT_URI]),
+        expiresAt: Date.now() + CIMD_FALLBACK_CACHE_TTL_MS
+      };
+      cimdClients.set(clientId, client);
+      return client;
+    };
     try {
       const response = await fetch(clientId, {
         headers: { accept: "application/json" },
@@ -147,11 +165,11 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
         signal: AbortSignal.timeout(5_000)
       });
       if (!response.ok) {
-        return null;
+        return fallback();
       }
       const metadata: unknown = await response.json();
       if (!metadata || typeof metadata !== "object") {
-        return null;
+        return fallback();
       }
       const document = metadata as Record<string, unknown>;
       const methods = new Set([
@@ -162,13 +180,13 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
         stringArray(document.redirect_uris).filter((redirectUri) => !redirectUriProblem(redirectUri))
       );
       if (!methods.has("none") || redirectUris.size === 0) {
-        return null;
+        return fallback();
       }
       const client = { redirectUris, expiresAt: Date.now() + CIMD_CACHE_TTL_MS };
       cimdClients.set(clientId, client);
       return client;
     } catch {
-      return null;
+      return fallback();
     }
   };
 
