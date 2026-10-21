@@ -41,6 +41,9 @@ const mcpResourceUrl = `${publicUrl}/mcp`;
 const redirectUri = "https://chatgpt.com/connector/oauth/pmem-smoke";
 const chatGptCimdClientId = "https://chatgpt.com/oauth/client.json";
 const chatGptCimdRedirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+const codexCimdClientId = "https://chatgpt.com/oauth/codex/client.json";
+const codexCimdRegisteredRedirectUri = "http://127.0.0.1/callback";
+const codexCimdRedirectUri = "http://127.0.0.1:42353/callback";
 const clientId = `chatgpt-smoke-${unique}`;
 const clientSecret = `chatgpt-smoke-secret-${unique}`;
 const pmemClientId = `oauth-smoke-client-${unique}`;
@@ -84,27 +87,35 @@ const oauth = createOAuthFacadeFromEnv({
 
 assert(oauth, "OAuth facade was not created.");
 
-// The CIMD document is OpenAI-hosted in production. Intercept only that one
-// exact URL here so this hermetic smoke test verifies our server-side fetch,
-// cache, exact redirect-URI validation and public PKCE exchange without a
+// The CIMD documents are OpenAI-hosted in production. Intercept only the two
+// exact pinned URLs here so this hermetic smoke test verifies server-side
+// fetch, cache, redirect-URI validation and public PKCE exchange without a
 // live-network dependency.
 const originalFetch = globalThis.fetch;
-let chatGptCimdFetchBlocked = false;
+let cimdFetchBlocked = false;
 globalThis.fetch = async (input, init) => {
   const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
-  if (url === chatGptCimdClientId) {
-    if (chatGptCimdFetchBlocked) {
+  if (url === chatGptCimdClientId || url === codexCimdClientId) {
+    if (cimdFetchBlocked) {
       return new Response("<html>Cloudflare bot challenge</html>", {
         status: 403,
         headers: { "content-type": "text/html" }
       });
     }
     return new Response(
-      JSON.stringify({
-        redirect_uris: [chatGptCimdRedirectUri],
-        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
-        token_endpoint_auth_method: "private_key_jwt"
-      }),
+      JSON.stringify(
+        url === chatGptCimdClientId
+          ? {
+              redirect_uris: [chatGptCimdRedirectUri],
+              token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+              token_endpoint_auth_method: "private_key_jwt"
+            }
+          : {
+              redirect_uris: [codexCimdRegisteredRedirectUri, "http://localhost/callback"],
+              token_endpoint_auth_methods_supported: ["none"],
+              token_endpoint_auth_method: "none"
+            }
+      ),
       { status: 200, headers: { "content-type": "application/json" } }
     );
   }
@@ -431,11 +442,36 @@ try {
   assert(invalidCimdResponse.status === 400, "CIMD redirect URI absent from metadata should be rejected.");
   console.log("ok - ChatGPT CIMD accepts only the exact redirect URI from its metadata document");
 
+  // Codex publishes a native-app CIMD document. Its process binds a random
+  // loopback port, so RFC 8252 permits the port to differ from the declared
+  // no-port callback while every other URI component remains exact.
+  const codexCimdAuthorizeUrl = new URL(authorizeUrl);
+  codexCimdAuthorizeUrl.searchParams.set("client_id", codexCimdClientId);
+  codexCimdAuthorizeUrl.searchParams.set("redirect_uri", codexCimdRedirectUri);
+  codexCimdAuthorizeUrl.searchParams.set("resource", mcpResourceUrl);
+  const codexCimdCode = await requestAuthorizationCode(codexCimdAuthorizeUrl, adminCookie, "oauth-smoke-codex-cimd-state");
+  const codexCimdToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: codexCimdCode,
+    redirect_uri: codexCimdRedirectUri,
+    client_id: codexCimdClientId,
+    code_verifier: codeVerifier,
+    resource: mcpResourceUrl
+  });
+  assert(codexCimdToken.status === 200, `Codex CIMD public-client token exchange failed: ${JSON.stringify(codexCimdToken.body)}`);
+  assert(jwtPayload(readNestedString(codexCimdToken.body, ["access_token"])).client_id === codexCimdClientId, "CIMD JWT did not retain Codex client_id.");
+  await assertMcpWriteCall(null, readNestedString(codexCimdToken.body, ["access_token"]));
+  const invalidCodexCimdRedirect = new URL(codexCimdAuthorizeUrl);
+  invalidCodexCimdRedirect.searchParams.set("redirect_uri", "http://127.0.0.1:42353/not-callback");
+  const invalidCodexCimdResponse = await fetch(invalidCodexCimdRedirect, { redirect: "manual" });
+  assert(invalidCodexCimdResponse.status === 400, "Codex CIMD must not accept a loopback callback with a different path.");
+  console.log("ok - Codex CIMD accepts its pinned native callback with a dynamic loopback port only");
+
   // ChatGPT's public metadata endpoint can be served as a Cloudflare HTML
   // challenge to Node/undici. A fresh facade must retain the one documented
   // ChatGPT callback in that delivery-failure case, without widening its
   // redirect allowlist.
-  chatGptCimdFetchBlocked = true;
+  cimdFetchBlocked = true;
   const fallbackOauth = createOAuthFacadeFromEnv({
     ...process.env,
     PROJECT_MEMORY_PUBLIC_URL: publicUrl,
@@ -451,8 +487,12 @@ try {
   assert(fallbackAuthorize.ok, "CIMD fallback did not accept ChatGPT's documented stable callback after a metadata 403.");
   const fallbackInvalid = await fallbackOauth.authorizeRedirectUrl(invalidCimdRedirect);
   assert(!fallbackInvalid.ok, "CIMD fallback widened the ChatGPT redirect allowlist.");
-  chatGptCimdFetchBlocked = false;
-  console.log("ok - ChatGPT CIMD retains only its pinned stable callback when metadata delivery returns 403/HTML");
+  const fallbackCodexAuthorize = await fallbackOauth.authorizeRedirectUrl(codexCimdAuthorizeUrl);
+  assert(fallbackCodexAuthorize.ok, "CIMD fallback did not accept Codex's documented loopback callback after a metadata 403.");
+  const fallbackCodexInvalid = await fallbackOauth.authorizeRedirectUrl(invalidCodexCimdRedirect);
+  assert(!fallbackCodexInvalid.ok, "CIMD fallback widened the Codex loopback callback allowlist.");
+  cimdFetchBlocked = false;
+  console.log("ok - CIMD fallbacks retain only the pinned ChatGPT and Codex callbacks when metadata delivery returns 403/HTML");
 
   // --- Per-connector credential independence (multi-credential rewrite) ---
   // Credential B completes the full authorize+token flow on its own,

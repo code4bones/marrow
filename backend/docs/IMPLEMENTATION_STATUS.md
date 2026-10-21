@@ -166,10 +166,13 @@ clients can continue using the gateway base resource. The gateway also serves
 RFC 8414 path-insertion discovery routes such as
 `/.well-known/oauth-authorization-server/api` when nginx forwards them.
 
-The fixed ChatGPT CIMD public client is intentionally not an `oauth_clients`
-database row. Its bearer is accepted after the metadata, PKCE, signature,
-resource, expiry, and active-user checks; database-row revocation remains in
-force for stored Claude and legacy connector credentials.
+The fixed OpenAI CIMD public clients (ChatGPT and Codex) are intentionally not
+`oauth_clients` database rows. Their bearers are accepted after metadata, PKCE,
+signature, resource, expiry, and active-user checks; database-row revocation
+remains in force for stored Claude and legacy connector credentials. Codex uses
+its official native-app CIMD document and may substitute only a dynamic port on
+its declared `localhost`/`127.0.0.1` callback (RFC 8252); scheme, host, path,
+and query remain exact. Arbitrary CIMD URLs and callbacks are still rejected.
 
 Claude Custom Connectors reject dots in tool names. When a gateway MCP request
 uses `client_kind` containing `claude`, the MCP tool list exposes Claude-safe

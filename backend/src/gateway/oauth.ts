@@ -77,6 +77,8 @@ type OAuthConfig = {
 const defaultScopes = ["memory:read", "memory:write"];
 const CHATGPT_CIMD_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
 const CHATGPT_CIMD_REDIRECT_URI = "https://chatgpt.com/connector_platform_oauth_redirect";
+const CODEX_CIMD_CLIENT_ID = "https://chatgpt.com/oauth/codex/client.json";
+const CODEX_CIMD_REDIRECT_URIS = ["http://127.0.0.1/callback", "http://localhost/callback"];
 const CIMD_CACHE_TTL_MS = 10 * 60_000;
 // The public metadata endpoint is occasionally served behind a bot challenge
 // to Node/undici (HTML/403 instead of JSON). Retry discovery soon after a
@@ -90,6 +92,50 @@ const authorizeRequiredParams = [
   "code_challenge",
   "code_challenge_method"
 ];
+
+function cimdClientInfo(clientId: string): { label: string; fallbackRedirectUris: string[] } | undefined {
+  if (clientId === CHATGPT_CIMD_CLIENT_ID) {
+    return { label: "ChatGPT", fallbackRedirectUris: [CHATGPT_CIMD_REDIRECT_URI] };
+  }
+  if (clientId === CODEX_CIMD_CLIENT_ID) {
+    return { label: "Codex", fallbackRedirectUris: CODEX_CIMD_REDIRECT_URIS };
+  }
+  return undefined;
+}
+
+function isCimdClientId(clientId: string): boolean {
+  return cimdClientInfo(clientId) !== undefined;
+}
+
+// RFC 8252 §7.3 lets a native app bind an arbitrary loopback port even when
+// its registered redirect URI omits the port. Codex is the only pinned CIMD
+// document for which we permit that narrow substitution; every other
+// redirect component (scheme, host, path and query) stays exact.
+function isAllowedCimdRedirectUri(clientId: string, redirectUri: string, redirectUris: Set<string>): boolean {
+  if (redirectUris.has(redirectUri)) {
+    return true;
+  }
+  if (clientId !== CODEX_CIMD_CLIENT_ID || redirectUriProblem(redirectUri)) {
+    return false;
+  }
+  const candidate = safeUrl(redirectUri);
+  if (!candidate || candidate.protocol !== "http:" || !candidate.port || candidate.username || candidate.password) {
+    return false;
+  }
+  return [...redirectUris].some((registered) => {
+    const declared = safeUrl(registered);
+    return Boolean(
+      declared &&
+        declared.protocol === "http:" &&
+        !declared.port &&
+        declared.origin === candidate.origin.replace(/:\d+$/, "") &&
+        declared.pathname === candidate.pathname &&
+        declared.search === candidate.search &&
+        !declared.username &&
+        !declared.password
+    );
+  });
+}
 
 export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv, db: Knex): OAuthFacade | undefined {
   // The magic-token gate (PROJECT_MEMORY_MAGIC_TOKEN/_HASH) that used to
@@ -132,27 +178,28 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv, db: Knex): OAut
 // oauth_clients table instead of comparing against a single static pair.
 export function createOAuthFacade(config: OAuthConfig, db: Knex) {
   const codes = new Map<string, OAuthCodeRecord>();
-  // D-MEMORY-061: ChatGPT's CIMD is deliberately a single fixed URL, not a
+  // D-MEMORY-061: OpenAI CIMD is deliberately a small fixed allowlist, not a
   // general client-metadata fetcher. That keeps client registration from
-  // becoming an SSRF surface while allowing the public PKCE client flow.
+  // becoming an SSRF surface while allowing the public PKCE client flows.
   const cimdClients = new Map<string, CimdClient>();
 
   const resolveCimdClient = async (clientId: string): Promise<CimdClient | null> => {
-    if (clientId !== CHATGPT_CIMD_CLIENT_ID) {
+    const knownClient = cimdClientInfo(clientId);
+    if (!knownClient) {
       return null;
     }
     const cached = cimdClients.get(clientId);
     if (cached && cached.expiresAt > Date.now()) {
       return cached;
     }
-    // This fallback is deliberately not a generic CIMD bypass. Both values
-    // are the exact public ChatGPT production identity and stable RFC 9207
-    // callback documented by OpenAI. It keeps an OpenAI edge 403/HTML page
+    // This fallback is deliberately not a generic CIMD bypass. The values
+    // are the exact public OpenAI production identities and callbacks
+    // published for ChatGPT and Codex. It keeps an OpenAI edge 403/HTML page
     // from breaking a valid public-client flow while all other client IDs and
     // redirect URIs remain rejected.
     const fallback = (): CimdClient => {
       const client = {
-        redirectUris: new Set([CHATGPT_CIMD_REDIRECT_URI]),
+        redirectUris: new Set(knownClient.fallbackRedirectUris),
         expiresAt: Date.now() + CIMD_FALLBACK_CACHE_TTL_MS
       };
       cimdClients.set(clientId, client);
@@ -222,10 +269,11 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
       }
     },
     clientInfo(clientId: string) {
-      return clientId === CHATGPT_CIMD_CLIENT_ID ? { label: "ChatGPT", redirectUri: null } : undefined;
+      const client = cimdClientInfo(clientId);
+      return client ? { label: client.label, redirectUri: null } : undefined;
     },
     isCimdClient(clientId: string) {
-      return clientId === CHATGPT_CIMD_CLIENT_ID;
+      return isCimdClientId(clientId);
     },
     challengeHeader(requiredScopes: string[] = ["memory:read"], resource?: string) {
       return `Bearer resource_metadata="${protectedResourceMetadataUrl(config, resource)}", scope="${requiredScopes.join(" ")}"`;
@@ -383,9 +431,9 @@ async function validateAuthorizeParams(
   const clientId = params.get("client_id") ?? "";
   const redirectUri = params.get("redirect_uri") ?? "";
   let clientAuthentication: "cimd" | "stored";
-  if (clientId === CHATGPT_CIMD_CLIENT_ID) {
+  if (isCimdClientId(clientId)) {
     const client = await resolveCimdClient(clientId);
-    if (!client || !client.redirectUris.has(redirectUri)) {
+    if (!client || !isAllowedCimdRedirectUri(clientId, redirectUri, client.redirectUris)) {
       return { ok: false, error: "client_id or redirect_uri is not allowed." };
     }
     clientAuthentication = "cimd";
@@ -454,9 +502,9 @@ async function authenticateOAuthClient(
     return { ok: false, error: "Invalid client credentials." };
   }
   if (record.clientAuthentication === "cimd") {
-    // The ChatGPT CIMD URL and its exact redirect URI were verified before
-    // minting this authorization code. PKCE binds this public-client token
-    // exchange; client_secret authentication must not be expected here.
+    // The pinned OpenAI CIMD URL and its permitted redirect URI were verified
+    // before minting this authorization code. PKCE binds this public-client
+    // token exchange; client_secret authentication must not be expected here.
     if (basic) {
       return { ok: false, error: "CIMD clients must not use Basic authentication." };
     }
