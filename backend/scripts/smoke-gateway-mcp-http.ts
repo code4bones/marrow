@@ -92,6 +92,18 @@ try {
 
   const tools = await client.listTools();
   const toolNames = tools.tools.map((tool) => tool.name);
+  assert(
+    tools.tools.every((tool) => hasOAuthSecurityScheme(tool)),
+    "Not every gateway MCP tool advertised OAuth securitySchemes in _meta."
+  );
+  assert(
+    hasOAuthSecurityScheme(tools.tools.find((tool) => tool.name === "gateway.status"), ["memory:read"]),
+    "gateway.status did not advertise its read OAuth scope."
+  );
+  assert(
+    hasOAuthSecurityScheme(tools.tools.find((tool) => tool.name === "project.create"), ["memory:read", "memory:write"]),
+    "project.create did not advertise its write OAuth scopes."
+  );
   assert(tools.tools.every((tool) => isRecord(tool.outputSchema)), "Not every gateway MCP tool listed an outputSchema.");
   const artifactReadTextTool = tools.tools.find((tool) => tool.name === "artifact.read_text");
   assert(isRecord(artifactReadTextTool?.outputSchema), "artifact.read_text did not list an outputSchema.");
@@ -152,6 +164,10 @@ try {
   assert(claudeToolNames.includes("project_delete"), "Claude-safe project_delete tool was not listed.");
   assert(claudeToolNames.includes("task_delete"), "Claude-safe task_delete tool was not listed.");
   assert(!claudeToolNames.includes("gateway.status"), "Claude-safe tool list still included dotted names.");
+  assert(
+    claudeTools.tools.every((tool) => hasOAuthSecurityScheme(tool)),
+    "Claude-safe tool aliases did not preserve OAuth securitySchemes."
+  );
   const claudeStatusResult = await claudeClient.callTool({
     name: "gateway_status",
     arguments: {}
@@ -1690,4 +1706,20 @@ function readNestedRecord(value: unknown, path: string[]): Record<string, unknow
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function hasOAuthSecurityScheme(tool: unknown, expectedScopes?: string[]): boolean {
+  if (!isRecord(tool) || !isRecord(tool._meta) || !Array.isArray(tool._meta.securitySchemes)) {
+    return false;
+  }
+  return tool._meta.securitySchemes.some((scheme) => {
+    if (!isRecord(scheme) || scheme.type !== "oauth2" || !Array.isArray(scheme.scopes)) {
+      return false;
+    }
+    const scopes = scheme.scopes;
+    return (
+      expectedScopes === undefined ||
+      (expectedScopes.every((scope) => scopes.includes(scope)) && scopes.length === expectedScopes.length)
+    );
+  });
 }

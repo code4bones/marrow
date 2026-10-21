@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { asMcpResult } from "../shared/mcp/tool-response.js";
 import { readPackageMetadata } from "./pg-tool-service/formatters/gateway-ops.js";
-import { defaultGatewayOutputSchema, gatewayToolClaudeName, gatewayToolSpecs } from "./tool-definitions.js";
+import { defaultGatewayOutputSchema, gatewayToolClaudeName, gatewayToolRequiredScopes, gatewayToolSpecs } from "./tool-definitions.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
 
 export async function createGatewayMcpServer(service: PgToolService, context: GatewayRequestContext): Promise<McpServer> {
@@ -40,7 +40,12 @@ export async function createGatewayMcpServer(service: PgToolService, context: Ga
       {
         description: useClaudeSafeNames ? `${spec.description} Canonical marrow tool: ${spec.name}.` : spec.description,
         inputSchema: spec.schema.shape,
-        outputSchema: spec.outputSchema ?? defaultGatewayOutputSchema
+        outputSchema: spec.outputSchema ?? defaultGatewayOutputSchema,
+        // ChatGPT reads this MCP compatibility mirror during action discovery.
+        // The HTTP layer independently enforces these same per-tool scopes.
+        _meta: {
+          securitySchemes: [{ type: "oauth2", scopes: gatewayToolRequiredScopes(spec.name) }]
+        }
       },
       async (input) => asMcpResult(await service.call(spec.name, input, context))
     );

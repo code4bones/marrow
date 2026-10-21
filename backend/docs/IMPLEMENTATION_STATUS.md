@@ -172,6 +172,12 @@ aliases such as `project_create`, `artifact_read_text`, and `gateway_status`.
 The gateway maps those aliases to canonical tools such as `project.create`
 internally. Non-Claude clients continue to receive canonical dotted names.
 
+Every listed gateway tool also publishes its required OAuth scopes in the MCP
+compatibility field `_meta.securitySchemes`. This is used by ChatGPT's CIMD
+action discovery; it does not alter the two name sets: Codex and other
+non-Claude clients retain canonical dotted names, while Claude receives only
+underscore aliases.
+
 Artifacts are stored on the gateway filesystem under `ARTIFACT_DIR` or `./artifacts` by default. Metadata is stored in PostgreSQL and exposed through `artifact.put_text`, `artifact.put`, `artifact.search`, `artifact.peek`, `artifact.read_text`, `artifact.get`, and authenticated download routes.
 
 Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the
