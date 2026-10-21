@@ -1,5 +1,10 @@
 # OAUTH_FACADE_FOR_CHATGPT_APPS.md
 
+> Historical design document. Marrow's current ChatGPT integration uses the
+> CIMD implementation described in `CHAT_CONNECTOR_OAUTH_GUIDE.md` and
+> D-MEMORY-061; it no longer uses the magic-token or predefined-client setup
+> described below.
+
 ## Goal
 
 Implement a lightweight OAuth façade for the existing `project-memory` MCP server so it can be connected to ChatGPT Apps / custom MCP Apps.

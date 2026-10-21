@@ -39,6 +39,8 @@ const staticToken = `oauth-smoke-static-${unique}`;
 const publicUrl = "https://pmem-smoke.example/api";
 const mcpResourceUrl = `${publicUrl}/mcp`;
 const redirectUri = "https://chatgpt.com/connector/oauth/pmem-smoke";
+const chatGptCimdClientId = "https://chatgpt.com/oauth/client.json";
+const chatGptCimdRedirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
 const clientId = `chatgpt-smoke-${unique}`;
 const clientSecret = `chatgpt-smoke-secret-${unique}`;
 const pmemClientId = `oauth-smoke-client-${unique}`;
@@ -81,6 +83,26 @@ const oauth = createOAuthFacadeFromEnv({
 }, db);
 
 assert(oauth, "OAuth facade was not created.");
+
+// The CIMD document is OpenAI-hosted in production. Intercept only that one
+// exact URL here so this hermetic smoke test verifies our server-side fetch,
+// cache, exact redirect-URI validation and public PKCE exchange without a
+// live-network dependency.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
+  if (url === chatGptCimdClientId) {
+    return new Response(
+      JSON.stringify({
+        redirect_uris: [chatGptCimdRedirectUri],
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+        token_endpoint_auth_method: "private_key_jwt"
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }
+  return originalFetch(input, init);
+};
 
 const started = await startGatewayServer(service, {
   host: "127.0.0.1",
@@ -194,6 +216,15 @@ try {
   assert(
     readNestedArray(authorizationServer, ["token_endpoint_auth_methods_supported"]).includes("client_secret_basic"),
     "Authorization metadata did not advertise client_secret_basic."
+  );
+  assert(
+    readNestedArray(authorizationServer, ["token_endpoint_auth_methods_supported"]).includes("none"),
+    "Authorization metadata did not advertise CIMD public-client auth method none."
+  );
+  assert(readNestedBoolean(authorizationServer, ["client_id_metadata_document_supported"]) === true, "Authorization metadata did not advertise CIMD support.");
+  assert(
+    readNestedBoolean(authorizationServer, ["authorization_response_iss_parameter_supported"]) === true,
+    "Authorization metadata did not advertise RFC 9207 issuer identification."
   );
   console.log("ok - oauth authorization server metadata");
 
@@ -350,6 +381,29 @@ try {
   );
   assert(basicToken.status === 200, `Basic client auth token exchange failed: ${JSON.stringify(basicToken.body)}`);
   console.log("ok - oauth client_secret_basic token exchange");
+
+  // --- ChatGPT CIMD: no user-created client_id/client_secret --------------
+  const cimdAuthorizeUrl = new URL(authorizeUrl);
+  cimdAuthorizeUrl.searchParams.set("client_id", chatGptCimdClientId);
+  cimdAuthorizeUrl.searchParams.set("redirect_uri", chatGptCimdRedirectUri);
+  const cimdCode = await requestAuthorizationCode(cimdAuthorizeUrl, adminCookie, "oauth-smoke-cimd-state");
+  const cimdToken = await postFormJson(`${started.url}/oauth/token`, {
+    grant_type: "authorization_code",
+    code: cimdCode,
+    redirect_uri: chatGptCimdRedirectUri,
+    client_id: chatGptCimdClientId,
+    code_verifier: codeVerifier,
+    resource: publicUrl
+  });
+  assert(cimdToken.status === 200, `CIMD public-client token exchange failed: ${JSON.stringify(cimdToken.body)}`);
+  assert(jwtPayload(readNestedString(cimdToken.body, ["access_token"])).client_id === chatGptCimdClientId, "CIMD JWT did not retain ChatGPT client_id.");
+  console.log("ok - ChatGPT CIMD uses verified metadata + PKCE without client_secret");
+
+  const invalidCimdRedirect = new URL(cimdAuthorizeUrl);
+  invalidCimdRedirect.searchParams.set("redirect_uri", "https://chatgpt.com/connector_platform_oauth_redirect-not-declared");
+  const invalidCimdResponse = await fetch(invalidCimdRedirect, { redirect: "manual" });
+  assert(invalidCimdResponse.status === 400, "CIMD redirect URI absent from metadata should be rejected.");
+  console.log("ok - ChatGPT CIMD accepts only the exact redirect URI from its metadata document");
 
   // --- Per-connector credential independence (multi-credential rewrite) ---
   // Credential B completes the full authorize+token flow on its own,
@@ -706,6 +760,7 @@ try {
 
   console.log(`OAuth smoke test passed using ${started.url}`);
 } finally {
+  globalThis.fetch = originalFetch;
   await db("events").where("type", "like", "oauth-smoke.%").del();
   if (projectIdForMemberDenial) {
     await db("events").where({ project_id: projectIdForMemberDenial }).del();
@@ -760,6 +815,7 @@ async function requestAuthorizationCode(authorizeUrl: URL, cookie: string, state
   const code = redirect.searchParams.get("code");
   assert(code, "Authorize response's redirectUri did not include a code.");
   assert(redirect.searchParams.get("state") === state, "Authorize response's redirectUri did not preserve state.");
+  assert(redirect.searchParams.get("iss") === publicUrl, "Authorize response's redirectUri did not include the exact OAuth issuer.");
   return code!;
 }
 

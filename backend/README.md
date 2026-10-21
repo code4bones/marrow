@@ -216,11 +216,6 @@ GATEWAY_ANONYMOUS_CLIENT_TTL_SECONDS=86400
 PROJECT_MEMORY_PUBLIC_URL=https://marrow.example.com/api
 PROJECT_MEMORY_OAUTH_ISSUER=https://marrow.example.com/api
 PROJECT_MEMORY_OAUTH_AUDIENCE=https://marrow.example.com/api
-PROJECT_MEMORY_MAGIC_TOKEN=...
-PROJECT_MEMORY_ALLOWED_REDIRECT_URIS=https://chatgpt.com/connector/oauth/...
-PROJECT_MEMORY_OAUTH_CLIENT_ID=chatgpt
-# Optional confidential-client secret; omit to use public PKCE client auth.
-PROJECT_MEMORY_OAUTH_CLIENT_SECRET=...
 # Optional stable signing key; if omitted, tokens are invalidated on restart.
 PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n..."
 ```
@@ -237,17 +232,18 @@ sessions bypass membership checks), and OAuth login for Claude.ai/ChatGPT
 web connectors backed by each user's own personal API tokens and git host
 credentials. See `docs/AUTH.md` for the full users/sessions/tokens schema
 and the `pm3m admin create` bootstrap command for the first admin account.
-For ChatGPT Apps/custom MCP Apps that still use the older shared-secret
-flow instead of a real per-user OAuth login, set `PROJECT_MEMORY_MAGIC_TOKEN` and
-`PROJECT_MEMORY_PUBLIC_URL` to enable the minimal OAuth facade. The magic token
-is used only at `/oauth/authorize`; ChatGPT receives an OAuth bearer token and
-never sees `MCP_TOKEN`. The authorization code is short-lived and one-time-use,
-but the issued access token intentionally has no expiration so ChatGPT does not
-drop the MCP authorization during long-lived chats. Set `PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM`
-for stable JWT signing across restarts. Set `PROJECT_MEMORY_OAUTH_CLIENT_ID`
-when ChatGPT gives you a predefined OAuth client id. If ChatGPT also gives you a
-client secret, set `PROJECT_MEMORY_OAUTH_CLIENT_SECRET`; the token endpoint then
-accepts `client_secret_post` and `client_secret_basic`.
+ChatGPT custom MCP connections use CIMD automatically: ChatGPT presents the
+fixed public client identifier `https://chatgpt.com/oauth/client.json`, and
+Marrow verifies its metadata and exact callback server-side. Do not create or
+configure a ChatGPT client secret or redirect allowlist entry. The token exchange
+is public-client OAuth with mandatory PKCE S256; the user signs in through their
+own Marrow account at `/oauth/authorize`. The authorization code is short-lived
+and one-time-use; issued access tokens expire after 30 days. Set
+`PROJECT_MEMORY_OAUTH_PRIVATE_KEY_PEM` for stable signing across restarts.
+
+Per-user stored OAuth credentials remain available for Claude.ai and legacy
+connectors; their token exchange accepts `client_secret_post` and
+`client_secret_basic`.
 
 Generate that `.env` value with:
 

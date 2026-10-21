@@ -42,6 +42,7 @@ export type OAuthAuthorizeSessionResult =
 // immediately instead of only at the next OAuth login.
 type OAuthCodeRecord = {
   clientId: string;
+  clientAuthentication: "cimd" | "stored";
   redirectUri: string;
   codeChallenge: string;
   codeChallengeMethod: "S256";
@@ -51,6 +52,11 @@ type OAuthCodeRecord = {
   expiresAt: number;
   usedAt: number | null;
   createdAt: number;
+};
+
+type CimdClient = {
+  redirectUris: Set<string>;
+  expiresAt: number;
 };
 
 export type OAuthFacade = ReturnType<typeof createOAuthFacade>;
@@ -69,6 +75,8 @@ type OAuthConfig = {
 };
 
 const defaultScopes = ["memory:read", "memory:write"];
+const CHATGPT_CIMD_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
+const CIMD_CACHE_TTL_MS = 10 * 60_000;
 const authorizeRequiredParams = [
   "response_type",
   "client_id",
@@ -119,6 +127,50 @@ export function createOAuthFacadeFromEnv(env: NodeJS.ProcessEnv, db: Knex): OAut
 // oauth_clients table instead of comparing against a single static pair.
 export function createOAuthFacade(config: OAuthConfig, db: Knex) {
   const codes = new Map<string, OAuthCodeRecord>();
+  // D-MEMORY-061: ChatGPT's CIMD is deliberately a single fixed URL, not a
+  // general client-metadata fetcher. That keeps client registration from
+  // becoming an SSRF surface while allowing the public PKCE client flow.
+  const cimdClients = new Map<string, CimdClient>();
+
+  const resolveCimdClient = async (clientId: string): Promise<CimdClient | null> => {
+    if (clientId !== CHATGPT_CIMD_CLIENT_ID) {
+      return null;
+    }
+    const cached = cimdClients.get(clientId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached;
+    }
+    try {
+      const response = await fetch(clientId, {
+        headers: { accept: "application/json" },
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000)
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const metadata: unknown = await response.json();
+      if (!metadata || typeof metadata !== "object") {
+        return null;
+      }
+      const document = metadata as Record<string, unknown>;
+      const methods = new Set([
+        ...stringArray(document.token_endpoint_auth_methods_supported),
+        ...(typeof document.token_endpoint_auth_method === "string" ? [document.token_endpoint_auth_method] : [])
+      ]);
+      const redirectUris = new Set(
+        stringArray(document.redirect_uris).filter((redirectUri) => !redirectUriProblem(redirectUri))
+      );
+      if (!methods.has("none") || redirectUris.size === 0) {
+        return null;
+      }
+      const client = { redirectUris, expiresAt: Date.now() + CIMD_CACHE_TTL_MS };
+      cimdClients.set(clientId, client);
+      return client;
+    } catch {
+      return null;
+    }
+  };
 
   return {
     metadata: {
@@ -140,6 +192,8 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
           grant_types_supported: ["authorization_code"],
           code_challenge_methods_supported: ["S256"],
           token_endpoint_auth_methods_supported: tokenEndpointAuthMethods(),
+          client_id_metadata_document_supported: true,
+          authorization_response_iss_parameter_supported: true,
           scopes_supported: config.scopes
         };
       },
@@ -148,6 +202,9 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
           keys: [publicJwk(config.publicKey, config.keyId)]
         };
       }
+    },
+    clientInfo(clientId: string) {
+      return clientId === CHATGPT_CIMD_CLIENT_ID ? { label: "ChatGPT", redirectUri: null } : undefined;
     },
     challengeHeader(requiredScopes: string[] = ["memory:read"], resource?: string) {
       return `Bearer resource_metadata="${protectedResourceMetadataUrl(config, resource)}", scope="${requiredScopes.join(" ")}"`;
@@ -166,12 +223,15 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     // Real session-cookie authorization happens in authorizeWithSession
     // below, once the frontend has a marrow_session to present.
     async authorizeRedirectUrl(url: URL): Promise<OAuthAuthorizeRedirectResult> {
-      const validation = await validateAuthorizeParams(url.searchParams, config, db);
+      const validation = await validateAuthorizeParams(url.searchParams, config, db, resolveCimdClient);
       if (!validation.ok) {
         return { ok: false, error: validation.error };
       }
       const frontend = new URL("/oauth/authorize", frontendOrigin(config));
       frontend.search = url.searchParams.toString();
+      // The SPA needs this only to include iss in a user-denied OAuth
+      // response. Successful responses get config.issuer directly below.
+      frontend.searchParams.set("issuer", config.issuer);
       return { ok: true, location: frontend.toString() };
     },
     // POST /oauth/authorize (http-server.ts): the new session-cookie-backed
@@ -180,7 +240,7 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
     // its owning user -- this never re-authenticates a human itself (no
     // password/TOTP here), it only mints the code and freezes ownerUserId.
     async authorizeWithSession(params: URLSearchParams, ownerUserId: string): Promise<OAuthAuthorizeSessionResult> {
-      const validation = await validateAuthorizeParams(params, config, db);
+      const validation = await validateAuthorizeParams(params, config, db, resolveCimdClient);
       if (!validation.ok) {
         return { ok: false, error: validation.error };
       }
@@ -188,6 +248,7 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
       const code = randomToken(32);
       codes.set(code, {
         clientId: validation.params.clientId,
+        clientAuthentication: validation.params.clientAuthentication,
         redirectUri: validation.params.redirectUri,
         codeChallenge: validation.params.codeChallenge,
         codeChallengeMethod: "S256",
@@ -203,6 +264,9 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
       const redirect = new URL(validation.params.redirectUri);
       redirect.searchParams.set("code", code);
       redirect.searchParams.set("state", validation.params.state);
+      // RFC 9207 issuer identification is advertised in discovery metadata,
+      // so every successful authorization response carries the exact issuer.
+      redirect.searchParams.set("iss", config.issuer);
       return { ok: true, redirectUri: redirect.toString() };
     },
     async token(form: URLSearchParams, request?: IncomingMessage): Promise<OAuthTokenResponse> {
@@ -210,15 +274,15 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
         return oauthTokenError("unsupported_grant_type", "Only authorization_code is supported.");
       }
 
-      const clientAuth = await authenticateOAuthClient(form, request, config, db);
-      if (!clientAuth.ok) {
-        return oauthTokenError("invalid_client", clientAuth.error, 401);
-      }
-
       const code = form.get("code") ?? "";
       const record = codes.get(code);
       if (!record || record.usedAt !== null || record.expiresAt <= Date.now()) {
         return oauthTokenError("invalid_grant", "Invalid authorization code.");
+      }
+
+      const clientAuth = await authenticateOAuthClient(form, request, record, db);
+      if (!clientAuth.ok) {
+        return oauthTokenError("invalid_client", clientAuth.error, 401);
       }
 
       if (clientAuth.clientId !== record.clientId) {
@@ -267,12 +331,14 @@ export function createOAuthFacade(config: OAuthConfig, db: Knex) {
 async function validateAuthorizeParams(
   params: URLSearchParams,
   config: OAuthConfig,
-  db: Knex
+  db: Knex,
+  resolveCimdClient: (clientId: string) => Promise<CimdClient | null>
 ): Promise<
   | {
       ok: true;
       params: {
         clientId: string;
+        clientAuthentication: "cimd" | "stored";
         redirectUri: string;
         codeChallenge: string;
         resource: string;
@@ -294,34 +360,26 @@ async function validateAuthorizeParams(
     return { ok: false, error: "code_challenge_method must be S256." };
   }
   const clientId = params.get("client_id") ?? "";
-  const clientRow = await db("oauth_clients").where({ client_id: clientId }).first();
-  if (!clientRow) {
-    return { ok: false, error: "client_id is not allowed." };
-  }
-
-  // T-MEMORY-059 (whitebox pentest finding #3, I-MEMORY-055): this used to
-  // accept redirect_uri if it was EITHER in the (possibly empty)
-  // PROJECT_MEMORY_ALLOWED_REDIRECT_URIS allowlist OR equal to this
-  // client's own registered value -- with an empty allowlist (the default;
-  // isAllowedRedirectUri's fallback for that case admits ANY https URL),
-  // that OR meant the client's own registration was never actually
-  // enforced. An earlier attempt at this fix ANDed a deployment-wide
-  // allowlist on top of the per-client check -- wrong, since each of a
-  // user's several oauth_clients rows legitimately has its own distinct
-  // redirect_uri (see auth.ts's per-connector credentials), and a single
-  // global allowlist can never hold all of them at once without becoming
-  // the very any-URL escape hatch this fix removes. The client's own
-  // registered redirect_uri (exact match, mandatory -- no fallback of any
-  // kind) is now the entire check; PROJECT_MEMORY_ALLOWED_REDIRECT_URIS is
-  // no longer consulted here at all.
   const redirectUri = params.get("redirect_uri") ?? "";
-  if (!clientRow.redirect_uri || redirectUri !== clientRow.redirect_uri) {
-    return { ok: false, error: "redirect_uri is not allowed." };
-  }
-  // A row registered before scheme validation existed (e.g. javascript:...)
-  // must never be authorizable, even though it matches exactly.
-  if (redirectUriProblem(String(clientRow.redirect_uri))) {
-    return { ok: false, error: "redirect_uri is not allowed." };
+  let clientAuthentication: "cimd" | "stored";
+  if (clientId === CHATGPT_CIMD_CLIENT_ID) {
+    const client = await resolveCimdClient(clientId);
+    if (!client || !client.redirectUris.has(redirectUri)) {
+      return { ok: false, error: "client_id or redirect_uri is not allowed." };
+    }
+    clientAuthentication = "cimd";
+  } else {
+    const clientRow = await db("oauth_clients").where({ client_id: clientId }).first();
+    if (!clientRow) {
+      return { ok: false, error: "client_id is not allowed." };
+    }
+
+    // T-MEMORY-059 (whitebox pentest finding #3, I-MEMORY-055): a stored
+    // credential's redirect URI is an exact, mandatory per-client gate.
+    if (!clientRow.redirect_uri || redirectUri !== clientRow.redirect_uri || redirectUriProblem(String(clientRow.redirect_uri))) {
+      return { ok: false, error: "redirect_uri is not allowed." };
+    }
+    clientAuthentication = "stored";
   }
 
   const resource = params.get("resource") ?? config.audience;
@@ -333,6 +391,7 @@ async function validateAuthorizeParams(
     ok: true,
     params: {
       clientId,
+      clientAuthentication,
       redirectUri,
       codeChallenge: params.get("code_challenge") ?? "",
       resource,
@@ -348,18 +407,16 @@ async function validateAuthorizeParams(
   };
 }
 
-// Unconditional now: every per-user oauth_clients row always has a secret
-// (unlike the old static config.clientSecret, which was optional and could
-// leave this deployment on ["none"]), so client_secret_post/basic are
-// always the advertised methods.
+// The CIMD public client proves its code exchange with PKCE, while every
+// stored per-user connector credential remains confidential.
 function tokenEndpointAuthMethods(): string[] {
-  return ["client_secret_post", "client_secret_basic"];
+  return ["none", "client_secret_post", "client_secret_basic"];
 }
 
 async function authenticateOAuthClient(
   form: URLSearchParams,
   request: IncomingMessage | undefined,
-  config: OAuthConfig,
+  record: OAuthCodeRecord,
   db: Knex
 ): Promise<{ ok: true; clientId: string } | { ok: false; error: string }> {
   const basic = basicClientCredentials(request);
@@ -372,11 +429,21 @@ async function authenticateOAuthClient(
   if (basic && formClientId && formClientId !== basic.clientId) {
     return { ok: false, error: "Conflicting client_id values." };
   }
+  if (clientId !== record.clientId) {
+    return { ok: false, error: "Invalid client credentials." };
+  }
+  if (record.clientAuthentication === "cimd") {
+    // The ChatGPT CIMD URL and its exact redirect URI were verified before
+    // minting this authorization code. PKCE binds this public-client token
+    // exchange; client_secret authentication must not be expected here.
+    if (basic) {
+      return { ok: false, error: "CIMD clients must not use Basic authentication." };
+    }
+    return { ok: true, clientId };
+  }
 
-  // Every per-user OAuth client always has a secret (unlike the old
-  // optional static config.clientSecret) -- fail closed on a missing one
-  // rather than falling back to an unauthenticated "client_id alone is
-  // enough" path.
+  // Stored per-user OAuth clients always have a secret; fail closed rather
+  // than falling back to an unauthenticated client_id-only path.
   const clientSecret = basic?.clientSecret ?? form.get("client_secret") ?? "";
   if (!clientSecret) {
     return { ok: false, error: "Missing client_secret." };
@@ -616,6 +683,10 @@ function listEnv(value: string | undefined, fallback: string[] = []): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed && parsed.length > 0 ? parsed : fallback;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function isAllowedResource(resource: string, config: OAuthConfig): boolean {

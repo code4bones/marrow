@@ -247,6 +247,12 @@ export function OAuthAuthorizePage() {
     if (state) {
       target.searchParams.set('state', state);
     }
+    // The backend validated this request before redirecting here and supplied
+    // its canonical issuer solely for this RFC 9207 error response.
+    const issuer = searchParams.get('issuer');
+    if (issuer) {
+      target.searchParams.set('iss', issuer);
+    }
     window.location.href = target.toString();
   };
 

@@ -204,20 +204,16 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
  * reflects the real deployed host instead of a placeholder. The Claude
  * Code / Codex bearer token is this user's own personal Marrow API token
  * (T-MEMORY-047, see PersonalTokenPanel above) instead of an admin-issued
- * shared secret. The web-connector (Claude.ai/ChatGPT) OAuth client id/
- * secret come from this user's own OAuth connector credentials -- one
- * independent credential per connector (see OAuthClientPanel above,
- * rendered once above both web-connector tabs, listing every credential the
- * user has created) instead of a static, shared pair -- replacing what used
- * to be a "the magic token your admin gave you" instruction from before the
- * OAuth SSO rework (D-MEMORY-027) removed that shared magic-token gate
- * entirely in favor of a real per-user login at /oauth/authorize.
+ * shared secret. Claude.ai uses a per-user OAuth client credential, while
+ * ChatGPT uses its own verified CIMD public client and PKCE: a user only
+ * supplies the MCP URL and then signs into Marrow in the OAuth window.
+ * Neither web path relies on an admin-issued shared credential.
  */
 /**
  * "Which of my chats are actually connected right now" — pulled together
  * from data already fetched elsewhere on this page (OAuth credential
  * lastUsedAt, personal-token lastUsedAt), no new backend endpoint needed.
- * Reported live: after generating a Codex/ChatGPT credential successfully,
+ * Reported live: after generating a Codex/Claude credential successfully,
  * there was no single place to see "yes, this is connected" across all
  * services at once without opening each service's own tab.
  *
@@ -254,7 +250,6 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
 
   const findClient = (label: string) => clients?.find((c) => c.label === label) ?? null;
   const claude = findClient('Claude.ai');
-  const chatgpt = findClient('ChatGPT');
   const findToken = (label: string) => tokens?.find((tk) => tk.label === label) ?? null;
   const claudeCli = findToken('Claude Code (CLI)');
   const codexCli = findToken('Codex (CLI)');
@@ -287,6 +282,8 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
     onRevoke?: () => void;
     revokeLabel: string;
     busy?: boolean;
+    statusLabel?: string;
+    statusColor?: string;
   }[] = [
     {
       key: 'claude-cli',
@@ -318,11 +315,14 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
     {
       key: 'chatgpt-web',
       name: t('chatgptWebConnectionName'),
-      connected: Boolean(chatgpt),
-      lastUsed: chatgpt?.lastUsedAt ?? null,
-      onRevoke: chatgpt ? () => void revokeOAuth(chatgpt.id) : undefined,
+      // CIMD is ChatGPT's public-client registration model, not a user-owned
+      // oauth_clients credential, so this card cannot infer a live link from
+      // a stored client secret.
+      connected: false,
+      lastUsed: null,
       revokeLabel: t('revoke'),
-      busy: chatgpt ? busyId === chatgpt.id : false,
+      statusLabel: t('cimd'),
+      statusColor: 'blue',
     },
   ];
 
@@ -341,7 +341,9 @@ function ConnectedSummary({ refreshKey }: { refreshKey: number }) {
         >
           <div>
             <Text strong style={{ marginRight: 8 }}>{row.name}</Text>
-            <Tag color={row.connected ? 'green' : 'default'}>{row.connected ? t('connected') : t('notConnectedYet')}</Tag>
+            <Tag color={row.statusColor ?? (row.connected ? 'green' : 'default')}>
+              {row.statusLabel ?? (row.connected ? t('connected') : t('notConnectedYet'))}
+            </Tag>
             {row.connected && (
               <Text type="secondary" style={{ fontSize: 12.5, marginLeft: 8 }}>
                 {t('lastUsed')} <Timestamp value={row.lastUsed} />
@@ -396,8 +398,8 @@ function ConnectSection() {
   const webConnectorUrl = mcpUrl;
 
   // Claude.ai's callback is fixed and never changes -- captured here once so
-  // creating that credential needs zero manual input. ChatGPT mints a fresh,
-  // one-off callback per connector it has no such constant.
+  // creating that credential needs zero manual input. ChatGPT instead uses
+  // its fixed CIMD public client, with no user-created credential at all.
   const claudeCallbackUrl = 'https://claude.ai/api/mcp/auth_callback';
 
   // Grouped by SERVICE (Claude, Codex), each with its CLI + web instructions
@@ -473,8 +475,7 @@ function ConnectSection() {
           </Step>
           <Step n={2}>{t('pasteAsConnectorMcpUrl')}</Step>
           <CodeBlock code={webConnectorUrl} />
-          <Step n={3}>{t('clientIdSecretChatGpt')}</Step>
-          <OAuthClientPanel fixedLabel="ChatGPT" onChanged={bumpSummary} />
+          <Step n={3}>{t('chatgptCimdInfo')}</Step>
           <Step n={4}>{t('clickConnectChatGpt')}</Step>
           <Step n={5}>{t('logInApproveAccess')}</Step>
           <Step n={6}>{t('askChatGptToUseTools')}</Step>
@@ -491,7 +492,7 @@ function ConnectSection() {
       label: t('otherLegacyCredentials'),
       children: (
         <>
-          <OAuthClientPanel excludeLabels={['Claude.ai', 'ChatGPT']} onChanged={bumpSummary} />
+          <OAuthClientPanel excludeLabels={['Claude.ai']} onChanged={bumpSummary} />
           <PersonalTokenPanel excludeLabels={['Claude Code (CLI)', 'Codex (CLI)']} onChanged={bumpSummary} />
         </>
       ),

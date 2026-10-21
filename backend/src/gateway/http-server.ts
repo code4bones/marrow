@@ -386,7 +386,7 @@ async function handleRequest(
         send(400, fail(new AppError("VALIDATION_ERROR", "client_id is required.")));
         return;
       }
-      const info = await options.auth.oauthClientPublicInfo(clientId);
+      const info = options.oauth.clientInfo(clientId) ?? (await options.auth.oauthClientPublicInfo(clientId));
       if (!info) {
         send(404, fail(new AppError("NOT_FOUND", "Unknown client_id.")));
         return;

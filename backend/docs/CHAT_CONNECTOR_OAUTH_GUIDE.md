@@ -6,6 +6,29 @@ as a custom connector / app in ChatGPT and Claude web chat surfaces.
 Use it as a portability guide for another MCP server. Product-specific names in
 examples use `project-memory` / `marrow`, but the architecture is not Marrow-specific.
 
+## Current Marrow ChatGPT path: CIMD
+
+ChatGPT is not configured with a user-created `client_id` or `client_secret`.
+Marrow accepts only ChatGPT's fixed Client ID Metadata Document URL
+`https://chatgpt.com/oauth/client.json`. During authorization Marrow fetches and
+validates that public document server-side (10-minute cache, redirects disabled),
+then permits only an exact HTTPS callback listed in it. This is deliberately not
+a generic metadata fetch: the fixed client ID avoids an SSRF/client-registration
+surface.
+
+The authorization-server metadata advertises `client_id_metadata_document_supported:
+true`, `authorization_response_iss_parameter_supported: true`, PKCE `S256`, and
+token auth method `none`. ChatGPT therefore performs a public-client
+authorization-code exchange without a stored secret; the code remains bound to
+the verified client ID, callback, resource, and PKCE challenge. Successful and
+user-denied authorization responses include the canonical `iss` value. The
+stable ChatGPT callback currently declared by its metadata is
+`https://chatgpt.com/connector_platform_oauth_redirect`.
+
+Keep the database-backed `oauth_clients` / `client_secret` path for Claude.ai
+and legacy connectors only. Do not add the ChatGPT callback to
+`PROJECT_MEMORY_ALLOWED_REDIRECT_URIS`.
+
 ## Goal
 
 Many local or internal MCP servers already support a private bearer token for
