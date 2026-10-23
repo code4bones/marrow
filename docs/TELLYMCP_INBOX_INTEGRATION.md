@@ -208,6 +208,19 @@ self-service fix, because TellyMCP has no Telegram chat to prompt in the
 first place -- that still requires the recipient's own TellyMCP/Telegram
 pairing to exist first.
 
+## Retrying `no_live_session`
+
+A bound route's console can simply be offline at the moment of delivery.
+Rather than failing that offer permanently, the inbox worker periodically
+sweeps `no_live_session` rows whose `status_reason` is exactly "target
+console is not currently connected" and requeues them as `pending`, bounded
+by the same attempts budget as the rest of the worker; once that budget is
+exhausted the message is marked `failed` instead of retried forever. The
+narrower post-approval race (the console disconnects between an Approve
+reply and the PTY nudge) is deliberately left alone -- retrying that case
+from scratch would ask the recipient to approve the same offer a second
+time, so it stays a terminal `no_live_session`.
+
 ## Marrow v1 configuration
 
 Delivery is disabled unless both variables are configured; task assignment
