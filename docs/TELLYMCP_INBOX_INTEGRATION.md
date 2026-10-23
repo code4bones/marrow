@@ -189,6 +189,25 @@ No reverse task-status synchronization is required for the first slice: after
 the nudge, the agent uses Marrow's existing MCP tools, so existing Marrow
 events and notifications already remain authoritative.
 
+## Route binding: self-service on first event
+
+`inbox.bind_route` remains available for manual/admin pre-provisioning, but a
+route does not have to be bound ahead of time. When the inbox worker resolves
+a known recipient (`inbox.bind_identity` already maps their external
+principal to a TellyMCP user) for a route that has never been bound, it asks
+that recipient in Telegram to pick one of their own currently live consoles,
+binds the route to that choice, and then continues delivering the same
+message as the normal work-offer approve/reject prompt -- the triggering
+event is not lost. If the recipient has zero live consoles right now, or
+doesn't answer before the prompt times out, the message is marked `failed`
+with a reason explaining why, and the next event for that route tries again.
+
+This only covers an unbound *route*. An unbound *recipient identity* (the
+external principal was never mapped to a TellyMCP user at all) still has no
+self-service fix, because TellyMCP has no Telegram chat to prompt in the
+first place -- that still requires the recipient's own TellyMCP/Telegram
+pairing to exist first.
+
 ## Marrow v1 configuration
 
 Delivery is disabled unless both variables are configured; task assignment
