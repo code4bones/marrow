@@ -48,13 +48,13 @@ export function ProjectRepositoriesSection({ project, canManage }: { project: st
             onChange={(userId) => setLead({ variables: { project, id: row.id, userId: userId ?? null } })}
           /> : row.leadEmail ?? '—' },
           { title: t('issueImport'), key: 'webhook', width: 210, render: (_, row) => <Space orientation="vertical" size={4}>
-            <Tooltip title={row.webhook?.lastError ?? undefined}><Tag color={row.webhook?.lastError || row.webhook?.failedCount ? 'red' : row.webhook?.enabled ? 'green' : 'default'}>
-              {t(row.webhook?.lastError || row.webhook?.failedCount ? 'webhookError' : row.webhook?.enabled ? 'webhookEnabled' : 'webhookDisabled')}
-            </Tag></Tooltip>
+            {(row.webhook?.lastError || Boolean(row.webhook?.failedCount)) && <Tooltip title={row.webhook?.lastError ?? undefined}>
+              <Tag color="red">{t('webhookError')}</Tag>
+            </Tooltip>}
             {row.webhook?.lastDeliveryStatus && <Tag>{t(`webhookDelivery_${row.webhook.lastDeliveryStatus}`)}</Tag>}
-            {canManage && (row.webhook?.enabled ? <Popconfirm title={t('disableWebhookConfirm')} onConfirm={() => disconnect({ variables: { project, id: row.id } })}>
-              <Button size="small" disabled={connecting || disconnecting}>{t('disableWebhook')}</Button>
-            </Popconfirm> : <Button size="small" loading={connecting} disabled={disconnecting} onClick={() => connect({ variables: { project, id: row.id } })}>{t('enableWebhook')}</Button>)}
+            {row.webhook?.enabled ? <Popconfirm title={t('disableWebhookConfirm')} disabled={!canManage} onConfirm={() => disconnect({ variables: { project, id: row.id } })}>
+              <Button size="small" disabled={!canManage || connecting || disconnecting}>{t('disableWebhook')}</Button>
+            </Popconfirm> : <Button size="small" loading={connecting} disabled={!canManage || disconnecting} onClick={() => connect({ variables: { project, id: row.id } })}>{t('enableWebhook')}</Button>}
             {canManage && Boolean(row.webhook?.failedCount) && <Button size="small" loading={retrying}
               onClick={() => retry({ variables: { project, id: row.id } })}>{t('retryWebhook')}</Button>}
           </Space> },
