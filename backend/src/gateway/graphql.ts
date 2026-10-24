@@ -652,6 +652,7 @@ const typeDefs = `#graphql
     authMode: String
     lastError: String
     lastDeliveryStatus: String
+    lastTaskId: ID
     lastDeliveryAt: String
   }
 

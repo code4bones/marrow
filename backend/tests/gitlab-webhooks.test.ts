@@ -4,7 +4,7 @@ import knex, { type Knex } from "knex";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encryptGitToken } from "../src/gateway/git-credentials.js";
 import { verifyGitlabWebhook, parseGitlabIssue } from "../src/gateway/gitlab-webhooks/protocol.js";
-import { acceptGitlabWebhook } from "../src/gateway/gitlab-webhooks/receiver.js";
+import { acceptGitlabWebhook, gitlabWebhookStatus } from "../src/gateway/gitlab-webhooks/receiver.js";
 import { GitlabIssueWorker } from "../src/gateway/gitlab-webhooks/worker.js";
 import { PgToolService } from "../src/gateway/pg-tool-service.js";
 import { AppError } from "../src/shared/errors.js";
@@ -126,6 +126,7 @@ describe("GitLab issue webhook", () => {
     expect(tasks[0].notes).toContain("https://gitlab.test/group/backend/-/issues/5");
     expect((await db("gitlab_issue_inbox").first()).status).toBe("done");
     expect((await db("gitlab_issue_links").first()).task_id).toBe(tasks[0].id);
+    expect(await gitlabWebhookStatus(db, repoId)).toMatchObject({ lastDeliveryStatus: "done", lastTaskId: tasks[0].id });
     expect(vi.mocked(notifyTelegram).mock.calls[0]?.[0]).toBe(db);
     const notices = vi.mocked(notifyTelegram).mock.calls.length;
     await acceptGitlabWebhook(db, repoId, payload(), { ...headers, "x-gitlab-event-uuid": "event-2" });
@@ -159,6 +160,7 @@ describe("GitLab issue webhook", () => {
   it("keeps a tombstone after task deletion to prevent accidental recreation on replay", async () => {
     await acceptGitlabWebhook(db, repoId, payload(), headers); await worker.tick();
     await db("tasks").del();
+    expect(await gitlabWebhookStatus(db, repoId)).toMatchObject({ lastDeliveryStatus: "done", lastTaskId: null });
     await acceptGitlabWebhook(db, repoId, payload(), { ...headers, "x-gitlab-event-uuid": "event-2" });
     await worker.tick();
     expect(await db("tasks")).toHaveLength(0);

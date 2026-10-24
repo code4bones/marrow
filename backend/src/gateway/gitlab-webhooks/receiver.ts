@@ -30,5 +30,6 @@ export async function gitlabWebhookStatus(db: Knex, repositoryId: string) {
   return { enabled: Boolean(config?.enabled), hookId: config?.hook_id ?? null,
     failedCount: Number(failed?.count ?? 0),
     authMode: config?.auth_mode ?? null, lastError: config?.last_error ?? last?.last_error ?? null,
-    lastDeliveryStatus: last?.status ?? null, lastDeliveryAt: last?.received_at ? new Date(last.received_at).toISOString() : null };
+    lastDeliveryStatus: last?.status ?? null, lastTaskId: last?.task_id ?? null,
+    lastDeliveryAt: last?.received_at ? new Date(last.received_at).toISOString() : null };
 }

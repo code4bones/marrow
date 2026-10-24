@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ADD_PROJECT_REPOSITORY, CONNECT_PROJECT_WEBHOOK, DISCONNECT_PROJECT_WEBHOOK, GET_PROJECT_REPOSITORIES, REMOVE_PROJECT_REPOSITORY, RETRY_PROJECT_WEBHOOK, SET_PROJECT_REPOSITORY_LEAD, type ProjectRepository } from '../../shared/api/project-gitlab';
 import { GET_PROJECT_MEMBERS } from '../../shared/api/queries';
 import type { ProjectMember } from '../../shared/model/types';
@@ -51,7 +52,9 @@ export function ProjectRepositoriesSection({ project, canManage }: { project: st
             {(row.webhook?.lastError || Boolean(row.webhook?.failedCount)) && <Tooltip title={row.webhook?.lastError ?? undefined}>
               <Tag color="red">{t('webhookError')}</Tag>
             </Tooltip>}
-            {row.webhook?.lastDeliveryStatus && <Tag>{t(`webhookDelivery_${row.webhook.lastDeliveryStatus}`)}</Tag>}
+            {row.webhook?.lastDeliveryStatus === 'done'
+              ? row.webhook.lastTaskId && <Link to={`/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(row.webhook.lastTaskId)}`}>{row.webhook.lastTaskId}</Link>
+              : row.webhook?.lastDeliveryStatus && <Tag>{t(`webhookDelivery_${row.webhook.lastDeliveryStatus}`)}</Tag>}
             {row.webhook?.enabled ? <Popconfirm title={t('disableWebhookConfirm')} disabled={!canManage} onConfirm={() => disconnect({ variables: { project, id: row.id } })}>
               <Button size="small" disabled={!canManage || connecting || disconnecting}>{t('disableWebhook')}</Button>
             </Popconfirm> : <Button size="small" loading={connecting} disabled={!canManage || disconnecting} onClick={() => connect({ variables: { project, id: row.id } })}>{t('enableWebhook')}</Button>}
