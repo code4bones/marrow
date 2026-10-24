@@ -8,7 +8,7 @@ The repository now contains a working local-first TypeScript MCP server with SQL
 
 Implemented capabilities:
 
-- Project Settings GitLab configuration: multiple verified repository URLs, table of pending/active members including the owner, GitLab user search and per-project/host identity mappings; owner/admin management, GraphQL and MCP tools. Webhook ingestion/issue import remains a subsequent phase.
+- Project Settings GitLab configuration: multiple verified repository URLs, table of pending/active members including the owner, GitLab user search and per-project/host identity mappings; owner/admin management, GraphQL and MCP tools. GitLab issue webhooks can be enabled per repository: bounded authenticated receiver, durable inbox, retry worker, idempotent provenance links and mapped task assignments.
 
 - project registry
 - common knowledge layer

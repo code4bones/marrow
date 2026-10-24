@@ -1,0 +1,150 @@
+import { createHmac, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import knex, { type Knex } from "knex";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encryptGitToken } from "../src/gateway/git-credentials.js";
+import { verifyGitlabWebhook, parseGitlabIssue } from "../src/gateway/gitlab-webhooks/protocol.js";
+import { acceptGitlabWebhook } from "../src/gateway/gitlab-webhooks/receiver.js";
+import { GitlabIssueWorker } from "../src/gateway/gitlab-webhooks/worker.js";
+import { PgToolService } from "../src/gateway/pg-tool-service.js";
+import { AppError } from "../src/shared/errors.js";
+import { fail } from "../src/shared/mcp/tool-response.js";
+import { notifyTelegram } from "../src/gateway/telegram.js";
+import { startGatewayServer } from "../src/gateway/http-server.js";
+
+vi.mock("../src/gateway/telegram.js", async (original) => ({ ...await original<typeof import("../src/gateway/telegram.js")>(), notifyTelegram: vi.fn().mockResolvedValue(undefined) }));
+const require = createRequire(import.meta.url);
+const settings = require("../migrations/pg/106_project_gitlab_settings.cjs");
+const inbox = require("../migrations/pg/108_gitlab_issue_inbox.cjs");
+const repoId = randomUUID();
+let db: Knex;
+let worker: GitlabIssueWorker;
+let rollback = false;
+
+class TestService extends PgToolService {
+  protected override async touchClient(): Promise<void> {}
+  override async call(...args: Parameters<PgToolService["call"]>) {
+    const result = await super.call(...args);
+    if (args[0] === "task.create" && rollback) return fail(new AppError("GATEWAY_ERROR", "Injected failure after task insert"));
+    return result;
+  }
+}
+
+function payload(overrides: Record<string, unknown> = {}) {
+  return Buffer.from(JSON.stringify({ object_kind: "issue", project: { id: 228 }, user: { id: 2 },
+    object_attributes: { id: 700, iid: 5, project_id: 228, action: "open", title: "An issue", description: null,
+      author_id: 2, assignee_ids: [2], ...overrides } }));
+}
+
+beforeEach(async () => {
+  rollback = false;
+  vi.mocked(notifyTelegram).mockClear();
+  db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
+  await db.raw("PRAGMA foreign_keys = ON");
+  await db.schema.createTable("users", (t) => { t.text("id").primary(); t.text("email"); t.text("status"); });
+  await db.schema.createTable("projects", (t) => { for (const name of ["id", "slug", "title", "owner_user_id", "status"]) t.text(name); t.primary(["id"]); });
+  await db.schema.createTable("project_members", (t) => { for (const name of ["project_id", "user_id", "status", "role"]) t.text(name); });
+  await db.schema.createTable("gateway_clients", (t) => { t.text("id"); t.text("owner_user_id"); });
+  await db.schema.createTable("tasks", (t) => {
+    t.text("id").primary();
+    for (const name of ["project_id", "title", "status", "milestone", "scope", "acceptance", "allowed_files", "forbidden_files", "depends_on", "notes", "assignee_user_id", "project_version", "created_by", "updated_by", "source_instance_id", "created_at", "updated_at"]) t.text(name);
+    t.integer("priority");
+  });
+  await db.schema.createTable("events", (t) => {
+    t.text("id").primary();
+    for (const name of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(name);
+  });
+  await settings.up(db); await inbox.up(db);
+  process.env.GIT_CREDENTIAL_ENC_KEY ??= Buffer.alloc(32, 8).toString("base64");
+  await db("users").insert([{ id: "owner", email: "owner@marrow.test", status: "active" }, { id: "removed", email: "removed@test", status: "active" }]);
+  await db("projects").insert({ id: "P-SLIFE", slug: "slife", title: "SLIFE", owner_user_id: "owner", status: "active" });
+  await db("project_members").insert({ project_id: "P-SLIFE", user_id: "owner", role: "pm", status: "active" });
+  await db("project_repositories").insert({ id: repoId, project_id: "P-SLIFE", host: "gitlab.test", gitlab_project_id: "228", path: "group/backend", name: "backend", web_url: "https://gitlab.test/group/backend", created_by: "user:owner", created_at: new Date().toISOString() });
+  await db("project_gitlab_members").insert([{ project_id: "P-SLIFE", user_id: "owner", host: "gitlab.test", gitlab_user_id: "2", username: "owner-gitlab", name: "Owner", updated_at: new Date().toISOString() },
+    { project_id: "P-SLIFE", user_id: "removed", host: "gitlab.test", gitlab_user_id: "3", username: "former-member", name: "Removed", updated_at: new Date().toISOString() }]);
+  await db("gitlab_webhooks").insert({ repository_id: repoId, auth_mode: "token", secret_enc: encryptGitToken("test-secret"), enabled: true, updated_at: new Date().toISOString() });
+  worker = new GitlabIssueWorker(db, undefined, (trx) => new TestService(trx));
+});
+afterEach(async () => { await db.destroy(); });
+
+const headers = { "x-gitlab-token": "test-secret", "x-gitlab-event-uuid": "event-1" };
+
+describe("GitLab issue webhook", () => {
+  it("verifies HMAC body, timestamp and message ID; never downgrades authentication", () => {
+    const raw = payload();
+    const key = Buffer.alloc(32, 1);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", key).update(`event-1.${timestamp}.`).update(raw).digest("base64");
+    const signed = { "webhook-id": "event-1", "webhook-timestamp": timestamp, "webhook-signature": `v1,${signature}` };
+    expect(verifyGitlabWebhook(raw, signed, "hmac", `whsec_${key.toString("base64")}`)).toBe(true);
+    expect(verifyGitlabWebhook(Buffer.from("tampered"), signed, "hmac", `whsec_${key.toString("base64")}`)).toBe(false);
+    expect(verifyGitlabWebhook(raw, signed, "hmac", `whsec_${key.toString("base64")}`, Date.now() + 301_000)).toBe(false);
+    expect(verifyGitlabWebhook(raw, headers, "hmac", "whsec_dGVzdA==")).toBe(false);
+  });
+
+  it("rejects mismatched projects and skips confidential/non-open events", () => {
+    expect(() => parseGitlabIssue(payload(), "232")).toThrow(/does not match/);
+    expect(parseGitlabIssue(payload({ confidential: true }), "228")).toBeNull();
+    expect(parseGitlabIssue(payload({ action: "update" }), "228")).toBeNull();
+  });
+
+  it("imports a self-assigned issue once, using mapped identities and integration attribution", async () => {
+    expect(await acceptGitlabWebhook(db, repoId, payload(), headers)).toMatchObject({ accepted: true, duplicate: false });
+    expect(await acceptGitlabWebhook(db, repoId, payload(), headers)).toMatchObject({ duplicate: true });
+    await worker.tick();
+    const tasks = await db("tasks");
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ title: "An issue", assignee_user_id: "owner", status: "todo", created_by: `integration:gitlab:${repoId}` });
+    expect(tasks[0].notes).toContain("https://gitlab.test/group/backend/-/issues/5");
+    expect((await db("gitlab_issue_inbox").first()).status).toBe("done");
+    expect((await db("gitlab_issue_links").first()).task_id).toBe(tasks[0].id);
+    expect(vi.mocked(notifyTelegram).mock.calls[0]?.[0]).toBe(db);
+    const notices = vi.mocked(notifyTelegram).mock.calls.length;
+    await acceptGitlabWebhook(db, repoId, payload(), { ...headers, "x-gitlab-event-uuid": "event-2" });
+    await worker.tick();
+    expect(await db("tasks")).toHaveLength(1);
+    expect(vi.mocked(notifyTelegram).mock.calls).toHaveLength(notices);
+  });
+
+  it("rolls back a failed import and emits no premature notifications, then retries cleanly", async () => {
+    await acceptGitlabWebhook(db, repoId, payload(), headers);
+    rollback = true;
+    await worker.tick();
+    expect(await db("tasks")).toHaveLength(0);
+    expect(await db("events")).toHaveLength(0);
+    expect(await db("gitlab_issue_links")).toHaveLength(0);
+    expect(notifyTelegram).not.toHaveBeenCalled();
+    expect((await db("gitlab_issue_inbox").first()).status).toBe("pending");
+    rollback = false;
+    await db("gitlab_issue_inbox").update({ available_at: "2000-01-01T00:00:00Z" });
+    await worker.tick();
+    expect(await db("tasks")).toHaveLength(1);
+  });
+
+  it("never assigns an unmapped or removed member", async () => {
+    await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [3] }), headers);
+    await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBeNull();
+  });
+
+  it("keeps a tombstone after task deletion to prevent accidental recreation on replay", async () => {
+    await acceptGitlabWebhook(db, repoId, payload(), headers); await worker.tick();
+    await db("tasks").del();
+    await acceptGitlabWebhook(db, repoId, payload(), { ...headers, "x-gitlab-event-uuid": "event-2" });
+    await worker.tick();
+    expect(await db("tasks")).toHaveLength(0);
+  });
+
+  it("exposes a bounded external HTTP receiver independent of the Marrow bearer", async () => {
+    const server = await startGatewayServer(new TestService(db), { host: "127.0.0.1", port: 0, token: "marrow-token" });
+    try {
+      const url = `${server.url}/integrations/gitlab/webhooks/${repoId}`;
+      const wrong = await fetch(url, { method: "POST", headers: { "x-gitlab-token": "wrong" }, body: payload() });
+      expect(wrong.status).toBe(401);
+      const right = await fetch(url, { method: "POST", headers, body: payload() });
+      expect(right.status).toBe(202);
+      const large = await fetch(url, { method: "POST", headers, body: "x".repeat(1024 * 1024 + 1) });
+      expect(large.status).toBe(413);
+    } finally { await server.stop(); }
+  });
+});

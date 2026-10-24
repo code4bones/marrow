@@ -17,6 +17,16 @@ import { recordLookupOut, recordLookupTables } from "./formatters/records.js";
 import { anonymousClientPrefix, type NormalizedGatewayRequestContext, type Row } from "./types.js";
 
 export class BaseService {
+  private deferredEvents: Array<(db: Knex) => void> | null = null;
+
+  // An inbox worker commits the task, provenance link and events together.
+  // Realtime/Telegram side effects must only run after that commit succeeds.
+  deferEventNotifications(): void { this.deferredEvents = []; }
+  flushEventNotifications(db: Knex): void {
+    const events = this.deferredEvents ?? [];
+    this.deferredEvents = null;
+    for (const notify of events) notify(db);
+  }
   // T-MEMORY-044: injectable HTTP client for git.pipeline_status's outbound
   // GitLab REST calls -- defaults to the real global `fetch`, but a smoke
   // test can pass a fake here instead of this constructor reaching a real
@@ -179,38 +189,42 @@ export class BaseService {
     };
     await this.db("events").insert(row);
     const out = eventOut(row);
-    // T-MEMORY-042: this is the single choke point every mutation across
-    // every domain already passes through -- publishing here, once, covers
-    // the web UI's live-update feed for the whole gateway with no other call
-    // site needing to change. EventEmitter.emit() (which publish() wraps)
-    // runs subscriber callbacks synchronously and rethrows synchronously if
-    // one throws -- guarded here because a live-update side effect must
-    // never fail the mutation it's attached to.
-    try {
-      void gatewayEvents.publish(GATEWAY_EVENT_TOPIC, { event: String(row.type), payload: out });
-    } catch {
-      // Best-effort notification; the event row itself is already committed.
-    }
-    // T-MEMORY-093: same scope as the Notifications page's own "Assigned to
-    // you" badge -- only events with target_user_ids (task.assigned/
-    // decision.assigned, and now assignee-aware status changes/completion)
-    // mirror out to Telegram. notifyTelegram is already fully best-effort
-    // internally (never throws), no try/catch needed here.
-    for (const targetUserId of targetUserIds) {
-      void notifyTelegram(this.db, targetUserId, {
-        type: String(row.type),
-        title: String(row.title ?? row.type),
-        body: row.body ? String(row.body) : null,
-        relatedId: row.related_id ? String(row.related_id) : null,
-        // T-MEMORY-093 follow-up: neither persisted on the events row nor
-        // exposed via GraphQL -- notify-only context so the Telegram
-        // message can show the record's own bare title (not "Task
-        // completed: X") and who actually performed the action.
-        recordTitle: input.record_title ? String(input.record_title) : null,
-        actorClientId: context.clientId,
-        projectId
-      });
-    }
+    const notify = (notificationDb: Knex) => {
+      // T-MEMORY-042: this is the single choke point every mutation across
+      // every domain already passes through -- publishing here, once, covers
+      // the web UI's live-update feed for the whole gateway with no other call
+      // site needing to change. EventEmitter.emit() (which publish() wraps)
+      // runs subscriber callbacks synchronously and rethrows synchronously if
+      // one throws -- guarded here because a live-update side effect must
+      // never fail the mutation it's attached to.
+      try {
+        void gatewayEvents.publish(GATEWAY_EVENT_TOPIC, { event: String(row.type), payload: out });
+      } catch {
+        // Best-effort notification; the event row itself is already committed.
+      }
+      // T-MEMORY-093: same scope as the Notifications page's own "Assigned to
+      // you" badge -- only events with target_user_ids (task.assigned/
+      // decision.assigned, and now assignee-aware status changes/completion)
+      // mirror out to Telegram. notifyTelegram is already fully best-effort
+      // internally (never throws), no try/catch needed here.
+      for (const targetUserId of targetUserIds) {
+        void notifyTelegram(notificationDb, targetUserId, {
+          type: String(row.type),
+          title: String(row.title ?? row.type),
+          body: row.body ? String(row.body) : null,
+          relatedId: row.related_id ? String(row.related_id) : null,
+          // T-MEMORY-093 follow-up: neither persisted on the events row nor
+          // exposed via GraphQL -- notify-only context so the Telegram
+          // message can show the record's own bare title (not "Task
+          // completed: X") and who actually performed the action.
+          recordTitle: input.record_title ? String(input.record_title) : null,
+          actorClientId: context.clientId,
+          projectId
+        });
+      }
+    };
+    if (this.deferredEvents) this.deferredEvents.push(notify);
+    else notify(this.db);
     return out;
   }
 

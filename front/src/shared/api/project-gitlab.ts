@@ -8,6 +8,7 @@ export interface ProjectRepository {
   path: string;
   name: string;
   webUrl: string;
+  webhook?: { enabled: boolean; failedCount: number; hookId: string | null; lastError: string | null; lastDeliveryStatus: string | null; lastDeliveryAt: string | null } | null;
 }
 
 export interface GitlabUser {
@@ -23,7 +24,22 @@ export interface ProjectGitlabMapping extends GitlabUser {
 
 export const GET_PROJECT_REPOSITORIES = gql`
   query ProjectRepositories($project: String!) {
-    projectRepositories(project: $project) { id projectId host gitlabProjectId path name webUrl }
+    projectRepositories(project: $project) { id projectId host gitlabProjectId path name webUrl webhook { enabled failedCount hookId lastError lastDeliveryStatus lastDeliveryAt } }
+  }
+`;
+export const CONNECT_PROJECT_WEBHOOK = gql`
+  mutation ConnectProjectRepositoryWebhook($project: String!, $id: ID!) {
+    connectProjectRepositoryWebhook(project: $project, id: $id) { enabled hookId lastError }
+  }
+`;
+export const DISCONNECT_PROJECT_WEBHOOK = gql`
+  mutation DisconnectProjectRepositoryWebhook($project: String!, $id: ID!) {
+    disconnectProjectRepositoryWebhook(project: $project, id: $id) { enabled hookId lastError }
+  }
+`;
+export const RETRY_PROJECT_WEBHOOK = gql`
+  mutation RetryProjectRepositoryWebhook($project: String!, $id: ID!) {
+    retryProjectRepositoryWebhook(project: $project, id: $id)
   }
 `;
 export const ADD_PROJECT_REPOSITORY = gql`

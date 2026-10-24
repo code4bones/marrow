@@ -310,7 +310,7 @@ export async function fetchGitlabRunnersStatus(input: {
   }));
 }
 
-async function gitlabRequest(
+export async function gitlabRequest(
   url: URL,
   token: string,
   httpFetch: GitHttpFetch,

@@ -299,6 +299,9 @@ const typeDefs = `#graphql
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     addProjectRepository(project: String!, url: String!): ProjectRepository!
     removeProjectRepository(project: String!, id: ID!): Boolean!
+    connectProjectRepositoryWebhook(project: String!, id: ID!): GitlabWebhookStatus!
+    disconnectProjectRepositoryWebhook(project: String!, id: ID!): GitlabWebhookStatus!
+    retryProjectRepositoryWebhook(project: String!, id: ID!): Int!
     setProjectMemberGitlab(project: String!, userId: ID!, host: String!, gitlabUserId: String!): ProjectGitlabMapping!
     removeProjectMemberGitlab(project: String!, userId: ID!, host: String!): Boolean!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
@@ -636,6 +639,17 @@ const typeDefs = `#graphql
     name: String!
     webUrl: String!
     createdAt: String
+    webhook: GitlabWebhookStatus
+  }
+
+  type GitlabWebhookStatus {
+    enabled: Boolean!
+    failedCount: Int!
+    hookId: String
+    authMode: String
+    lastError: String
+    lastDeliveryStatus: String
+    lastDeliveryAt: String
   }
 
   type GitlabUser {
@@ -1568,6 +1582,12 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
     addProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.repository_add", cleanInput(args)),
+    connectProjectRepositoryWebhook: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.repository_webhook_connect", cleanInput(args)),
+    disconnectProjectRepositoryWebhook: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.repository_webhook_disconnect", cleanInput(args)),
+    retryProjectRepositoryWebhook: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.repository_webhook_retry", cleanInput(args))).retried,
     removeProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.repository_remove", cleanInput(args))).removed,
     setProjectMemberGitlab: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

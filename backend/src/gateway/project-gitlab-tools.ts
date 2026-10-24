@@ -8,6 +8,9 @@ const memberHost = project.extend({ userId: z.string().min(1), host });
 
 export const projectGitlabToolSpecs: GatewayToolSpec[] = [
   { name: "project.repositories", description: "List GitLab repositories attached to a Marrow project.", schema: project },
+  { name: "project.repository_webhook_connect", description: "Register or repair this repository's GitLab issue webhook, routing new issues to its Marrow project. Uses a gateway-generated callback URL/secret and the caller's GitLab credential. Owner/admin only; existing webhook at the same URL is updated, not duplicated.", schema: project.extend({ id: z.string().uuid() }), access: "write" },
+  { name: "project.repository_webhook_disconnect", description: "Disable issue import locally and remove the corresponding GitLab webhook where possible. Owner/admin only. Existing imported tasks remain.", schema: project.extend({ id: z.string().uuid() }), access: "write" },
+  { name: "project.repository_webhook_retry", description: "Retry failed durable GitLab issue deliveries for one repository. Idempotent issue-to-task links prevent duplicate tasks. Owner/admin only.", schema: project.extend({ id: z.string().uuid() }), access: "write" },
   { name: "project.repository_add", description: "Attach a GitLab repository URL to a Marrow project. Verifies the repository with the caller's stored GitLab credential. Owner/admin only; duplicate additions are idempotent.", schema: project.extend({ url: z.string().trim().min(1).max(2048) }), access: "write" },
   { name: "project.repository_remove", description: "Detach a repository from a Marrow project; does not delete the GitLab repository or member mappings. Owner/admin only.", schema: project.extend({ id: z.string().uuid() }), access: "write" },
   { name: "project.gitlab_mappings", description: "List project-scoped Marrow member to GitLab user mappings. Owner/admin only.", schema: project },

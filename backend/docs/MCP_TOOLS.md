@@ -24,7 +24,11 @@ Project Settings supports multiple GitLab repositories and a per-project, per-ho
 
 All operations except repository listing require project owner/system admin access. Mutations require write scope. GitLab calls reuse the caller's existing credential selection and host/redirect protections; credentials never leave the server. A GitLab user can map to only one Marrow recipient within a project/host. Removing a Marrow member clears their mappings. GraphQL exposes matching queries/mutations for Settings.
 
-This is configuration for the upcoming issue import. Adding a repository does not register a webhook or import issues yet.
+Enable import separately for each repository with `project.repository_webhook_connect({project,id})`; `project.repository_webhook_disconnect` disables receiving and removes the remote hook where possible. Both require owner/admin access and write scope. `project.repository_webhook_retry` resets failed inbox entries for retry. Repository listing includes safe webhook state, failed count and latest delivery outcome.
+
+The gateway generates the callback at `<PROJECT_MEMORY_PUBLIC_URL>/integrations/gitlab/webhooks/<repository UUID>`. GitLab 19+ uses a generated HMAC signing key; older versions use a per-repository secret token. Keys remain encrypted and are never returned. The HTTPS reverse proxy must forward this route (see the nginx example). Authentication uses the configured mode, with no downgrade to another mode on a bad signature.
+
+Only new, non-confidential `Issue Hook` events (`object_kind=issue`, action `open`) are imported. Requests are bounded to 1 MiB, authenticated and persisted before 202; a worker retries failures and creates the task, provenance link, task events and any TellyMCP outbox offer in one transaction. Delivery IDs and project/host/repository/issue identity prevent duplicate tasks, including across webhook re-registration. Realtime/Telegram effects run after commit. Exactly one mapped active assignee is selected; otherwise the task is unassigned. External author/assignees and the source URL are preserved in notes, while `createdBy` identifies the GitLab integration. Closing/editing/reopening an issue does not change the task's workflow state; task deletion leaves a provenance tombstone preventing recreation on replay. Existing issues are not backfilled.
 
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 

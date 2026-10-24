@@ -1,15 +1,19 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Space, Table, message } from 'antd';
+import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, Tooltip, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ADD_PROJECT_REPOSITORY, GET_PROJECT_REPOSITORIES, REMOVE_PROJECT_REPOSITORY, type ProjectRepository } from '../../shared/api/project-gitlab';
+import { ADD_PROJECT_REPOSITORY, CONNECT_PROJECT_WEBHOOK, DISCONNECT_PROJECT_WEBHOOK, GET_PROJECT_REPOSITORIES, REMOVE_PROJECT_REPOSITORY, RETRY_PROJECT_WEBHOOK, type ProjectRepository } from '../../shared/api/project-gitlab';
 
 export function ProjectRepositoriesSection({ project, canManage }: { project: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
-  const { data, loading, error, refetch } = useQuery<{ projectRepositories: ProjectRepository[] }>(GET_PROJECT_REPOSITORIES, { variables: { project } });
+  const { data, loading, error, refetch } = useQuery<{ projectRepositories: ProjectRepository[] }>(GET_PROJECT_REPOSITORIES, { variables: { project }, pollInterval: 10000 });
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<{ url: string }>();
+  const webhookOptions = { onCompleted: () => { void refetch(); }, onError: (e: Error) => message.error(e.message) };
+  const [connect, { loading: connecting }] = useMutation(CONNECT_PROJECT_WEBHOOK, webhookOptions);
+  const [disconnect, { loading: disconnecting }] = useMutation(DISCONNECT_PROJECT_WEBHOOK, webhookOptions);
+  const [retry, { loading: retrying }] = useMutation(RETRY_PROJECT_WEBHOOK, webhookOptions);
   const [add, { loading: adding }] = useMutation(ADD_PROJECT_REPOSITORY, {
     onCompleted: () => { message.success(t('repositoryAdded')); setOpen(false); form.resetFields(); void refetch(); },
     onError: (e) => message.error(e.message),
@@ -28,6 +32,17 @@ export function ProjectRepositoriesSection({ project, canManage }: { project: st
           { title: t('repositoryName'), dataIndex: 'name', width: 180 },
           { title: t('gitlabHost'), dataIndex: 'host', width: 200 },
           { title: t('repositoryUrl'), key: 'url', render: (_, row) => <a href={row.webUrl} target="_blank" rel="noopener noreferrer">{row.path}</a> },
+          { title: t('issueImport'), key: 'webhook', width: 210, render: (_, row) => <Space orientation="vertical" size={4}>
+            <Tooltip title={row.webhook?.lastError ?? undefined}><Tag color={row.webhook?.lastError || row.webhook?.failedCount ? 'red' : row.webhook?.enabled ? 'green' : 'default'}>
+              {t(row.webhook?.lastError || row.webhook?.failedCount ? 'webhookError' : row.webhook?.enabled ? 'webhookEnabled' : 'webhookDisabled')}
+            </Tag></Tooltip>
+            {row.webhook?.lastDeliveryStatus && <Tag>{t(`webhookDelivery_${row.webhook.lastDeliveryStatus}`)}</Tag>}
+            {canManage && (row.webhook?.enabled ? <Popconfirm title={t('disableWebhookConfirm')} onConfirm={() => disconnect({ variables: { project, id: row.id } })}>
+              <Button size="small" disabled={connecting || disconnecting}>{t('disableWebhook')}</Button>
+            </Popconfirm> : <Button size="small" loading={connecting} disabled={disconnecting} onClick={() => connect({ variables: { project, id: row.id } })}>{t('enableWebhook')}</Button>)}
+            {canManage && Boolean(row.webhook?.failedCount) && <Button size="small" loading={retrying}
+              onClick={() => retry({ variables: { project, id: row.id } })}>{t('retryWebhook')}</Button>}
+          </Space> },
           ...(canManage ? [{ title: t('memberActions'), key: 'actions', width: 100, render: (_: unknown, row: ProjectRepository) => (
             <Popconfirm title={t('removeRepositoryConfirm')} okText={t('remove')} okButtonProps={{ danger: true, loading: removing }}
               onConfirm={() => remove({ variables: { project, id: row.id } })}>

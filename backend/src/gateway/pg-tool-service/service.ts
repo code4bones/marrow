@@ -1,4 +1,6 @@
 import type { Knex } from "knex";
+import type { IncomingHttpHeaders } from "node:http";
+import { acceptGitlabWebhook } from "../gitlab-webhooks/receiver.js";
 import * as z from "zod/v4";
 import { AppError } from "../../shared/errors.js";
 import { fail, ok, type ToolResponse } from "../../shared/mcp/tool-response.js";
@@ -95,6 +97,9 @@ const ComposedService = GlobalSearchMixin(
 );
 
 export class PgToolService extends ComposedService {
+  async acceptGitlabIssueWebhook(repositoryId: string, raw: Buffer, headers: IncomingHttpHeaders) {
+    return acceptGitlabWebhook(this.db, repositoryId, raw, headers);
+  }
   constructor(db: Knex, gitHttpFetch: GitHttpFetch = fetch, llmHttpFetch: LlmHttpFetch = fetch) {
     super(db, gitHttpFetch, llmHttpFetch);
   }
@@ -168,6 +173,12 @@ export class PgToolService extends ComposedService {
           return ok("Project members listed.", await this.listProjectMembers(parsed, requestContext));
         case "project.repositories":
           return ok("Project repositories listed.", await this.projectRepositories(parsed, requestContext));
+        case "project.repository_webhook_connect":
+          return ok("GitLab webhook connected.", await this.connectProjectWebhook(parsed, requestContext));
+        case "project.repository_webhook_disconnect":
+          return ok("GitLab webhook disconnected.", await this.disconnectProjectWebhook(parsed, requestContext));
+        case "project.repository_webhook_retry":
+          return ok("GitLab imports queued for retry.", await this.retryProjectWebhookImports(parsed, requestContext));
         case "project.repository_add":
           return ok("Repository added.", await this.addProjectRepository(parsed, requestContext));
         case "project.repository_remove":

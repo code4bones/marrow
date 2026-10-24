@@ -329,6 +329,32 @@ async function handleRequest(
   };
 
   try {
+    const gitlabWebhookRoute = /^\/integrations\/gitlab\/webhooks\/([0-9a-f-]{36})$/i.exec(requestPath);
+    if (request.method === "POST" && gitlabWebhookRoute) {
+      // External webhooks authenticate with their own per-repository secret,
+      // independently of Marrow sessions/OAuth. Never log the body/headers.
+      if (Number(request.headers["content-length"] ?? 0) > 1024 * 1024) {
+        request.resume();
+        send(413, { ok: false, error: { code: "VALIDATION_ERROR", message: "Webhook body exceeds 1 MiB." } });
+        return;
+      }
+      try {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        for await (const chunk of request) {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          size += bytes.length;
+          if (size > 1024 * 1024) throw new AppError("VALIDATION_ERROR", "Webhook body exceeds 1 MiB.");
+          chunks.push(bytes);
+        }
+        const result = await service.acceptGitlabIssueWebhook(gitlabWebhookRoute[1], Buffer.concat(chunks), request.headers);
+        send(202, { ok: true, data: result });
+      } catch (error) {
+        const appError = error instanceof AppError ? error : new AppError("GATEWAY_ERROR", "Could not persist GitLab webhook.");
+        send(appError.code === "UNAUTHORIZED" ? 401 : appError.code === "VALIDATION_ERROR" ? 400 : 503, fail(appError));
+      }
+      return;
+    }
     if (
       options.oauth &&
       request.method === "GET" &&
