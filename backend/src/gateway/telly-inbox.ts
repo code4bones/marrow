@@ -37,6 +37,7 @@ export type TellyInboxTaskOfferInput = {
   acceptance: string | null;
   recipientUserId: string;
   actorUserId: string;
+  actorLabel?: string;
 };
 
 // IDs only -- this becomes literal PTY input on TellyMCP's side (typed into
@@ -106,7 +107,9 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
     },
     route: {
       namespace: "marrow",
-      key: input.projectId
+      key: input.projectId,
+      label: input.projectTitle.trim() || input.projectSlug,
+      slug: input.projectSlug
     },
     resource: {
       kind: "task",
@@ -119,6 +122,7 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
     // Marrow to render the Telegram prompt or process the answer.
     display: {
       title: input.title,
+      ...(input.actorLabel?.trim() ? { sender: input.actorLabel.trim() } : {}),
       // TellyMCP's v1 public schema requires a string when summary/url are
       // present; omit rather than sending JSON null.
       ...(input.summary ? { summary: input.summary } : {}),
@@ -136,7 +140,11 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
 
 export async function enqueueTellyTaskOffer(db: Knex, input: TellyInboxTaskOfferInput): Promise<void> {
   const now = nowIso();
-  const payload = tellyInboxTaskOfferPayload(input);
+  // Snapshot the authenticated assigning user's label here. TellyMCP must
+  // remain independent of Marrow's users table and never hydrate it later.
+  const actor = await db("users").where({ id: input.actorUserId }).first("email");
+  const actorLabel = typeof actor?.email === "string" ? actor.email.trim() : "";
+  const payload = tellyInboxTaskOfferPayload({ ...input, ...(actorLabel ? { actorLabel } : {}) });
   await db("integration_outbox")
     .insert({
       id: randomUUID(),

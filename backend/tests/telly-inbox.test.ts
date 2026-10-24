@@ -20,19 +20,21 @@ describe("TellyMCP inbox offer payload (T-MEMORY-184)", () => {
         milestone: "Telly inbox",
         acceptance: "An agent can be nudged after approval.",
         recipientUserId: "user-recipient",
-        actorUserId: "user-assigner"
+        actorUserId: "user-assigner",
+        actorLabel: " assigner@example.test "
       });
 
       expect(payload).toMatchObject({
         schemaVersion: 1,
         source: { integration: "marrow", messageId: "E-MEMORY-184" },
         recipient: { externalPrincipal: { namespace: "marrow", subject: "user-recipient" } },
-        route: { namespace: "marrow", key: "P-MEMORY" },
+        route: { namespace: "marrow", key: "P-MEMORY", label: "Marrow", slug: "marrow" },
         resource: { kind: "task", id: "T-MEMORY-184" },
         kind: "work.offer",
         requiresAcceptance: true,
         display: {
           title: "Connect the generic inbox",
+          sender: "assigner@example.test",
           summary: "Deliver assignments to TellyMCP."
         }
       });

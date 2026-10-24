@@ -8,6 +8,10 @@ Tool names may be adapted to the MCP SDK naming conventions, but the concepts an
 
 Local SQLite stdio mode exposes the core project-memory tools.
 
+## TellyMCP task offers
+
+Cross-member task assignments enqueue a durable `inbox_put` offer. The route includes `namespace: "marrow"`, `key: project.id`, `label: project.title` (falling back to the slug), and `slug: project.slug`. TellyMCP can display the project name and slug without querying Marrow. `display.sender` snapshots the assigning user's email when available. The stable `key` remains the routing identity; renaming a project does not change that identity. These fields are snapshots for new offers; existing inbox entries are not rewritten. Project display metadata and sender labels are not included in literal PTY instructions.
+
 ## Project GitLab settings (gateway)
 
 Project Settings supports multiple GitLab repositories and a per-project, per-host mapping from active Marrow members (including the owner) to numeric GitLab user IDs. Account emails do not have to match.
