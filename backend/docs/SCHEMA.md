@@ -2,6 +2,8 @@
 
 ## Gateway project GitLab settings
 
+Migration `110_project_repository_lead.cjs` adds nullable `project_repositories.lead_user_id` referencing `users(id) ON DELETE SET NULL`. It identifies one lead developer, without granting permissions. Setting a lead requires an active project member or owner; membership removal clears the field in the same transaction. Import checks active membership and user status again before using the lead for issues without assignees.
+
 Migration `106_project_gitlab_settings.cjs` adds:
 
 - `project_repositories`: UUID `id`, `project_id`, normalized GitLab `host`, numeric `gitlab_project_id` stored as text, canonical `path`, `name`, `web_url`, `created_by`, `created_at`. Unique `(project_id, host, gitlab_project_id)`; project deletion cascades to these rows. Multiple repositories and multiple hosts may belong to one Marrow project.

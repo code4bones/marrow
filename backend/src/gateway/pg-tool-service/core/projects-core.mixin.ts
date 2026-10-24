@@ -436,7 +436,10 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     const deleted = await this.db.transaction(async (trx) => {
       const count = await trx("project_members")
         .where({ project_id: project.id, user_id: userId, status: "active" }).del();
-      if (count) await trx("project_gitlab_members").where({ project_id: project.id, user_id: userId }).del();
+      if (count) {
+        await trx("project_gitlab_members").where({ project_id: project.id, user_id: userId }).del();
+        await trx("project_repositories").where({ project_id: project.id, lead_user_id: userId }).update({ lead_user_id: null });
+      }
       return count;
     });
     if (!deleted) {

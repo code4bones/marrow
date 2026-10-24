@@ -15,6 +15,7 @@ import { startGatewayServer } from "../src/gateway/http-server.js";
 vi.mock("../src/gateway/telegram.js", async (original) => ({ ...await original<typeof import("../src/gateway/telegram.js")>(), notifyTelegram: vi.fn().mockResolvedValue(undefined) }));
 const require = createRequire(import.meta.url);
 const settings = require("../migrations/pg/106_project_gitlab_settings.cjs");
+const leadMigration = require("../migrations/pg/110_project_repository_lead.cjs");
 const inbox = require("../migrations/pg/108_gitlab_issue_inbox.cjs");
 const repoId = randomUUID();
 let db: Knex;
@@ -54,7 +55,7 @@ beforeEach(async () => {
     t.text("id").primary();
     for (const name of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(name);
   });
-  await settings.up(db); await inbox.up(db);
+  await settings.up(db); await inbox.up(db); await leadMigration.up(db);
   process.env.GIT_CREDENTIAL_ENC_KEY ??= Buffer.alloc(32, 8).toString("base64");
   await db("users").insert([{ id: "owner", email: "owner@marrow.test", status: "active" }, { id: "removed", email: "removed@test", status: "active" }]);
   await db("projects").insert({ id: "P-SLIFE", slug: "slife", title: "SLIFE", owner_user_id: "owner", status: "active" });
@@ -70,6 +71,33 @@ afterEach(async () => { await db.destroy(); });
 const headers = { "x-gitlab-token": "test-secret", "x-gitlab-event-uuid": "event-1" };
 
 describe("GitLab issue webhook", () => {
+  it("assigns an issue without assignees to the repository lead", async () => {
+    await db("project_repositories").where({ id: repoId }).update({ lead_user_id: "owner" });
+    await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [] }), headers);
+    await worker.tick();
+    const task = await db("tasks").first();
+    expect(task.assignee_user_id).toBe("owner");
+    expect(task.notes).toContain("repository lead developer");
+  });
+
+  it.each(["disabled", "removed"])("ignores a %s lead for an unassigned issue", async (status) => {
+    const lead = status === "disabled" ? "owner" : "removed";
+    await db("project_repositories").where({ id: repoId }).update({ lead_user_id: lead });
+    if (status === "disabled") await db("users").where({ id: lead }).update({ status: "disabled" });
+    await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [] }), headers);
+    await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBeNull();
+  });
+
+  it("preserves an explicit assignee when another repository lead is configured", async () => {
+    await db("users").insert({ id: "other", email: "other@test", status: "active" });
+    await db("project_members").insert({ project_id: "P-SLIFE", user_id: "other", role: "developer", status: "active" });
+    await db("project_gitlab_members").insert({ project_id: "P-SLIFE", user_id: "other", host: "gitlab.test", gitlab_user_id: "4", username: "other", name: "Other", updated_at: new Date().toISOString() });
+    await db("project_repositories").where({ id: repoId }).update({ lead_user_id: "owner" });
+    await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [4] }), headers);
+    await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBe("other");
+  });
   it("verifies HMAC body, timestamp and message ID; never downgrades authentication", () => {
     const raw = payload();
     const key = Buffer.alloc(32, 1);
@@ -122,6 +150,7 @@ describe("GitLab issue webhook", () => {
   });
 
   it("never assigns an unmapped or removed member", async () => {
+    await db("project_repositories").where({ id: repoId }).update({ lead_user_id: "owner" });
     await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [3] }), headers);
     await worker.tick();
     expect((await db("tasks").first()).assignee_user_id).toBeNull();

@@ -173,6 +173,8 @@ export class PgToolService extends ComposedService {
           return ok("Project members listed.", await this.listProjectMembers(parsed, requestContext));
         case "project.repositories":
           return ok("Project repositories listed.", await this.projectRepositories(parsed, requestContext));
+        case "project.repository_set_lead":
+          return ok("Repository lead developer updated.", await this.setProjectRepositoryLead(parsed, requestContext));
         case "project.repository_webhook_connect":
           return ok("GitLab webhook connected.", await this.connectProjectWebhook(parsed, requestContext));
         case "project.repository_webhook_disconnect":

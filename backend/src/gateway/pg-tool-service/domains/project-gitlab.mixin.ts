@@ -12,7 +12,8 @@ import { gitlabWebhookStatus } from "../../gitlab-webhooks/receiver.js";
 
 function repositoryOut(row: Row) {
   return { id: row.id, projectId: row.project_id, host: row.host, gitlabProjectId: row.gitlab_project_id,
-    path: row.path, name: row.name, webUrl: row.web_url, createdAt: row.created_at };
+    path: row.path, name: row.name, webUrl: row.web_url, leadUserId: row.lead_user_id ?? null,
+    leadEmail: row.lead_email ?? null, createdAt: row.created_at };
 }
 
 function mappingOut(row: Row) {
@@ -23,8 +24,31 @@ export function ProjectGitlabMixin<TBase extends Constructor<Tier1Instance & Git
   return class extends Base {
     protected async projectRepositories(input: Row, context: NormalizedGatewayRequestContext) {
       const project = await this.resolveProject(input.project, context);
-      const rows = await this.db("project_repositories").where({ project_id: project.id }).orderBy("host").orderBy("path");
+      const rows = await this.db("project_repositories").leftJoin("users as lead", "lead.id", "project_repositories.lead_user_id")
+        .where({ "project_repositories.project_id": project.id }).select("project_repositories.*", "lead.email as lead_email").orderBy("host").orderBy("path");
       return { repositories: await Promise.all(rows.map(async (row) => ({ ...repositoryOut(row), webhook: await gitlabWebhookStatus(this.db, String(row.id)) }))) };
+    }
+
+    protected async setProjectRepositoryLead(input: Row, context: NormalizedGatewayRequestContext) {
+      const project = await this.resolveProject(input.project, context);
+      await this.assertProjectOwnerOrAdmin(project, context);
+      const userId = input.userId === null ? null : String(input.userId);
+      await this.db.transaction(async (trx) => {
+        const repo = await trx("project_repositories").where({ id: input.id, project_id: project.id }).forUpdate().first();
+        if (!repo) throw new AppError("NOT_FOUND", "Repository not found in this project.");
+        if (userId) {
+          const user = await trx("users").where({ id: userId, status: "active" }).first();
+          const member = await trx("project_members").where({ project_id: project.id, user_id: userId, status: "active" }).forShare().first();
+          if (!user || (!member && project.ownerUserId !== userId)) throw new AppError("VALIDATION_ERROR", "Select an active member of this project as lead developer.");
+        }
+        await trx("project_repositories").where({ id: repo.id }).update({ lead_user_id: userId });
+      });
+      await this.recordEventForProject(project.id, {
+        type: "project.repository_lead_updated", title: userId ? "Repository lead developer updated" : "Repository lead developer cleared", related_id: project.id
+      }, context);
+      const row = await this.db("project_repositories").leftJoin("users as lead", "lead.id", "project_repositories.lead_user_id")
+        .where({ "project_repositories.id": input.id }).select("project_repositories.*", "lead.email as lead_email").first();
+      return repositoryOut(row);
     }
 
     protected async addProjectRepository(input: Row, context: NormalizedGatewayRequestContext) {

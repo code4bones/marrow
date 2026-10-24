@@ -1,13 +1,20 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ADD_PROJECT_REPOSITORY, CONNECT_PROJECT_WEBHOOK, DISCONNECT_PROJECT_WEBHOOK, GET_PROJECT_REPOSITORIES, REMOVE_PROJECT_REPOSITORY, RETRY_PROJECT_WEBHOOK, type ProjectRepository } from '../../shared/api/project-gitlab';
+import { ADD_PROJECT_REPOSITORY, CONNECT_PROJECT_WEBHOOK, DISCONNECT_PROJECT_WEBHOOK, GET_PROJECT_REPOSITORIES, REMOVE_PROJECT_REPOSITORY, RETRY_PROJECT_WEBHOOK, SET_PROJECT_REPOSITORY_LEAD, type ProjectRepository } from '../../shared/api/project-gitlab';
+import { GET_PROJECT_MEMBERS } from '../../shared/api/queries';
+import type { ProjectMember } from '../../shared/model/types';
 
 export function ProjectRepositoriesSection({ project, canManage }: { project: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
   const { data, loading, error, refetch } = useQuery<{ projectRepositories: ProjectRepository[] }>(GET_PROJECT_REPOSITORIES, { variables: { project }, pollInterval: 10000 });
+  const members = useQuery<{ projectMembers: ProjectMember[] }>(GET_PROJECT_MEMBERS, { variables: { project }, skip: !canManage });
+  const [setLead, { loading: settingLead }] = useMutation(SET_PROJECT_REPOSITORY_LEAD, {
+    onCompleted: () => { message.success(t('repositoryLeadUpdated')); void refetch(); },
+    onError: (e) => message.error(e.message),
+  });
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<{ url: string }>();
   const webhookOptions = { onCompleted: () => { void refetch(); }, onError: (e: Error) => message.error(e.message) };
@@ -26,12 +33,20 @@ export function ProjectRepositoriesSection({ project, canManage }: { project: st
     <Card title={t('repositories')} size="small" style={{ marginBottom: 16 }}
       extra={canManage && <Button size="small" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('addRepository')}</Button>}>
       {error && <Alert type="error" title={error.message} showIcon style={{ marginBottom: 8 }} />}
+      {members.error && <Alert type="error" title={members.error.message} showIcon style={{ marginBottom: 8 }} />}
       <Table<ProjectRepository> size="small" rowKey="id" loading={loading} dataSource={data?.projectRepositories ?? []}
-        pagination={false} scroll={{ x: 620 }} locale={{ emptyText: t('noRepositories') }}
+        pagination={false} scroll={{ x: 1000 }} locale={{ emptyText: t('noRepositories') }}
         columns={[
           { title: t('repositoryName'), dataIndex: 'name', width: 180 },
           { title: t('gitlabHost'), dataIndex: 'host', width: 200 },
           { title: t('repositoryUrl'), key: 'url', render: (_, row) => <a href={row.webUrl} target="_blank" rel="noopener noreferrer">{row.path}</a> },
+          { title: t('repositoryLead'), key: 'lead', width: 260, render: (_, row) => canManage ? <Select<string>
+            size="small" showSearch allowClear optionFilterProp="label" style={{ width: '100%' }}
+            aria-label={`${t('repositoryLead')}: ${row.name}`} placeholder={t('chooseRepositoryLead')}
+            value={row.leadUserId ?? undefined} loading={members.loading || settingLead} disabled={members.loading || settingLead}
+            options={(members.data?.projectMembers ?? []).map((member) => ({ value: member.userId, label: member.email }))}
+            onChange={(userId) => setLead({ variables: { project, id: row.id, userId: userId ?? null } })}
+          /> : row.leadEmail ?? '—' },
           { title: t('issueImport'), key: 'webhook', width: 210, render: (_, row) => <Space orientation="vertical" size={4}>
             <Tooltip title={row.webhook?.lastError ?? undefined}><Tag color={row.webhook?.lastError || row.webhook?.failedCount ? 'red' : row.webhook?.enabled ? 'green' : 'default'}>
               {t(row.webhook?.lastError || row.webhook?.failedCount ? 'webhookError' : row.webhook?.enabled ? 'webhookEnabled' : 'webhookDisabled')}

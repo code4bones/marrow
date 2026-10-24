@@ -8,6 +8,8 @@ The repository now contains a working local-first TypeScript MCP server with SQL
 
 Implemented capabilities:
 
+- One lead developer per project repository, editable in Settings by the owner/admin; used as default recipient for imported GitLab issues without assignees. Explicit assignees retain priority; inactive/removed leads are ignored.
+
 - Project Settings GitLab configuration: multiple verified repository URLs, table of pending/active members including the owner, GitLab user search and per-project/host identity mappings; owner/admin management, GraphQL and MCP tools. GitLab issue webhooks can be enabled per repository: bounded authenticated receiver, durable inbox, retry worker, idempotent provenance links and mapped task assignments.
 
 - project registry

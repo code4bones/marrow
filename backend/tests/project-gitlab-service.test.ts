@@ -7,6 +7,7 @@ import { eventOut } from "../src/gateway/pg-tool-service/formatters/events.js";
 import type { GatewayRequestContext, Row } from "../src/gateway/pg-tool-service/types.js";
 
 const migration = createRequire(import.meta.url)("../migrations/pg/106_project_gitlab_settings.cjs") as { up: (db: Knex) => Promise<void> };
+const leadMigration = createRequire(import.meta.url)("../migrations/pg/110_project_repository_lead.cjs") as { up: (db: Knex) => Promise<void> };
 const webhookMigration = createRequire(import.meta.url)("../migrations/pg/108_gitlab_issue_inbox.cjs") as { up: (db: Knex) => Promise<void> };
 
 // Isolated database tests: real service, queries, constraints and migration;
@@ -29,7 +30,7 @@ beforeEach(async () => {
   hooks.clear();
   process.env.PROJECT_MEMORY_PUBLIC_URL = "https://marrow.example.test/api";
   db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
-  await db.schema.createTable("users", (t) => { t.text("id").primary(); t.text("email"); });
+  await db.schema.createTable("users", (t) => { t.text("id").primary(); t.text("email"); t.text("status"); });
   await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("slug"); t.text("title"); t.text("owner_user_id"); });
   await db.schema.createTable("project_members", (t) => {
     t.text("project_id"); t.text("user_id"); t.text("status"); t.text("role"); t.primary(["project_id", "user_id"]);
@@ -39,7 +40,8 @@ beforeEach(async () => {
   });
   await migration.up(db);
   await webhookMigration.up(db);
-  await db("users").insert(["owner", "member", "pending", "outsider"].map((id) => ({ id, email: `${id}@example.test` })));
+  await leadMigration.up(db);
+  await db("users").insert(["owner", "member", "pending", "outsider"].map((id) => ({ id, email: `${id}@example.test`, status: "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider" }]);
   await db("project_members").insert(["owner", "member", "pending"].map((id) => ({ project_id: "P-TEST", user_id: id, status: id === "pending" ? "pending_approval" : "active", role: "developer" })));
   process.env.GIT_CREDENTIAL_ENC_KEY ??= Buffer.alloc(32, 7).toString("base64");
@@ -74,6 +76,29 @@ async function map(userId: string, host = "gitlab-a.test") {
 }
 
 describe("project GitLab permissions and persistence", () => {
+  it("allows only the owner/admin to set or clear an active repository lead", async () => {
+    await add();
+    const repo = await db("project_repositories").first();
+    const input = { project: "test", id: repo.id, userId: "member" };
+    expect(await service.call("project.repository_set_lead", input, member)).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
+    for (const userId of ["pending", "outsider"]) {
+      expect(await service.call("project.repository_set_lead", { ...input, userId }, owner)).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+    }
+    await db("users").where({ id: "member" }).update({ status: "disabled" });
+    expect(await service.call("project.repository_set_lead", input, owner)).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+    await db("users").where({ id: "member" }).update({ status: "active" });
+    expect(await service.call("project.repository_set_lead", input, owner)).toMatchObject({ ok: true, data: { leadUserId: "member", leadEmail: "member@example.test" } });
+    expect((await db("project_repositories").first()).lead_user_id).toBe("member");
+    expect(await service.call("project.repository_set_lead", { ...input, userId: null }, owner)).toMatchObject({ ok: true, data: { leadUserId: null, leadEmail: null } });
+    expect(await service.call("project.repository_set_lead", { ...input, userId: "owner" }, owner)).toMatchObject({ ok: true, data: { leadUserId: "owner" } });
+  });
+
+  it("does not change a repository in another project when setting its lead", async () => {
+    await add();
+    const repo = await db("project_repositories").first();
+    expect(await service.call("project.repository_set_lead", { project: "other", id: repo.id, userId: "owner" }, { ...owner, sessionRole: "admin" })).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    expect((await db("project_repositories").first()).lead_user_id).toBeNull();
+  });
   it("registers/repairs one authenticated hook and disables it without exposing secrets", async () => {
     await add();
     const row = await db("project_repositories").first();
@@ -125,8 +150,11 @@ describe("project GitLab permissions and persistence", () => {
 
   it("clears mappings when a member is removed", async () => {
     await add(); await map("member");
+    const repo = await db("project_repositories").first();
+    await service.call("project.repository_set_lead", { project: "test", id: repo.id, userId: "member" }, owner);
     expect((await service.call("project.remove_member", { project: "test", userId: "member" }, owner)).ok).toBe(true);
     expect(await db("project_gitlab_members")).toHaveLength(0);
+    expect((await db("project_repositories").first()).lead_user_id).toBeNull();
   });
 
   it("does not detach another project's repository by ID", async () => {

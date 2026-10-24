@@ -83,7 +83,11 @@ export class GitlabIssueWorker {
       const active = new Set([project.owner_user_id, ...activeMembers.map((row) => row.user_id)]);
       const usable = mappings.filter((row) => row.user_status === "active" && active.has(row.user_id));
       const recipients = [...new Set(usable.filter((row) => issue.assigneeIds.includes(String(row.gitlab_user_id))).map((row) => String(row.user_id)))];
-      const assignee = recipients.length === 1 ? recipients[0] : null;
+      let assignee = recipients.length === 1 ? recipients[0] : null;
+      if (issue.assigneeIds.length === 0 && repo.lead_user_id && active.has(repo.lead_user_id)) {
+        const lead = await trx("users").where({ id: repo.lead_user_id, status: "active" }).first();
+        if (lead) assignee = String(repo.lead_user_id);
+      }
       const actor = usable.find((row) => String(row.gitlab_user_id) === issue.actorId)?.user_id;
       const service = this.createService(trx);
       service.deferEventNotifications();
@@ -92,6 +96,7 @@ export class GitlabIssueWorker {
         milestone: `GitLab: ${repo.host}/${repo.path}`, assignee,
         notes: [`GitLab issue: ${repo.web_url}/-/issues/${issue.iid}`, `Source: ${repo.host}/${repo.path}#${issue.iid}`,
           `Author GitLab ID: ${issue.authorId ?? "unknown"}`, `Assignee GitLab IDs: ${issue.assigneeIds.join(", ") || "none"}`,
+          issue.assigneeIds.length === 0 && assignee ? "Assigned to the repository lead developer (issue has no assignee)." : null,
           issue.labels.length ? `Labels: ${issue.labels.join(", ")}` : null,
           recipients.length > 1 ? "Several mapped assignees; assign a single Marrow recipient manually." : null].filter(Boolean).join("\n")
       }, { clientId: `integration:gitlab:${repo.id}`, clientLabel: `GitLab ${repo.host}/${repo.path}`,

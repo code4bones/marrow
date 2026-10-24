@@ -298,6 +298,7 @@ const typeDefs = `#graphql
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     addProjectRepository(project: String!, url: String!): ProjectRepository!
+    setProjectRepositoryLead(project: String!, id: ID!, userId: ID): ProjectRepository!
     removeProjectRepository(project: String!, id: ID!): Boolean!
     connectProjectRepositoryWebhook(project: String!, id: ID!): GitlabWebhookStatus!
     disconnectProjectRepositoryWebhook(project: String!, id: ID!): GitlabWebhookStatus!
@@ -638,6 +639,8 @@ const typeDefs = `#graphql
     path: String!
     name: String!
     webUrl: String!
+    leadUserId: ID
+    leadEmail: String
     createdAt: String
     webhook: GitlabWebhookStatus
   }
@@ -1582,6 +1585,8 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
     addProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.repository_add", cleanInput(args)),
+    setProjectRepositoryLead: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.repository_set_lead", cleanInput(args)),
     connectProjectRepositoryWebhook: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.repository_webhook_connect", cleanInput(args)),
     disconnectProjectRepositoryWebhook: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
