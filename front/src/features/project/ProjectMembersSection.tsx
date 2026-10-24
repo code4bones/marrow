@@ -1,6 +1,5 @@
-import { LinkOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Card, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { APPROVE_PROJECT_MEMBER, GET_PENDING_PROJECT_MEMBERS, GET_PROJECT_MEMBERS, REJECT_PROJECT_MEMBER, REMOVE_PROJECT_MEMBER, UPDATE_PROJECT_MEMBER_ROLE } from '../../shared/api/queries';
@@ -8,6 +7,7 @@ import { GET_PROJECT_GITLAB_MAPPINGS, GET_PROJECT_REPOSITORIES, type ProjectGitl
 import type { PendingProjectMember, ProjectMember, ProjectMemberRole } from '../../shared/model/types';
 import { Timestamp } from '../../shared/ui/Timestamp';
 import { MemberGitlabDialog } from './MemberGitlabDialog';
+import { MemberGitlabCell } from './MemberGitlabCell';
 
 interface MemberRow extends ProjectMember { pending: boolean; requestedAt?: string | null }
 
@@ -19,7 +19,7 @@ export function ProjectMembersSection({ slug, canManage, ownerUserId }: { slug: 
   const repositories = useQuery<{ projectRepositories: ProjectRepository[] }>(GET_PROJECT_REPOSITORIES, options);
   const mappings = useQuery<{ projectGitlabMappings: ProjectGitlabMapping[] }>(GET_PROJECT_GITLAB_MAPPINGS, options);
   const [approveRole, setApproveRole] = useState<Record<string, ProjectMemberRole>>({});
-  const [selected, setSelected] = useState<MemberRow | null>(null);
+  const [selected, setSelected] = useState<{ member: MemberRow; host: string } | null>(null);
   const refresh = () => { void pending.refetch(); void members.refetch(); void mappings.refetch(); };
   const mutationOptions = (key: string) => ({ onCompleted: () => { message.success(t(key)); refresh(); }, onError: (e: Error) => message.error(e.message) });
   const [approve, { loading: approving }] = useMutation(APPROVE_PROJECT_MEMBER, mutationOptions('memberApproved'));
@@ -56,14 +56,8 @@ export function ProjectMembersSection({ slug, canManage, ownerUserId }: { slug: 
                 : void changeRole({ variables: { project: slug, userId: row.userId, role } })} />
           ) },
           { title: t('gitlabUser'), key: 'gitlab', width: 240, render: (_, row) => row.pending ? '—' : (
-            <Space orientation="vertical" size={4}>
-              {(mappings.data?.projectGitlabMappings ?? []).filter((item) => item.userId === row.userId).map((item) => (
-                <Typography.Text key={item.host} style={{ fontSize: 12 }}>{item.host} · @{item.username}</Typography.Text>
-              ))}
-              <Tooltip title={!hosts.length ? t('addRepositoryFirst') : undefined}>
-                <Button size="small" icon={<LinkOutlined />} disabled={mappings.loading || (!hosts.length && !(mappings.data?.projectGitlabMappings ?? []).some((item) => item.userId === row.userId))} onClick={() => setSelected(row)}>{t('linkGitlabUser')}</Button>
-              </Tooltip>
-            </Space>
+            <MemberGitlabCell project={slug} userId={row.userId} hosts={hosts} mappings={mappings.data?.projectGitlabMappings ?? []}
+              loading={mappings.loading} onLink={(host) => setSelected({ member: row, host })} onChanged={() => { void mappings.refetch(); }} />
           ) },
           { title: t('memberActions'), key: 'actions', width: 200, render: (_, row) => row.userId === ownerUserId ? null : row.pending ? (
             <Space wrap>
@@ -81,9 +75,8 @@ export function ProjectMembersSection({ slug, canManage, ownerUserId }: { slug: 
             </Popconfirm>
           ) },
         ]} />
-      {selected && <MemberGitlabDialog key={`${slug}:${selected.userId}`} project={slug} userId={selected.userId} email={selected.email}
-        hosts={[...new Set([...hosts, ...(mappings.data?.projectGitlabMappings ?? []).filter((item) => item.userId === selected.userId).map((item) => item.host)])]}
-        mappings={mappings.data?.projectGitlabMappings ?? []} onClose={() => setSelected(null)} onSaved={() => { void mappings.refetch(); }} />}
+      {selected && <MemberGitlabDialog key={`${slug}:${selected.member.userId}:${selected.host}`} project={slug} userId={selected.member.userId} email={selected.member.email}
+        host={selected.host} onClose={() => setSelected(null)} onSaved={() => { void mappings.refetch(); }} />}
     </Card>
   );
 }
