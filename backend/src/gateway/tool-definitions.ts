@@ -16,6 +16,7 @@ import {
   updateMemorySchema
 } from "../features/memory/model/schema.js";
 import { gitHostProblem } from "./git-host-safety.js";
+import { projectGitlabToolSpecs } from "./project-gitlab-tools.js";
 import { preflightSchema } from "../features/preflight/model/schema.js";
 import { recordLinksInputSchema } from "../features/memory/model/schema.js";
 import {
@@ -2057,7 +2058,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
 // before the call is ever sent -- so the field has to actually be in the
 // schema for a caller to be able to pass it at all. Merged in here once,
 // rather than by hand on all ~115 specs above.
-export const gatewayToolSpecs: GatewayToolSpec[] = baseGatewayToolSpecs.map((spec) => ({
+export const gatewayToolSpecs: GatewayToolSpec[] = [...baseGatewayToolSpecs, ...projectGitlabToolSpecs].map((spec) => ({
   ...spec,
   schema: spec.schema.extend({ agent: z.string().min(1).optional() })
 }));

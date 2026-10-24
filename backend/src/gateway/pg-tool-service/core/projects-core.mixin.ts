@@ -433,9 +433,12 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
     if (project.ownerUserId === userId) {
       throw new AppError("VALIDATION_ERROR", "The project owner can't be removed from their own project.", { projectId: project.id, userId });
     }
-    const deleted = await this.db("project_members")
-      .where({ project_id: project.id, user_id: userId, status: "active" })
-      .del();
+    const deleted = await this.db.transaction(async (trx) => {
+      const count = await trx("project_members")
+        .where({ project_id: project.id, user_id: userId, status: "active" }).del();
+      if (count) await trx("project_gitlab_members").where({ project_id: project.id, user_id: userId }).del();
+      return count;
+    });
     if (!deleted) {
       throw new AppError("NOT_FOUND", "This user is not an active member of this project.", { projectId: project.id, userId });
     }

@@ -247,6 +247,9 @@ const typeDefs = `#graphql
     # "requires a logged-in session" error, not an empty/guessed result. See
     # docs/AUTH.md's "Git host credentials" section.
     gitCredentials: [GitCredential!]!
+    projectRepositories(project: String!): [ProjectRepository!]!
+    projectGitlabMappings(project: String!): [ProjectGitlabMapping!]!
+    projectGitlabUsers(project: String!, host: String!, query: String!): [GitlabUser!]!
     gitPipelineStatus(host: String!, project: String!, ref: String): JSON
     gitJobTrace(host: String!, project: String!, jobId: Int, ref: String, jobName: String, tailLines: Int, redact: Boolean): JSON
     gitRunnersStatus(host: String!, project: String!): JSON
@@ -294,6 +297,10 @@ const typeDefs = `#graphql
     rejectProjectMember(project: String, userId: ID!): Boolean!
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
+    addProjectRepository(project: String!, url: String!): ProjectRepository!
+    removeProjectRepository(project: String!, id: ID!): Boolean!
+    setProjectMemberGitlab(project: String!, userId: ID!, host: String!, gitlabUserId: String!): ProjectGitlabMapping!
+    removeProjectMemberGitlab(project: String!, userId: ID!, host: String!): Boolean!
     deleteProject(id: ID, slug: String, cascade: Boolean, reason: String): DeleteProjectResult!
     pinProject(id: ID, slug: String, pinned: Boolean!): Project!
 
@@ -618,6 +625,31 @@ const typeDefs = `#graphql
     pinned: Boolean!
     createdAt: String
     updatedAt: String
+  }
+
+  type ProjectRepository {
+    id: ID!
+    projectId: String!
+    host: String!
+    gitlabProjectId: String!
+    path: String!
+    name: String!
+    webUrl: String!
+    createdAt: String
+  }
+
+  type GitlabUser {
+    gitlabUserId: String!
+    username: String!
+    name: String!
+  }
+
+  type ProjectGitlabMapping {
+    userId: ID!
+    host: String!
+    gitlabUserId: String!
+    username: String!
+    name: String!
   }
 
   type ProjectMember {
@@ -1382,6 +1414,12 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.members", {})).members,
     gitCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
+    projectRepositories: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.repositories", cleanInput(args))).repositories,
+    projectGitlabMappings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.gitlab_mappings", cleanInput(args))).mappings,
+    projectGitlabUsers: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.gitlab_users_search", cleanInput(args))).users,
     gitPipelineStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.pipeline_status", cleanInput(args)),
     gitJobTrace: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1528,6 +1566,14 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.remove_member", cleanInput(args))).removed,
     renameProjectGroup: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
+    addProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.repository_add", cleanInput(args)),
+    removeProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.repository_remove", cleanInput(args))).removed,
+    setProjectMemberGitlab: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.member_gitlab_set", cleanInput(args)),
+    removeProjectMemberGitlab: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.member_gitlab_remove", cleanInput(args))).removed,
     createGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "git.credential_create", cleanInput(args)),
     deleteGitCredential: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) => {

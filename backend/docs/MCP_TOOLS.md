@@ -8,6 +8,24 @@ Tool names may be adapted to the MCP SDK naming conventions, but the concepts an
 
 Local SQLite stdio mode exposes the core project-memory tools.
 
+## Project GitLab settings (gateway)
+
+Project Settings supports multiple GitLab repositories and a per-project, per-host mapping from active Marrow members (including the owner) to numeric GitLab user IDs. Account emails do not have to match.
+
+| Tool | Inputs | Behavior |
+| --- | --- | --- |
+| `project.repositories` | `project` | List attached repositories; visible to project members. |
+| `project.repository_add` | `project`, `url` | Verify an HTTPS repository URL with the caller's stored GitLab credential and attach its numeric ID. Repeated additions are idempotent. |
+| `project.repository_remove` | `project`, `id` | Detach a repository; keep the remote repository and member mappings. |
+| `project.gitlab_mappings` | `project` | List member mappings. |
+| `project.gitlab_users_search` | `project`, `host`, `query` | Search active GitLab users (2–100 characters, up to 20 results); host must belong to an attached repository. |
+| `project.member_gitlab_set` | `project`, `userId`, `host`, `gitlabUserId` | Fetch the selected GitLab user again and store a mapping for an active member or project owner. |
+| `project.member_gitlab_remove` | `project`, `userId`, `host` | Remove one mapping. |
+
+All operations except repository listing require project owner/system admin access. Mutations require write scope. GitLab calls reuse the caller's existing credential selection and host/redirect protections; credentials never leave the server. A GitLab user can map to only one Marrow recipient within a project/host. Removing a Marrow member clears their mappings. GraphQL exposes matching queries/mutations for Settings.
+
+This is configuration for the upcoming issue import. Adding a repository does not register a webhook or import issues yet.
+
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 
 * `auth.whoami` (`auth_whoami` for Claude-compatible clients)

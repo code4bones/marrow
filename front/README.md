@@ -1,5 +1,7 @@
 # React + TypeScript + Vite
 
+Project Settings → General includes a Members table (approval, role management, removal, and GitLab user mapping) and a Repositories table. Add one or more HTTPS GitLab repository URLs before searching for users on those hosts. The caller needs a saved GitLab credential in their profile. Mappings are scoped to the Marrow project and GitLab server; emails may differ. Repository removal detaches only the Marrow configuration. Webhook registration/issue import is a subsequent phase.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 ## CI/CD

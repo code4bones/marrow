@@ -443,3 +443,5 @@ export function GitCredentialsMixin<TBase extends Constructor<BaseService>>(Base
 
   };
 }
+
+export type GitCredentialsInstance = InstanceType<ReturnType<typeof GitCredentialsMixin>>;

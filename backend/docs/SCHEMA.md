@@ -1,5 +1,14 @@
 # SCHEMA.md
 
+## Gateway project GitLab settings
+
+Migration `106_project_gitlab_settings.cjs` adds:
+
+- `project_repositories`: UUID `id`, `project_id`, normalized GitLab `host`, numeric `gitlab_project_id` stored as text, canonical `path`, `name`, `web_url`, `created_by`, `created_at`. Unique `(project_id, host, gitlab_project_id)`; project deletion cascades to these rows. Multiple repositories and multiple hosts may belong to one Marrow project.
+- `project_gitlab_members`: `(project_id, user_id, host)` primary key, `gitlab_user_id` stored as text, display snapshots `username`/`name`, and `updated_at`. Unique `(project_id, host, gitlab_user_id)` prevents ambiguous recipients. Project/user deletion cascades; membership removal explicitly clears mappings in the same transaction. Membership and role remain independent of GitLab identity.
+
+Detaching a repository preserves member mappings, so reattaching a repository on the same host retains configured recipients. New mappings/searches require an attached repository on that host. These tables contain no tokens and do not implement webhook delivery or issue synchronization.
+
 # Project Memory MCP — Database Schema
 
 ## Storage

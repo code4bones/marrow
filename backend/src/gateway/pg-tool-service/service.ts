@@ -17,6 +17,7 @@ import { SkillsMixin } from "./domains/skills.mixin.js";
 import { EventsMixin } from "./domains/events.mixin.js";
 import { ClientsMixin } from "./domains/clients.mixin.js";
 import { GitCredentialsMixin } from "./domains/git-credentials.mixin.js";
+import { ProjectGitlabMixin } from "./domains/project-gitlab.mixin.js";
 import { EnvironmentVariablesMixin } from "./domains/environment-variables.mixin.js";
 import { AiProvidersMixin } from "./domains/ai-providers.mixin.js";
 import { AiChatMixin } from "./domains/ai-chat.mixin.js";
@@ -55,7 +56,7 @@ const ComposedService = GlobalSearchMixin(
               GatewayOpsMixin(
                 UserPrefsMixin(
                   GraphMixin(
-                    GitCredentialsMixin(
+                    ProjectGitlabMixin(GitCredentialsMixin(
                       EnvironmentVariablesMixin(
                         AiProvidersMixin(
                           AiChatMixin(
@@ -81,7 +82,7 @@ const ComposedService = GlobalSearchMixin(
                           )
                         )
                       )
-                    )
+                    ))
                   )
                 )
               )
@@ -165,6 +166,20 @@ export class PgToolService extends ComposedService {
           return ok("Project loaded.", { project: await this.getProject(parsed, requestContext) });
         case "project.members":
           return ok("Project members listed.", await this.listProjectMembers(parsed, requestContext));
+        case "project.repositories":
+          return ok("Project repositories listed.", await this.projectRepositories(parsed, requestContext));
+        case "project.repository_add":
+          return ok("Repository added.", await this.addProjectRepository(parsed, requestContext));
+        case "project.repository_remove":
+          return ok("Repository removed.", await this.removeProjectRepository(parsed, requestContext));
+        case "project.gitlab_mappings":
+          return ok("GitLab mappings listed.", await this.projectGitlabMappings(parsed, requestContext));
+        case "project.gitlab_users_search":
+          return ok("GitLab users found.", await this.projectGitlabUsersSearch(parsed, requestContext));
+        case "project.member_gitlab_set":
+          return ok("GitLab mapping saved.", await this.setProjectMemberGitlab(parsed, requestContext));
+        case "project.member_gitlab_remove":
+          return ok("GitLab mapping removed.", await this.removeProjectMemberGitlab(parsed, requestContext));
         case "project.update":
           return ok("Project updated.", { project: await this.updateProject(parsed, requestContext) });
         case "project.invite_link_get":

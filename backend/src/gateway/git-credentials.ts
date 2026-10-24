@@ -377,7 +377,7 @@ async function gitlabRequest(
   return response;
 }
 
-async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<T> {
+export async function gitlabGet<T>(url: URL, token: string, httpFetch: GitHttpFetch, host: string): Promise<T> {
   const response = await gitlabRequest(url, token, httpFetch, host);
   return (await response.json()) as T;
 }
