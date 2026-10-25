@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { EXPORT_TASK_GITLAB, GET_PROJECT_REPOSITORIES, GET_TASK_GITLAB_STATUS, type ProjectRepository, type TaskGitlabStatus } from '../../shared/api/project-gitlab';
 import type { ProjectMemberRole } from '../../shared/model/types';
 import { canPerform } from '../../shared/lib/taskPermissions';
+import { useRealtimeStore } from '../../shared/model/realtime.store';
+import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 
 export function TaskGitlabPanel({ taskId, projectId, role, assigneeUserId }: {
   taskId: string; projectId: string | null; role?: ProjectMemberRole | null; assigneeUserId?: string | null;
@@ -18,6 +20,8 @@ export function TaskGitlabPanel({ taskId, projectId, role, assigneeUserId }: {
   const { data: repoData } = useQuery<{ projectRepositories: ProjectRepository[] }>(GET_PROJECT_REPOSITORIES, {
     variables: { project: projectId }, skip: !projectId,
   });
+  const tasksVersion = useRealtimeStore((s) => s.tasksVersion);
+  useRefetchOnVersion(tasksVersion, refetch);
   const [exportIssue, { loading }] = useMutation(EXPORT_TASK_GITLAB, {
     onCompleted: () => { void refetch(); }, onError: (e) => message.error(e.message),
   });
