@@ -12,6 +12,7 @@ import { EventsPage } from '../../pages/events';
 import { FaultsPage } from '../../pages/faults';
 import { LinksPage } from '../../pages/links';
 import { LoginPage } from '../../pages/login';
+import { GitlabLinkRequiredPage } from '../../pages/gitlab-link-required';
 import { MemoryPage } from '../../pages/memory';
 import { NotificationsPage } from '../../pages/notifications';
 import { OAuthAuthorizePage } from '../../pages/oauth-authorize';
@@ -58,6 +59,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/gitlab-link-required" element={<GitlabLinkRequiredPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/claim" element={<ClaimPage />} />
       <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />

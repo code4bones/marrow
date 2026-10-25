@@ -67,13 +67,25 @@ describe("GitLab browser authorization routes", () => {
     expect(auth.mintOAuthState).toHaveBeenCalledWith("link", "one", null, expect.any(String), "gitlab", issuer);
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
-  it("fails closed if browser binding is unavailable and reuses an active Marrow session", async () => {
+  it("fails closed if browser binding is unavailable and reuses a linked active Marrow session", async () => {
     vi.stubEnv("TOTP_ENC_KEY", "");
     expect((await fetch(`${base}/auth/oauth/gitlab/start`, { redirect: "manual" })).status).toBe(503);
     expect(gitlabOidc.authorizeUrl).not.toHaveBeenCalled();
     session = active;
+    vi.mocked(auth.gitlabLinkStatus).mockResolvedValue({ linked: true, username: "alice", issuer });
     const response = await fetch(`${base}/auth/oauth/gitlab/start`, { redirect: "manual" });
     expect(response.headers.get("location")).toBe("/projects");
+    expect(auth.gitlabLinkStatus).toHaveBeenCalledWith("one", issuer);
+  });
+  it("shows linking instructions for an active Marrow session without a GitLab link", async () => {
+    session = active;
+    const response = await fetch(`${base}/auth/oauth/gitlab/start?intent=login`, { redirect: "manual" });
+    expect(response.headers.get("location")).toBe("/gitlab-link-required");
+    expect(auth.gitlabLinkStatus).toHaveBeenCalledWith("one", issuer);
+    expect(auth.mintOAuthState).not.toHaveBeenCalled();
+    expect(auth.loginViaGitlab).not.toHaveBeenCalled();
+    expect(gitlabOidc.authorizeUrl).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
   it("rejects handed-off callback URLs without the original browser cookie", async () => {
     const response = await callback(false);
@@ -97,21 +109,21 @@ describe("GitLab browser authorization routes", () => {
     vi.mocked(auth.consumeOAuthState).mockResolvedValue({ intent: "link", userId: "one", returnTo: null, codeVerifier: "verifier", issuer });
     session = { ...active, userId: "two" };
     const response = await callback();
-    expect(response.headers.get("location")).toMatch(/^\/profile\?gitlabError=/);
+    expect(response.headers.get("location")).toMatch(/^\/profile\?section=account&gitlabError=/);
     expect(gitlabOidc.resolveUser).not.toHaveBeenCalled();
     expect(auth.linkGitlabIdentity).not.toHaveBeenCalled();
   });
   it("links the verified identity and does not log in a different account", async () => {
     session = active;
     vi.mocked(auth.consumeOAuthState).mockResolvedValue({ intent: "link", userId: "one", returnTo: null, codeVerifier: "verifier", issuer });
-    expect((await callback()).headers.get("location")).toBe("/profile?gitlabLinked=1");
+    expect((await callback()).headers.get("location")).toBe("/profile?section=account&gitlabLinked=1");
     expect(auth.linkGitlabIdentity).toHaveBeenCalledWith("one", identity);
     expect(auth.loginViaGitlab).not.toHaveBeenCalled();
   });
   it("does not auto-register unlinked identities and hides provider failures", async () => {
     vi.mocked(auth.loginViaGitlab).mockResolvedValue({ status: "not_linked" });
     const unlinked = await callback();
-    expect(unlinked.headers.get("location")).toContain("not%20linked");
+    expect(unlinked.headers.get("location")).toBe("/gitlab-link-required");
     expect(unlinked.headers.get("set-cookie")).not.toContain("marrow_session");
     vi.mocked(gitlabOidc.resolveUser).mockRejectedValue(new Error("sensitive-provider-details"));
     const failed = await callback();

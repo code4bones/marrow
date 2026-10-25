@@ -8,6 +8,14 @@ card. There is no GitLab button on the public Login page. First sign in with
 an existing Marrow method (Telegram/GitHub/password), connect GitLab, then
 launch Marrow from GitLab Applications.
 
+Launching without a link opens `/gitlab-link-required`, an English/Russian
+instruction screen: sign in to Marrow, connect GitLab in Profile → Account,
+then launch again from GitLab Applications. The page offers existing Marrow
+login for signed-out users or a direct Profile Account link for signed-in
+users. It carries no identity or token data and grants no access. An existing
+Marrow session also requires a configured-issuer GitLab link when using the
+launcher; it cannot bypass this check. Ordinary Marrow sign-in is unchanged.
+
 Configure a confidential GitLab OAuth application with `openid`, `profile`
 and `email` scopes and the exact callback below. Repository/API scopes are
 not required. Keep credentials in the deployment environment, never in the
@@ -33,13 +41,16 @@ Gateway routes (prepend the deployment API prefix, usually `/api`):
 | `GET /auth/profile/gitlab` | Active session required; safe configuration/link status. |
 | `POST /auth/profile/gitlab/unlink` | Active session and same-origin `Origin` required; refuses removal of the last login method. |
 | `GET /auth/oauth/gitlab/start?intent=link` | Active session required; binds linking to that user and browser. |
-| `GET /auth/oauth/gitlab/start?intent=login` | Launcher target; an active Marrow session goes directly to `/projects`; otherwise starts GitLab sign-in. |
+| `GET /auth/oauth/gitlab/start?intent=login` | Launcher target; an active linked Marrow session goes to `/projects`, an active unlinked session goes to `/gitlab-link-required`; otherwise starts GitLab sign-in. |
 | `GET /auth/oauth/gitlab/callback` | Consumes browser-bound state once and verifies the ID token before linking or issuing a Marrow session. |
 
 Migration `114_gitlab_oauth.cjs` adds `gitlab_identities` with unique
 `(issuer, subject)` and `(user_id, issuer)` constraints and isolates GitLab
 states from existing providers. Migration `115_translations_gitlab_sign_in.cjs`
 adds EN/RU Profile copy. Run migrations before starting the new backend.
+Migration `116_translations_gitlab_link_required.cjs` adds the instruction
+screen's auth-namespace copy. Profile supports `?section=account` to open the
+linking card's section directly, including on mobile.
 
 Only explicitly linked, active Marrow users can sign in. GitLab sign-in
 does not create accounts, match by email, copy repository credentials or

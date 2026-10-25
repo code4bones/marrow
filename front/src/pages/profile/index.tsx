@@ -1261,11 +1261,13 @@ function CreditsAdminSection() {
 // first; tapping one drills into just that section's content, full width,
 // with a back arrow (same useMobileBackStore mechanism as Ask Marrow/
 // DecisionTimeline's own mobile drill-in) to return to the list. Desktop
-// keeps the existing Tabs tabPosition="left" unchanged. Local component
-// state (not a route param) -- nothing else needs to deep-link into a
-// specific profile section today.
+// keeps the existing Tabs tabPosition="left" unchanged. Section navigation
+// uses local state; ?section=account selects the initial section for GitLab
+// linking instructions and OAuth callbacks.
 export function ProfilePage() {
   const { t } = useTranslation('profile');
+  const [searchParams] = useSearchParams();
+  const initialSection = searchParams.get('section') === 'account' ? 'account' : 'connect';
   const isMobile = useIsMobile();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'admin';
@@ -1279,7 +1281,7 @@ export function ProfilePage() {
     ...(isAdmin ? [{ key: 'admin', label: t('admin'), children: <CreditsAdminSection /> }] : []),
   ];
 
-  const [mobileOpenKey, setMobileOpenKey] = useState<string | null>(null);
+  const [mobileOpenKey, setMobileOpenKey] = useState<string | null>(initialSection === 'account' ? 'account' : null);
   const setMobileBackHandler = useMobileBackStore((s) => s.setHandler);
   const closeSection = useCallback(() => {
     setMobileOpenKey(null);
@@ -1317,7 +1319,7 @@ export function ProfilePage() {
 
   return (
     <PageLayout title={t('profile')} subtitle={t('profileSubtitle')}>
-      <Tabs tabPosition="left" items={sections} style={{ minHeight: 480 }} />
+      <Tabs tabPosition="left" defaultActiveKey={initialSection} items={sections} style={{ minHeight: 480 }} />
     </PageLayout>
   );
 }

@@ -44,9 +44,13 @@ export async function handleGitlabAuthRoute(context: Context): Promise<boolean> 
   if (request.method === "GET" && requestPath === "/auth/oauth/gitlab/start") {
     const intent = requestUrl.searchParams.get("intent") === "link" ? "link" : "login";
     if (intent === "link" && !activeSession) { send(401, fail(new AppError("UNAUTHORIZED", "Sign in to Marrow before linking GitLab."))); return true; }
-    if (intent === "login" && activeSession) { redirect("/projects"); return true; }
     try {
       const config = gitlabConfig();
+      if (intent === "login" && activeSession) {
+        const status = await auth.gitlabLinkStatus(activeSession.userId, config.issuer);
+        redirect(status.linked ? "/projects" : "/gitlab-link-required");
+        return true;
+      }
       const { verifier, challenge } = generatePkce();
       const raw = await auth.mintOAuthState(intent, intent === "link" ? activeSession!.userId : null, null, verifier, "gitlab", config.issuer);
       const binding = startOAuthBinding(raw, isForwardedHttps(request));
@@ -74,11 +78,11 @@ export async function handleGitlabAuthRoute(context: Context): Promise<boolean> 
       const identity = await gitlabOidc.resolveUser(code, stored.codeVerifier, stored.issuer);
       if (link) {
         await auth.linkGitlabIdentity(activeSession!.userId, identity);
-        redirect("/profile?gitlabLinked=1"); return true;
+        redirect("/profile?section=account&gitlabLinked=1"); return true;
       }
       const result = await auth.loginViaGitlab(identity, { userAgent: request.headers["user-agent"], ip: request.socket.remoteAddress }, activeSession?.userId);
       if (result.status === "not_linked") {
-        redirect(`/login?error=${encodeURIComponent("This GitLab identity is not linked. Sign in with Telegram or GitHub, then connect GitLab in your profile.")}`);
+        redirect("/gitlab-link-required");
         return true;
       }
       const clearBinding = response.getHeader("set-cookie") as string;
@@ -86,7 +90,7 @@ export async function handleGitlabAuthRoute(context: Context): Promise<boolean> 
       redirect("/projects");
     } catch {
       const message = "GitLab sign-in could not be verified. Please start again from Marrow.";
-      redirect(link ? `/profile?gitlabError=${encodeURIComponent(message)}` : `/login?error=${encodeURIComponent(message)}`);
+      redirect(link ? `/profile?section=account&gitlabError=${encodeURIComponent(message)}` : `/login?error=${encodeURIComponent(message)}`);
     }
     return true;
   }
