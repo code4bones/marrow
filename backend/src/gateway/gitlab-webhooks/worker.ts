@@ -5,6 +5,7 @@ import type { AppLogger } from "../../shared/logging/logger.js";
 import { PgToolService } from "../pg-tool-service.js";
 import type { Row } from "../pg-tool-service/types.js";
 import type { GitlabIssueSnapshot } from "./protocol.js";
+import { correlateExportEcho } from "./exports.js";
 
 export class GitlabIssueWorker {
   private timer: NodeJS.Timeout | null = null;
@@ -74,6 +75,12 @@ export class GitlabIssueWorker {
       const linked = await trx("gitlab_issue_links").where(key).first();
       if (linked) {
         await trx("gitlab_issue_inbox").where({ id }).update({ status: "done", task_id: linked.task_id, locked_until: null, last_error: null, processed_at: nowIso() });
+        return;
+      }
+      const echo = await correlateExportEcho(trx, repo, issue.description, issue.issueId, issue.iid);
+      if (echo) {
+        await trx("gitlab_issue_inbox").where({ id }).update({ status: "done", task_id: echo.taskId,
+          locked_until: null, last_error: null, processed_at: nowIso() });
         return;
       }
       const mappings = await trx("project_gitlab_members").join("users", "users.id", "project_gitlab_members.user_id")

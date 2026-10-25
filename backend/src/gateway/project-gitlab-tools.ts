@@ -7,6 +7,8 @@ const host = z.string().trim().toLowerCase().refine((value) => !gitHostProblem(v
 const memberHost = project.extend({ userId: z.string().min(1), host });
 
 export const projectGitlabToolSpecs: GatewayToolSpec[] = [
+  { name: "task.export_gitlab", description: "Export an assigned Marrow task to one GitLab issue, or retry a blocked/failed export. Uses the caller's own GitLab credential. Select repositoryId when the assignee leads several repositories. Existing links and uncertain POST outcomes are never re-created.", schema: z.object({ id: z.string().min(1), repositoryId: z.string().uuid().optional() }), access: "write" },
+  { name: "task.gitlab_status", description: "Read a task's GitLab issue URL and durable export status or blocking reason.", schema: z.object({ id: z.string().min(1) }) },
   { name: "project.repositories", description: "List GitLab repositories attached to a Marrow project.", schema: project },
   { name: "project.repository_set_lead", description: "Set one active Marrow project member as this repository's lead developer, or pass userId:null to clear. Used as recipient for new issues without assignees. Owner/admin only; does not grant GitLab or Marrow permissions.", schema: project.extend({ id: z.string().uuid(), userId: z.string().min(1).nullable() }), access: "write" },
   { name: "project.repository_webhook_connect", description: "Register or repair this repository's GitLab issue webhook, routing new issues to its Marrow project. Uses a gateway-generated callback URL/secret and the caller's GitLab credential. Owner/admin only; existing webhook at the same URL is updated, not duplicated.", schema: project.extend({ id: z.string().uuid() }), access: "write" },

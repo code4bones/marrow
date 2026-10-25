@@ -2,6 +2,8 @@
 
 ## Gateway project GitLab settings
 
+Migration `112_gitlab_issue_exports.cjs` adds `gitlab_issue_exports`: a unique nullable task FK (`ON DELETE SET NULL`), original task ID, project FK, optional repository FK, retained explicit repository choice, repository host/numeric project ID/URL snapshot, assigning/recipient identities, GitLab assignee, lifecycle (`pending`, `processing`, `uncertain`, `blocked`, `failed`, `done`, `cancelled`), POST-attempt timestamp, retry lease and safe diagnostic code. The operation UUID is the issue-description correlation marker; no token is copied into the operation. Assignment and intent commit atomically. A committed POST-attempt flag forbids blind re-creation after process death or lost response. `gitlab_issue_links` is shared by import and export. Export tombstones persist after task/repository removal for late webhook correlation.
+
 Migration `110_project_repository_lead.cjs` adds nullable `project_repositories.lead_user_id` referencing `users(id) ON DELETE SET NULL`. It identifies one lead developer, without granting permissions. Setting a lead requires an active project member or owner; membership removal clears the field in the same transaction. Import checks active membership and user status again before using the lead for issues without assignees.
 
 Migration `106_project_gitlab_settings.cjs` adds:

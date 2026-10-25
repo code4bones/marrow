@@ -116,6 +116,19 @@ export class PgToolService extends ComposedService {
     }
 
     try {
+      if (!this.db.isTransaction && ["task.create", "task.update_assignee", "task.export_gitlab"].includes(canonicalToolName)) {
+        let transactionalService: PgToolService | null = null;
+        const result = await this.db.transaction(async (trx) => {
+          const service = new (this.constructor as typeof PgToolService)(trx, this.gitHttpFetch, this.llmHttpFetch);
+          service.deferEventNotifications();
+          const response = await service.call(toolName, input, context);
+          if (!response.ok) throw new AppError(response.error.code as ConstructorParameters<typeof AppError>[0], response.error.message, response.error.details);
+          transactionalService = service;
+          return response;
+        });
+        (transactionalService as PgToolService | null)?.flushEventNotifications(this.db);
+        return result;
+      }
       const requestContext = normalizeContext(context);
       // General agent self-identification (owner's ask, 2026-09-02): any
       // write call can carry a top-level `agent` string naming which agent
@@ -302,6 +315,10 @@ export class PgToolService extends ComposedService {
           return ok("Skill activated.", await this.activateSkill(parsed, requestContext));
         case "task.create":
           return ok("Task created.", { task: await this.createTask(parsed, requestContext) });
+        case "task.export_gitlab":
+          return ok("GitLab export queued or existing link returned.", { gitlab: await this.exportTaskGitlab(parsed, requestContext) });
+        case "task.gitlab_status":
+          return ok("GitLab task link loaded.", { gitlab: await this.taskGitlabStatus(parsed, requestContext) });
         case "task.list":
           return ok("Tasks listed.", { tasks: await this.listTasks(parsed, requestContext) });
         case "task.get":

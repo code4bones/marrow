@@ -10,6 +10,7 @@ import { TellyInboxOutboxDispatcher, tellyInboxConfigFromEnv } from "./gateway/t
 import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 import { GitlabIssueWorker } from "./gateway/gitlab-webhooks/worker.js";
+import { GitlabExportWorker } from "./gateway/gitlab-webhooks/export-worker.js";
 
 dotenv.config({ quiet: true });
 
@@ -61,11 +62,14 @@ async function main(): Promise<void> {
   tellyInboxOutbox.start();
   const gitlabIssueWorker = new GitlabIssueWorker(db, logger);
   gitlabIssueWorker.start();
+  const gitlabExportWorker = new GitlabExportWorker(db, logger);
+  gitlabExportWorker.start();
 
   const shutdown = async () => {
     logger.info("project memory gateway shutting down");
     tellyInboxOutbox.stop();
     gitlabIssueWorker.stop();
+    gitlabExportWorker.stop();
     await telegramBot?.stop();
     await started.stop();
     await service.close();

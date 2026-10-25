@@ -4,6 +4,7 @@ import { projectKeyFromId } from "../../../shared/ids/id.service.js";
 import { assigneeDiffersFromOwner, assigneeNotifyTarget, createAssigneesFacade, lifecycleNotifyTargets } from "../../assignees.js";
 import { createCreditsFacade, userIdFromClientId } from "../../credits.js";
 import { enqueueTellyTaskOffer, tellyInboxEnabled } from "../../telly-inbox.js";
+import { enqueueIssueExport, exportStatus } from "../../gitlab-webhooks/exports.js";
 import { combinedRankSql, jsonStringArray, prefixRankSql, prefixWhereSql, shortText, stringArray, stringOrNull, toPrefixTsQueryText, writeActorFields } from "../formatters/common.js";
 import { eventTypeForStatus } from "../formatters/events.js";
 import {
@@ -49,6 +50,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   protected async createTask(input: Row, context: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
     await this.assertTaskPermission(project.id, "create", context);
+    await this.db("projects").where({ id: project.id }).forUpdate().first();
     const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
       project.id,
       input.assignee as string | null | undefined,
@@ -117,6 +119,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       }, context);
       await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
     }
+    await this.enqueueTaskGitlabExport(row, context);
     return taskOut(row);
   }
 
@@ -259,7 +262,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .orderBy("created_at", "desc")
       .select("from_id");
     const noteIds = noteLinks.map((link: Row) => String(link.from_id));
-    return { ...taskOut(row), noteIds, noteCount: noteIds.length };
+    return { ...taskOut(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id) };
   }
 
   // T-MEMORY-065: task.add_note/remark items exist solely to describe this
@@ -317,6 +320,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     const deletedNoteIds = await this.deleteOwnedTaskNotes(id, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
+      await trx("projects").where({ id: current.project_id }).forUpdate().first();
       deletedLinks = await this.deleteLinksForRecord(id, trx);
       await trx("tasks").where({ id }).del();
     });
@@ -653,6 +657,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     await this.assertProjectMember(String(current.project_id), context);
     await this.assertTaskPermission(String(current.project_id), "assign", context);
+    await this.db("projects").where({ id: current.project_id }).forUpdate().first();
     const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
       String(current.project_id),
       input.assignee as string | null,
@@ -684,7 +689,27 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
       }
     }
+    await this.enqueueTaskGitlabExport(row, context);
     return taskOut(row);
+  }
+
+  protected async enqueueTaskGitlabExport(task: Row, context: NormalizedGatewayRequestContext) {
+    if (context.metadata.source === "gitlab" || String(task.created_by).startsWith("integration:gitlab:")) return;
+    const actor = await this.assignmentActorUserId(context);
+    if (actor && task.assignee_user_id && actor !== task.assignee_user_id) await enqueueIssueExport(this.db, task, actor);
+  }
+
+  protected async exportTaskGitlab(input: Row, context: NormalizedGatewayRequestContext) {
+    const task = await this.taskRow(String(input.id), context);
+    await this.assertTaskPermission(String(task.project_id), "assign", context);
+    const actor = await this.assignmentActorUserId(context);
+    if (!actor) throw new AppError("UNAUTHORIZED", "GitLab export requires an identified project member.");
+    return enqueueIssueExport(this.db, task, actor, typeof input.repositoryId === "string" ? input.repositoryId : undefined);
+  }
+
+  protected async taskGitlabStatus(input: Row, context: NormalizedGatewayRequestContext) {
+    await this.taskRow(String(input.id), context);
+    return exportStatus(this.db, String(input.id));
   }
 
   // The actual delivery is intentionally outside the task mutation path: the

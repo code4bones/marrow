@@ -156,6 +156,7 @@ const typeDefs = `#graphql
       pagination: PaginationInput
     ): PaginatedTasks!
     task(id: ID!): Task!
+    taskGitlabStatus(id: ID!): TaskGitlabStatus
     taskClaims(taskId: ID!, includeInactive: Boolean): [TaskClaim!]!
     nextTask(project: String!): Task
 
@@ -314,6 +315,7 @@ const typeDefs = `#graphql
     deleteMemory(id: ID!, reason: String): DeleteMemoryResult!
 
     createTask(input: CreateTaskInput!): Task!
+    exportTaskGitlab(id: ID!, repositoryId: ID): TaskGitlabStatus
     updateTaskStatus(id: ID!, status: String!, note: String, force: Boolean, reason: String): Task!
     updateTaskMilestone(id: ID!, milestone: String): Task!
     updateTaskTitle(id: ID!, title: String!): Task!
@@ -931,6 +933,13 @@ const typeDefs = `#graphql
   # compactTask, which omits allowedFiles/forbiddenFiles/dependsOn entirely
   # when empty rather than serializing an empty array -- nullable here for
   # that reason (task.get/tasksPage's full taskOut always populates them).
+  type TaskGitlabStatus {
+    status: String!
+    repositoryId: ID
+    issueUrl: String
+    lastError: String
+  }
+
   type Task {
     id: ID!
     projectId: String
@@ -949,6 +958,7 @@ const typeDefs = `#graphql
     createdBy: String
     assigneeUserId: String
     assigneeDiffersFromOwner: Boolean!
+    gitlab: TaskGitlabStatus
     createdAt: String
     updatedAt: String
   }
@@ -1376,6 +1386,8 @@ const resolvers = {
       await pageQuery(context, "tasks", cleanInput(args)),
     task: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.get", cleanInput(args))).task,
+    taskGitlabStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.gitlab_status", cleanInput(args))).gitlab,
     taskClaims: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.claims", cleanInput(args))).claims,
     nextTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1512,6 +1524,8 @@ const resolvers = {
       await callTool<Row>(context, "memory.delete", cleanInput(args)),
     createTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.create", cleanInput(args.input as Row))).task,
+    exportTaskGitlab: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.export_gitlab", cleanInput(args))).gitlab,
     updateTaskStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_status", cleanInput(args))).task,
     updateTaskMilestone: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

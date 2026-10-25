@@ -8,6 +8,8 @@ The repository now contains a working local-first TypeScript MCP server with SQL
 
 Implemented capabilities:
 
+- Assigned Marrow tasks export to GitLab issues through durable intents. Repository routing uses a unique assignee lead or an explicit choice; webhook echoes link the original task without duplicate tasks/events/Telly offers. Uncertain POST outcomes reconcile without re-creation. Task drawer status, issue link and retry/selection controls are available through GraphQL and MCP.
+
 - One lead developer per project repository, editable in Settings by the owner/admin; used as default recipient for imported GitLab issues without assignees. Explicit assignees retain priority; inactive/removed leads are ignored.
 
 - Project Settings GitLab configuration: multiple verified repository URLs, table of pending/active members including the owner, GitLab user search and per-project/host identity mappings; owner/admin management, GraphQL and MCP tools. GitLab issue webhooks can be enabled per repository: bounded authenticated receiver, durable inbox, retry worker, idempotent provenance links and mapped task assignments.

@@ -315,7 +315,7 @@ export async function gitlabRequest(
   token: string,
   httpFetch: GitHttpFetch,
   host: string,
-  init?: { method: string; body?: unknown }
+  init?: { method: string; body?: unknown; timeoutMs?: number }
 ): Promise<Response> {
   // The real fetch only: injected test doubles talk to fake hosts that would
   // not resolve.
@@ -333,6 +333,7 @@ export async function gitlabRequest(
       // request (with the PAT header) to an internal address.
       redirect: "manual",
       method: init?.method ?? "GET",
+      ...(init?.timeoutMs ? { signal: AbortSignal.timeout(init.timeoutMs) } : {}),
       headers: {
         "PRIVATE-TOKEN": token,
         ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {})

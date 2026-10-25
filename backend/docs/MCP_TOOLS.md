@@ -14,6 +14,22 @@ Cross-member task assignments enqueue a durable `inbox_put` offer. The route inc
 
 ## Project GitLab settings (gateway)
 
+### Marrow task → GitLab issue
+
+Creating or reassigning a task to another member automatically queues an issue export when the project has attached repositories. The assignee must have a GitLab mapping on the repository host. Exactly one repository led by that assignee is selected automatically; zero or several matches produce `blocked / REPOSITORY_REQUIRED`, without guessing. The task drawer offers an explicit repository selection, retry and the resulting issue link. An explicit selection is retained across retries. Export uses the assigning user's own stored GitLab credential, never another member's or the instance owner's token.
+
+- `task.gitlab_status({id})` returns `{gitlab: {status, repositoryId, issueUrl, lastError} | null}`; `task.get` includes the same `gitlab` field.
+- `task.export_gitlab({id, repositoryId?})` queues an existing assigned task or retries an export blocked before POST. Requires task assignment permission. It also allows an explicit export of a self-assigned task. Already linked tasks return their link; uncertain POST outcomes remain in reconciliation. It does not emit `task.assigned` or offer work to Telly again.
+- GraphQL provides `taskGitlabStatus(id)` and `exportTaskGitlab(id, repositoryId)` with the same behavior.
+
+The task mutation, task events, existing Telly outbox entry and durable export intent commit together. A worker records `post_attempted_at` before sending `POST /projects/:id/issues`, with a unique `<!-- marrow-export:UUID -->` marker at the start of the issue description. A webhook echo uses this persisted marker and repository identity to link the **original** task, even if the webhook arrives before the POST response. It creates no task, assignment event or Telly offer. Imported GitLab tasks are never exported back, including after reassignment. Provenance and export tombstones survive task deletion.
+
+Successful responses and webhook echoes share the same project lock and issue provenance table. A timeout, process restart, malformed response or server failure after POST leads to `uncertain`: the worker searches issues across all states for the exact marker and reconciles the link. Empty search results and failures to read GitLab never authorize another POST. A definitive POST rejection (HTTP 4xx except 408) can be retried explicitly after correcting the problem. Uncertain exports cannot change repositories; they need reconciliation rather than a replacement issue. Tokens and remote response bodies are not recorded in diagnostics. An issue created without the requested assignee remains linked with `GITLAB_ASSIGNEE_NOT_APPLIED` for inspection.
+
+This exports new assignments after deployment. Older tasks can be exported explicitly; there is no bulk historical backfill. Existing issue title/content/status/assignee are not continuously synchronized when a linked task changes, and reassignment never creates another issue for the same task.
+
+### Repository settings and issue import
+
 Project Settings supports multiple GitLab repositories and a per-project, per-host mapping from active Marrow members (including the owner) to numeric GitLab user IDs. Account emails do not have to match.
 
 | Tool | Inputs | Behavior |

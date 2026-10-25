@@ -1,5 +1,22 @@
 import { gql } from '@apollo/client';
 
+export interface TaskGitlabStatus {
+  status: string;
+  repositoryId: string | null;
+  issueUrl: string | null;
+  lastError: string | null;
+}
+export const GET_TASK_GITLAB_STATUS = gql`
+  query TaskGitlabStatus($id: ID!) {
+    taskGitlabStatus(id: $id) { status repositoryId issueUrl lastError }
+  }
+`;
+export const EXPORT_TASK_GITLAB = gql`
+  mutation ExportTaskGitlab($id: ID!, $repositoryId: ID) {
+    exportTaskGitlab(id: $id, repositoryId: $repositoryId) { status repositoryId issueUrl lastError }
+  }
+`;
+
 export interface ProjectRepository {
   id: string;
   projectId: string;

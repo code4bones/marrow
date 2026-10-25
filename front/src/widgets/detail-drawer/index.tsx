@@ -15,6 +15,7 @@ import { DeleteTaskButton } from '../../features/task/DeleteTaskButton';
 import { EditTaskDrawer } from '../../features/task/EditTaskDrawer';
 import { TaskAssigneeSelect } from '../../features/task/TaskAssigneeSelect';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
+import { TaskGitlabPanel } from '../../features/task/TaskGitlabPanel';
 import { TaskPrioritySelect } from '../../features/task/TaskPrioritySelect';
 import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
@@ -149,6 +150,7 @@ function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
       )}
       <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
       <TaskClaimsPanel taskId={r.id} activeClaimCount={r.activeClaimCount ?? 0} />
+      <TaskGitlabPanel key={r.id} taskId={r.id} projectId={projectId} role={role} assigneeUserId={r.assigneeUserId} />
       <Divider style={{ margin: '8px 0 12px' }} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <ClaimTaskButton taskId={r.id} />
