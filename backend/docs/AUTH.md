@@ -1,5 +1,62 @@
 # AUTH.md
 
+## GitLab sign-in for GitLab Applications
+
+GitLab sign-in uses OIDC Authorization Code with S256 PKCE. It is configured
+on the server and linked from the authenticated Profile → Account → GitLab
+card. There is no GitLab button on the public Login page. First sign in with
+an existing Marrow method (Telegram/GitHub/password), connect GitLab, then
+launch Marrow from GitLab Applications.
+
+Configure a confidential GitLab OAuth application with `openid`, `profile`
+and `email` scopes and the exact callback below. Repository/API scopes are
+not required. Keep credentials in the deployment environment, never in the
+frontend or App Registry:
+
+```dotenv
+GITLAB_OAUTH_ISSUER=https://gitlab.example.com
+GITLAB_OAUTH_CLIENT_ID=<application-id>
+GITLAB_OAUTH_SECRET=<application-secret>
+GITLAB_OAUTH_CALLBACK=https://marrow.example.com/api/auth/oauth/gitlab/callback
+```
+
+`GITLAB_OAUTH_CLIENT_SECRET` is accepted as an alias for `GITLAB_OAUTH_SECRET`.
+Issuer must be one fixed HTTPS origin; discovery and token/JWKS endpoints
+must stay on that origin. The callback is a configured HTTPS URL, including
+the externally visible API prefix. A valid `TOTP_ENC_KEY` is also required:
+GitLab fails closed when signed browser-state binding is unavailable.
+
+Gateway routes (prepend the deployment API prefix, usually `/api`):
+
+| Route | Purpose |
+|---|---|
+| `GET /auth/profile/gitlab` | Active session required; safe configuration/link status. |
+| `POST /auth/profile/gitlab/unlink` | Active session and same-origin `Origin` required; refuses removal of the last login method. |
+| `GET /auth/oauth/gitlab/start?intent=link` | Active session required; binds linking to that user and browser. |
+| `GET /auth/oauth/gitlab/start?intent=login` | Launcher target; an active Marrow session goes directly to `/projects`; otherwise starts GitLab sign-in. |
+| `GET /auth/oauth/gitlab/callback` | Consumes browser-bound state once and verifies the ID token before linking or issuing a Marrow session. |
+
+Migration `114_gitlab_oauth.cjs` adds `gitlab_identities` with unique
+`(issuer, subject)` and `(user_id, issuer)` constraints and isolates GitLab
+states from existing providers. Migration `115_translations_gitlab_sign_in.cjs`
+adds EN/RU Profile copy. Run migrations before starting the new backend.
+
+Only explicitly linked, active Marrow users can sign in. GitLab sign-in
+does not create accounts, match by email, copy repository credentials or
+grant project membership. Access/refresh tokens are neither stored nor
+returned to the frontend. ID-token signature, issuer, audience, expiration,
+subject and nonce are validated server-side. Provider errors use generic
+messages. Existing external-provider session policy applies (no additional
+Marrow TOTP prompt after GitLab); password/TOTP flows are unchanged.
+
+Proxies must redact OAuth callback `code`/`state` query values from access
+logs (use a log format based on `$uri` rather than `$request`/`$request_uri`
+for auth routes). Do not log token endpoint request/response bodies.
+
+Rollback can restore the previous backend image/frontend assets while
+leaving these additive migrations in place. Database rollback removes
+GitLab identity links, so avoid it unless intentionally discarding links.
+
 # Auth schema and bootstrap
 
 This is the per-user access model for Marrow's web UI (see `docs/AUTH_LAYERING.md` for

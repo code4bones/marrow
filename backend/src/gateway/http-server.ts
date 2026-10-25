@@ -29,6 +29,7 @@ import { startOAuthBinding, verifyOAuthBinding } from "./oauth-state-binding.js"
 import { extractDocumentText, readMultipartFile } from "./document-extract.js";
 import { resolveGithubUser, githubAuthorizeUrl } from "./github-oauth.js";
 import { generatePkce, telegramAuthorizeUrl, resolveTelegramUser, type TelegramOidcUser } from "./telegram-oidc.js";
+import { handleGitlabAuthRoute } from "./gitlab-auth-routes.js";
 import {
   ADMIN_GRAPHQL_MUTATION_NAMES,
   createGatewayGraphqlServer,
@@ -1040,6 +1041,7 @@ async function handleAuthRoute(
   sessionAuth: SessionIdentity | null,
   send: (status: number, body: unknown, extra?: LogFields) => void
 ): Promise<boolean> {
+  if (await handleGitlabAuthRoute({ auth, request, response, requestUrl, requestPath, sessionAuth, send })) return true;
   if (request.method === "POST" && requestPath === "/auth/invite") {
     if (!sessionAuth || sessionAuth.role !== "admin") {
       send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to create invites.")));

@@ -11,6 +11,7 @@ import type { Knex } from "knex";
 import { AppError } from "../shared/errors.js";
 import { createCreditsFacade } from "./credits.js";
 import { redirectUriProblem } from "./redirect-uri.js";
+import { createGitlabIdentities } from "./gitlab-identities.js";
 import { issueTotpChallenge, totpChallengeRequired, verifyTotpChallenge } from "./totp-challenge.js";
 import {
   base32Encode,
@@ -84,6 +85,7 @@ type SessionLoginResult = { status: "session"; token: string; user: { id: string
 
 export function createAuthFacade(db: Knex) {
   const credits = createCreditsFacade(db);
+  const gitlabIdentities = createGitlabIdentities(db, issueSession);
 
   async function invite(email: string, invitedByUserId: string): Promise<{ token: string; email: string }> {
     const normalized = normalizeEmail(email);
@@ -667,7 +669,9 @@ export function createAuthFacade(db: Knex) {
     intent: "login" | "link",
     userId: string | null,
     returnTo: string | null = null,
-    codeVerifier: string | null = null
+    codeVerifier: string | null = null,
+    provider: "gitlab" | null = null,
+    issuer: string | null = null
   ): Promise<string> {
     const rawToken = newOpaqueToken();
     const now = new Date();
@@ -678,6 +682,8 @@ export function createAuthFacade(db: Knex) {
       user_id: userId,
       return_to: returnTo,
       code_verifier: codeVerifier,
+      provider,
+      issuer,
       created_at: now,
       expires_at: new Date(now.getTime() + OAUTH_STATE_TTL_MS)
     });
@@ -685,21 +691,26 @@ export function createAuthFacade(db: Knex) {
   }
 
   async function consumeOAuthState(
-    rawToken: string
-  ): Promise<{ intent: "login" | "link"; userId: string | null; returnTo: string | null; codeVerifier: string | null }> {
+    rawToken: string,
+    provider: "gitlab" | null = null
+  ): Promise<{ intent: "login" | "link"; userId: string | null; returnTo: string | null; codeVerifier: string | null; issuer: string | null }> {
     const now = new Date();
-    const row = await db("oauth_login_states").where({ token_hash: hashToken(rawToken) }).first();
+    const query = db("oauth_login_states").where({ token_hash: hashToken(rawToken) });
+    if (provider) query.where({ provider }); else query.whereNull("provider");
+    const row = await query.first();
+    let consumed = false;
     if (row) {
-      await db("oauth_login_states").where({ id: row.id }).del();
+      consumed = (await db("oauth_login_states").where({ id: row.id }).del()) === 1;
     }
-    if (!row || new Date(row.expires_at) < now) {
+    if (!row || !consumed || new Date(row.expires_at) <= now) {
       throw new AppError("VALIDATION_ERROR", "This sign-in attempt has expired or is invalid. Please try again.");
     }
     return {
       intent: row.intent as "login" | "link",
       userId: row.user_id ? String(row.user_id) : null,
       returnTo: row.return_to ? String(row.return_to) : null,
-      codeVerifier: row.code_verifier ? String(row.code_verifier) : null
+      codeVerifier: row.code_verifier ? String(row.code_verifier) : null,
+      issuer: row.issuer ? String(row.issuer) : null
     };
   }
 
@@ -1670,7 +1681,8 @@ export function createAuthFacade(db: Knex) {
     unlinkTelegramIdentity,
     telegramLinkStatus,
     createTelegramLinkCode,
-    consumeTelegramLinkCode
+    consumeTelegramLinkCode,
+    ...gitlabIdentities
   };
 }
 

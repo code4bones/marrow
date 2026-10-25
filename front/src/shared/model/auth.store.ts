@@ -108,6 +108,13 @@ export interface GithubLinkStatus {
   githubLogin: string | null;
 }
 
+export interface GitlabLinkStatus {
+  enabled: boolean;
+  linked: boolean;
+  username: string | null;
+  issuer: string | null;
+}
+
 export interface TelegramLinkStatus {
   linked: boolean;
   telegramUsername: string | null;
@@ -155,6 +162,9 @@ interface AuthState {
   /** GitHub account link status for the profile page's Connect section. */
   fetchGithubStatus: () => Promise<GithubLinkStatus>;
   unlinkGithub: () => Promise<void>;
+
+  fetchGitlabStatus: () => Promise<GitlabLinkStatus>;
+  unlinkGitlab: () => Promise<void>;
 
   /** Telegram account link status for the profile page's Connect section. */
   fetchTelegramStatus: () => Promise<TelegramLinkStatus>;
@@ -408,6 +418,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   unlinkGithub: () => postJson('/auth/profile/github/unlink', {}, 'Could not unlink GitHub.'),
+
+  fetchGitlabStatus: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/gitlab`, { credentials: 'include' });
+    const body = await readJson(response);
+    if (!response.ok || body.ok === false) throw new Error(body.error?.message ?? 'Could not load GitLab status.');
+    return body.data as GitlabLinkStatus;
+  },
+
+  unlinkGitlab: () => postJson('/auth/profile/gitlab/unlink', {}, 'Could not unlink GitLab.'),
 
   fetchTelegramStatus: async () => {
     const response = await fetch(`${API_BASE_URL}/auth/profile/telegram`, { credentials: 'include' });

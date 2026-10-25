@@ -6,10 +6,10 @@
 // shape as closely as OIDC allows; the real difference is Telegram hands
 // back a signed id_token (verified against its own JWKS) instead of a
 // separate "fetch the user" API call.
-import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { AppError } from "../shared/errors.js";
+export { generatePkce } from "./oauth-pkce.js";
 
 const AUTH_ENDPOINT = "https://oauth.telegram.org/auth";
 const TOKEN_ENDPOINT = "https://oauth.telegram.org/token";
@@ -48,12 +48,6 @@ function credentials(): { clientId: string; clientSecret: string } {
     );
   }
   return { clientId, clientSecret };
-}
-
-export function generatePkce(): { verifier: string; challenge: string } {
-  const verifier = randomBytes(32).toString("base64url");
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
-  return { verifier, challenge };
 }
 
 export function telegramAuthorizeUrl(state: string, codeChallenge: string, redirectUri: string): string {

@@ -29,6 +29,7 @@ import { useIsMobile } from '../../shared/lib/useIsMobile';
 import { useMobileBackStore } from '../../shared/model/mobileBack.store';
 import { TotpEnrollWizard } from '../../features/auth/TotpEnrollWizard';
 import { PasswordFields } from '../../features/auth/PasswordFields';
+import { GitlabConnectionSection } from '../../features/auth/GitlabConnectionSection';
 import { OAuthClientPanel } from '../../features/auth/OAuthClientPanel';
 import { PersonalTokenPanel } from '../../features/auth/PersonalTokenPanel';
 import { EnvironmentVariablesSection } from '../../features/environment-variables/EnvironmentVariablesSection';
@@ -1270,7 +1271,7 @@ export function ProfilePage() {
   const isAdmin = user?.role === 'admin';
   const sections = [
     { key: 'connect', label: t('connect'), children: <ConnectSection /> },
-    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><DesktopNotificationsSection /><LanguageSection /></> },
+    { key: 'account', label: t('account'), children: <><AccountSection /><GithubSection /><TelegramSection /><GitlabConnectionSection /><DesktopNotificationsSection /><LanguageSection /></> },
     { key: 'security', label: t('security'), children: <TwoFactorSection /> },
     { key: 'git', label: t('gitHosts'), children: <GitHostsSection /> },
     { key: 'envVars', label: t('envVars'), children: <EnvironmentVariablesSection canManage /> },
