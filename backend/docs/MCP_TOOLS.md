@@ -88,8 +88,11 @@ senders, text/caption/rich mentions, replies, visible forwards, service/member
 updates, edits and media, independent of tag filtering. Private/unbound chats,
 bots, hidden forward names and anonymous sender-chat identities are excluded.
 Numeric mappings survive username changes and resolve @username aliases; ambiguous
-aliases fall back to the owner. A username-only row is hidden when a unique
-observed numeric identity represents it, unless it has an explicit mapping.
+aliases fall back to the owner. A unique observed numeric identity and its @username alias appear as one person,
+including when the alias already has a manual mapping. Compatible mappings retain
+their account and combined tags; every edit/clear applies to all known aliases.
+Conflicting mappings show one person requiring an explicit selection and fall
+back to the owner until resolved. Distinct ambiguous Telegram IDs remain separate.
 Old sender identities were not retained and appear after new activity; the Bot API
 is not used to invent a historical participant list. Mapping changes affect queued
 and future tasks and do not reprocess old messages automatically. Both
@@ -101,6 +104,20 @@ showing the project title as literal text. Forum-topic replies keep their thread
 ID. A replay or invalid/expired key sends no duplicate confirmation. Delivery is
 best-effort: send errors are safely logged without undoing binding/cursor writes
 or stopping polling; there is no blind retry after an uncertain send outcome.
+
+In a bound group/channel, `/hash` (or `/hash@bot_username`) replies with a Rich
+Message showing that bot's configured tags and current chat-local assignees.
+Unassigned tags show mention/owner fallback; invalid/conflicting mappings show
+owner fallback. It bypasses task classification and never creates a task.
+Private/unbound chats and commands addressed to another bot receive no tag list.
+Replies happen after the cursor/journal transaction commits; retries of the same
+update/message do not resend. Send failures are isolated without rewinding the
+cursor. The polling owner registers `/hash` in the group command menu, retrying
+menu failures separately and renewing its lease before polling.
+
+The Bots interface omits setup/help banners and the recipient-source column.
+Message history displays five newest entries per page; dates use `dd.MM.yyyy`
+and local browser time uses `HH:mm:ss` in the table, details and bot timestamps.
 
 Each bot has 1–20 tags (up to 64 letters/digits/underscores each), editable in
 Bots. For example, `ошибка` and `проверка` match `#ошибка` or `#проверка` in a
@@ -174,7 +191,7 @@ Project/chat/message
 deduplication prevents duplicate tasks across multiple bots, delivery retries,
 bot reconnection and deleted-task replays.
 
-Deployment: apply migrations 117–127; configure `TELEGRAM_BOT_ENC_KEY` as a new
+Deployment: apply migrations 117–128; configure `TELEGRAM_BOT_ENC_KEY` as a new
 32-byte base64 encryption key and retain it across restarts. Existing DeepSeek
 keys use `AI_PROVIDER_ENC_KEY`. Reuse the existing `TELEGRAM_BOT_PROXY` to reach
 Telegram from the server; no public callback URL or inbound port is required.

@@ -1,3 +1,4 @@
+import { formatBotDateTime, formatBotTime } from '../../shared/lib/botDateTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
@@ -59,7 +60,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
   if (!canManage) return <Alert type="info" showIcon title={t('botsOwnerOnly')} />;
   const bots = data?.projectTelegramBots.bots ?? [];
   const selectedBot = bots.find((bot) => bot.id === selectedBotId);
-  const time = (value: string | null) => value ? new Date(value).toLocaleString() : '—';
+  const time = formatBotDateTime;
   const renderBotDetails = (bot: ProjectTelegramBot) => (
     <Card key={bot.id} size="small" title={<Space wrap><span>@{bot.username}</span>
       <Switch checked={bot.enabled} loading={togglingBotId === bot.id} disabled={busy || togglingBotId !== null}
@@ -85,7 +86,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
           <Button size="small" disabled={busy} onClick={() => { tagsForm.setFieldsValue({ tags: bot.tags }); setEditingTags(bot); }}>{t('editBotTags')}</Button>
         </Space>
         {bot.lastError && <Alert type="warning" showIcon title={t('botProcessingError')} description={t(`botError_${bot.lastError}`, { defaultValue: bot.lastError })} />}
-        {bot.lastPolledAt && <Typography.Text type="secondary">{t('botLastPoll', { time: new Date(bot.lastPolledAt).toLocaleString() })}</Typography.Text>}
+        {bot.lastPolledAt && <Typography.Text type="secondary">{t('botLastPoll', { time: formatBotDateTime(bot.lastPolledAt) })}</Typography.Text>}
         {bot.failedCount > 0 && <Button size="small" disabled={busy} onClick={() => { void retry({ variables: { project, id: bot.id } }).catch(() => {}); }}>{t('retryBotMessages')}</Button>}
         <Table size="small" rowKey="chatId" pagination={false} dataSource={bot.chats}
           locale={{ emptyText: t('noBotChats') }} scroll={{ x: 450 }} columns={[
@@ -101,7 +102,6 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
   );
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithAssignees')} />
       {data && !data.projectTelegramBots.deepseekReady && <Alert type="warning" showIcon title={t('botsDeepseekRequired')} />}
       {error && <Alert type="error" showIcon title={error.message} />}
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddingOpen(true)}>{t('addBot')}</Button>
@@ -163,7 +163,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
         <Typography.Paragraph>{t('botLinkInstructions', { username: linkCode?.username })}</Typography.Paragraph>
         {linkCode && <>
           <Typography.Paragraph copyable={{ text: linkCode.command }} code style={{ overflowWrap: 'anywhere' }}>{linkCode.command}</Typography.Paragraph>
-          <Typography.Paragraph type="secondary">{t('botLinkExpires', { time: new Date(linkCode.expiresAt).toLocaleTimeString() })}</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">{t('botLinkExpires', { time: formatBotTime(linkCode.expiresAt) })}</Typography.Paragraph>
         </>}
       </Modal>
     </Space>

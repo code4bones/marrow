@@ -494,5 +494,6 @@ npm run smoke:package
 Gateway tasks support `assignees: [...]` for several active project participants.
 Existing `assignee` inputs still replace the list with one/zero members. Task
 forms, lists, kanban, graph, filters, notifications and integrations use the whole
-set; one task retains one shared status. Apply migrations 123–127 before starting
-backend 1.101.0 / frontend 0.72.0.
+set; one task retains one shared status. Apply migrations 123–128 before starting
+backend 1.102.0 / frontend 0.73.0. The project bot's `/hash` group command lists
+current tags and assignees; duplicate sender/mention aliases share one settings row.

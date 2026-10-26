@@ -1,3 +1,4 @@
+import { formatBotDateTime as timestamp } from '../../shared/lib/botDateTime';
 import { useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Descriptions, Drawer, Empty, Space, Spin, Table, Tag, Typography } from 'antd';
 import { useState } from 'react';
@@ -5,14 +6,14 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { GET_PROJECT_TELEGRAM_MESSAGE, GET_PROJECT_TELEGRAM_MESSAGES, type TelegramBotMessage } from '../../shared/api/project-telegram';
 
-function timestamp(value: string | null | undefined) { return value ? new Date(value).toLocaleString() : '—'; }
+const PAGE_SIZE = 5;
 
 export function ProjectBotMessages({ project, botId }: { project: string; botId: string }) {
   const { t } = useTranslation('projects');
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data, loading, error } = useQuery<{ projectTelegramBotMessages: { messages: TelegramBotMessage[]; total: number } }>(GET_PROJECT_TELEGRAM_MESSAGES,
-    { variables: { project, id: botId, limit: 25, offset: (page - 1) * 25 }, pollInterval: 3000, fetchPolicy: 'network-only' });
+    { variables: { project, id: botId, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }, pollInterval: 3000, fetchPolicy: 'network-only' });
   const detail = useQuery<{ projectTelegramBotMessage: TelegramBotMessage }>(GET_PROJECT_TELEGRAM_MESSAGE,
     { variables: { project, id: botId, messageId: selectedId }, skip: !selectedId, pollInterval: selectedId ? 3000 : 0, fetchPolicy: 'network-only' });
   const msg = detail.data?.projectTelegramBotMessage;
@@ -21,11 +22,10 @@ export function ProjectBotMessages({ project, botId }: { project: string; botId:
     {t(`botMessageStatus_${value}`, { defaultValue: value })}</Tag>;
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <Typography.Text type="secondary">{t('botHistoryHelp')}</Typography.Text>
       {error && <Alert type="error" title={error.message} showIcon />}
       <Table<TelegramBotMessage> size="small" rowKey="id" loading={loading && !data}
         dataSource={data?.projectTelegramBotMessages.messages ?? []} scroll={{ x: 850 }}
-        locale={{ emptyText: t('botHistoryEmpty') }} pagination={{ current: page, pageSize: 25, total: data?.projectTelegramBotMessages.total ?? 0, showSizeChanger: false, onChange: setPage }}
+        locale={{ emptyText: t('botHistoryEmpty') }} pagination={{ current: page, pageSize: PAGE_SIZE, total: data?.projectTelegramBotMessages.total ?? 0, showSizeChanger: false, onChange: setPage }}
         onRow={(row) => ({ onClick: () => setSelectedId(row.id), style: { cursor: 'pointer' } })}
         columns={[
           { title: t('botMessageReceivedAt'), dataIndex: 'receivedAt', width: 160, render: timestamp },

@@ -1,3 +1,4 @@
+import { hashReply, type TelegramHashReply } from "./hash-command.js";
 import { rememberChatPeople } from "./people.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { Knex } from "knex";
@@ -15,7 +16,7 @@ export interface PollingIdentity { owner: string; revision: string }
 interface IngestResult {
   accepted: boolean; ignored?: boolean; duplicate?: boolean; bound?: boolean;
   reason: string; status: string; inboxId?: string;
-  matchedTags?: string[]; mentions?: string[]; confirmation?: TelegramBindingConfirmation;
+  matchedTags?: string[]; mentions?: string[]; confirmation?: TelegramBindingConfirmation; hashReply?: TelegramHashReply;
 }
 
 // Internal polling ingress, not exposed over HTTP/MCP. Cursor advancement
@@ -84,6 +85,16 @@ async function ingestMessage(trx: Knex.Transaction, bot: Row, message: TelegramM
     return { accepted: true, bound: true, status: "bound", reason: "chat_bound", confirmation };
   }
   if (!await trx("project_telegram_chats").where({ bot_id: botId, chat_id: message.chatId }).first()) return { accepted: false, ignored: true, status: "ignored", reason: "unbound_chat" };
+  const hash = /^\/hash(?:@([a-zA-Z0-9_]+))?$/i.exec(message.text.trim());
+  if (hash) {
+    if (hash[1] && hash[1].toLowerCase() !== String(bot.username).toLowerCase())
+      return { accepted: false, ignored: true, status: "ignored", reason: "command_other_bot" };
+    // A new Telegram update ID can contain the same message (delivery replay).
+    // Persist the handled message marker in the same transaction as the cursor.
+    const handled = await trx("telegram_bot_messages").where({ bot_id: botId, chat_id: message.chatId, message_id: message.messageId, reason: "hash_command" }).first();
+    if (handled) return { accepted: true, duplicate: true, status: "duplicate", reason: "duplicate" };
+    return { accepted: true, status: "command", reason: "hash_command", hashReply: await hashReply(trx, bot, project, message) };
+  }
   await rememberChatMentions(trx, botId, message);
   if (!matchesTelegramTags(bot.filter_tags, message.tags)) return { accepted: false, ignored: true, status: "ignored", reason: "no_matching_tag" };
   const matchedTags = message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag));

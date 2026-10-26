@@ -4,6 +4,9 @@
 
 ### Added
 
+- Telegram `/hash` group command and command menu, showing bot tags and their
+  chat-specific assignees without a classifier call.
+
 - Shared tasks with multiple assignees across MCP, GraphQL, task forms, lists,
   kanban, graphs, notifications, Telly offers and GitLab import/export.
 - Telegram recipients collected from senders, mentions, replies, visible forwards,
@@ -33,6 +36,12 @@
   preventing MaxListenersExceededWarning on long-running bots.
 
 ### Changed
+
+- Telegram recipients now show one person per known Telegram identity, sharing
+  mappings and tags across sender/mention aliases; conflicting mappings require
+  one explicit selection.
+- Bot settings omit setup banners and source columns; message history shows five
+  messages per page with dotted dates and 24-hour times.
 
 - OAuth state consumption rejects concurrent replay and separates GitLab
   states from existing providers. GitLab sign-in requires an existing linked,

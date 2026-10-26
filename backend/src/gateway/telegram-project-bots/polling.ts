@@ -1,3 +1,4 @@
+import { registerProjectBotCommands, sendHashReply } from "./hash-command.js";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Api } from "grammy";
@@ -11,7 +12,7 @@ import { telegramRequest } from "./request.js";
 import { sendBindingConfirmation } from "./confirmation.js";
 
 interface Poller { revision: string; controller: AbortController; done: Promise<void> }
-type PollingApi = Pick<Api, "getUpdates" | "sendRichMessage">;
+type PollingApi = Pick<Api, "getUpdates" | "sendRichMessage" | "setMyCommands">;
 
 function pollingError(error: unknown): { code: string; retryAfter?: number } {
   const value = error as { error_code?: number; parameters?: { retry_after?: number } } | null;
@@ -85,6 +86,8 @@ export class TelegramProjectPolling {
     const id = String(bot.id); const revision = String(bot.poll_revision); const owner = randomUUID();
     let api: PollingApi | null = null;
     let failures = 0;
+    let commandsReady = false;
+    let commandsRetryAt = 0;
     try {
       while (!signal.aborted) {
         // A renewable DB lease prevents competing getUpdates consumers in
@@ -97,6 +100,15 @@ export class TelegramProjectPolling {
         if (!current || signal.aborted) return;
         try {
           api ??= this.createApi(decryptBotSecret(String(bot.token_enc)));
+          if (!commandsReady && Date.now() >= commandsRetryAt) {
+            commandsReady = await registerProjectBotCommands(api, id, signal, this.logger);
+            commandsRetryAt = Date.now() + 60_000;
+            // Menu registration may wait on Telegram. Renew before polling,
+            // fencing disable/token changes that happened during that request.
+            const renewed = await this.db("project_telegram_bots").where({ id, enabled: true, poll_owner: owner, poll_revision: revision })
+              .update({ poll_lease_until: new Date(Date.now() + 90_000).toISOString() });
+            if (!renewed || signal.aborted) return;
+          }
           const updates = await telegramRequest(signal, (apiSignal) => api!.getUpdates({
             offset: Number(current.poll_offset), timeout: 25, limit: 100, allowed_updates: ["message", "channel_post", "edited_message", "edited_channel_post", "chat_member", "my_chat_member", "chat_join_request"]
           }, apiSignal));
@@ -104,6 +116,9 @@ export class TelegramProjectPolling {
             if (signal.aborted) return;
             const result = await acceptTelegramUpdate(this.db, id, Buffer.from(JSON.stringify(update)), { owner, revision });
             if ("stopped" in result && result.stopped) return;
+            if ("hashReply" in result && result.hashReply) {
+              await sendHashReply(api, result.hashReply, id, signal, this.logger);
+            }
             if ("confirmation" in result && result.confirmation) {
               await sendBindingConfirmation(api, result.confirmation, id, signal, this.logger);
             }

@@ -65,6 +65,10 @@ the account mapping clears its tags. These rows retain known people independent
 of the latest-500 message-body journal. Previous author identities cannot be
 backfilled from message bodies, which did not preserve senders.
 
+Migration 128 adds EN/RU command-result and conflicting-recipient labels. Recipient
+alias consolidation is a computed view over existing observation rows; it retains
+provenance and updates mappings/tags of all known aliases atomically.
+
 ## Gateway project GitLab settings
 
 Migration `112_gitlab_issue_exports.cjs` adds `gitlab_issue_exports`: a unique nullable task FK (`ON DELETE SET NULL`), original task ID, project FK, optional repository FK, retained explicit repository choice, repository host/numeric project ID/URL snapshot, assigning/recipient identities, GitLab assignee, lifecycle (`pending`, `processing`, `uncertain`, `blocked`, `failed`, `done`, `cancelled`), POST-attempt timestamp, retry lease and safe diagnostic code. The operation UUID is the issue-description correlation marker; no token is copied into the operation. Assignment and intent commit atomically. A committed POST-attempt flag forbids blind re-creation after process death or lost response. `gitlab_issue_links` is shared by import and export. Export tombstones persist after task/repository removal for late webhook correlation.

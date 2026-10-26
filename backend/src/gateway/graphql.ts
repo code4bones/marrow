@@ -649,7 +649,7 @@ const typeDefs = `#graphql
 
   type ProjectTelegramBots { bots: [ProjectTelegramBot!]!, deepseekReady: Boolean! }
   type ProjectTelegramChat { chatId: String!, title: String! }
-  type TelegramChatMention { key: String!, label: String!, sourceType: String!, tags: [String!]!, userId: ID, effectiveUserId: ID, resolution: String!, lastSeenAt: String }
+  type TelegramChatMention { key: String!, label: String!, sourceType: String!, mappingConflict: Boolean!, tags: [String!]!, userId: ID, effectiveUserId: ID, resolution: String!, lastSeenAt: String }
   type TelegramChatMember { id: ID!, email: String! }
   type TelegramChatMentions { mentions: [TelegramChatMention!]!, members: [TelegramChatMember!]!, availableTags: [String!]!, ownerUserId: ID }
   type TelegramChatLinkCode { command: String!, expiresAt: String! }

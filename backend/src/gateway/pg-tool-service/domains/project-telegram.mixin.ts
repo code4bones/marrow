@@ -1,3 +1,4 @@
+import { chatRecipients, recipientKeys } from "../../telegram-project-bots/recipients.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
@@ -72,16 +73,14 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const { bot, project } = await this.managedTelegramBot(input, context);
       if (!await this.db("project_telegram_chats").where({ bot_id: bot.id, chat_id: input.chatId }).first())
         throw new AppError("NOT_FOUND", "Chat not bound to this project's bot.");
-      const rows = await this.db("telegram_chat_mentions").where({ bot_id: bot.id, chat_id: input.chatId }).orderBy("last_seen_at", "desc").orderBy("mention_key");
+      const rows = chatRecipients(await this.db("telegram_chat_mentions").where({ bot_id: bot.id, chat_id: input.chatId }));
       const members = await activeProjectUsers(this.db, project.id, project.ownerUserId).select("u.id", "u.email");
       const identities = await this.db("telegram_identities").whereIn("user_id", members.map((m) => m.id));
       const allowed = new Set(members.map((m) => String(m.id)));
-      const visible = rows.filter((r) => r.user_id || !String(r.mention_key).startsWith("username:") ||
-        rows.filter((a) => a.username === String(r.mention_key).slice(9)).length !== 1);
-      return { ownerUserId: project.ownerUserId, members, availableTags: telegramBotTags(bot.filter_tags), mentions: visible.map((row) => {
+      return { ownerUserId: project.ownerUserId, members, availableTags: telegramBotTags(bot.filter_tags), mentions: rows.map((row) => {
         const username = String(row.mention_key).startsWith("username:") ? String(row.mention_key).slice(9) : null;
         const recipient = resolveTelegramRecipient(String(row.mention_key), username, rows, identities, allowed, String(project.ownerUserId));
-        return { key: row.mention_key, label: row.label, sourceType: row.source_type ?? "mention", tags: telegramBotTags(row.assignment_tags), userId: row.user_id ?? null,
+        return { key: row.mention_key, label: row.label, sourceType: row.source_type ?? "mention", mappingConflict: Boolean(row.mapping_conflict), tags: telegramBotTags(row.assignment_tags), userId: row.user_id ?? null,
           effectiveUserId: recipient.userId, resolution: recipient.resolution, lastSeenAt: dateStringOrNull(row.last_seen_at) };
       }) };
     }
@@ -96,11 +95,11 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
           throw new AppError("NOT_FOUND", "Chat not bound to this project's bot.");
         if (input.userId && !await activeProjectUsers(trx, project.id, project.ownerUserId).where("u.id", input.userId).first())
           throw new AppError("VALIDATION_ERROR", "Choose an active project member.");
-        const key = { bot_id: bot.id, chat_id: input.chatId, mention_key: input.mentionKey };
-        const current = await trx("telegram_chat_mentions").where(key).first();
+        const key = { bot_id: bot.id, chat_id: input.chatId };
+        const current = chatRecipients(await trx("telegram_chat_mentions").where(key)).find((row) => recipientKeys(row).includes(String(input.mentionKey)));
         if (!current) throw new AppError("NOT_FOUND", "Person not observed in this bound chat.");
-        const update: Row = {};
-        if (input.userId !== undefined) update.user_id = input.userId;
+        if (current.mapping_conflict && input.userId === undefined) throw new AppError("VALIDATION_ERROR", "Choose one participant to resolve conflicting recipient mappings.");
+        const update: Row = { user_id: input.userId === undefined ? current.user_id : input.userId, assignment_tags: JSON.stringify(telegramBotTags(current.assignment_tags)) };
         if (input.tags !== undefined) {
           const tags = telegramBotTags(input.tags);
           if (tags.some((tag) => !telegramBotTags(currentBot.filter_tags).includes(tag))) throw new AppError("VALIDATION_ERROR", "Choose routing tags from this bot's configured tags.");
@@ -110,7 +109,7 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
           update.assignment_tags = JSON.stringify(tags);
         }
         if (input.userId === null) update.assignment_tags = "[]";
-        await trx("telegram_chat_mentions").where(key).update(update);
+        await trx("telegram_chat_mentions").where(key).whereIn("mention_key", recipientKeys(current)).update(update);
       });
       await this.recordEventForProject(project.id, { type: "project.telegram_mention_mapped", title: "Telegram recipient settings updated", related_id: project.id }, context);
       return { saved: true };

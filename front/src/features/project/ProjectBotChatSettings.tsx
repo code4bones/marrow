@@ -1,3 +1,4 @@
+import { formatBotDateTime } from '../../shared/lib/botDateTime';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -18,12 +19,10 @@ export function ProjectBotChatSettings({ project, botId, chatId }: { project: st
     void save({ variables: { ...variables, mentionKey, userId } }).catch(() => {});
   };
   return <Space orientation="vertical" style={{ width: '100%' }}>
-    <Alert type="info" showIcon title={t('botChatRoutingHelp')} />
     {error && <Alert type="error" showIcon title={error.message} />}
     <Table size="small" rowKey="key" loading={loading && !data} dataSource={settings?.mentions ?? []}
-      scroll={{ x: 1250 }} pagination={{ pageSize: 15, hideOnSinglePage: true }} locale={{ emptyText: t('botNoMentions') }} columns={[
+      scroll={{ x: 1100 }} pagination={{ pageSize: 15, hideOnSinglePage: true }} locale={{ emptyText: t('botNoMentions') }} columns={[
         { title: t('botObservedPerson'), dataIndex: 'label', width: 160 },
-        { title: t('botPersonSource'), dataIndex: 'sourceType', width: 140, render: (value: string) => t(`botPersonSource_${value}`) },
         { title: t('botManualRecipient'), key: 'mapping', width: 250, render: (_, row) => <Space>
           <Select showSearch optionFilterProp="label" style={{ width: 230 }} placeholder={t('botSelectMember')}
             aria-label={t('botMapMentionLabel', { mention: row.label })} disabled={saving}
@@ -38,9 +37,10 @@ export function ProjectBotChatSettings({ project, botId, chatId }: { project: st
           onChange={(tags: string[]) => { void save({ variables: { ...variables, mentionKey: row.key, tags } }).catch(() => {}); }} /> },
         { title: t('botEffectiveRecipient'), key: 'effective', width: 240, render: (_, row) => <Space orientation="vertical" size={0}>
           <Typography.Text>{members.find((m) => m.id === row.effectiveUserId)?.email ?? '—'}</Typography.Text>
+          {row.mappingConflict && <Typography.Text type="warning">{t('botRecipientMappingConflict')}</Typography.Text>}
           <Tag color={row.resolution === 'owner' ? 'orange' : 'green'}>{t(`botMentionResolution_${row.resolution}`)}</Tag>
         </Space> },
-        { title: t('botMentionLastSeen'), dataIndex: 'lastSeenAt', width: 160, render: (value: string | null) => value ? new Date(value).toLocaleString() : '—' },
+        { title: t('botMentionLastSeen'), dataIndex: 'lastSeenAt', width: 160, render: formatBotDateTime },
       ]} />
   </Space>;
 }

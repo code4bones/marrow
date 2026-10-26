@@ -1,3 +1,4 @@
+import { chatRecipients, recipientKeys } from "./recipients.js";
 import { telegramBotTags } from "./tags.js";
 import type { Row } from "../pg-tool-service/types.js";
 import type { Knex } from "knex";
@@ -34,12 +35,12 @@ export async function mentionedProjectMembers(db: Knex, projectId: string, owner
   const users = await activeProjectUsers(db, projectId, ownerUserId).select("u.id");
   const allowed = new Set(users.map((u) => String(u.id)));
   if (!allowed.has(ownerUserId)) return [];
-  const manual = await db("telegram_chat_mentions").where({ bot_id: botId, chat_id: message.chatId });
+  const manual = chatRecipients(await db("telegram_chat_mentions").where({ bot_id: botId, chat_id: message.chatId }));
   const filterTags = telegramBotTags(configuredTags);
-  const routed = manual.filter((row) => row.user_id && telegramBotTags(row.assignment_tags)
+  const routed = manual.filter((row) => (row.user_id || row.mapping_conflict) && telegramBotTags(row.assignment_tags)
     .some((tag) => filterTags.includes(tag) && message.tags.includes(tag)));
   if (routed.length) {
-    if (routed.some((row) => !allowed.has(String(row.user_id)))) return [{ userId: ownerUserId, telegramId: "owner", username: null, resolution: "owner" }];
+    if (routed.some((row) => row.mapping_conflict || !allowed.has(String(row.user_id)))) return [{ userId: ownerUserId, telegramId: "owner", username: null, resolution: "owner" }];
     return [...new Set(routed.map((row) => String(row.user_id)))].map((userId) => ({ userId, telegramId: `tag:${userId}`, username: null, resolution: "manual", viaTag: true }));
   }
   if (!mentions.length) return [{ userId: ownerUserId, telegramId: "owner", username: null, resolution: "owner" }];
@@ -49,11 +50,13 @@ export async function mentionedProjectMembers(db: Knex, projectId: string, owner
 
 export function resolveTelegramRecipient(key: string, username: string | null, observed: Row[], identities: Row[], allowed: Set<string>, ownerId: string): MentionedMember {
   const owner = (): MentionedMember => ({ userId: ownerId, telegramId: key, username, resolution: "owner" });
-  const direct = observed.find((m) => m.mention_key === key);
+  const direct = observed.find((m) => recipientKeys(m).includes(key));
+  if (direct?.mapping_conflict) return owner();
   const aliases = username ? observed.filter((m) => m.username === username) : [];
   // An explicit mapping on this literal @mention wins. Otherwise require
   // one observed Telegram identity for a username, never guess between them.
   const mapped = direct?.user_id ? direct : aliases.length === 1 ? aliases[0] : direct;
+  if (mapped?.mapping_conflict) return owner();
   if (mapped?.user_id) return allowed.has(String(mapped.user_id))
     ? { userId: String(mapped.user_id), telegramId: key, username, resolution: "manual" } : owner();
   if (aliases.length > 1) return owner();

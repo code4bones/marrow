@@ -591,3 +591,44 @@ describe("Telegram recipient tag routing", () => {
     expect(await db("tasks")).toHaveLength(2);
   });
 });
+
+describe("unified recipients and Telegram /hash", () => {
+  const base = () => ({ project: "test", id: botId, chatId: "-10012345" });
+  async function observeDuplicate() {
+    await deliver(payload("@duplicate привет", -10012345, 80, { from: { id: 77, username: "duplicate", first_name: "A person", is_bot: false } }));
+    await db("telegram_chat_mentions").where({ mention_key: "username:duplicate" }).update({ user_id: "member", assignment_tags: '["ошибка"]' });
+  }
+  it("shows one row, preserves legacy mapping/tags, clears all aliases and never resurrects hidden routes", async () => {
+    await observeDuplicate();
+    const read = () => callOk("project.telegram_chat_mentions", base());
+    expect((await read()).mentions).toMatchObject([{ key: "77", userId: "member", tags: ["ошибка"] }]);
+    expect((await read()).mentions).toHaveLength(1);
+    await callOk("project.telegram_chat_set_mention", { ...base(), mentionKey: "77", tags: [] });
+    expect((await db("telegram_chat_mentions")).every((r) => JSON.parse(r.assignment_tags).length === 0 && r.user_id === "member")).toBe(true);
+    await callOk("project.telegram_chat_set_mention", { ...base(), mentionKey: "username:duplicate", tags: ["проверка"] });
+    await callOk("project.telegram_chat_set_mention", { ...base(), mentionKey: "77", userId: null });
+    expect((await db("telegram_chat_mentions")).every((r) => r.user_id === null && JSON.parse(r.assignment_tags).length === 0)).toBe(true);
+    await deliver(payload("@duplicate снова привет", -10012345, 81));
+    expect((await read()).mentions).toHaveLength(1); expect((await read()).mentions).toMatchObject([{ userId: null, tags: [] }]);
+  });
+  it("resolves conflicting legacy mappings with one edit of the unified person", async () => {
+    await observeDuplicate(); await db("telegram_chat_mentions").where({ mention_key: "77" }).update({ user_id: "owner" });
+    expect((await callOk("project.telegram_chat_mentions", base())).mentions).toMatchObject([{ mappingConflict: true, userId: null, effectiveUserId: "owner" }]);
+    await callOk("project.telegram_chat_set_mention", { ...base(), mentionKey: "77", userId: "member" });
+    expect((await callOk("project.telegram_chat_mentions", base())).mentions).toMatchObject([{ mappingConflict: false, userId: "member", tags: ["ошибка"] }]);
+    expect((await db("telegram_chat_mentions")).every((r) => r.user_id === "member")).toBe(true);
+  });
+  it("handles /hash only in the bound group, lists configured routes and bypasses AI", async () => {
+    await observeDuplicate();
+    const raw = payload("/hash@project_bot", -10012345, 90, { message_thread_id: 7 });
+    const result = await deliver(raw);
+    expect(result).toMatchObject({ status: "command", reason: "hash_command", hashReply: { projectTitle: "Test", chatId: "-10012345", messageId: 90, messageThreadId: 7,
+      lines: ["#ошибка → member@test", "#проверка → по упоминаниям; иначе владелец проекта"] } });
+    expect(await deliver(raw)).toMatchObject({ duplicate: true });
+    expect(await deliver(payload("/hash@project_bot", -10012345, 90))).toMatchObject({ duplicate: true });
+    expect(await deliver(payload("/hash@other_bot", -10012345, 91))).toMatchObject({ reason: "command_other_bot" });
+    expect(await deliver(payload("/hash", -100999, 92))).toMatchObject({ reason: "unbound_chat" });
+    expect(await deliver(payload("/hash", 22, 93, { chat: { id: 22, type: "private" } }))).toMatchObject({ reason: "private_chat" });
+    await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
+  });
+});

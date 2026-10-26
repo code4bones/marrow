@@ -22,12 +22,12 @@ function untilAborted(signal: Parameters<GetUpdates>[1]): ReturnType<GetUpdates>
   });
 }
 function blockedClient() {
-  return { getUpdates: vi.fn<GetUpdates>().mockImplementation((_other, signal) => untilAborted(signal)),
+  return { setMyCommands: vi.fn<Api["setMyCommands"]>().mockResolvedValue(true), getUpdates: vi.fn<GetUpdates>().mockImplementation((_other, signal) => untilAborted(signal)),
     sendRichMessage: vi.fn<Api["sendRichMessage"]>().mockResolvedValue({
       message_id: 900, date: 1, chat: { id: -10012345, type: "supergroup", title: "Team" }, rich_message: { blocks: [] }
     }) };
 }
-function manager(client: Pick<Api, "getUpdates" | "sendRichMessage">, logger?: AppLogger) {
+function manager(client: Pick<Api, "getUpdates" | "sendRichMessage" | "setMyCommands">, logger?: AppLogger) {
   const result = new TelegramProjectPolling(db, logger, () => client); managers.push(result); return result;
 }
 async function bindingUpdate(): Promise<Awaited<ReturnType<GetUpdates>>[number]> {
@@ -41,15 +41,17 @@ beforeEach(async () => {
   managers = [];
   db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
   await db.raw("PRAGMA foreign_keys = ON");
-  await db.schema.createTable("users", (t) => { t.text("id").primary(); });
-  await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("title"); t.text("status"); });
+  await db.schema.createTable("users", (t) => { t.text("id").primary(); t.text("email"); t.text("status"); });
+  await db.schema.createTable("project_members", (t) => { t.text("project_id"); t.text("user_id"); t.text("status"); });
+  await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("title"); t.text("status"); t.text("owner_user_id"); });
   await db.schema.createTable("tasks", (t) => { t.text("id").primary(); });
   await migration.up(db);
   await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/121_telegram_chat_mentions.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
-  await db("projects").insert({ id: "P-TEST", title: "Project <Alpha> & beta", status: "active" });
+  await db("users").insert({ id: "owner", email: "owner@test", status: "active" });
+  await db("projects").insert({ id: "P-TEST", owner_user_id: "owner", title: "Project <Alpha> & beta", status: "active" });
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123456789", username: "project_bot",
     token_enc: encryptBotSecret(token), poll_revision: randomUUID(), filter_tags: '["ошибка"]', enabled: true, created_at: "2026-01-01", updated_at: "2026-01-01" });
 });
@@ -215,5 +217,44 @@ describe("project bot grammY polling", () => {
     await expect(another.reconcile()).resolves.toBeUndefined();
     await expect(another.stop()).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+
+describe("Telegram /hash menu and feedback", () => {
+  async function hashUpdate() {
+    const binding = await bindingUpdate();
+    return { binding, hash: { ...binding, update_id: 42, message: { ...binding.message!, message_id: 38, text: "/hash@project_bot" } } };
+  }
+  it("registers the group command and sends a single post-commit Rich Message in the original topic", async () => {
+    const { binding, hash } = await hashUpdate(), client = blockedClient();
+    client.getUpdates.mockResolvedValueOnce([binding, hash]).mockResolvedValueOnce([hash, { ...hash, update_id: 43 }]);
+    const send = client.sendRichMessage.getMockImplementation()!;
+    client.sendRichMessage.mockImplementation(async (...args) => {
+      if (args[1].blocks?.[0].type === "heading" && args[1].blocks[0].text === "Теги и исполнители") {
+        expect(await db("telegram_bot_messages").where({ reason: "hash_command" })).toHaveLength(1);
+        expect(Number((await db("project_telegram_bots").first()).poll_offset)).toBe(43);
+      }
+      return send(...args);
+    });
+    await manager(client).reconcile(); await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(3));
+    expect(client.setMyCommands).toHaveBeenCalledOnce();
+    expect(client.setMyCommands).toHaveBeenCalledWith([{ command: "hash", description: "Теги и назначенные участники этой группы" }], { scope: { type: "all_group_chats" } }, expect.anything());
+    expect(client.sendRichMessage).toHaveBeenCalledTimes(2);
+    expect(client.sendRichMessage.mock.calls[1].slice(0, 3)).toMatchObject(["-10012345", { blocks: [
+      { type: "heading", size: 3, text: "Теги и исполнители" }, { type: "paragraph", text: "Проект: Project <Alpha> & beta" },
+      { type: "paragraph", text: "#ошибка → по упоминаниям; иначе владелец проекта" }
+    ] }, { reply_parameters: { message_id: 38 }, message_thread_id: 17 }]);
+  });
+  it("contains command menu/send failures and continues receiving without leaking bot tokens", async () => {
+    const { binding, hash } = await hashUpdate(), client = blockedClient(), warn = vi.fn();
+    client.setMyCommands.mockRejectedValue(new HttpError(`URL /bot${token}/setMyCommands`, new Error("proxy")));
+    client.sendRichMessage.mockResolvedValueOnce({ message_id: 900, date: 1, chat: { id: -10012345, type: "supergroup", title: "Team" }, rich_message: { blocks: [] } })
+      .mockRejectedValue(new HttpError(`URL /bot${token}/sendRichMessage`, new Error("proxy")));
+    client.getUpdates.mockResolvedValueOnce([binding, hash]).mockResolvedValueOnce([{ update_id: 43 }]);
+    await manager(client, { warn } as unknown as AppLogger).reconcile(); await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(3));
+    expect(await db("project_telegram_bots").first()).toMatchObject({ poll_offset: 44, poll_error: null });
+    const codes = warn.mock.calls.map((c) => c[0]?.code); expect(codes).toContain("TELEGRAM_COMMAND_MENU_FAILED"); expect(codes).toContain("TELEGRAM_HASH_REPLY_FAILED");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(token);
   });
 });

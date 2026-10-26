@@ -765,3 +765,8 @@ kanban and graph display all assignees; the "me" filter matches each participant
 Legacy single-assignee APIs and existing assignments remain compatible. Changes
 notify newly assigned participants individually, and review follow-ups preserve
 the group. GitLab import/export and Telegram extraction keep one shared task.
+
+Telegram recipients consolidate sender/mention aliases into one person with shared
+account/tag controls. The bot's `/hash` group menu command lists configured tags
+and assignees for that chat after commit. Bot tables use dotted dates, 24-hour
+time and five message rows per page; setup banners and source columns are omitted.

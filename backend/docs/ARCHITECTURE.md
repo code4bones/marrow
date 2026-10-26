@@ -718,3 +718,12 @@ Telegram's bound-chat people collector observes senders/mentions/replies/forward
 rich content/member events even when no task can be extracted. Per-chat mapped
 recipient tag routes, current memberships and bot tags are checked again after
 classification; tags route assignees but never bypass AI intent detection.
+
+Telegram recipient observations remain as provenance rows, while `chatRecipients`
+aggregates a unique observed numeric ID and its username into one editable person.
+Reads and classifier/tag routing use the same grouping; edits/clear update every
+alias under the bot lock. Conflicting account mappings fall back to the owner
+until explicitly resolved. `/hash` is handled before tag/AI filtering in bound
+chats, snapshots current routes, and sends Rich Message feedback only after the
+cursor/journal commit. Command menu registration is isolated from polling errors;
+its lease is renewed after remote registration before the next getUpdates call.

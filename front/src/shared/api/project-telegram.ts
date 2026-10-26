@@ -109,13 +109,13 @@ export interface TelegramChatMentions {
   ownerUserId: string | null;
   availableTags: string[];
   members: { id: string; email: string }[];
-  mentions: { key: string; label: string; sourceType: string; tags: string[]; userId: string | null; effectiveUserId: string | null; resolution: 'manual' | 'linked' | 'owner'; lastSeenAt: string | null }[];
+  mentions: { key: string; label: string; sourceType: string; mappingConflict: boolean; tags: string[]; userId: string | null; effectiveUserId: string | null; resolution: 'manual' | 'linked' | 'owner'; lastSeenAt: string | null }[];
 }
 export const GET_TELEGRAM_CHAT_MENTIONS = gql`
   query ProjectTelegramChatMentions($project: String!, $id: ID!, $chatId: String!) {
     projectTelegramChatMentions(project: $project, id: $id, chatId: $chatId) {
       ownerUserId availableTags members { id email }
-      mentions { key label sourceType tags userId effectiveUserId resolution lastSeenAt }
+      mentions { key label sourceType mappingConflict tags userId effectiveUserId resolution lastSeenAt }
     }
   }
 `;
