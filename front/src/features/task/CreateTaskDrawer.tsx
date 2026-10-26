@@ -39,7 +39,7 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
             project: projectSlug,
             title: values.title,
             milestone: values.milestone || undefined,
-            assignee: values.assignee || undefined,
+            assignees: values.assignees,
             priority: values.priority ? PRIORITY_TIER_VALUE[values.priority as PriorityTier] : undefined,
             scope: values.scope || undefined,
             acceptance: values.acceptance || undefined,
@@ -77,8 +77,10 @@ export function CreateTaskDrawer({ projectSlug, onDone, milestoneSuggestions }: 
           <Form.Item name="priority" label={t('priority')}>
             <Select allowClear placeholder={t('priorityLow')} options={priorityTierOptions(t)} />
           </Form.Item>
-          <Form.Item name="assignee" label={t('assignee')}>
+          <Form.Item name="assignees" label={t('assignees')}>
             <Select
+              mode="multiple"
+              showSearch optionFilterProp="label"
               allowClear
               placeholder={t('unassigned')}
               options={members.map((m) => ({ label: m.email, value: m.userId }))}

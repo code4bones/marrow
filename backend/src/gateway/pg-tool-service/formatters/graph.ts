@@ -1,10 +1,12 @@
+import { taskAssigneeIds } from "../../task-assignees.js";
 import { assigneeDiffersFromOwner } from "../../assignees.js";
 import { dateStringOrNull, stringOrNull } from "./common.js";
 import type { GraphEdge, GraphNode, Row } from "../types.js";
 
 export function graphNodeOut(kind: string, row: Row): GraphNode {
   const createdBy = stringOrNull(row.created_by) ?? stringOrNull(row.createdBy);
-  const assigneeUserId = stringOrNull(row.assignee_user_id) ?? stringOrNull(row.assigneeUserId);
+  const assigneeUserIds = taskAssigneeIds(row);
+  const assigneeUserId = assigneeUserIds[0] ?? null;
   return {
     id: String(row.id),
     kind,
@@ -18,7 +20,8 @@ export function graphNodeOut(kind: string, row: Row): GraphNode {
     createdAt: dateStringOrNull(row.created_at) ?? dateStringOrNull(row.createdAt),
     createdBy,
     assigneeUserId,
-    assigneeDiffersFromOwner: assigneeDiffersFromOwner(assigneeUserId, createdBy)
+    assigneeUserIds,
+    assigneeDiffersFromOwner: assigneeUserIds.some((id) => assigneeDiffersFromOwner(id, createdBy))
   };
 }
 

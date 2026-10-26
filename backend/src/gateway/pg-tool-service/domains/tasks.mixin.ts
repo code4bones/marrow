@@ -1,3 +1,4 @@
+import { getTaskAssigneeIds, resolveTaskAssignees, setTaskAssignees } from "../../task-assignees.js";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
@@ -17,7 +18,6 @@ import {
   taskClaimRole,
   taskNoteDefaultRelation,
   taskNoteTypeTitle,
-  taskOut,
   taskSearchOut,
   taskSortColumn,
   taskSortDirection
@@ -51,11 +51,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     const project = await this.resolveProject(input.project, context);
     await this.assertTaskPermission(project.id, "create", context);
     await this.db("projects").where({ id: project.id }).forUpdate().first();
-    const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
-      project.id,
-      input.assignee as string | null | undefined,
-      context.clientId
-    );
+    const assigneeUserIds = await resolveTaskAssignees(this.db, project.id, input, context.clientId);
+    const assigneeUserId = assigneeUserIds[0] ?? null;
     const now = nowIso();
     const row = {
       id: await this.nextId("tasks", `T-${projectKeyFromId(project.id)}`),
@@ -77,6 +74,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       updated_at: now
     };
     await this.db("tasks").insert(row);
+    await setTaskAssignees(this.db, row.id, assigneeUserIds);
     // T-context (owner's ask, 2026-08-22): the Kanban board is now a
     // multiplayer surface (see the pm/developer/tester role system) --
     // someone other than the owner creating a task with no explicit
@@ -96,7 +94,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     // while the web Notifications feed showed the same events. Now uses
     // assigneeNotifyTarget so only a real interactive browser click by the
     // owner is treated as "they just watched this happen."
-    const ownerCreateNotifyTarget = input.assignee === undefined
+    const ownerCreateNotifyTarget = input.assignee === undefined && input.assignees === undefined
       ? assigneeNotifyTarget(project.ownerUserId, context)
       : undefined;
     await this.recordEventForProject(project.id, {
@@ -106,21 +104,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       target_user_ids: ownerCreateNotifyTarget ? [ownerCreateNotifyTarget] : [],
       record_title: row.title
     }, context);
-    const createNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
-    const createAssignmentActor = await this.assignmentActorUserId(context);
-    const createAssignmentIsExternal = Boolean(assigneeUserId && createAssignmentActor && assigneeUserId !== createAssignmentActor);
-    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by) || createAssignmentIsExternal) {
-      const event = await this.recordEventForProject(project.id, {
-        type: "task.assigned",
-        title: `Task assigned: ${row.title}`,
-        related_id: row.id,
-        target_user_ids: createNotifyTarget ? [createNotifyTarget] : [],
-        record_title: row.title
-      }, context);
-      await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
-    }
+    await this.notifyNewTaskAssignees(row, project, assigneeUserIds, [], context);
     await this.enqueueTaskGitlabExport(row, context);
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
   // T-context (owner's ask, 2026-08-23): "me" resolves to whoever this
@@ -164,7 +150,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     if (input.assignee) {
       const assigneeUserId = await this.resolveAssigneeFilter(project.id, String(input.assignee), context);
-      query = query.andWhere("assignee_user_id", assigneeUserId);
+      query = query.andWhere((q) => q.where("assignee_user_id", assigneeUserId).orWhereIn("id", this.db("task_assignees").select("task_id").where({ user_id: assigneeUserId })));
     }
     if (input.claimedByAgent) {
       // Sweep expired claims first -- otherwise a stale active row (past
@@ -176,7 +162,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         this.db("task_claims").select("task_id").where({ status: "active", agent_name: String(input.claimedByAgent) })
       );
     }
-    const tasks = (await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20))).map(taskOut);
+    const tasks = await this.formatTasks(await query.orderBy("priority").orderBy("created_at").limit(Number(input.limit ?? 20)));
     return input.compact === true ? tasks.map(compactTask) : tasks;
   }
 
@@ -226,19 +212,16 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     if (input.assignee) {
       const assigneeUserId = await this.resolveAssigneeFilter(project.id, String(input.assignee), context);
-      base.andWhere("assignee_user_id", assigneeUserId);
+      base.andWhere((q) => q.where("assignee_user_id", assigneeUserId).orWhereIn("id", this.db("task_assignees").select("task_id").where({ user_id: assigneeUserId })));
     }
     // T-MEMORY-051 follow-up: server-driven sort (default updated_at desc).
     // Trailing `id` tiebreaker keeps offset pagination stable when many rows
     // share the same sort-column value.
     const sortColumn = taskSortColumn(input.sortField);
     const sortDirection = taskSortDirection(input.sortDirection);
-    return this.pageRows(
-      base,
-      input,
-      (query) => this.taskSelectWithActiveClaimCount(query).orderBy(sortColumn, sortDirection).orderBy("id"),
-      taskOut
-    );
+    const page = await this.pageRows(base, input,
+      (query) => this.taskSelectWithActiveClaimCount(query).orderBy(sortColumn, sortDirection).orderBy("id"), (row) => row);
+    return { ...page, items: await this.formatTasks(page.items) };
   }
 
   // T-MEMORY-057 (IDOR): task ids are sequential/predictable too.
@@ -262,7 +245,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .orderBy("created_at", "desc")
       .select("from_id");
     const noteIds = noteLinks.map((link: Row) => String(link.from_id));
-    return { ...taskOut(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id) };
+    return { ...await this.formatTask(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id) };
   }
 
   // T-MEMORY-065: task.add_note/remark items exist solely to describe this
@@ -317,6 +300,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     }
     await this.assertProjectMember(String(current.project_id), context);
     await this.assertTaskPermission(String(current.project_id), "delete", context);
+    const deletedTask = await this.formatTask(current);
     const deletedNoteIds = await this.deleteOwnedTaskNotes(id, context);
     let deletedLinks = 0;
     await this.db.transaction(async (trx) => {
@@ -331,7 +315,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       related_id: id
     }, context);
     return {
-      deletedTask: taskOut(current),
+      deletedTask,
       deletedLinks,
       deletedNoteIds,
       event
@@ -345,7 +329,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .orderBy("priority")
       .orderBy("created_at")
       .first();
-    return row ? taskOut(row) : null;
+    return row ? this.formatTask(row) : null;
   }
 
   protected async updateTaskStatus(input: Row, context: NormalizedGatewayRequestContext) {
@@ -399,10 +383,10 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         title: `Changes requested: ${row.title}`,
         body: reviewNote,
         related_id: row.id,
-        target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+        target_user_ids: lifecycleNotifyTargets(row.created_by, await getTaskAssigneeIds(this.db, row), context),
         record_title: row.title
       }, context);
-      return { task: taskOut(row), followUpTask };
+      return { task: await this.formatTask(row), followUpTask };
     }
     await this.assertTaskPermission(String(current.project_id), "move", context);
     const note = stringOrNull(input.note);
@@ -423,7 +407,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       title: `Task status changed: ${row.title}`,
       body: note,
       related_id: row.id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      target_user_ids: lifecycleNotifyTargets(row.created_by, await getTaskAssigneeIds(this.db, row), context),
       record_title: row.title
     }, context);
 
@@ -447,7 +431,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       creditWarning = `Task status changed, but the credit penalty failed: ${error instanceof Error ? error.message : String(error)}`;
     }
 
-    return { task: taskOut(row), ...(creditWarning ? { warning: creditWarning } : {}) };
+    return { task: await this.formatTask(row), ...(creditWarning ? { warning: creditWarning } : {}) };
   }
 
   // T-MEMORY-115: spawned by updateTaskStatus's changes_requested branch --
@@ -482,12 +466,13 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       updated_at: now
     };
     await this.db("tasks").insert(row);
+    await setTaskAssignees(this.db, row.id, await getTaskAssigneeIds(this.db, original));
     await this.recordEventForProject(String(original.project_id), {
       type: "task.created",
       title: `Task created: ${row.title}`,
       related_id: row.id
     }, context);
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
   protected async applyTaskReopenedPenalty(taskId: string, projectId: string | null): Promise<void> {
@@ -549,7 +534,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
   // T-MEMORY-105: mirrors updateTaskMilestone's shape -- a plain field edit,
@@ -573,7 +558,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
   // T-MEMORY-110: backs the full task-editing drawer -- whoever can create a
@@ -617,7 +602,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       patch.priority = Number(input.priority);
     }
     const [row] = await this.db("tasks").where({ id }).update(patch).returning("*");
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
   // T-MEMORY-105: same shape again. Backs the Kanban board's drag-to-reorder
@@ -642,13 +627,11 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    return taskOut(row);
+    return this.formatTask(row);
   }
 
-  // T-MEMORY-090: mirrors updateTaskMilestone's shape -- `assignee` is
-  // required-but-nullable (unlike task.create's optional `assignee`,
-  // there's no "unset" default to fall back on here; the caller must say
-  // either a member or null).
+  // Replacement semantics: either a complete assignees list, or the legacy
+  // single member/null field. Omission is rejected by the input schema.
   protected async updateTaskAssignee(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("tasks").where({ id }).first();
@@ -658,11 +641,10 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     await this.assertProjectMember(String(current.project_id), context);
     await this.assertTaskPermission(String(current.project_id), "assign", context);
     await this.db("projects").where({ id: current.project_id }).forUpdate().first();
-    const assigneeUserId = await createAssigneesFacade(this.db).resolveAssigneeUserId(
-      String(current.project_id),
-      input.assignee as string | null,
-      undefined
-    );
+    const previous = await getTaskAssigneeIds(this.db, current);
+    const assigneeUserIds = await resolveTaskAssignees(this.db, String(current.project_id), input);
+    const assigneeUserId = assigneeUserIds[0] ?? null;
+    await setTaskAssignees(this.db, id, assigneeUserIds);
     const [row] = await this.db("tasks")
       .where({ id })
       .update({
@@ -673,30 +655,32 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         version: Number(current.version ?? 1) + 1
       })
       .returning("*");
-    const reassignNotifyTarget = assigneeNotifyTarget(assigneeUserId, context);
-    const reassignAssignmentActor = await this.assignmentActorUserId(context);
-    const reassignAssignmentIsExternal = Boolean(assigneeUserId && reassignAssignmentActor && assigneeUserId !== reassignAssignmentActor);
-    if (assigneeDiffersFromOwner(assigneeUserId, row.created_by) || reassignAssignmentIsExternal) {
-      const event = await this.recordEventForProject(String(row.project_id), {
-        type: "task.assigned",
-        title: `Task assigned: ${String(row.title)}`,
-        related_id: id,
-        target_user_ids: reassignNotifyTarget ? [reassignNotifyTarget] : [],
-        record_title: row.title
-      }, context);
-      const project = await this.db("projects").where({ id: String(row.project_id) }).select("id", "title").first();
-      if (project) {
-        await this.enqueueTellyTaskOfferIfEligible(event, project, row, assigneeUserId, context);
-      }
-    }
+    const project = await this.db("projects").where({ id: row.project_id }).first();
+    if (project) await this.notifyNewTaskAssignees(row, project, assigneeUserIds, previous, context);
+    await this.recordEventForProject(String(row.project_id), {
+      type: "task.assignees_updated", title: `Task assignees updated: ${row.title}`, related_id: id, target_user_ids: []
+    }, context);
     await this.enqueueTaskGitlabExport(row, context);
-    return taskOut(row);
+    return this.formatTask(row);
+  }
+
+  protected async notifyNewTaskAssignees(task: Row, project: Row, ids: string[], previous: string[], context: NormalizedGatewayRequestContext) {
+    const actor = await this.assignmentActorUserId(context);
+    for (const id of ids.filter((candidate) => !previous.includes(candidate))) {
+      if (!assigneeDiffersFromOwner(id, task.created_by) && (!actor || actor === id)) continue;
+      const target = assigneeNotifyTarget(id, context);
+      const event = await this.recordEventForProject(String(task.project_id), {
+        type: "task.assigned", title: `Task assigned: ${task.title}`, related_id: task.id,
+        target_user_ids: target ? [target] : [], record_title: task.title
+      }, context);
+      await this.enqueueTellyTaskOfferIfEligible(event, project, task, id, context);
+    }
   }
 
   protected async enqueueTaskGitlabExport(task: Row, context: NormalizedGatewayRequestContext) {
     if (context.metadata.source === "gitlab" || String(task.created_by).startsWith("integration:gitlab:")) return;
     const actor = await this.assignmentActorUserId(context);
-    if (actor && task.assignee_user_id && actor !== task.assignee_user_id) await enqueueIssueExport(this.db, task, actor);
+    if (actor && (await getTaskAssigneeIds(this.db, task)).some((id) => actor !== id)) await enqueueIssueExport(this.db, task, actor);
   }
 
   protected async exportTaskGitlab(input: Row, context: NormalizedGatewayRequestContext) {
@@ -968,7 +952,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         .filter((value): value is string => Boolean(value))
         .join("\n"),
       related_id: id,
-      target_user_ids: lifecycleNotifyTargets(row.created_by, stringOrNull(row.assignee_user_id), context),
+      target_user_ids: lifecycleNotifyTargets(row.created_by, await getTaskAssigneeIds(this.db, row), context),
       record_title: row.title
     }, context);
 

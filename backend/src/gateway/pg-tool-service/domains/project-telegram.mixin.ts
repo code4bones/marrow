@@ -6,7 +6,7 @@ import { decryptBotSecret, encryptBotSecret, projectTelegramApi } from "../../te
 import { linkCodeHash } from "../../telegram-project-bots/receiver.js";
 import { telegramBotTags } from "../../telegram-project-bots/tags.js";
 import { telegramPollingStatus } from "../../telegram-project-bots/status.js";
-import { activeProjectUsers } from "../../telegram-project-bots/members.js";
+import { activeProjectUsers, resolveTelegramRecipient } from "../../telegram-project-bots/members.js";
 import { botMessageOut, botMessageSelect } from "../../telegram-project-bots/messages.js";
 import type { Constructor } from "../base.js";
 import type { Tier1Instance } from "../core/links-core.mixin.js";
@@ -75,13 +75,14 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const rows = await this.db("telegram_chat_mentions").where({ bot_id: bot.id, chat_id: input.chatId }).orderBy("last_seen_at", "desc").orderBy("mention_key");
       const members = await activeProjectUsers(this.db, project.id, project.ownerUserId).select("u.id", "u.email");
       const identities = await this.db("telegram_identities").whereIn("user_id", members.map((m) => m.id));
-      return { ownerUserId: project.ownerUserId, members, mentions: rows.map((row) => {
-        const manual = row.user_id && members.some((m) => m.id === row.user_id);
-        const linked = identities.filter((i) => String(row.mention_key).startsWith("username:")
-          ? String(i.username ?? "").toLowerCase() === String(row.mention_key).slice(9) : String(i.telegram_id) === row.mention_key);
-        return { key: row.mention_key, label: row.label, userId: row.user_id ?? null,
-          effectiveUserId: manual ? row.user_id : !row.user_id && linked.length === 1 ? linked[0].user_id : project.ownerUserId,
-          resolution: manual ? "manual" : !row.user_id && linked.length === 1 ? "linked" : "owner", lastSeenAt: dateStringOrNull(row.last_seen_at) };
+      const allowed = new Set(members.map((m) => String(m.id)));
+      const visible = rows.filter((r) => r.user_id || !String(r.mention_key).startsWith("username:") ||
+        rows.filter((a) => a.username === String(r.mention_key).slice(9)).length !== 1);
+      return { ownerUserId: project.ownerUserId, members, availableTags: telegramBotTags(bot.filter_tags), mentions: visible.map((row) => {
+        const username = String(row.mention_key).startsWith("username:") ? String(row.mention_key).slice(9) : null;
+        const recipient = resolveTelegramRecipient(String(row.mention_key), username, rows, identities, allowed, String(project.ownerUserId));
+        return { key: row.mention_key, label: row.label, sourceType: row.source_type ?? "mention", tags: telegramBotTags(row.assignment_tags), userId: row.user_id ?? null,
+          effectiveUserId: recipient.userId, resolution: recipient.resolution, lastSeenAt: dateStringOrNull(row.last_seen_at) };
       }) };
     }
 
@@ -89,17 +90,29 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const { bot, project } = await this.managedTelegramBot(input, context);
       await this.db.transaction(async (trx) => {
         // Same bot lock as ingestion/import/unlink: changes cannot race task creation.
-        if (!await trx("project_telegram_bots").where({ id: bot.id, project_id: project.id }).forUpdate().first())
-          throw new AppError("NOT_FOUND", "Bot not found in this project.");
+        const currentBot = await trx("project_telegram_bots").where({ id: bot.id, project_id: project.id }).forUpdate().first();
+        if (!currentBot) throw new AppError("NOT_FOUND", "Bot not found in this project.");
         if (!await trx("project_telegram_chats").where({ bot_id: bot.id, chat_id: input.chatId }).first())
           throw new AppError("NOT_FOUND", "Chat not bound to this project's bot.");
         if (input.userId && !await activeProjectUsers(trx, project.id, project.ownerUserId).where("u.id", input.userId).first())
           throw new AppError("VALIDATION_ERROR", "Choose an active project member.");
-        const updated = await trx("telegram_chat_mentions").where({ bot_id: bot.id, chat_id: input.chatId, mention_key: input.mentionKey })
-          .update({ user_id: input.userId ?? null });
-        if (!updated) throw new AppError("NOT_FOUND", "Mention not found in this bound chat.");
+        const key = { bot_id: bot.id, chat_id: input.chatId, mention_key: input.mentionKey };
+        const current = await trx("telegram_chat_mentions").where(key).first();
+        if (!current) throw new AppError("NOT_FOUND", "Person not observed in this bound chat.");
+        const update: Row = {};
+        if (input.userId !== undefined) update.user_id = input.userId;
+        if (input.tags !== undefined) {
+          const tags = telegramBotTags(input.tags);
+          if (tags.some((tag) => !telegramBotTags(currentBot.filter_tags).includes(tag))) throw new AppError("VALIDATION_ERROR", "Choose routing tags from this bot's configured tags.");
+          const recipientId = input.userId === undefined ? current.user_id : input.userId;
+          if (tags.length && (!recipientId || !await activeProjectUsers(trx, project.id, project.ownerUserId).where("u.id", recipientId).first()))
+            throw new AppError("VALIDATION_ERROR", "Map this person to an active project participant before choosing routing tags.");
+          update.assignment_tags = JSON.stringify(tags);
+        }
+        if (input.userId === null) update.assignment_tags = "[]";
+        await trx("telegram_chat_mentions").where(key).update(update);
       });
-      await this.recordEventForProject(project.id, { type: "project.telegram_mention_mapped", title: input.userId ? "Telegram mention mapped" : "Telegram mention mapping cleared", related_id: project.id }, context);
+      await this.recordEventForProject(project.id, { type: "project.telegram_mention_mapped", title: "Telegram recipient settings updated", related_id: project.id }, context);
       return { saved: true };
     }
 

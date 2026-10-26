@@ -118,10 +118,10 @@ login page is unchanged. See [GitLab sign-in setup](docs/AUTH.md#gitlab-sign-in-
 
 Project Settings → **Bots** supports several dedicated Telegram bots and several
 groups/channels per bot. Chats are authorized by a single-use message key. Each
-bot has editable hashtag filters; only tagged messages with mentions go to the project owner's saved DeepSeek
+bot has editable hashtag filters; only tagged messages go to the project owner's saved DeepSeek
 model, which extracts clear assignments and skips conversation. Per-chat settings
-map observed mentions to project members. Multiple or unresolved recipients fall
-back to the owner; one message creates at most one task and a Rich Message reply
+map observed mentions to project members. Configured recipient tags take priority over mentions. Several resolved
+performers share the task; missing/ambiguous recipients fall back to the owner; one message creates at most one task and a Rich Message reply
 links it after commit. Setup requires
 `TELEGRAM_BOT_ENC_KEY` (32 random bytes in base64) and existing `AI_PROVIDER_ENC_KEY`.
 Project bots use grammY long polling through the same `TELEGRAM_BOT_PROXY` as the
@@ -490,3 +490,9 @@ npm run smoke:package
 - The web UI (browser UI) and per-user auth (email+password+session, invite-based, see `docs/AUTH.md`) exist for the gateway mode; there is still no remote sync, cloud dependency, embeddings, or vector search.
 - Project-specific memory and common memory are separate. Default search includes current project plus common knowledge.
 - `preflight` is the main workflow guardrail before editing project files.
+
+Gateway tasks support `assignees: [...]` for several active project participants.
+Existing `assignee` inputs still replace the list with one/zero members. Task
+forms, lists, kanban, graph, filters, notifications and integrations use the whole
+set; one task retains one shared status. Apply migrations 123–127 before starting
+backend 1.101.0 / frontend 0.72.0.

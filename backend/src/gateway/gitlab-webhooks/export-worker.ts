@@ -1,3 +1,4 @@
+import { getTaskAssigneeIds } from "../task-assignees.js";
 import type { Knex } from "knex";
 import { nowIso } from "../../shared/dates.js";
 import { AppError } from "../../shared/errors.js";
@@ -5,7 +6,7 @@ import type { AppLogger } from "../../shared/logging/logger.js";
 import { decryptGitToken, gitlabRequest, type GitHttpFetch } from "../git-credentials.js";
 import type { Row } from "../pg-tool-service/types.js";
 import { marrowWebUrl } from "../telegram.js";
-import { exportMarker, linkExport } from "./exports.js";
+import { exportMarker, linkExport, exportRecipients, exportGitlabUsers, sameUsers } from "./exports.js";
 
 interface RemoteIssue { id: number; iid: number; project_id: number; description: string | null; assignees?: Array<{ id: number }> }
 
@@ -87,17 +88,21 @@ export class GitlabExportWorker {
       await trx("projects").where({ id: operation.project_id }).forUpdate().first();
       const current = await trx("gitlab_issue_exports").where({ id: operation.id }).forUpdate().first();
       if (!current || current.status !== "processing" || current.post_attempted_at ||
-        current.repository_id !== operation.repository_id || current.actor_user_id !== operation.actor_user_id || current.recipient_user_id !== operation.recipient_user_id) return null;
+        current.repository_id !== operation.repository_id || current.actor_user_id !== operation.actor_user_id || !sameUsers(exportRecipients(current), exportRecipients(operation))) return null;
       const task = current.task_id ? await trx("tasks").where({ id: current.task_id }).first() : null;
       const repo = await trx("project_repositories").where({ id: current.repository_id }).first();
-      const recipient = await trx("users").where({ id: current.recipient_user_id, status: "active" }).first();
-      const recipientMember = project.owner_user_id === current.recipient_user_id || await trx("project_members").where({ project_id: current.project_id, user_id: current.recipient_user_id, status: "active" }).first();
-      const mapping = await trx("project_gitlab_members").where({ project_id: current.project_id, user_id: current.recipient_user_id, host: current.host }).first();
-      if (!task || !repo || ["done", "cancelled"].includes(String(task.status)) || task.assignee_user_id !== current.recipient_user_id || !recipient || !recipientMember) {
+      const recipientIds = exportRecipients(current);
+      const recipients = await trx("users").whereIn("id", recipientIds).where({ status: "active" });
+      const activeMembers = await trx("project_members").where({ project_id: current.project_id, status: "active" }).whereIn("user_id", recipientIds);
+      const allowed = new Set([String(project.owner_user_id), ...activeMembers.map((m) => String(m.user_id))]);
+      const mappings = await trx("project_gitlab_members").where({ project_id: current.project_id, host: current.host }).whereIn("user_id", recipientIds);
+      if (!task || !repo || ["done", "cancelled"].includes(String(task.status)) ||
+          !sameUsers(await getTaskAssigneeIds(trx, task), recipientIds) || recipients.length !== recipientIds.length || recipientIds.some((id) => !allowed.has(id))) {
         await trx("gitlab_issue_exports").where({ id: current.id }).update({ status: "cancelled", last_error: "ASSIGNMENT_NO_LONGER_ELIGIBLE", locked_until: null, updated_at: nowIso() });
         return null;
       }
-      if (!mapping || mapping.gitlab_user_id !== current.gitlab_user_id) throw new AppError("VALIDATION_ERROR", "GitLab assignee mapping changed; retry the export.");
+      if (mappings.length !== recipientIds.length || !sameUsers([...new Set(mappings.map((m) => String(m.gitlab_user_id)))], exportGitlabUsers(current)))
+        throw new AppError("VALIDATION_ERROR", "GitLab assignee mappings changed; retry the export.");
       const webUrl = marrowWebUrl();
       const taskUrl = webUrl ? `${webUrl}/projects/${encodeURIComponent(String(project.slug))}/tasks/${encodeURIComponent(String(task.id))}` : null;
       const description = [exportMarker(String(current.id)), taskUrl ? `Marrow task: [${task.id}](${taskUrl})` : `Marrow task: ${task.id}`, task.scope,
@@ -106,7 +111,7 @@ export class GitlabExportWorker {
         task.milestone ? `Milestone: ${task.milestone}` : null].filter(Boolean).join("\n\n");
       if (description.length > 450_000) throw new AppError("VALIDATION_ERROR", "Task content is too large for GitLab export.");
       await trx("gitlab_issue_exports").where({ id: current.id }).update({ post_attempted_at: nowIso(), updated_at: nowIso() });
-      return { title: String(task.title).slice(0, 255), description, assignee_ids: [Number(current.gitlab_user_id)] };
+      return { title: String(task.title).slice(0, 255), description, assignee_ids: exportGitlabUsers(current).map(Number) };
     });
     if (!prepared) return;
     let issue: RemoteIssue;
@@ -152,7 +157,7 @@ export class GitlabExportWorker {
       const current = await trx("gitlab_issue_exports").where({ id: operation.id }).forUpdate().first();
       if (current) {
         await linkExport(trx, current, String(issue.id), String(issue.iid));
-        if (!issue.assignees?.some((user) => String(user.id) === current.gitlab_user_id)) {
+        if (exportGitlabUsers(current).some((id) => !issue.assignees?.some((user) => String(user.id) === id))) {
           await trx("gitlab_issue_exports").where({ id: current.id }).update({ last_error: "GITLAB_ASSIGNEE_NOT_APPLIED" });
         }
       }

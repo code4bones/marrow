@@ -12,6 +12,24 @@ Local SQLite stdio mode exposes the core project-memory tools.
 
 Cross-member task assignments enqueue a durable `inbox_put` offer. The route includes `namespace: "marrow"`, `key: project.id`, `label: project.title` (falling back to the slug), and `slug: project.slug`. TellyMCP can display the project name and slug without querying Marrow. `display.sender` snapshots the assigning user's email when available. The stable `key` remains the routing identity; renaming a project does not change that identity. These fields are snapshots for new offers; existing inbox entries are not rewritten. Project display metadata and sender labels are not included in literal PTY instructions.
 
+## Shared task assignees (gateway)
+
+`task.create` and `task.update_assignee` accept `assignees: [emailOrIdOrFragment, ...]`
+(up to 50, resolved against active project participants, deduplicated). The legacy
+`assignee: member | null` remains supported and replaces the full list with one or
+zero participants. Supply one form only; omission on create defaults to the
+identified creator, while `assignees: []` explicitly leaves a task unassigned.
+Responses expose `assigneeUserIds`; the legacy `assigneeUserId` is its first item.
+All participants share one task/status, existing workflow permissions and claim
+rules. Assignment controls retain the existing assign permission.
+
+Task/record/preflight/summary/graph reads include all recipients, and `assignee=me`
+or a member filter matches any recipient. Newly added external assignees each get
+one assignment event and a separate idempotent Telly offer; retained assignees do
+not get another offer. Lifecycle events notify creator and all assignees, deduped
+with the existing interactive self-action rule. Review follow-ups inherit the
+whole list. Existing single assignments are backfilled into `task_assignees`.
+
 ## Project Telegram bots (gateway)
 
 Settings has three tabs: General, Project Vars and Bots. The owner/admin can
@@ -42,8 +60,8 @@ are owner/admin-only and excluded from Ask Marrow's automatic tool set.
 | `project.telegram_bots` | `project` → `bots`, `deepseekReady`; status, bound chats, pending/failed counts; no credentials |
 | `project.telegram_bot_messages` | `project`, `id`, optional `limit`/`offset` → compact journal page and total |
 | `project.telegram_bot_message` | `project`, `id`, `messageId` → message/filter/classification details and linked tasks |
-| `project.telegram_chat_mentions` | `project`, `id`, `chatId` → observed mentions, manual/effective recipients, active project members |
-| `project.telegram_chat_set_mention` | `project`, `id`, `chatId`, `mentionKey`, `userId` (null clears) → `saved`; mapping only in that bound bot/chat |
+| `project.telegram_chat_mentions` | `project`, `id`, `chatId` → observed people/sources/aliases, mappings, recipient routing tags, bot tag choices and active project members |
+| `project.telegram_chat_set_mention` | `project`, `id`, `chatId`, `mentionKey`, optional `userId` (null clears), optional `tags` ([] clears) → `saved`; mapping only in that bound bot/chat |
 | `project.telegram_bot_add` | `project`, `token`, `tags` → bot; verifies getMe, encrypts token, enables grammY polling |
 | `project.telegram_bot_set_tags` | `project`, `id`, `tags` → bot; replaces its hashtag filters |
 | `project.telegram_bot_connect` / `project.telegram_bot_disconnect` | `project`, `id` → bot status; starts/stops local polling, including during Telegram outages |
@@ -65,12 +83,16 @@ channel. This consumes the key and records that bot/chat binding. Each additiona
 chat needs a fresh key. Only groups, supergroups and channels can bind; private
 messages cannot. In groups, grant admin rights or disable BotFather Privacy Mode
 and re-add the bot; add the bot as an administrator in channels. In each bound
-chat, **Recipients** lists observed mentions even from messages without matching
-tags. Map them to active project participants or clear manual assignments. These
-mappings override global Telegram identities and apply only to that bot/chat.
-Clearing restores account matching; missing/ambiguous/inactive recipients fall
-back to the owner. Mappings are rechecked before task creation. Only future tasks
-and queued messages use changes; past messages are not reprocessed. Both
+chat, **Recipients** collects available user identities from all new messages:
+senders, text/caption/rich mentions, replies, visible forwards, service/member
+updates, edits and media, independent of tag filtering. Private/unbound chats,
+bots, hidden forward names and anonymous sender-chat identities are excluded.
+Numeric mappings survive username changes and resolve @username aliases; ambiguous
+aliases fall back to the owner. A username-only row is hidden when a unique
+observed numeric identity represents it, unless it has an explicit mapping.
+Old sender identities were not retained and appear after new activity; the Bot API
+is not used to invent a historical participant list. Mapping changes affect queued
+and future tasks and do not reprocess old messages automatically. Both
 `@username` (case-insensitive) and Telegram `text_mention` IDs work in text/captions;
 UTF-16 entity offsets are respected. Arbitrary text containing a name is not a mention.
 
@@ -89,9 +111,15 @@ from classification queue insertion and any AI request, while
 remaining visible in the bounded receive journal. Different bots in the
 same chat can have different filters. Keys used for chat binding do not need tags.
 
-Only new tagged messages/posts from bound chats with mentions and an active
-project owner enter the durable queue. Manual mappings, unique linked identities,
-then the owner fallback resolve candidates. The owner's configured DeepSeek credential is
+Only new tagged messages/posts from bound chats with an active project owner
+enter the durable queue, including requests without mentions. Configured recipient
+routing tags take priority; all active mapped participants whose tags match share
+one task. Routing tags are selected from that bot's configured filter list and
+require a manual active-account mapping. Clearing a mapping clears its routing
+tags. Retired bot tags cannot route messages. Without a tag route, manual mappings
+and unique linked identities resolve mentions; the classifier selects actual
+performers and excludes observers. Missing or unresolved recipients fall back to
+the project owner. The owner's configured DeepSeek credential is
 used (default DeepSeek first, otherwise newest DeepSeek with a selected model),
 never the admin's or another participant's key. DeepSeek receives only message
 text and candidate Telegram IDs/normalized mention keys and usernames (no participant emails). Its JSON response has no
@@ -100,9 +128,10 @@ confidence at least 0.90. A mention alone is insufficient: conversation, reports
 of completed work and uncertain intent produce no tasks. Clear requests, including
 polite requests phrased as questions, can create tasks. There is at most one task
 per source message, regardless of bot or number of recipients. Multiple distinct
-mentions always assign the one task to the project owner; repeated mentions of
-the same username count once. A single resolved mention selects that member.
-A Rich Message reply after commit names the task and actual assignee, links the
+mentions can select multiple performers on the one task; repeated mentions and
+several aliases mapping to the same account are deduplicated. The owner is used
+for missing or ambiguous recipients, not simply because several people are named.
+A Rich Message reply after commit names the task and all actual assignees, links the
 web task and preserves the original message/topic. Send failures cannot roll
 back the task or cause automatic resends; no reply is sent for non-task messages.
 Titles/descriptions use the message language; notes retain the original message
@@ -145,7 +174,7 @@ Project/chat/message
 deduplication prevents duplicate tasks across multiple bots, delivery retries,
 bot reconnection and deleted-task replays.
 
-Deployment: apply migrations 117–122; configure `TELEGRAM_BOT_ENC_KEY` as a new
+Deployment: apply migrations 117–127; configure `TELEGRAM_BOT_ENC_KEY` as a new
 32-byte base64 encryption key and retain it across restarts. Existing DeepSeek
 keys use `AI_PROVIDER_ENC_KEY`. Reuse the existing `TELEGRAM_BOT_PROXY` to reach
 Telegram from the server; no public callback URL or inbound port is required.
@@ -154,7 +183,7 @@ Telegram from the server; no public callback URL or inbound port is required.
 
 ### Marrow task → GitLab issue
 
-Creating or reassigning a task to another member automatically queues an issue export when the project has attached repositories. The assignee must have a GitLab mapping on the repository host. Exactly one repository led by that assignee is selected automatically; zero or several matches produce `blocked / REPOSITORY_REQUIRED`, without guessing. The task drawer offers an explicit repository selection, retry and the resulting issue link. An explicit selection is retained across retries. Export uses the assigning user's own stored GitLab credential, never another member's or the instance owner's token.
+Creating or reassigning a task to another member automatically queues an issue export when the project has attached repositories. Every assignee must have a GitLab mapping on the selected host. Exactly one repository led by any assignee is selected automatically; zero or several matches produce `blocked / REPOSITORY_REQUIRED`, without guessing. The task drawer offers an explicit repository selection, retry and the resulting issue link. An explicit selection is retained across retries. Export uses the assigning user's own stored GitLab credential, never another member's or the instance owner's token.
 
 - `task.gitlab_status({id})` returns `{gitlab: {status, repositoryId, issueUrl, lastError} | null}`; `task.get` includes the same `gitlab` field.
 - `task.export_gitlab({id, repositoryId?})` queues an existing assigned task or retries an export blocked before POST. Requires task assignment permission. It also allows an explicit export of a self-assigned task. Already linked tasks return their link; uncertain POST outcomes remain in reconciliation. It does not emit `task.assigned` or offer work to Telly again.
@@ -162,7 +191,7 @@ Creating or reassigning a task to another member automatically queues an issue e
 
 The task mutation, task events, existing Telly outbox entry and durable export intent commit together. A worker records `post_attempted_at` before sending `POST /projects/:id/issues`, with a unique `<!-- marrow-export:UUID -->` marker at the start of the issue description. A webhook echo uses this persisted marker and repository identity to link the **original** task, even if the webhook arrives before the POST response. It creates no task, assignment event or Telly offer. Imported GitLab tasks are never exported back, including after reassignment. Provenance and export tombstones survive task deletion.
 
-Successful responses and webhook echoes share the same project lock and issue provenance table. A timeout, process restart, malformed response or server failure after POST leads to `uncertain`: the worker searches issues across all states for the exact marker and reconciles the link. Empty search results and failures to read GitLab never authorize another POST. A definitive POST rejection (HTTP 4xx except 408) can be retried explicitly after correcting the problem. Uncertain exports cannot change repositories; they need reconciliation rather than a replacement issue. Tokens and remote response bodies are not recorded in diagnostics. An issue created without the requested assignee remains linked with `GITLAB_ASSIGNEE_NOT_APPLIED` for inspection.
+Successful responses and webhook echoes share the same project lock and issue provenance table. A timeout, process restart, malformed response or server failure after POST leads to `uncertain`: the worker searches issues across all states for the exact marker and reconciles the link. Empty search results and failures to read GitLab never authorize another POST. A definitive POST rejection (HTTP 4xx except 408) can be retried explicitly after correcting the problem. Uncertain exports cannot change repositories; they need reconciliation rather than a replacement issue. Tokens and remote response bodies are not recorded in diagnostics. An issue created without any requested assignee remains linked with `GITLAB_ASSIGNEE_NOT_APPLIED` for inspection.
 
 This exports new assignments after deployment. Older tasks can be exported explicitly; there is no bulk historical backfill. Existing issue title/content/status/assignee are not continuously synchronized when a linked task changes, and reassignment never creates another issue for the same task.
 
@@ -187,7 +216,7 @@ Enable import separately for each repository with `project.repository_webhook_co
 
 The gateway generates the callback at `<PROJECT_MEMORY_PUBLIC_URL>/integrations/gitlab/webhooks/<repository UUID>`. GitLab 19+ uses a generated HMAC signing key; older versions use a per-repository secret token. Keys remain encrypted and are never returned. The HTTPS reverse proxy must forward this route (see the nginx example). Authentication uses the configured mode, with no downgrade to another mode on a bad signature.
 
-Only new, non-confidential `Issue Hook` events (`object_kind=issue`, action `open`) are imported. Requests are bounded to 1 MiB, authenticated and persisted before 202; a worker retries failures and creates the task, provenance link, task events and any TellyMCP outbox offer in one transaction. Delivery IDs and project/host/repository/issue identity prevent duplicate tasks, including across webhook re-registration. Realtime/Telegram effects run after commit. Exactly one mapped active assignee is selected. If the issue has no assignees, its configured repository lead is used when still active in Marrow and the project. Explicit but unmapped/ambiguous assignees remain unassigned. Removing a member clears their repository lead assignments. External author/assignees and the source URL are preserved in notes, while `createdBy` identifies the GitLab integration. Closing/editing/reopening an issue does not change the task's workflow state; task deletion leaves a provenance tombstone preventing recreation on replay. Existing issues are not backfilled.
+Only new, non-confidential `Issue Hook` events (`object_kind=issue`, action `open`) are imported. Requests are bounded to 1 MiB, authenticated and persisted before 202; a worker retries failures and creates the task, provenance link, task events and any TellyMCP outbox offer in one transaction. Delivery IDs and project/host/repository/issue identity prevent duplicate tasks, including across webhook re-registration. Realtime/Telegram effects run after commit. All mapped active assignees share one Marrow task. If the issue has no assignees, its configured repository lead is used when still active in Marrow and the project. Explicit but unmapped/ambiguous assignees remain unassigned. Removing a member clears their repository lead assignments. External author/assignees and the source URL are preserved in notes, while `createdBy` identifies the GitLab integration. Closing/editing/reopening an issue does not change the task's workflow state; task deletion leaves a provenance tombstone preventing recreation on replay. Existing issues are not backfilled.
 
 PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and artifact storage over MCP Streamable HTTP:
 

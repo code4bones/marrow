@@ -36,6 +36,7 @@ interface BuiltNode {
   createdAt: string | null;
   createdBy: string | null;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   assigneeDiffersFromOwner: boolean;
   children: BuiltNode[];
 }
@@ -66,7 +67,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
 
   const root: BuiltNode = {
     id: project.id, kind: 'PROJECT', title: project.title, status: null, createdAt: null, createdBy: null,
-    assigneeUserId: null, assigneeDiffersFromOwner: false, children: [],
+    assigneeUserId: null, assigneeUserIds: [], assigneeDiffersFromOwner: false, children: [],
   };
   const builtById = new Map<string, BuiltNode>();
   const visited = new Set<string>();
@@ -77,7 +78,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
     visited.add(seed.id);
     const seedBuilt: BuiltNode = {
       id: seed.id, kind: seed.kind, title: seed.title, status: seed.status, createdAt: seed.createdAt, createdBy: seed.createdBy,
-      assigneeUserId: seed.assigneeUserId, assigneeDiffersFromOwner: seed.assigneeDiffersFromOwner, children: [],
+      assigneeUserId: seed.assigneeUserId, assigneeUserIds: seed.assigneeUserIds, assigneeDiffersFromOwner: seed.assigneeDiffersFromOwner, children: [],
     };
     builtById.set(seed.id, seedBuilt);
     root.children.push(seedBuilt);
@@ -91,7 +92,7 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
         visited.add(neighbor.id);
         const neighborBuilt: BuiltNode = {
           id: neighbor.id, kind: neighbor.kind, title: neighbor.title, status: neighbor.status, createdAt: neighbor.createdAt, createdBy: neighbor.createdBy,
-          assigneeUserId: neighbor.assigneeUserId, assigneeDiffersFromOwner: neighbor.assigneeDiffersFromOwner, children: []
+          assigneeUserId: neighbor.assigneeUserId, assigneeUserIds: neighbor.assigneeUserIds, assigneeDiffersFromOwner: neighbor.assigneeDiffersFromOwner, children: []
         };
         builtById.set(neighbor.id, neighborBuilt);
         currentBuilt.children.push(neighborBuilt);
@@ -110,7 +111,7 @@ function kindDotColor(kind: string): string {
 function TreeRowTitle({ node, labelFor }: { node: BuiltNode; labelFor: LabelFor }) {
   const stamp = formatGraphTimestamp(node.createdAt);
   const author = labelFor(node.createdBy);
-  const assignee = node.assigneeDiffersFromOwner ? labelFor(`user:${node.assigneeUserId}`) : null;
+  const assignee = node.assigneeUserIds.length ? node.assigneeUserIds.map((id) => labelFor(`user:${id}`)).join(', ') : null;
   return (
     <Tooltip title={`${node.kind} · ${node.id}${author ? ` · ${author}` : ''}${assignee ? ` · → ${assignee}` : ''}`} placement="right" mouseEnterDelay={0.4}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
@@ -135,7 +136,7 @@ function TreeRowTitle({ node, labelFor }: { node: BuiltNode; labelFor: LabelFor 
         )}
         {assignee && (
           <Tag color="gold" style={{ fontSize: 10, lineHeight: '14px', margin: 0, flexShrink: 0 }}>
-            {'→'} {shortAuthor(assignee)}
+            {'→'} {assignee}
           </Tag>
         )}
         {stamp && (
@@ -173,7 +174,7 @@ export function GraphTree({ nodes, edges, loading, projectId, projectTitle }: Pr
 
   const project = useMemo<TreeProjectRoot>(() => ({ id: projectId, title: projectTitle }), [projectId, projectTitle]);
   const root = useMemo(() => buildForest(nodes, edges, project), [nodes, edges, project]);
-  const { labelFor } = useActorLabels(nodes.flatMap((n) => [n.createdBy, n.assigneeUserId ? `user:${n.assigneeUserId}` : null]));
+  const { labelFor } = useActorLabels(nodes.flatMap((n) => [n.createdBy, ...n.assigneeUserIds.map((id) => `user:${id}`)]));
   const treeData = useMemo(() => [toDataNode(root, labelFor)], [root, labelFor]);
   const kindById = useMemo(() => {
     const map = new Map<string, string>();

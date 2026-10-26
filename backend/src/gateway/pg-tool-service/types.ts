@@ -12,6 +12,7 @@ export type GraphNode = {
   // every other kind's row has no assignee_user_id column, so this is
   // simply null/false for them.
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   assigneeDiffersFromOwner: boolean;
 };
 

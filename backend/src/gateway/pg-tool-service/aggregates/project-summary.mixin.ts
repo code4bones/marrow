@@ -4,7 +4,7 @@ import { compactArtifactRecord } from "../formatters/artifacts.js";
 import { compactDecisionRecord } from "../formatters/decisions.js";
 import { compactEventRecord } from "../formatters/events.js";
 import { compactHandoffRecord } from "../formatters/memory.js";
-import { compactTask, taskOut } from "../formatters/tasks.js";
+import { compactTask } from "../formatters/tasks.js";
 import { projectSummaryLimits, projectSummaryNextCalls } from "../formatters/project-summary.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
@@ -156,7 +156,7 @@ export function ProjectSummaryMixin<TBase extends Constructor<ProjectSummaryBase
       .orderBy("priority")
       .orderBy("created_at")
       .limit(limit);
-    return rows.map(taskOut);
+    return this.formatTasks(rows);
   }
 
   protected async projectSummaryCounts(projectId: string) {

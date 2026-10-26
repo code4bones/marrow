@@ -9,7 +9,7 @@ function id(value: unknown): string | null { return typeof value === "number" &&
 function json(value: unknown): unknown { return typeof value === "string" ? JSON.parse(value) : value; }
 
 export function receivedMessageSnapshot(update: Row) {
-  const msg = object(update.message ?? update.channel_post ?? update.edited_message ?? update.edited_channel_post);
+  const msg = object(update.message ?? update.channel_post ?? update.edited_message ?? update.edited_channel_post ?? update.chat_member ?? update.my_chat_member ?? update.chat_join_request);
   const chat = object(msg.chat);
   const chatId = id(chat.id), messageId = id(msg.message_id);
   const text = typeof msg.text === "string" ? msg.text : typeof msg.caption === "string" ? msg.caption : null;

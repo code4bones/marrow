@@ -4,6 +4,12 @@
 
 ### Added
 
+- Shared tasks with multiple assignees across MCP, GraphQL, task forms, lists,
+  kanban, graphs, notifications, Telly offers and GitLab import/export.
+- Telegram recipients collected from senders, mentions, replies, visible forwards,
+  rich messages and group events; per-recipient routing tags from the bot filters.
+- Tagged task requests without named recipients now fall back to the project owner.
+
 - Per-chat Telegram mention mappings to project members, one task per message
   with owner fallback for multiple/unknown recipients, and Rich Message task replies.
 

@@ -82,7 +82,7 @@ export function TasksPage() {
   });
   useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
   const { labelFor } = useActorLabels(
-    (data?.tasksPage.items ?? []).flatMap((task) => [task.createdBy, task.assigneeUserId ? `user:${task.assigneeUserId}` : null])
+    (data?.tasksPage.items ?? []).flatMap((task) => [task.createdBy, ...task.assigneeUserIds.map((id) => `user:${id}`)])
   );
   const notificationsSeenAt = useAuthStore((s) => s.notificationsSeenAt);
   // Owner's expectation: opening this section clears its own "new since
@@ -144,9 +144,9 @@ export function TasksPage() {
       render: (v, row) => (
         <span>
           <Timestamp value={v} author={labelFor(row.createdBy)} />
-          {row.assigneeDiffersFromOwner && (
+          {row.assigneeUserIds.length > 0 && (
             <Tag color="gold" style={{ fontSize: 10, marginLeft: 4 }}>
-              {'→'} {labelFor(`user:${row.assigneeUserId}`)}
+              {'→'} {row.assigneeUserIds.map((id) => labelFor(`user:${id}`)).join(', ')}
             </Tag>
           )}
         </span>

@@ -1,3 +1,4 @@
+import { loadTaskAssignees } from "../../task-assignees.js";
 import { AppError } from "../../../shared/errors.js";
 import { boundedInteger, stringArray, stringOrNull } from "../formatters/common.js";
 import { graphEdgeSortKey, graphNodeOut, graphNodeSortKey } from "../formatters/graph.js";
@@ -72,7 +73,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     for (const row of items) {
       addNode(graphNodeOut("MEMORY", row));
     }
-    for (const row of tasks) {
+    for (const row of await loadTaskAssignees(this.db, tasks)) {
       addNode(graphNodeOut("TASK", row));
       for (const dependencyId of stringArray(row.depends_on)) {
         addEdge({ from: dependencyId, to: String(row.id), relation: "blocks" });
@@ -192,7 +193,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     return [
       ...projects.filter((row) => visible(String(row.id))).map((row) => graphNodeOut("PROJECT", row)),
       ...items.filter(inScope).map((row) => graphNodeOut("MEMORY", row)),
-      ...tasks.filter(inScope).map((row) => graphNodeOut("TASK", row)),
+      ...(await loadTaskAssignees(this.db, tasks)).filter(inScope).map((row) => graphNodeOut("TASK", row)),
       ...decisions.filter(inScope).map((row) => graphNodeOut("DECISION", row)),
       ...artifacts.filter(inScope).map((row) => graphNodeOut("ARTIFACT", row))
     ];

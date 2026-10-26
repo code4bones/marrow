@@ -35,38 +35,42 @@ export function createAssigneesFacade(db: Knex) {
       .where("project_members.project_id", projectId)
       .select<{ id: string; email: string }[]>("users.id", "users.email");
 
-    const byId = members.filter((member) => member.id === needle);
-    if (byId.length === 1) {
-      return byId[0].id;
-    }
-
-    const lowerNeedle = needle.toLowerCase();
-    const byEmail = members.filter((member) => member.email.toLowerCase() === lowerNeedle);
-    if (byEmail.length === 1) {
-      return byEmail[0].id;
-    }
-
-    const byLocalPart = members.filter((member) => member.email.toLowerCase().split("@")[0] === lowerNeedle);
-    if (byLocalPart.length === 1) {
-      return byLocalPart[0].id;
-    }
-
-    const fuzzy = members.filter((member) => member.email.toLowerCase().includes(lowerNeedle));
-    if (fuzzy.length === 1) {
-      return fuzzy[0].id;
-    }
-    if (fuzzy.length > 1) {
-      throw new AppError(
-        "VALIDATION_ERROR",
-        `Assignee "${needle}" matches more than one project member: ${fuzzy.map((m) => m.email).join(", ")}. Be more specific.`,
-        { needle, candidates: fuzzy.map((m) => m.email) }
-      );
-    }
-
-    throw new AppError("NOT_FOUND", `No project member matches assignee "${needle}".`, { needle });
+    return resolveAssigneeFromMembers(members, needle);
   }
 
   return { resolveAssigneeUserId };
+}
+
+export function resolveAssigneeFromMembers(members: { id: string; email: string }[], needle: string): string {
+  const byId = members.filter((member) => member.id === needle);
+  if (byId.length === 1) {
+    return byId[0].id;
+  }
+
+  const lowerNeedle = needle.toLowerCase();
+  const byEmail = members.filter((member) => member.email.toLowerCase() === lowerNeedle);
+  if (byEmail.length === 1) {
+    return byEmail[0].id;
+  }
+
+  const byLocalPart = members.filter((member) => member.email.toLowerCase().split("@")[0] === lowerNeedle);
+  if (byLocalPart.length === 1) {
+    return byLocalPart[0].id;
+  }
+
+  const fuzzy = members.filter((member) => member.email.toLowerCase().includes(lowerNeedle));
+  if (fuzzy.length === 1) {
+    return fuzzy[0].id;
+  }
+  if (fuzzy.length > 1) {
+    throw new AppError(
+    "VALIDATION_ERROR",
+    `Assignee "${needle}" matches more than one project member: ${fuzzy.map((m) => m.email).join(", ")}. Be more specific.`,
+    { needle, candidates: fuzzy.map((m) => m.email) }
+    );
+  }
+
+  throw new AppError("NOT_FOUND", `No project member matches assignee "${needle}".`, { needle });
 }
 
 export function assigneeDiffersFromOwner(assigneeUserId: string | null | undefined, createdByClientId: unknown): boolean {
@@ -116,11 +120,11 @@ export function assigneeNotifyTarget(
 // the new assignee.
 export function lifecycleNotifyTargets(
   createdByClientId: unknown,
-  assigneeUserId: string | null | undefined,
+  assigneeUserId: string | string[] | null | undefined,
   context: NormalizedGatewayRequestContext
 ): string[] {
   const owner = userIdFromClientId(createdByClientId);
-  const candidates = [owner, assigneeUserId ?? null];
+  const candidates = [owner, ...(Array.isArray(assigneeUserId) ? assigneeUserId : [assigneeUserId ?? null])];
   return Array.from(
     new Set(candidates.filter((id): id is string => id !== null && !isInteractiveSelfAction(context, id)))
   );

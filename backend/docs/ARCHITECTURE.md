@@ -28,8 +28,9 @@ supervisor also contains initialization/reconciliation/cleanup failures so they
 cannot stop other bots or reject into the gateway lifecycle. The classification worker calls
 DeepSeek outside transactions, saves its classification, then rechecks binding
 and membership and creates tasks/source links/events atomically using PgToolService.
-One task per source message is enforced under the project lock; several or
-unresolved mentions assign it to the owner. Realtime/Telegram notifications and
+One task per source message is enforced under the project lock; missing or
+unresolved recipients assign it to the owner, while several resolved performers
+share one task. Explicit recipient tag routes take priority over mentions. Realtime/Telegram notifications and
 the project bot's task reply are deferred until commit. Every grammY polling/reply
 request gets a disposable abort signal, avoiding accumulation on the lifetime
 polling signal. The global notification
@@ -707,3 +708,13 @@ The architecture is acceptable when:
 * a new feature can be added without editing one giant central file
 * common code is reusable without becoming a dumping ground
 * the project remains understandable to a future coding agent
+
+Task assignments use a normalized `task_assignees` relation and batched hydration
+for task/record/summary/graph reads, retaining a legacy scalar compatibility
+mirror. Each newly added recipient receives its own assignment event/Telly offer;
+lifecycle targets include the full set. GitLab exports snapshot/recheck all
+recipients and create one issue; imports preserve several mapped participants.
+Telegram's bound-chat people collector observes senders/mentions/replies/forwards/
+rich content/member events even when no task can be extracted. Per-chat mapped
+recipient tag routes, current memberships and bot tags are checked again after
+classification; tags route assignees but never bypass AI intent detection.

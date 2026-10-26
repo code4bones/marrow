@@ -18,11 +18,12 @@ export function ProjectBotChatSettings({ project, botId, chatId }: { project: st
     void save({ variables: { ...variables, mentionKey, userId } }).catch(() => {});
   };
   return <Space orientation="vertical" style={{ width: '100%' }}>
-    <Alert type="info" showIcon title={t('botChatMappingHelp')} />
+    <Alert type="info" showIcon title={t('botChatRoutingHelp')} />
     {error && <Alert type="error" showIcon title={error.message} />}
     <Table size="small" rowKey="key" loading={loading && !data} dataSource={settings?.mentions ?? []}
-      scroll={{ x: 800 }} pagination={{ pageSize: 15, hideOnSinglePage: true }} locale={{ emptyText: t('botNoMentions') }} columns={[
-        { title: t('botObservedMention'), dataIndex: 'label', width: 160 },
+      scroll={{ x: 1250 }} pagination={{ pageSize: 15, hideOnSinglePage: true }} locale={{ emptyText: t('botNoMentions') }} columns={[
+        { title: t('botObservedPerson'), dataIndex: 'label', width: 160 },
+        { title: t('botPersonSource'), dataIndex: 'sourceType', width: 140, render: (value: string) => t(`botPersonSource_${value}`) },
         { title: t('botManualRecipient'), key: 'mapping', width: 250, render: (_, row) => <Space>
           <Select showSearch optionFilterProp="label" style={{ width: 230 }} placeholder={t('botSelectMember')}
             aria-label={t('botMapMentionLabel', { mention: row.label })} disabled={saving}
@@ -30,6 +31,11 @@ export function ProjectBotChatSettings({ project, botId, chatId }: { project: st
             options={members.map((m) => ({ value: m.id, label: m.email }))} onChange={(id) => assign(row.key, id)} />
           {row.userId && <Button size="small" disabled={saving} onClick={() => assign(row.key, null)}>{t('botClearMapping')}</Button>}
         </Space> },
+        { title: t('botRecipientTags'), key: 'tags', width: 260, render: (_, row) => <Select mode="multiple" allowClear
+          style={{ width: 240 }} disabled={saving || !row.userId} value={row.tags} placeholder={t('botRecipientTagsPlaceholder')}
+          aria-label={t('botRecipientTagsLabel', { mention: row.label })}
+          options={settings?.availableTags.map((tag) => ({ value: tag, label: `#${tag}` }))}
+          onChange={(tags: string[]) => { void save({ variables: { ...variables, mentionKey: row.key, tags } }).catch(() => {}); }} /> },
         { title: t('botEffectiveRecipient'), key: 'effective', width: 240, render: (_, row) => <Space orientation="vertical" size={0}>
           <Typography.Text>{members.find((m) => m.id === row.effectiveUserId)?.email ?? '—'}</Typography.Text>
           <Tag color={row.resolution === 'owner' ? 'orange' : 'green'}>{t(`botMentionResolution_${row.resolution}`)}</Tag>

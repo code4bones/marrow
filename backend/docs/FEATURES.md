@@ -12,12 +12,14 @@ The project is split into MVP features, near-future features, and explicitly def
 
 Project Settings → Bots supports multiple dedicated bots and explicit chat
 bindings via one-time message keys. Each bot has an editable hashtag list for
-initial filtering. Only tagged messages with mentions in bound groups/channels are classified by the project owner's saved
+initial filtering. Only tagged messages in bound groups/channels are classified by the project owner's saved
 DeepSeek model. Per-chat settings map observed mentions to active project members, without
 requiring global Telegram account linking. Manual mappings override linked accounts.
-Each source message creates at most one task; multiple or unresolved recipients
-fall back to the project owner. A Rich Message reply links the saved task and names
-its assignee. Clear assignments create tasks with source text/links; normal
+Each source message creates at most one task; several resolved performers
+share the task; missing or unresolved recipients fall back to the project owner.
+Per-recipient routing tags select mapped participants directly. Recipients are
+collected from all available identities in new bound-chat updates. A Rich Message reply links the saved task and names
+all assignees. Clear assignments create tasks with source text/links; normal
 conversation and uncertain intent are skipped. Durable retries, source
 deduplication across bots and post-commit notifications preserve normal task
 behavior. See [tool contracts and setup](MCP_TOOLS.md#project-telegram-bots-gateway).
@@ -754,3 +756,12 @@ The MVP is done when:
 8. The MCP server exposes the core tools.
 9. Data persists in SQLite.
 10. The repository has clear setup and usage instructions.
+
+### Shared tasks with several assignees
+
+Task creation and assignment support multiple active project participants with
+one shared status and the existing role/claim workflow. The picker, task list,
+kanban and graph display all assignees; the "me" filter matches each participant.
+Legacy single-assignee APIs and existing assignments remain compatible. Changes
+notify newly assigned participants individually, and review follow-ups preserve
+the group. GitLab import/export and Telegram extraction keep one shared task.

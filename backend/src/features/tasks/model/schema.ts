@@ -19,6 +19,7 @@ export const createTaskSchema = z.object({
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   assignee: z.string().nullable().optional(),
+  assignees: z.array(z.string().trim().min(1)).max(50).optional(),
   // Which version of the underlying project this task belongs to -- agent-
   // supplied (e.g. read from package.json), not server-derived. Distinct
   // from the internal `version` revision counter every record already has.
@@ -79,8 +80,9 @@ export const updateTaskPrioritySchema = z.object({
 
 export const updateTaskAssigneeSchema = z.object({
   id: z.string().min(1),
-  assignee: z.string().nullable()
-});
+  assignee: z.string().nullable().optional(),
+  assignees: z.array(z.string().trim().min(1)).max(50).optional()
+}).refine((input) => (input.assignee !== undefined) !== (input.assignees !== undefined), { message: "Supply exactly one of assignee or assignees." });
 
 // T-MEMORY-110: backs the full task-editing form -- everything task.create
 // can set except assignee (which already has its own dedicated tool/UI).

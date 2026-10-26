@@ -9,40 +9,42 @@ import type { ProjectMemberRole } from '../../shared/model/types';
 interface Props {
   id: string;
   projectId: string | null;
-  value: string | null;
+  value: string[];
   role?: ProjectMemberRole | null;
   onDone?: () => void;
 }
 
-// T-MEMORY-090: mirrors TaskStatusSelect's shape -- a null value here means
-// "unassigned (= owner)", not "no member picked yet".
+// One shared task may have several project participants. An empty list clears assignment.
 export function TaskAssigneeSelect({ id, projectId, value, role, onDone }: Props) {
   const { t } = useTranslation('tasks');
   const { members } = useProjectMembers(projectId);
   const [mutate, { loading }] = useMutation(UPDATE_TASK_ASSIGNEE, {
-    onCompleted: () => { message.success(t('assigneeUpdated')); onDone?.(); },
+    onCompleted: () => { message.success(t('assigneesUpdated')); onDone?.(); },
     onError: (e) => message.error(e.message),
   });
 
   // T-context: assign is pm-only -- everyone else sees the current
   // assignee as plain text instead of a control that would just error.
   if (!canPerform(role, 'assign')) {
-    const email = members.find((m) => m.userId === value)?.email;
-    return <Typography.Text style={{ fontSize: 13 }}>{email ?? t('unassigned')}</Typography.Text>;
+    const email = value.map((id) => members.find((m) => m.userId === id)?.email ?? id).join(', ');
+    return <Typography.Text style={{ fontSize: 13 }}>{email || t('unassigned')}</Typography.Text>;
   }
 
   return (
     <Select
-      value={value ?? undefined}
+      mode="multiple"
+      value={value}
       placeholder={t('unassigned')}
+      showSearch
+      optionFilterProp="label"
+      disabled={loading}
       allowClear
       size="small"
       loading={loading}
-      style={{ width: '100%', maxWidth: 260 }}
+      style={{ width: '100%', maxWidth: 420 }}
       options={members.map((m) => ({ label: m.email, value: m.userId }))}
       onClick={(e) => e.stopPropagation()}
-      onChange={(assignee) => mutate({ variables: { id, assignee: assignee ?? null } })}
-      onClear={() => mutate({ variables: { id, assignee: null } })}
+      onChange={(assignees: string[]) => { void mutate({ variables: { id, assignees } }).catch(() => {}); }}
       variant="borderless"
     />
   );

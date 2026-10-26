@@ -11,7 +11,7 @@ import { compactDecisionRecord, decisionOut } from "../formatters/decisions.js";
 import { compactEventRecord, eventOut } from "../formatters/events.js";
 import { compactHandoffRecord, compactMemoryRecord, itemOut } from "../formatters/memory.js";
 import { compactProject, projectOut } from "../formatters/projects.js";
-import { compactTask, taskOut } from "../formatters/tasks.js";
+import { compactTask } from "../formatters/tasks.js";
 import { changedSinceNextCalls, contextPackLimits, contextPackNextCalls, mustReadPointers } from "../formatters/preflight.js";
 import type { NormalizedGatewayRequestContext, Row } from "../types.js";
 import type { Constructor } from "../base.js";
@@ -63,7 +63,8 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
         acceptance: task.acceptance,
         allowedFiles: task.allowedFiles,
         forbiddenFiles: task.forbiddenFiles,
-        dependsOn: task.dependsOn
+        dependsOn: task.dependsOn,
+        assigneeUserIds: task.assigneeUserIds
       },
       // T-context (owner's ask, 2026-08-22): knownFaults comes right after
       // project/task identity, before decisions/related items -- "learn
@@ -316,7 +317,7 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       .andWhere("updated_at", ">", since)
       .orderBy("updated_at", "desc")
       .limit(limit);
-    return rows.map(taskOut);
+    return this.formatTasks(rows);
   }
 
   protected async listChangedItems(projectId: string | null, includeCommon: boolean, since: string, limit: number, type?: string) {

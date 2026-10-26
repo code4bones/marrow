@@ -98,7 +98,7 @@ export class TelegramProjectPolling {
         try {
           api ??= this.createApi(decryptBotSecret(String(bot.token_enc)));
           const updates = await telegramRequest(signal, (apiSignal) => api!.getUpdates({
-            offset: Number(current.poll_offset), timeout: 25, limit: 100, allowed_updates: ["message", "channel_post"]
+            offset: Number(current.poll_offset), timeout: 25, limit: 100, allowed_updates: ["message", "channel_post", "edited_message", "edited_channel_post", "chat_member", "my_chat_member", "chat_join_request"]
           }, apiSignal));
           for (const update of updates) {
             if (signal.aborted) return;

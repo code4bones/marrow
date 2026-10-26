@@ -66,6 +66,7 @@ export interface Task {
   activeClaimCount: number;
   createdBy: string | null;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   assigneeDiffersFromOwner: boolean;
   createdAt: string | null;
   updatedAt: string | null;
@@ -98,6 +99,7 @@ export interface GraphNode {
   createdBy: string | null;
   milestone: string | null;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   assigneeDiffersFromOwner: boolean;
 }
 

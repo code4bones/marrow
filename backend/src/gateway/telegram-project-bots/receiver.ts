@@ -1,3 +1,4 @@
+import { rememberChatPeople } from "./people.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { Knex } from "knex";
 import { nowIso } from "../../shared/dates.js";
@@ -47,6 +48,7 @@ export async function acceptTelegramUpdate(db: Knex, botId: string, raw: Buffer,
       accepted: false, ignored: true, status: "ignored",
       reason: received.chat_type === "private" ? "private_chat" : fromBot ? "bot_sender" : received.text === null ? "no_text" : "unsupported"
     };
+    await rememberChatPeople(trx, botId, update);
     const now = nowIso();
     await trx("telegram_bot_messages").insert({ id: randomUUID(), bot_id: botId, telegram_update_id: updateId,
       ...received, received_at: now, status: result.status, reason: result.reason, inbox_id: result.inboxId ?? null,
@@ -85,7 +87,7 @@ async function ingestMessage(trx: Knex.Transaction, bot: Row, message: TelegramM
   await rememberChatMentions(trx, botId, message);
   if (!matchesTelegramTags(bot.filter_tags, message.tags)) return { accepted: false, ignored: true, status: "ignored", reason: "no_matching_tag" };
   const matchedTags = message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag));
-  const members = await mentionedProjectMembers(trx, String(project.id), project.owner_user_id, message, botId);
+  const members = await mentionedProjectMembers(trx, String(project.id), project.owner_user_id, message, botId, bot.filter_tags);
   if (!members.length) return { accepted: false, ignored: true, status: "ignored", reason: "no_project_member", matchedTags };
   const rows = await trx("telegram_message_inbox").insert({
     id: randomUUID(), bot_id: botId, project_id: project.id, chat_id: message.chatId, message_id: message.messageId,

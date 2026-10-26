@@ -431,7 +431,7 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
   const { prefix: titlePrefix, rest: titleRest } = splitTitlePrefix(node.title);
   const stamp = formatGraphTimestamp(node.createdAt);
   const author = labelFor(node.createdBy);
-  const assignee = node.assigneeDiffersFromOwner ? labelFor(`user:${node.assigneeUserId}`) : null;
+  const assignee = node.assigneeUserIds.length ? node.assigneeUserIds.map((id) => labelFor(`user:${id}`)).join(', ') : null;
 
   return (
     <div style={{ width: '100%', marginBottom: 10 }}>
@@ -542,7 +542,7 @@ const RecordCard = memo(function RecordCard({ node, satellites, remarks, linkCou
               )}
               {assignee && (
                 <Typography.Text style={{ fontSize: 9, color: '#d4b106', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {'→'} {shortAuthor(assignee)}
+                  {'→'} {assignee}
                 </Typography.Text>
               )}
               {stamp && (
@@ -1154,6 +1154,7 @@ interface LazyRecordPayload {
   createdAt?: string | null;
   createdBy?: string | null;
   assigneeUserId?: string | null;
+  assigneeUserIds?: string[];
   assigneeDiffersFromOwner?: boolean;
 }
 
@@ -1193,6 +1194,7 @@ function useLazyNodeResolver() {
           createdAt: payload.createdAt ?? null,
           createdBy: payload.createdBy ?? null,
           assigneeUserId: payload.assigneeUserId ?? null,
+          assigneeUserIds: payload.assigneeUserIds ?? (payload.assigneeUserId ? [payload.assigneeUserId] : []),
           assigneeDiffersFromOwner: payload.assigneeDiffersFromOwner ?? false,
           milestone: null,
         };
@@ -1294,7 +1296,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   // One batched lookup covering every node currently known (batch-loaded +
   // any lazily point-resolved drill target), not one per card.
   const { labelFor } = useActorLabels(
-    Array.from(nodeById.values()).flatMap((n) => [n.createdBy, n.assigneeUserId ? `user:${n.assigneeUserId}` : null])
+    Array.from(nodeById.values()).flatMap((n) => [n.createdBy, ...n.assigneeUserIds.map((id) => `user:${id}`)])
   );
 
   const { baselineNodes, satellitesByRecord } = useMemo(() => {

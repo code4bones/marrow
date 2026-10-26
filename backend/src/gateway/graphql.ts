@@ -303,7 +303,7 @@ const typeDefs = `#graphql
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     addProjectTelegramBot(project: String!, token: String!, tags: [String!]!): ProjectTelegramBot!
-    setProjectTelegramChatMention(project: String!, id: ID!, chatId: String!, mentionKey: String!, userId: ID): Boolean!
+    setProjectTelegramChatMention(project: String!, id: ID!, chatId: String!, mentionKey: String!, userId: ID, tags: [String!]): Boolean!
     setProjectTelegramBotTags(project: String!, id: ID!, tags: [String!]!): ProjectTelegramBot!
     connectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
     disconnectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
@@ -334,7 +334,7 @@ const typeDefs = `#graphql
     updateTaskTitle(id: ID!, title: String!): Task!
     updateTaskPriority(id: ID!, priority: Int!): Task!
     updateTaskDetails(id: ID!, title: String, milestone: String, priority: Int, scope: String, acceptance: String, notes: String): Task!
-    updateTaskAssignee(id: ID!, assignee: String): Task!
+    updateTaskAssignee(id: ID!, assignee: String, assignees: [String!]): Task!
     claimTask(input: TaskClaimInput!): TaskClaimResult!
     heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
     completeTaskClaim(claimId: ID!, note: String): TaskClaimResult!
@@ -509,6 +509,7 @@ const typeDefs = `#graphql
     dependsOn: [String!]
     notes: String
     assignee: String
+    assignees: [String!]
     projectVersion: String
   }
 
@@ -648,9 +649,9 @@ const typeDefs = `#graphql
 
   type ProjectTelegramBots { bots: [ProjectTelegramBot!]!, deepseekReady: Boolean! }
   type ProjectTelegramChat { chatId: String!, title: String! }
-  type TelegramChatMention { key: String!, label: String!, userId: ID, effectiveUserId: ID, resolution: String!, lastSeenAt: String }
+  type TelegramChatMention { key: String!, label: String!, sourceType: String!, tags: [String!]!, userId: ID, effectiveUserId: ID, resolution: String!, lastSeenAt: String }
   type TelegramChatMember { id: ID!, email: String! }
-  type TelegramChatMentions { mentions: [TelegramChatMention!]!, members: [TelegramChatMember!]!, ownerUserId: ID }
+  type TelegramChatMentions { mentions: [TelegramChatMention!]!, members: [TelegramChatMember!]!, availableTags: [String!]!, ownerUserId: ID }
   type TelegramChatLinkCode { command: String!, expiresAt: String! }
   enum TelegramBotPollingStatus { inactive starting active error }
   type ProjectTelegramBot {
@@ -903,6 +904,7 @@ const typeDefs = `#graphql
     createdBy: String
     milestone: String
     assigneeUserId: String
+    assigneeUserIds: [String!]!
     assigneeDiffersFromOwner: Boolean!
   }
 
@@ -1019,6 +1021,7 @@ const typeDefs = `#graphql
     activeClaimCount: Int!
     createdBy: String
     assigneeUserId: String
+    assigneeUserIds: [String!]!
     assigneeDiffersFromOwner: Boolean!
     gitlab: TaskGitlabStatus
     createdAt: String
@@ -1671,7 +1674,7 @@ const resolvers = {
     addProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_add", cleanInput(args)),
     setProjectTelegramChatMention: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
-      Boolean((await callTool<Row>(context, "project.telegram_chat_set_mention", { ...cleanInput(args), userId: args.userId ?? null })).saved),
+      Boolean((await callTool<Row>(context, "project.telegram_chat_set_mention", cleanInput(args))).saved),
     setProjectTelegramBotTags: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_set_tags", cleanInput(args)),
     connectProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

@@ -1,3 +1,4 @@
+import { taskAssigneeIds } from "../../task-assignees.js";
 import { taskClaimRoles, defaultTaskClaimLeaseSeconds } from "../types.js";
 import { assigneeDiffersFromOwner } from "../../assignees.js";
 import { boundedInteger, dateStringOrNull, shortText, stringArray, stringOrNull } from "./common.js";
@@ -17,6 +18,7 @@ export function compactTask(task: Row) {
     title: String(task.title),
     status: String(task.status),
     priority: Number(task.priority ?? 100),
+    assigneeUserIds: taskAssigneeIds(task),
     scopeExcerpt: shortText(stringOrNull(task.scope), 140),
     ...(allowedFiles.length > 0 ? { allowedFiles } : {}),
     ...(forbiddenFiles.length > 0 ? { forbiddenFiles } : {}),
@@ -26,6 +28,7 @@ export function compactTask(task: Row) {
 
 
 export function taskOut(row: Row) {
+  const assigneeUserIds = taskAssigneeIds(row);
   return {
     id: String(row.id),
     projectId: String(row.project_id),
@@ -42,8 +45,9 @@ export function taskOut(row: Row) {
     projectVersion: stringOrNull(row.project_version),
     activeClaimCount: Number(row.active_claim_count ?? 0),
     createdBy: stringOrNull(row.created_by),
-    assigneeUserId: stringOrNull(row.assignee_user_id),
-    assigneeDiffersFromOwner: assigneeDiffersFromOwner(stringOrNull(row.assignee_user_id), row.created_by),
+    assigneeUserId: assigneeUserIds[0] ?? null,
+    assigneeUserIds,
+    assigneeDiffersFromOwner: assigneeUserIds.some((id) => assigneeDiffersFromOwner(id, row.created_by)),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)
   };

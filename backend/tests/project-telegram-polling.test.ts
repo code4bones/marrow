@@ -41,10 +41,14 @@ beforeEach(async () => {
   managers = [];
   db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
   await db.raw("PRAGMA foreign_keys = ON");
+  await db.schema.createTable("users", (t) => { t.text("id").primary(); });
   await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("title"); t.text("status"); });
   await db.schema.createTable("tasks", (t) => { t.text("id").primary(); });
   await migration.up(db);
   await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/121_telegram_chat_mentions.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await db("projects").insert({ id: "P-TEST", title: "Project <Alpha> & beta", status: "active" });
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123456789", username: "project_bot",
     token_enc: encryptBotSecret(token), poll_revision: randomUUID(), filter_tags: '["ошибка"]', enabled: true, created_at: "2026-01-01", updated_at: "2026-01-01" });
@@ -110,7 +114,7 @@ describe("project bot grammY polling", () => {
     const client = blockedClient(); client.getUpdates.mockResolvedValueOnce([{ update_id: 41 }]);
     const first = manager(client); first.start();
     await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(2));
-    expect(client.getUpdates.mock.calls[0][0]).toMatchObject({ offset: 0, timeout: 25, allowed_updates: ["message", "channel_post"] });
+    expect(client.getUpdates.mock.calls[0][0]).toMatchObject({ offset: 0, timeout: 25, allowed_updates: ["message", "channel_post", "edited_message", "edited_channel_post", "chat_member", "my_chat_member", "chat_join_request"] });
     expect(client.getUpdates.mock.calls[1][0]).toMatchObject({ offset: 42 });
     expect(Number((await db("project_telegram_bots").first()).poll_offset)).toBe(42);
     expect((await db("project_telegram_bots").first()).last_polled_at).toBeTruthy();

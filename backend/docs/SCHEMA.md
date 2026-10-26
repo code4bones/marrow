@@ -1,5 +1,21 @@
 # SCHEMA.md
 
+## Shared task assignees
+
+Migration 123 adds canonical `task_assignees(task_id, user_id, position)` with a
+composite primary key, user/task cascade FKs and a `(user_id, task_id)` filter
+index. Existing `tasks.assignee_user_id` values are backfilled. The legacy column
+mirrors the first recipient for compatibility; API reads derive the first from
+the relation, including when deletion of a primary user leaves other recipients.
+Task assignment updates, events/outbox offers and task writes commit together.
+
+Migration 124 adds `gitlab_issue_exports.recipient_user_ids` and `gitlab_user_ids`
+JSON snapshots, backfills earlier operations and preserves legacy scalar fields.
+One remote issue carries all mapped assignees; the full recipient set and current
+mappings are checked before POST. A partial remote assignment is diagnosed on the
+existing issue rather than creating another issue. Migration 125 adds EN/RU UI
+labels, task/bot help and routing settings.
+
 ## Gateway Telegram project bots
 
 Migration `117_project_telegram_bots.cjs` adds:
@@ -40,6 +56,14 @@ Migration 122 adds EN/RU chat-recipient settings. Only new bound-chat mentions a
 collected; existing messages are not reprocessed. New task source rows use the
 `telegram_user_id = 'message'` marker; source lookup checks the whole project/chat/
 message under a project lock, including older per-recipient tombstones.
+
+Migration 126 adds observed-person `username` aliases and `source_type` to
+`telegram_chat_mentions`. Numeric keys preserve manual mappings on username changes.
+Migration 127 adds `assignment_tags` (JSON array) for chat-local routing to a mapped
+active participant. Only currently configured bot tags can route tasks; clearing
+the account mapping clears its tags. These rows retain known people independent
+of the latest-500 message-body journal. Previous author identities cannot be
+backfilled from message bodies, which did not preserve senders.
 
 ## Gateway project GitLab settings
 

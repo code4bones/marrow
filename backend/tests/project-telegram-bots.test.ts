@@ -94,6 +94,9 @@ beforeEach(async () => {
   await migration.up(db);
   await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/121_telegram_chat_mentions.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/123_task_assignees.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
@@ -337,6 +340,7 @@ describe("Telegram mention pipeline", () => {
     ] });
     reply([assignment(), assignment("11")]); await deliver(raw); await worker.tick();
     expect((await db("tasks")).map((t) => t.assignee_user_id).sort()).toEqual(["owner"]);
+    expect((await db("task_assignees")).map((a) => a.user_id).sort()).toEqual(["member", "owner"]);
     expect(await db("telegram_task_sources")).toHaveLength(1);
     expect(remote.sendRichMessage).toHaveBeenCalledOnce();
   });
@@ -464,7 +468,7 @@ describe("chat recipient mappings and task replies", () => {
     expect(read.errors).toBeUndefined(); expect(read.data).toMatchObject({ projectTelegramChatMentions: { mentions: [{ userId: "member", resolution: "manual" }] } });
   });
 
-  it("isolates mappings between groups and uses the owner for unresolved or multiple recipients", async () => {
+  it("isolates group mappings, falls back for unresolved recipients and keeps several performers on one task", async () => {
     await deliver(payload("@new_person привет")); await map("username:new_person", "member");
     await db("project_telegram_chats").insert({ bot_id: botId, chat_id: "-100999", title: "Other", created_at: "2026-01-01" });
     reply([assignment("username:new_person")]);
@@ -473,7 +477,8 @@ describe("chat recipient mappings and task replies", () => {
     reply([assignment(), assignment("11")]);
     await deliver(payload("#ошибка @member @owner исправь вход", -10012345, 21)); await worker.tick();
     expect(await db("tasks")).toHaveLength(2);
-    expect((await db("tasks")).every((t) => t.assignee_user_id === "owner")).toBe(true);
+    const assigned = await db("task_assignees").orderBy("task_id").orderBy("position");
+    expect(assigned.map((r) => r.user_id).sort()).toEqual(["member", "owner", "owner"]);
   });
 
   it("rechecks mappings after AI and removes them with the chat", async () => {
@@ -516,5 +521,73 @@ describe("chat recipient mappings and task replies", () => {
     reply([]); await deliver(); await worker.tick(); expect(remote.sendRichMessage).not.toHaveBeenCalled();
     reply([assignment()]); rollback = true; await deliver(payload(undefined, -10012345, 99)); await worker.tick();
     expect(await db("tasks")).toHaveLength(0); expect(remote.sendRichMessage).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Telegram owner fallback without mentions", () => {
+  it("classifies a tagged actionable message with no named recipient and assigns the owner", async () => {
+    reply([assignment("owner")]);
+    await deliver(payload("#ошибка исправь вход")); await worker.tick();
+    expect(httpFetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(httpFetch.mock.calls[0][1]?.body)).messages[1].content).toContain('"telegramUserId":"owner"');
+    expect(await db("tasks")).toHaveLength(1);
+    expect((await db("task_assignees")).map((a) => a.user_id)).toEqual(["owner"]);
+    expect(remote.sendRichMessage).toHaveBeenCalledOnce();
+  });
+  it("still skips conversation with a matching tag and no assignee", async () => {
+    reply([]); await deliver(payload("#ошибка уже исправлена")); await worker.tick();
+    expect(httpFetch).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(0);
+  });
+  it("only assigns actual performers, excluding a known observer", async () => {
+    reply([assignment()]); await deliver(payload("#ошибка @member исправь вход; @owner к сведению")); await worker.tick();
+    expect((await db("task_assignees")).map((a) => a.user_id)).toEqual(["member"]);
+  });
+});
+
+describe("Telegram recipient tag routing", () => {
+  it("observes a media sender, uses their mapping for @mentions and routes a tag without mentions", async () => {
+    await deliver(payload("", -10012345, 80, { text: undefined, photo: [{}], from: { id: 77, is_bot: false, username: "new_dev", first_name: "New", last_name: "Developer" } }));
+    const read = await callOk("project.telegram_chat_mentions", { project: "test", id: botId, chatId: "-10012345" });
+    expect(read).toMatchObject({ availableTags: ["ошибка", "проверка"], mentions: [{ key: "77", label: "New Developer (@new_dev)", sourceType: "sender" }] });
+    await callOk("project.telegram_chat_set_mention", { project: "test", id: botId, chatId: "-10012345", mentionKey: "77", userId: "member", tags: ["#ОШИБКА"] });
+    reply([assignment("tag:member")]); await deliver(payload("#ошибка исправь вход", -10012345, 81)); await worker.tick();
+    expect((await db("task_assignees")).map((a) => a.user_id)).toEqual(["member"]);
+    const cleared = await graphql({ schema: gatewaySchema, contextValue: { service, requestContext: owner }, variableValues: { id: botId },
+      source: `mutation($id:ID!){setProjectTelegramChatMention(project:"test",id:$id,chatId:"-10012345",mentionKey:"77",tags:[])}` });
+    expect(cleared.errors).toBeUndefined();
+    expect((await db("telegram_chat_mentions").where({ mention_key: "77" }).first()).user_id).toBe("member");
+    reply([assignment("username:new_dev")]); await deliver(payload("#проверка @new_dev исправь вход", -10012345, 82)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(2);
+    expect((await db("task_assignees")).map((a) => a.user_id)).toEqual(["member", "member"]);
+  });
+
+  it("routes a shared tag to every mapped performer in ONE task and rejects invalid tag configuration", async () => {
+    await deliver(payload("@member @owner привет", -10012345, 80));
+    const base = { project: "test", id: botId, chatId: "-10012345" };
+    expect(await service.call("project.telegram_chat_set_mention", { ...base, mentionKey: "username:member", tags: ["ошибка"] }, owner)).toMatchObject({ ok: false });
+    expect(await service.call("project.telegram_chat_set_mention", { ...base, mentionKey: "username:member", userId: "member", tags: ["unknown"] }, owner)).toMatchObject({ ok: false });
+    for (const userId of ["member", "owner"]) await callOk("project.telegram_chat_set_mention", { ...base, mentionKey: `username:${userId}`, userId, tags: ["ошибка"] });
+    reply([assignment("tag:member")]); await deliver(payload("#ошибка исправь вход", -10012345, 81)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(1);
+    expect((await db("task_assignees")).map((a) => a.user_id).sort()).toEqual(["member", "owner"]);
+    const sent = JSON.stringify(remote.sendRichMessage.mock.calls); expect(sent).toContain("Исполнители:"); expect(sent).toContain("member@test"); expect(sent).toContain("owner@test");
+    await callOk("project.telegram_chat_set_mention", { ...base, mentionKey: "username:member", userId: null });
+    expect(JSON.parse((await db("telegram_chat_mentions").where({ mention_key: "username:member" }).first()).assignment_tags)).toEqual([]);
+  });
+
+  it("rechecks tag routes after AI and ignores routes for removed bot tags", async () => {
+    await deliver(payload("@member привет", -10012345, 80));
+    const base = { project: "test", id: botId, chatId: "-10012345", mentionKey: "username:member" };
+    await callOk("project.telegram_chat_set_mention", { ...base, userId: "member", tags: ["ошибка"] });
+    httpFetch.mockImplementation(async () => {
+      await callOk("project.telegram_chat_set_mention", { ...base, userId: "owner" });
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ tasks: [assignment("tag:member")] }) } }] });
+    });
+    await deliver(payload("#ошибка исправь вход", -10012345, 81)); await worker.tick();
+    expect((await db("task_assignees")).map((a) => a.user_id)).toEqual(["owner"]);
+    await callOk("project.telegram_bot_set_tags", { project: "test", id: botId, tags: ["проверка"] });
+    reply([assignment("owner")]); await deliver(payload("#проверка #ошибка исправь вход", -10012345, 82)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(2);
   });
 });

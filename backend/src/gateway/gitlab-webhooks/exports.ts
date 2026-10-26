@@ -1,8 +1,20 @@
+import { getTaskAssigneeIds } from "../task-assignees.js";
+import { stringArray } from "../pg-tool-service/formatters/common.js";
 import { randomUUID } from "node:crypto";
 import type { Knex } from "knex";
 import { nowIso } from "../../shared/dates.js";
 import { AppError } from "../../shared/errors.js";
 import type { Row } from "../pg-tool-service/types.js";
+
+export function exportRecipients(row: Row): string[] {
+  const ids = stringArray(row.recipient_user_ids);
+  return ids.length ? ids : row.recipient_user_id ? [String(row.recipient_user_id)] : [];
+}
+export function exportGitlabUsers(row: Row): string[] {
+  const ids = stringArray(row.gitlab_user_ids);
+  return ids.length ? ids : row.gitlab_user_id ? [String(row.gitlab_user_id)] : [];
+}
+export const sameUsers = (left: string[], right: string[]) => [...left].sort().join(",") === [...right].sort().join(",");
 
 export const exportMarker = (id: string) => `<!-- marrow-export:${id} -->`;
 export function exportMarkerId(description: string | null): string | null {
@@ -33,21 +45,23 @@ export async function enqueueIssueExport(db: Knex, task: Row, actorId: string, r
   if (String(task.created_by).startsWith("integration:gitlab:") || await db("gitlab_issue_links").where({ task_id: task.id }).first()) {
     return exportStatus(db, String(task.id));
   }
-  if (!task.assignee_user_id) return exportStatus(db, String(task.id));
+  const assigneeIds = await getTaskAssigneeIds(db, task);
+  if (!assigneeIds.length) return exportStatus(db, String(task.id));
   const repositories = await db("project_repositories").where({ project_id: task.project_id });
   if (!repositories.length && !repositoryId) return null;
   const selected = repositoryId ?? (existing?.repository_explicit ? existing.repository_id : null);
   const candidates = selected ? repositories.filter((row) => row.id === selected)
     : existing?.repository_explicit ? []
-    : repositories.filter((row) => row.lead_user_id === task.assignee_user_id);
+    : repositories.filter((row) => assigneeIds.includes(String(row.lead_user_id)));
   if (repositoryId && !candidates.length) throw new AppError("VALIDATION_ERROR", "Choose a repository attached to this task's project.");
   const repo = candidates.length === 1 ? candidates[0] : null;
-  const mapping = repo ? await db("project_gitlab_members").where({ project_id: task.project_id, user_id: task.assignee_user_id, host: repo.host }).first() : null;
-  const error = !repo ? "REPOSITORY_REQUIRED" : !mapping ? "GITLAB_MAPPING_REQUIRED" : null;
+  const mappings = repo ? await db("project_gitlab_members").where({ project_id: task.project_id, host: repo.host }).whereIn("user_id", assigneeIds) : [];
+  const gitlabIds = [...new Set(mappings.map((m) => String(m.gitlab_user_id)))];
+  const error = !repo ? "REPOSITORY_REQUIRED" : mappings.length !== assigneeIds.length ? "GITLAB_MAPPING_REQUIRED" : null;
   const now = nowIso();
   const row = { repository_id: repo?.id ?? null, repository_explicit: Boolean(repositoryId || existing?.repository_explicit), host: repo?.host ?? null, gitlab_project_id: repo?.gitlab_project_id ?? null,
-    repository_url: repo?.web_url ?? null, actor_user_id: actorId, recipient_user_id: task.assignee_user_id,
-    gitlab_user_id: mapping?.gitlab_user_id ?? null, status: error ? "blocked" : "pending", last_error: error,
+    repository_url: repo?.web_url ?? null, actor_user_id: actorId, recipient_user_id: assigneeIds[0], recipient_user_ids: JSON.stringify(assigneeIds),
+    gitlab_user_id: gitlabIds[0] ?? null, gitlab_user_ids: JSON.stringify(gitlabIds), status: error ? "blocked" : "pending", last_error: error,
     available_at: now, locked_until: null, updated_at: now };
   if (existing) await db("gitlab_issue_exports").where({ id: existing.id }).update(row);
   else await db("gitlab_issue_exports").insert({ ...row, id: randomUUID(), task_id: task.id,

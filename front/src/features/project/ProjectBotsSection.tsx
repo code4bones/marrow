@@ -101,7 +101,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
   );
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithMappings')} />
+      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithAssignees')} />
       {data && !data.projectTelegramBots.deepseekReady && <Alert type="warning" showIcon title={t('botsDeepseekRequired')} />}
       {error && <Alert type="error" showIcon title={error.message} />}
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddingOpen(true)}>{t('addBot')}</Button>

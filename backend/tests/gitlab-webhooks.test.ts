@@ -58,7 +58,9 @@ beforeEach(async () => {
     t.text("id").primary();
     for (const name of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(name);
   });
+  await require("../migrations/pg/123_task_assignees.cjs").up(db);
   await settings.up(db); await inbox.up(db); await leadMigration.up(db); await exportsMigration.up(db);
+  await require("../migrations/pg/124_gitlab_export_assignees.cjs").up(db);
   await require("../migrations/pg/012_git_credentials.cjs").up(db);
   await require("../migrations/pg/103_integration_outbox.cjs").up(db);
   process.env.GIT_CREDENTIAL_ENC_KEY ??= Buffer.alloc(32, 8).toString("base64");
@@ -344,7 +346,7 @@ describe("GitLab export eligibility and retry boundaries", () => {
   });
 
   it("cancels an obsolete assignment before the remote POST", async () => {
-    await createExportTask(); await db("tasks").update({ assignee_user_id: "owner" });
+    const taskId = await createExportTask(); await new TestService(db).call("task.update_assignee", { id: taskId, assignee: "owner" }, actorContext);
     const fakeFetch = vi.fn(); await new GitlabExportWorker(db, undefined, fakeFetch as typeof fetch).tick();
     expect(fakeFetch).not.toHaveBeenCalled(); expect((await db("gitlab_issue_exports").first()).status).toBe("cancelled");
   });
@@ -357,5 +359,27 @@ describe("GitLab export eligibility and retry boundaries", () => {
     await worker.tick();
     expect(await db("tasks")).toHaveLength(1); expect(await db("gitlab_issue_links")).toHaveLength(1);
     expect((await db("gitlab_issue_inbox").first()).last_error).toBe("VALIDATION_ERROR");
+  });
+});
+
+describe("multiple GitLab task recipients", () => {
+  it("exports one issue with every mapped assignee and checks the remote result", async () => {
+    const taskId = await createExportTask();
+    const changed = await new TestService(db).call("task.update_assignee", { id: taskId, assignees: ["recipient", "owner"] }, actorContext);
+    expect(changed.ok).toBe(true);
+    const fakeFetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)); expect(body.assignee_ids.sort()).toEqual([15, 2].sort());
+      return Response.json({ ...remoteIssue(body.description), assignees: [{ id: 15 }, { id: 2 }] });
+    });
+    await new GitlabExportWorker(db, undefined, fakeFetch as typeof fetch).tick();
+    expect(fakeFetch).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(1);
+    expect(await db("gitlab_issue_exports").first()).toMatchObject({ status: "done", last_error: null });
+  });
+
+  it("imports several mapped participants into one task", async () => {
+    await db("project_members").insert({ project_id: "P-SLIFE", user_id: "removed", role: "tester", status: "active" });
+    await acceptGitlabWebhook(db, repoId, payload({ assignee_ids: [2, 3] }), headers); await worker.tick();
+    expect(await db("tasks")).toHaveLength(1);
+    expect((await db("task_assignees")).map((a) => a.user_id).sort()).toEqual(["owner", "removed"]);
   });
 });

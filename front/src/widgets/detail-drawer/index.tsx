@@ -137,7 +137,7 @@ function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
     <>
       <div style={{ marginBottom: 14 }}><RoleBadge role={role} /></div>
       <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} role={role} /></Field>
-      <Field label={t('assignee')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserId} role={role} /></Field>
+      <Field label={t('assignees')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserIds} role={role} /></Field>
       <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} role={role} /></Field>
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}

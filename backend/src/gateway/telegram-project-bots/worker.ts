@@ -6,7 +6,7 @@ import { PgToolService } from "../pg-tool-service.js";
 import type { Row } from "../pg-tool-service/types.js";
 import type { LlmHttpFetch } from "../llm-providers/index.js";
 import { classificationSchema, classifyTelegramMessage, type Classification } from "./classifier.js";
-import { mentionedProjectMembers, telegramAssignee } from "./members.js";
+import { mentionedProjectMembers, telegramAssignees } from "./members.js";
 import type { TelegramMentionMessage } from "./protocol.js";
 import { notifyCreatedTelegramTask, type TelegramTaskConfirmation } from "./task-confirmation.js";
 import { matchesTelegramTags } from "./tags.js";
@@ -81,7 +81,7 @@ export class TelegramMessageWorker {
     if (!bot || !project || !chat || !project.owner_user_id) { await this.ignore(delivery); return; }
     const message = jsonValue(delivery.payload) as TelegramMentionMessage;
     if (!matchesTelegramTags(bot.filter_tags, message.tags)) { await this.ignore(delivery); return; }
-    const members = await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message, String(bot.id));
+    const members = await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message, String(bot.id), bot.filter_tags);
     if (!members.length) { await this.ignore(delivery); return; }
     // No transaction/row locks are held across a potentially slow AI call.
     let classification: Classification;
@@ -106,7 +106,7 @@ export class TelegramMessageWorker {
         await this.finish(trx, delivery, "ignored", "configuration_changed"); return;
       }
       if (currentProject.owner_user_id !== project.owner_user_id) throw new AppError("GATEWAY_ERROR", "Project owner changed; reclassify with the current owner's DeepSeek.");
-      const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message, String(bot.id));
+      const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message, String(bot.id), currentBot.filter_tags);
       const service = this.createService(trx); service.deferEventNotifications();
       let created = false;
       const assignments = classification.tasks.filter((task) => task.confidence >= 0.9);
@@ -114,11 +114,11 @@ export class TelegramMessageWorker {
       // Serialize on the project above, and deduplicate the whole message,
       // including sources created by earlier versions or another project bot.
       if (assignments.length && recipients.length && !await trx("telegram_task_sources").where(key).first()) {
-        const assigneeId = telegramAssignee(message, recipients, String(currentProject.owner_user_id));
+        const assigneeIds = telegramAssignees(recipients, String(currentProject.owner_user_id), assignments.map((task) => task.telegramUserId));
         const assignment = assignments[0];
         const description = [...new Set(assignments.map((task) => task.description))].join("\n\n").slice(0, 4000);
         const result = await service.call("task.create", {
-          project: project.id, title: assignment.title, scope: description, assignee: assigneeId,
+          project: project.id, title: assignment.title, scope: description, assignees: assigneeIds,
           milestone: `Telegram: ${message.chatTitle}`,
           notes: [`Telegram: ${message.url ?? `chat ${message.chatId}, message ${message.messageId}`}`,
             `Chat: ${message.chatTitle}`, `DeepSeek evidence: ${assignments.map((task) => task.evidence).join("; ")}`, "", "Original message:", message.text].join("\n")
@@ -127,10 +127,10 @@ export class TelegramMessageWorker {
         if (!result.ok) throw new AppError("GATEWAY_ERROR", `Telegram task import failed: ${result.error.code}`);
         const taskId = String(((result.data as Row).task as Row).id);
         await trx("telegram_task_sources").insert({ ...key, telegram_user_id: "message", task_id: taskId, created_at: nowIso() });
-        const user = await trx("users").where({ id: assigneeId }).first();
+        const users = await trx("users").whereIn("id", assigneeIds);
         confirmation = { chatId: message.chatId, messageId: Number(message.messageId),
           ...(message.messageThreadId !== undefined ? { messageThreadId: message.messageThreadId } : {}),
-          taskId, title: assignment.title, projectSlug: String(currentProject.slug), assignee: String(user?.email ?? assigneeId) };
+          taskId, title: assignment.title, projectSlug: String(currentProject.slug), assignees: assigneeIds.map((id) => String(users.find((user) => user.id === id)?.email ?? id)) };
         created = true;
       }
       await this.finish(trx, delivery, created || classification.tasks.length ? "done" : "ignored",
