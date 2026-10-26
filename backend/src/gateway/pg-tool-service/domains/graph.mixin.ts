@@ -178,7 +178,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     // A link can point at a record in a project the caller is not a member
     // of (links only check that both ends exist); never turn that into a
     // node with the foreign record's title/status/assignee (SEC-4).
-    let visible = (_projectId: string | null): boolean => true;
+    let visible: (projectId: string | null) => boolean = () => true;
     if (context?.sessionRole === "member" && context.sessionUserId) {
       const memberOf = new Set(
         (await this.db("project_members").select("project_id").where({ user_id: context.sessionUserId, status: "active" })).map(

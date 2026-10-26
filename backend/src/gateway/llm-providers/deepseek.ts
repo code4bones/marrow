@@ -90,11 +90,13 @@ function toLlmToolCalls(toolCalls: DeepSeekToolCall[] | undefined): LlmToolCall[
 }
 
 export const deepSeekProvider: LlmProvider = {
-  async chatCompletion({ apiKey, model, messages, tools, httpFetch }): Promise<LlmChatResult> {
+  async chatCompletion({ apiKey, model, messages, tools, httpFetch, responseFormat, maxTokens }): Promise<LlmChatResult> {
     const body: JsonRecord = {
       model,
       messages: messages.map(toDeepSeekMessage)
     };
+    if (responseFormat) body.response_format = { type: responseFormat };
+    if (maxTokens !== undefined) body.max_tokens = maxTokens;
     if (tools.length > 0) {
       body.tools = tools.map((tool: ToolSpecJson) => ({
         type: "function",

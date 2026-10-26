@@ -11,6 +11,8 @@ import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 import { GitlabIssueWorker } from "./gateway/gitlab-webhooks/worker.js";
 import { GitlabExportWorker } from "./gateway/gitlab-webhooks/export-worker.js";
+import { TelegramMessageWorker } from "./gateway/telegram-project-bots/worker.js";
+import { TelegramProjectPolling } from "./gateway/telegram-project-bots/polling.js";
 
 dotenv.config({ quiet: true });
 
@@ -64,12 +66,18 @@ async function main(): Promise<void> {
   gitlabIssueWorker.start();
   const gitlabExportWorker = new GitlabExportWorker(db, logger);
   gitlabExportWorker.start();
+  const telegramMessageWorker = new TelegramMessageWorker(db, logger);
+  telegramMessageWorker.start();
+  const telegramProjectPolling = new TelegramProjectPolling(db, logger);
+  telegramProjectPolling.start();
 
   const shutdown = async () => {
     logger.info("project memory gateway shutting down");
     tellyInboxOutbox.stop();
     gitlabIssueWorker.stop();
     gitlabExportWorker.stop();
+    await telegramProjectPolling.stop();
+    await telegramMessageWorker.stop();
     await telegramBot?.stop();
     await started.stop();
     await service.close();

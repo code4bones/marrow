@@ -116,6 +116,17 @@ Optional GitLab Applications sign-in is configured with `GITLAB_OAUTH_ISSUER`,
 Existing users explicitly connect GitLab in their private profile; the public
 login page is unchanged. See [GitLab sign-in setup](docs/AUTH.md#gitlab-sign-in-for-gitlab-applications).
 
+Project Settings → **Bots** supports several dedicated Telegram bots and several
+groups/channels per bot. Chats are authorized by a single-use message key. Each
+bot has editable hashtag filters; only tagged messages with mentions of linked
+active project members go to the project owner's saved DeepSeek
+model, which extracts clear assignments and skips conversation. Setup requires
+`TELEGRAM_BOT_ENC_KEY` (32 random bytes in base64) and existing `AI_PROVIDER_ENC_KEY`.
+Project bots use grammY long polling through the same `TELEGRAM_BOT_PROXY` as the
+notification bot; no inbound Telegram webhook or nginx route is required.
+Apply migrations before starting the gateway. See
+[Telegram project bots](docs/MCP_TOOLS.md#project-telegram-bots-gateway).
+
 See [docs/AUTH_LAYERING.md](docs/AUTH_LAYERING.md) for the rule on stacking edge auth (Basic Auth, forward-auth) in front of an app that manages its own `Authorization` header, and a worked incident from the Marrow web UI's first public deploy.
 
 See [docs/CHAT_CONNECTOR_OAUTH_GUIDE.md](docs/CHAT_CONNECTOR_OAUTH_GUIDE.md) for the reusable OAuth facade pattern used to connect MCP servers to ChatGPT and Claude web connectors.

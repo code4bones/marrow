@@ -13,6 +13,7 @@ import type { Project } from '../../../shared/model/types';
 import { PageLayout } from '../../../shared/ui/PageLayout';
 import { ProjectMembersSection } from '../../../features/project/ProjectMembersSection';
 import { ProjectRepositoriesSection } from '../../../features/project/ProjectRepositoriesSection';
+import { ProjectBotsSection } from '../../../features/project/ProjectBotsSection';
 
 const { Text } = Typography;
 
@@ -132,6 +133,11 @@ export function ProjectSettingsPage() {
       key: 'envVars',
       label: t('projectVars'),
       children: <EnvironmentVariablesSection project={slug} canManage={canManage} />,
+    },
+    {
+      key: 'bots',
+      label: t('bots'),
+      children: <ProjectBotsSection key={slug} project={slug} canManage={canManage} />,
     },
   ];
 

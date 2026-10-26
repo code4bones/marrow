@@ -45,6 +45,8 @@ export interface LlmProvider {
     model: string;
     messages: ChatMessage[];
     tools: ToolSpecJson[];
+    responseFormat?: "json_object";
+    maxTokens?: number;
     httpFetch: LlmHttpFetch;
   }): Promise<LlmChatResult>;
   listModels(input: { apiKey: string; httpFetch: LlmHttpFetch }): Promise<string[]>;

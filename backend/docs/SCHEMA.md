@@ -1,5 +1,26 @@
 # SCHEMA.md
 
+## Gateway Telegram project bots
+
+Migration `117_project_telegram_bots.cjs` adds:
+
+- `project_telegram_bots`: project FK, globally unique Telegram bot ID, username,
+  normalized per-bot hashtag filter list (`filter_tags` JSON array),
+  AES-GCM token under `TELEGRAM_BOT_ENC_KEY`, enabled state, persistent polling
+  offset, revision UUID, polling owner/lease, rate-limit retry time, polling
+  diagnostics/last successful poll, hashed single-use link code/expiry, safe
+  classification diagnostics and last receipt metadata.
+- `project_telegram_chats`: `(bot_id, chat_id)` primary key, title and creation
+  time. Multiple bots per project and multiple bindings per bot; bot deletion cascades.
+- `telegram_message_inbox`: unique `(project_id, chat_id, message_id)`, normalized
+  message snapshot, persisted classification/owner, pending/processing/done/ignored/failed
+  state, attempt count, retry time/lease and diagnostic code. Bot/project deletion cascades.
+- `telegram_task_sources`: `(project_id, chat_id, message_id, telegram_user_id)`
+  primary key and nullable task FK (`ON DELETE SET NULL`). Tombstones survive bot
+  and task deletion, preventing recreation of already processed assignments.
+
+Migration 118 adds the English/Russian Bots UI translations.
+
 ## Gateway project GitLab settings
 
 Migration `112_gitlab_issue_exports.cjs` adds `gitlab_issue_exports`: a unique nullable task FK (`ON DELETE SET NULL`), original task ID, project FK, optional repository FK, retained explicit repository choice, repository host/numeric project ID/URL snapshot, assigning/recipient identities, GitLab assignee, lifecycle (`pending`, `processing`, `uncertain`, `blocked`, `failed`, `done`, `cancelled`), POST-attempt timestamp, retry lease and safe diagnostic code. The operation UUID is the issue-description correlation marker; no token is copied into the operation. Assignment and intent commit atomically. A committed POST-attempt flag forbids blind re-creation after process death or lost response. `gitlab_issue_links` is shared by import and export. Export tombstones persist after task/repository removal for late webhook correlation.

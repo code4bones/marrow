@@ -8,6 +8,17 @@ The project is split into MVP features, near-future features, and explicitly def
 
 ## MVP features
 
+### Gateway: Telegram project bots
+
+Project Settings → Bots supports multiple dedicated bots and explicit chat
+bindings via one-time message keys. Each bot has an editable hashtag list for
+initial filtering. Only tagged messages mentioning linked active project
+members in bound groups/channels are classified by the project owner's saved
+DeepSeek model. Clear assignments create tasks with source text/links; normal
+conversation and uncertain intent are skipped. Durable retries, source
+deduplication across bots and post-commit notifications preserve normal task
+behavior. See [tool contracts and setup](MCP_TOOLS.md#project-telegram-bots-gateway).
+
 ### F-001: Project registry
 
 The server must support multiple projects.

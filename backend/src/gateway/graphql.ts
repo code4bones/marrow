@@ -248,6 +248,7 @@ const typeDefs = `#graphql
     # "requires a logged-in session" error, not an empty/guessed result. See
     # docs/AUTH.md's "Git host credentials" section.
     gitCredentials: [GitCredential!]!
+    projectTelegramBots(project: String!): ProjectTelegramBots!
     projectRepositories(project: String!): [ProjectRepository!]!
     projectGitlabMappings(project: String!): [ProjectGitlabMapping!]!
     projectGitlabUsers(project: String!, host: String!, query: String!): [GitlabUser!]!
@@ -298,6 +299,14 @@ const typeDefs = `#graphql
     rejectProjectMember(project: String, userId: ID!): Boolean!
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
+    addProjectTelegramBot(project: String!, token: String!, tags: [String!]!): ProjectTelegramBot!
+    setProjectTelegramBotTags(project: String!, id: ID!, tags: [String!]!): ProjectTelegramBot!
+    connectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
+    disconnectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
+    removeProjectTelegramBot(project: String!, id: ID!): Boolean!
+    projectTelegramBotLinkCode(project: String!, id: ID!): TelegramChatLinkCode!
+    unlinkProjectTelegramChat(project: String!, id: ID!, chatId: String!): Boolean!
+    retryProjectTelegramBot(project: String!, id: ID!): Int!
     addProjectRepository(project: String!, url: String!): ProjectRepository!
     setProjectRepositoryLead(project: String!, id: ID!, userId: ID): ProjectRepository!
     removeProjectRepository(project: String!, id: ID!): Boolean!
@@ -633,6 +642,24 @@ const typeDefs = `#graphql
     updatedAt: String
   }
 
+  type ProjectTelegramBots { bots: [ProjectTelegramBot!]!, deepseekReady: Boolean! }
+  type ProjectTelegramChat { chatId: String!, title: String! }
+  type TelegramChatLinkCode { command: String!, expiresAt: String! }
+  enum TelegramBotPollingStatus { inactive starting active error }
+  type ProjectTelegramBot {
+    id: ID!
+    username: String!
+    tags: [String!]!
+    enabled: Boolean!
+    pollingStatus: TelegramBotPollingStatus!
+    lastError: String
+    lastPolledAt: String
+    lastReceivedAt: String
+    lastChatTitle: String
+    failedCount: Int!
+    pendingCount: Int!
+    chats: [ProjectTelegramChat!]!
+  }
   type ProjectRepository {
     id: ID!
     projectId: String!
@@ -1444,6 +1471,8 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.members", {})).members,
     gitCredentials: async (_parent: unknown, _args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
+    projectTelegramBots: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bots", cleanInput(args)),
     projectRepositories: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.repositories", cleanInput(args))).repositories,
     projectGitlabMappings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1598,6 +1627,22 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.remove_member", cleanInput(args))).removed,
     renameProjectGroup: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
+    addProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_add", cleanInput(args)),
+    setProjectTelegramBotTags: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_set_tags", cleanInput(args)),
+    connectProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_connect", cleanInput(args)),
+    disconnectProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_disconnect", cleanInput(args)),
+    removeProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      Boolean((await callTool<Row>(context, "project.telegram_bot_remove", cleanInput(args))).removed),
+    projectTelegramBotLinkCode: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_link_code", cleanInput(args)),
+    unlinkProjectTelegramChat: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      Boolean((await callTool<Row>(context, "project.telegram_bot_unlink_chat", cleanInput(args))).removed),
+    retryProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      Number((await callTool<Row>(context, "project.telegram_bot_retry", cleanInput(args))).retried),
     addProjectRepository: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.repository_add", cleanInput(args)),
     setProjectRepositoryLead: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

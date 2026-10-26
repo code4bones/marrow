@@ -4,6 +4,10 @@
 
 ### Added
 
+- Project Settings → Bots: multiple Telegram bots and key-bound chats,
+  editable hashtag filters, and task extraction through the project owner's
+  DeepSeek. Bots use grammY polling over the existing Telegram proxy, with
+  live activity controls, isolated errors, durable retries and deduplication.
 - GitLab OIDC sign-in for the GitLab Applications launcher, with explicit
   account linking and unlinking in the private profile (English/Russian).
 - Fixed-issuer discovery, S256 PKCE, nonce and ID-token verification,

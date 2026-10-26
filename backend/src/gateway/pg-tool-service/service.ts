@@ -1,6 +1,7 @@
 import type { Knex } from "knex";
 import type { IncomingHttpHeaders } from "node:http";
 import { acceptGitlabWebhook } from "../gitlab-webhooks/receiver.js";
+import { ProjectTelegramMixin } from "./domains/project-telegram.mixin.js";
 import * as z from "zod/v4";
 import { AppError } from "../../shared/errors.js";
 import { fail, ok, type ToolResponse } from "../../shared/mcp/tool-response.js";
@@ -58,7 +59,7 @@ const ComposedService = GlobalSearchMixin(
               GatewayOpsMixin(
                 UserPrefsMixin(
                   GraphMixin(
-                    ProjectGitlabMixin(GitCredentialsMixin(
+                    ProjectTelegramMixin(ProjectGitlabMixin(GitCredentialsMixin(
                       EnvironmentVariablesMixin(
                         AiProvidersMixin(
                           AiChatMixin(
@@ -84,7 +85,7 @@ const ComposedService = GlobalSearchMixin(
                           )
                         )
                       )
-                    ))
+                    )))
                   )
                 )
               )
@@ -194,6 +195,24 @@ export class PgToolService extends ComposedService {
           return ok("GitLab webhook disconnected.", await this.disconnectProjectWebhook(parsed, requestContext));
         case "project.repository_webhook_retry":
           return ok("GitLab imports queued for retry.", await this.retryProjectWebhookImports(parsed, requestContext));
+        case "project.telegram_bots":
+          return ok("Project Telegram bots listed.", await this.projectTelegramBots(parsed, requestContext));
+        case "project.telegram_bot_add":
+          return ok("Project Telegram bot added.", await this.addProjectTelegramBot(parsed, requestContext));
+        case "project.telegram_bot_set_tags":
+          return ok("Telegram bot tags updated.", await this.setProjectTelegramBotTags(parsed, requestContext));
+        case "project.telegram_bot_connect":
+          return ok("Project Telegram bot connected.", await this.configureProjectTelegramBot(parsed, requestContext, "connect"));
+        case "project.telegram_bot_disconnect":
+          return ok("Project Telegram bot disconnected.", await this.configureProjectTelegramBot(parsed, requestContext, "disconnect"));
+        case "project.telegram_bot_remove":
+          return ok("Project Telegram bot removed.", await this.configureProjectTelegramBot(parsed, requestContext, "remove"));
+        case "project.telegram_bot_link_code":
+          return ok("Chat link key generated.", await this.projectTelegramBotLinkCode(parsed, requestContext));
+        case "project.telegram_bot_unlink_chat":
+          return ok("Telegram chat unlinked.", await this.unlinkProjectTelegramChat(parsed, requestContext));
+        case "project.telegram_bot_retry":
+          return ok("Failed Telegram imports retried.", await this.retryProjectTelegramImports(parsed, requestContext));
         case "project.repository_add":
           return ok("Repository added.", await this.addProjectRepository(parsed, requestContext));
         case "project.repository_remove":
