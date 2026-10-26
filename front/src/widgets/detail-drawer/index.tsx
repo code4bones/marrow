@@ -414,7 +414,9 @@ export function DetailDrawer() {
     skip: !selectedRecordId,
   });
 
-  useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
+  useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), () => {
+    if (selectedRecordId && detailDrawerOpen) void refetch();
+  });
 
   const kind = (selectedRecordType ?? 'unknown').toUpperCase();
   const entityType = KIND_TYPE[kind] ?? 'unknown';
