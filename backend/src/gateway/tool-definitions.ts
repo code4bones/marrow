@@ -33,6 +33,7 @@ import {
 } from "../features/projects/model/schema.js";
 import {
   createTaskSchema,
+  handoffTaskSchema,
   getTaskSchema,
   listTasksSchema,
   nextTaskSchema,
@@ -1582,7 +1583,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.update_status",
-    description: "Update shared task status and record lifecycle event.",
+    description: "Use status clar (CLAR) with a mandatory note containing the question when work needs clarification (distinct from review); Telegram-sourced tasks reply to their source. Update shared task status and record lifecycle event.",
     schema: updateTaskStatusSchema,
     access: "write"
   },
@@ -1608,6 +1609,12 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
     name: "task.update_details",
     description: "Update several of an existing task's descriptive fields in one call -- title, milestone, scope, acceptance criteria, notes, and priority. Backs a full task-editing form: only fields present in the input are changed, omit a field to leave it untouched, pass null to clear milestone/scope/acceptance/notes. Changing priority still requires the reprioritize permission even when it's submitted alongside other fields in the same call.",
     schema: updateTaskDetailsSchema,
+    access: "write"
+  },
+  {
+    name: "task.handoff",
+    description: "Finish your stage and pass the SAME Telegram-origin task to the next active project member(s). Supply assignees, note describing completed work/next steps, and expectedVersion from task.get (optimistic retry fence). Does not mark DONE or create another task. Repeated handoffs can cycle between performers. Source Telegram chat receives a rich reply naming previous/next Telegram users; normal assignment/Telly acceptance pipeline is preserved. Only the current assignee or a PM can hand off; other tasks use task.update_assignee. CLAR questions use task.update_status(status: clar, note: question).",
+    schema: handoffTaskSchema,
     access: "write"
   },
   {

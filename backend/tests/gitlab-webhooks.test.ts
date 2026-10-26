@@ -49,6 +49,7 @@ beforeEach(async () => {
   await db.schema.createTable("projects", (t) => { for (const name of ["id", "slug", "title", "owner_user_id", "status"]) t.text(name); t.primary(["id"]); });
   await db.schema.createTable("project_members", (t) => { for (const name of ["project_id", "user_id", "status", "role"]) t.text(name); });
   await db.schema.createTable("gateway_clients", (t) => { t.text("id"); t.text("owner_user_id"); });
+  await db.schema.createTable("telegram_task_sources", (t) => { for (const name of ["task_id", "project_id", "bot_id"]) t.text(name); });
   await db.schema.createTable("tasks", (t) => {
     t.text("id").primary();
     for (const name of ["project_id", "title", "status", "milestone", "scope", "acceptance", "allowed_files", "forbidden_files", "depends_on", "notes", "assignee_user_id", "project_version", "created_by", "updated_by", "source_instance_id", "created_at", "updated_at"]) t.text(name);

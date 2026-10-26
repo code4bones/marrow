@@ -1,3 +1,5 @@
+import type { Knex } from "knex";
+import { enqueueTelegramTaskFeedback } from "../../telegram-project-bots/feedback.js";
 import { getTaskAssigneeIds, resolveTaskAssignees, setTaskAssignees } from "../../task-assignees.js";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
@@ -245,7 +247,11 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .orderBy("created_at", "desc")
       .select("from_id");
     const noteIds = noteLinks.map((link: Row) => String(link.from_id));
-    return { ...await this.formatTask(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id) };
+    const source = await this.db("telegram_task_sources").where({ task_id: id, project_id: row.project_id }).first();
+    return { ...await this.formatTask(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id),
+      ...(source ? { telegram: { chatId: String(source.chat_id), messageId: String(source.message_id),
+        workflow: "Keep ONE shared task. For a completed stage use task.handoff with next assignees, completed-work note and expectedVersion from task.get; complete/release active claims first. For questions use task.update_status(status: clar, note: question). Use DONE only when the entire task is finished. These actions reply to the original Telegram message; do not send a second manual reply." } } : {}) };
+
   }
 
   // T-MEMORY-065: task.add_note/remark items exist solely to describe this
@@ -334,11 +340,10 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
 
   protected async updateTaskStatus(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
-    const current = await this.db("tasks").where({ id }).first();
-    if (!current) {
-      throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
-    }
-    await this.assertProjectMember(String(current.project_id), context);
+    const initial = await this.taskRow(id, context);
+    await this.db("projects").where({ id: initial.project_id }).forUpdate().first();
+    const current = await this.db("tasks").where({ id }).forUpdate().first();
+    if (!current) throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     const newStatusValue = String(input.status);
     if (newStatusValue === "done") {
       // completeTask itself asserts the "complete" permission (also the
@@ -354,6 +359,23 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
         context
       );
       return { task: completed.task, ...(completed.warning ? { warning: completed.warning } : {}) };
+    }
+    if (newStatusValue === "clar") {
+      await this.assertTaskPermission(String(current.project_id), "clarify", context);
+      const question = stringOrNull(input.note)?.trim();
+      if (!question) throw new AppError("VALIDATION_ERROR", "A clarification question is required.");
+      const previous = current.status === "clar" ? await this.db("events").where({ related_id: id, type: "task.clarification_requested" }).orderBy("created_at", "desc").orderBy("id", "desc").first() : null;
+      if (previous?.body === question) return { task: await this.formatTask(current) };
+      const [row] = await this.db("tasks").where({ id }).update({ status: "clar", notes: appendText(stringOrNull(current.notes), `Clarification requested: ${question}`),
+        updated_by: context.clientId, source_instance_id: context.clientId, updated_at: nowIso(), version: Number(current.version ?? 1) + 1 }).returning("*");
+      const source = await this.db("telegram_task_sources").where({ task_id: id, project_id: row.project_id }).whereNotNull("bot_id").first();
+      const ids = await getTaskAssigneeIds(this.db, row);
+      const event = await this.recordEventForProject(String(row.project_id), {
+        type: "task.clarification_requested", title: `Clarification requested: ${row.title}`, body: question, related_id: id,
+        target_user_ids: source ? [] : lifecycleNotifyTargets(row.created_by, ids, context), record_title: row.title
+      }, context);
+      await enqueueTelegramTaskFeedback(this.db, row, String(event.id), "clar", question, [], await this.assignmentActorUserId(context));
+      return { task: await this.formatTask(row) };
     }
     // T-MEMORY-115: a reviewer's reject decision, not a plain move -- gated
     // separately (review_decide: pm/tester) from every other status change
@@ -423,9 +445,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     let creditWarning: string | undefined;
     try {
       if (String(current.status) === "done" && (newStatusValue === "todo" || newStatusValue === "doing")) {
-        await this.applyTaskReopenedPenalty(id, stringOrNull(row.project_id));
+        await this.db.transaction((trx) => this.applyTaskReopenedPenalty(id, stringOrNull(row.project_id), trx));
       } else if (String(current.status) === "doing" && newStatusValue === "cancelled") {
-        await this.applyTaskCancelledPenalty(row);
+        await this.db.transaction((trx) => this.applyTaskCancelledPenalty(row, trx));
       }
     } catch (error) {
       creditWarning = `Task status changed, but the credit penalty failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -475,15 +497,15 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     return this.formatTask(row);
   }
 
-  protected async applyTaskReopenedPenalty(taskId: string, projectId: string | null): Promise<void> {
-    const lastAward = await this.db("credit_transactions")
+  protected async applyTaskReopenedPenalty(taskId: string, projectId: string | null, exec: Knex = this.db): Promise<void> {
+    const lastAward = await exec("credit_transactions")
       .where({ related_type: "task", related_id: taskId, reason: "task_completed" })
       .orderBy("created_at", "desc")
       .first();
     if (!lastAward) {
       return;
     }
-    await createCreditsFacade(this.db).award(this.db, {
+    await createCreditsFacade(exec).award(exec, {
       userId: String(lastAward.user_id),
       amount: -Math.abs(Number(lastAward.amount)),
       reason: "task_reopened_penalty",
@@ -493,8 +515,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     });
   }
 
-  protected async applyTaskCancelledPenalty(task: Row): Promise<void> {
-    const activeClaim = await this.db("task_claims")
+  protected async applyTaskCancelledPenalty(task: Row, exec: Knex = this.db): Promise<void> {
+    const activeClaim = await exec("task_claims")
       .where({ task_id: task.id })
       .orderBy("updated_at", "desc")
       .first();
@@ -502,7 +524,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     if (!userId) {
       return;
     }
-    await createCreditsFacade(this.db).award(this.db, {
+    await createCreditsFacade(exec).award(exec, {
       userId,
       amount: -TASK_CANCELLED_PENALTY,
       reason: "task_cancelled_penalty",
@@ -634,13 +656,14 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
   // single member/null field. Omission is rejected by the input schema.
   protected async updateTaskAssignee(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
-    const current = await this.db("tasks").where({ id }).first();
+    const initial = await this.taskRow(id, context);
+    await this.db("projects").where({ id: initial.project_id }).forUpdate().first();
+    const current = await this.db("tasks").where({ id }).forUpdate().first();
     if (!current) {
       throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     }
     await this.assertProjectMember(String(current.project_id), context);
     await this.assertTaskPermission(String(current.project_id), "assign", context);
-    await this.db("projects").where({ id: current.project_id }).forUpdate().first();
     const previous = await getTaskAssigneeIds(this.db, current);
     const assigneeUserIds = await resolveTaskAssignees(this.db, String(current.project_id), input);
     const assigneeUserId = assigneeUserIds[0] ?? null;
@@ -657,9 +680,51 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .returning("*");
     const project = await this.db("projects").where({ id: row.project_id }).first();
     if (project) await this.notifyNewTaskAssignees(row, project, assigneeUserIds, previous, context);
-    await this.recordEventForProject(String(row.project_id), {
+    const event = await this.recordEventForProject(String(row.project_id), {
       type: "task.assignees_updated", title: `Task assignees updated: ${row.title}`, related_id: id, target_user_ids: []
     }, context);
+    if (previous.length !== assigneeUserIds.length || previous.some((id) => !assigneeUserIds.includes(id)))
+      await enqueueTelegramTaskFeedback(this.db, row, String(event.id), "reassigned", null, previous);
+    await this.enqueueTaskGitlabExport(row, context);
+    return this.formatTask(row);
+  }
+
+  protected async handoffTask(input: Row, context: NormalizedGatewayRequestContext) {
+    const id = String(input.id);
+    const initial = await this.taskRow(id, context);
+    await this.db("projects").where({ id: initial.project_id }).forUpdate().first();
+    const current = await this.db("tasks").where({ id }).forUpdate().first();
+    if (!current) throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`);
+    const source = await this.db("telegram_task_sources").where({ task_id: id, project_id: current.project_id }).first();
+    if (!source) throw new AppError("VALIDATION_ERROR", "Stage handoff is available for Telegram-origin tasks.");
+    const previous = await getTaskAssigneeIds(this.db, current);
+    const actor = await this.assignmentActorUserId(context);
+    const role = await this.resolveProjectRole(String(current.project_id), context);
+    if (["done", "cancelled"].includes(String(current.status))) throw new AppError("VALIDATION_ERROR", "Reopen the task before handing off another stage.");
+    const next = await resolveTaskAssignees(this.db, String(current.project_id), input);
+    const note = String(input.note).trim();
+    if (Number(current.version) !== Number(input.expectedVersion)) {
+      const last = await this.db("events").where({ related_id: id, type: "task.handed_off" }).orderBy("created_at", "desc").orderBy("id", "desc").first();
+      if (Number(current.version) === Number(input.expectedVersion) + 1 && last?.body === note && last.created_by === context.clientId && previous.length === next.length && previous.every((uid) => next.includes(uid)))
+        return this.formatTask(current);
+      throw new AppError("VALIDATION_ERROR", "Task changed; read task.get and retry with its current version.");
+    }
+    if (context.sessionRole === "member" && role !== "pm" && (!actor || !previous.includes(actor)))
+      throw new AppError("UNAUTHORIZED", "Only a current performer or PM can hand off this task.");
+    if (previous.length === next.length && previous.every((uid) => next.includes(uid)))
+      throw new AppError("VALIDATION_ERROR", "Choose the next performer(s) for the handoff.");
+    await this.expireTaskClaims(id);
+    const claims = await this.activeTaskClaims(id);
+    if (claims.length) throw new AppError("TASK_HAS_ACTIVE_CLAIMS", "Complete/release active claims before handing the task off.");
+    await setTaskAssignees(this.db, id, next);
+    const [row] = await this.db("tasks").where({ id }).update({ status: "todo", notes: appendText(stringOrNull(current.notes), `Stage completed and handed off: ${note}`),
+      updated_by: context.clientId, source_instance_id: context.clientId, updated_at: nowIso(), version: Number(current.version) + 1 }).returning("*");
+    const project = await this.db("projects").where({ id: row.project_id }).first();
+    if (project) await this.notifyNewTaskAssignees(row, project, next, previous, context);
+    const event = await this.recordEventForProject(String(row.project_id), {
+      type: "task.handed_off", title: `Task stage handed off: ${row.title}`, body: note, related_id: id, target_user_ids: []
+    }, context);
+    await enqueueTelegramTaskFeedback(this.db, row, String(event.id), "handoff", note, previous.filter((uid) => !next.includes(uid)), actor);
     await this.enqueueTaskGitlabExport(row, context);
     return this.formatTask(row);
   }
@@ -886,8 +951,11 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
 
   protected async completeTask(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
-    const current = await this.taskRow(id, context);
-    await this.assertTaskPermission(String(current.project_id), "complete", context);
+    const initial = await this.taskRow(id, context);
+    await this.assertTaskPermission(String(initial.project_id), "complete", context);
+    await this.db("projects").where({ id: initial.project_id }).forUpdate().first();
+    const current = await this.db("tasks").where({ id }).forUpdate().first();
+    if (!current) throw new AppError("TASK_NOT_FOUND", `Task ${id} does not exist.`, { id });
     let completedClaim: Row | null = null;
 
     if (input.claimId) {
@@ -956,6 +1024,8 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       record_title: row.title
     }, context);
 
+    if (current.status !== "done") await enqueueTelegramTaskFeedback(this.db, row, String(event.id), "done", evidence, [], await this.assignmentActorUserId(context));
+
     // I-MEMORY-065: a task can go straight from created to completed with no
     // claim, no acceptance evidence, and no reason -- gateway history alone
     // then can't establish that anything was actually done. Not blocked
@@ -980,10 +1050,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
     let creditWarning: string | undefined;
     if (context.sessionUserId) {
       try {
-        await createCreditsFacade(this.db).awardTaskCompletion(this.db, context.sessionUserId, {
-          projectId: stringOrNull(row.project_id),
-          taskId: id
-        });
+        await this.db.transaction((trx) => createCreditsFacade(trx).awardTaskCompletion(trx, context.sessionUserId!, {
+          projectId: stringOrNull(row.project_id), taskId: id
+        }));
       } catch (error) {
         creditWarning = `Task completed, but the credit award failed: ${error instanceof Error ? error.message : String(error)}`;
       }

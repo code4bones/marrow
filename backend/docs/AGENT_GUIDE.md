@@ -698,3 +698,14 @@ Use these docs for deeper behavior:
 - [TOOL_WORKFLOWS.md](TOOL_WORKFLOWS.md)
 - [AGENT_STATE_MACHINE.md](AGENT_STATE_MACHINE.md)
 - [MCP_TOOLS.md](MCP_TOOLS.md)
+
+## Telegram task stages
+
+For a Telegram-origin task, task.get/preflight includes its source workflow.
+Use `task.update_status({id, status:"clar", note:"question"})` for clarification;
+the original message receives the question. When only your stage is done, release
+or complete your claim, then use `task.handoff({id, assignees:["next member"],
+note:"completed work and next steps", expectedVersion:task.version})`. Read the
+current version from task.get. Keep one task through cyclic handoffs. Use DONE
+only after the entire task is finished. Marrow sends source replies itself; do
+not duplicate those replies manually. These stage handoffs apply to Telegram tasks.

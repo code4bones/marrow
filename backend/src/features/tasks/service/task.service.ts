@@ -68,6 +68,7 @@ export class TaskService {
   }
 
   updateStatus(input: UpdateTaskStatusInput): Task {
+    if (input.status === "clar" && !input.note?.trim()) throw new AppError("VALIDATION_ERROR", "A clarification question is required.");
     const current = this.get(input.id);
     const updated = this.repo.update({
       ...current,
@@ -101,6 +102,8 @@ function eventTypeForStatus(status: string): string {
       return "task.started";
     case "done":
       return "task.completed";
+    case "clar":
+      return "task.clarification_requested";
     case "blocked":
       return "task.blocked";
     case "cancelled":

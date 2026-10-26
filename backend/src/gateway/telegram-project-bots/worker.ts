@@ -1,3 +1,5 @@
+import { telegramParticipants, participantList } from "./participant-references.js";
+import { enqueueTelegramTaskOffers } from "./telly.js";
 import type { Knex } from "knex";
 import { nowIso } from "../../shared/dates.js";
 import { AppError } from "../../shared/errors.js";
@@ -125,12 +127,14 @@ export class TelegramMessageWorker {
         }, { clientId: `integration:telegram:${bot.id}`, clientLabel: `Telegram @${bot.username}`,
           metadata: { kind: "integration", source: "telegram" } });
         if (!result.ok) throw new AppError("GATEWAY_ERROR", `Telegram task import failed: ${result.error.code}`);
-        const taskId = String(((result.data as Row).task as Row).id);
-        await trx("telegram_task_sources").insert({ ...key, telegram_user_id: "message", task_id: taskId, created_at: nowIso() });
-        const users = await trx("users").whereIn("id", assigneeIds);
+        const task = (result.data as Row).task as Row;
+        const taskId = String(task.id);
+        const participants = await telegramParticipants(trx, String(bot.id), message.chatId, assigneeIds);
+        await trx("telegram_task_sources").insert({ participants: JSON.stringify(participants), ...key, telegram_user_id: "message", bot_id: bot.id, message_thread_id: message.messageThreadId ?? null, task_id: taskId, created_at: nowIso() });
+        await enqueueTelegramTaskOffers(trx, currentBot, currentProject, task, recipients, assigneeIds);
         confirmation = { chatId: message.chatId, messageId: Number(message.messageId),
           ...(message.messageThreadId !== undefined ? { messageThreadId: message.messageThreadId } : {}),
-          taskId, title: assignment.title, projectSlug: String(currentProject.slug), assignees: assigneeIds.map((id) => String(users.find((user) => user.id === id)?.email ?? id)) };
+          taskId, title: assignment.title, projectSlug: String(currentProject.slug), assignees: participantList(participants, assigneeIds) };
         created = true;
       }
       await this.finish(trx, delivery, created || classification.tasks.length ? "done" : "ignored",

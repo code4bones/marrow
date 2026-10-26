@@ -1,3 +1,4 @@
+import { telegramPeopleText, type TelegramPerson } from "./participant-references.js";
 import type { Api } from "grammy";
 import type { AppLogger } from "../../shared/logging/logger.js";
 import { marrowWebUrl } from "../telegram.js";
@@ -7,7 +8,7 @@ import { decryptBotSecret, projectTelegramApi } from "./remote.js";
 
 export interface TelegramTaskConfirmation {
   chatId: string; messageId: number; messageThreadId?: number;
-  taskId: string; title: string; projectSlug: string; assignees: string[];
+  taskId: string; title: string; projectSlug: string; assignees: TelegramPerson[];
 }
 
 export async function sendTaskConfirmation(api: Pick<Api, "sendRichMessage">, confirmation: TelegramTaskConfirmation): Promise<void> {
@@ -17,7 +18,7 @@ export async function sendTaskConfirmation(api: Pick<Api, "sendRichMessage">, co
   await telegramRequest(undefined, (signal) => api.sendRichMessage(confirmation.chatId, { blocks: [
     { type: "heading", size: 3, text: "✅ Задача создана" },
     { type: "paragraph", text: `${confirmation.taskId}: ${confirmation.title}` },
-    { type: "paragraph", text: `${confirmation.assignees.length > 1 ? "Исполнители" : "Исполнитель"}: ${confirmation.assignees.join(", ")}` },
+    { type: "paragraph", text: [ `${confirmation.assignees.length > 1 ? "Исполнители" : "Исполнитель"}: `, telegramPeopleText(confirmation.assignees) ] },
     { type: "paragraph", text: { type: "url", text: "Открыть задачу в Marrow →", url } }
   ] }, {
     reply_parameters: { message_id: confirmation.messageId, allow_sending_without_reply: true },

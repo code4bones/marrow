@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { TelegramTaskFeedbackDispatcher } from "./gateway/telegram-project-bots/feedback-worker.js";
 import dotenv from "dotenv";
 import path from "node:path";
 import { startGatewayServer } from "./gateway/http-server.js";
@@ -66,6 +67,8 @@ async function main(): Promise<void> {
   gitlabIssueWorker.start();
   const gitlabExportWorker = new GitlabExportWorker(db, logger);
   gitlabExportWorker.start();
+  const telegramTaskFeedback = new TelegramTaskFeedbackDispatcher(db, logger);
+  telegramTaskFeedback.start();
   const telegramMessageWorker = new TelegramMessageWorker(db, logger);
   telegramMessageWorker.start();
   const telegramProjectPolling = new TelegramProjectPolling(db, logger);
@@ -78,6 +81,7 @@ async function main(): Promise<void> {
     gitlabExportWorker.stop();
     await telegramProjectPolling.stop();
     await telegramMessageWorker.stop();
+    await telegramTaskFeedback.stop();
     await telegramBot?.stop();
     await started.stop();
     await service.close();

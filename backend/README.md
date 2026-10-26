@@ -129,6 +129,12 @@ notification bot; no inbound Telegram webhook or nginx route is required.
 Apply migrations before starting the gateway. See
 [Telegram project bots](docs/MCP_TOOLS.md#project-telegram-bots-gateway).
 
+Resolved Telegram performers enter the existing Telly acceptance pipeline.
+`clar` asks a question; `task.handoff` passes a completed stage to next performers
+on the same task; final DONE confirms completion. Each action replies to the
+original Telegram source/topic through a durable outbox. Group replies and /hash
+use remembered Telegram identities instead of Marrow participant identifiers.
+
 The Bots table includes receive/pipeline counters and timestamps. Click a bot
 for settings and its latest 500 incoming messages, then a message for filter,
 classification and task details. Successful chat binding gets a Rich Message

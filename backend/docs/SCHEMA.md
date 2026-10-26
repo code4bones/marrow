@@ -16,6 +16,22 @@ mappings are checked before POST. A partial remote assignment is diagnosed on th
 existing issue rather than creating another issue. Migration 125 adds EN/RU UI
 labels, task/bot help and routing settings.
 
+## Telegram feedback and CLAR
+
+Migration 129 adds nullable `telegram_task_sources.bot_id` (SET NULL on bot
+deletion), `message_thread_id`, a task lookup index and `participants` JSONB.
+Bot/thread values backfill from retained inbox records; no old notifications are
+generated. Participants map internal user keys to remembered Telegram ID/username/
+label references; outgoing payloads freeze those references at each event.
+
+The existing integration_outbox (migration 103) is shared with Telly. The
+`telegram_project_bot` consumer handles task.done/clar/handoff/reassigned kinds,
+event+source idempotency, source/topic, task version and from/to Telegram snapshots.
+Sending leases that expire become `TELEGRAM_FEEDBACK_UNCERTAIN`, not pending.
+Migration 130 extends the PostgreSQL task status check with `clar`; 131 adds
+English/Russian status/question UI translations. Task DTOs expose `version` for
+handoff concurrency fencing.
+
 ## Gateway Telegram project bots
 
 Migration `117_project_telegram_bots.cjs` adds:
@@ -332,6 +348,9 @@ Allowed statuses:
 todo
 doing
 blocked
+clar
+review
+changes_requested
 done
 cancelled
 ```

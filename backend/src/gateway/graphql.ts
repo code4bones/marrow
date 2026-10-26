@@ -334,6 +334,7 @@ const typeDefs = `#graphql
     updateTaskTitle(id: ID!, title: String!): Task!
     updateTaskPriority(id: ID!, priority: Int!): Task!
     updateTaskDetails(id: ID!, title: String, milestone: String, priority: Int, scope: String, acceptance: String, notes: String): Task!
+    handoffTask(id: ID!, assignees: [String!]!, note: String!, expectedVersion: Int!): Task!
     updateTaskAssignee(id: ID!, assignee: String, assignees: [String!]): Task!
     claimTask(input: TaskClaimInput!): TaskClaimResult!
     heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
@@ -1005,6 +1006,7 @@ const typeDefs = `#graphql
   }
 
   type Task {
+    version: Int!
     id: ID!
     projectId: String
     title: String
@@ -1609,6 +1611,8 @@ const resolvers = {
       (await callTool<Row>(context, "task.update_priority", cleanInput(args))).task,
     updateTaskDetails: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_details", cleanInput(args))).task,
+    handoffTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.handoff", cleanInput(args))).task,
     updateTaskAssignee: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.update_assignee", cleanInput(args))).task,
     claimTask: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

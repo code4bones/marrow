@@ -10,6 +10,27 @@ The server is intended to be used by coding agents such as Codex. It helps agent
 
 The implementation must stay simple, inspectable, reusable, and maintainable.
 
+## Telegram lifecycle delivery
+
+Telegram task creation atomically enqueues existing Telly offers for resolved
+participants without replacing integration authorship or bypassing Telly identity,
+route or acceptance checks. The actor label identifies the project bot.
+
+Task status, completion, reassignment and explicit handoff mutations serialize on
+project/task rows, persist events and `telegram_project_bot` integration_outbox
+records in one transaction. A separate feedback dispatcher claims rows with
+SKIP LOCKED and sends Rich Messages outside SQL transactions. It preserves per-task
+event order and frozen Telegram participant references. A positive Bot API rejection
+may retry; unknown outcomes and expired sending leases never authorize another
+send. Shutdown aborts its requests and awaits completion. Disposable per-request
+signals also protect lifecycle replies from accumulating abort listeners.
+
+Handoffs require a current performer or PM, a nonempty completed-work note and
+expectedVersion; retries against the just-committed version return the existing
+result. Active claims must be completed/released first. No follow-up task or final
+completion is implied. CLAR independently requires a question and uses its own
+event and role action. Task.get/preflight explain these rules for Telegram tasks.
+
 ## Architecture style
 
 Gateway Telegram project bots use a feature-local `telegram-project-bots/`

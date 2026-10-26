@@ -140,10 +140,10 @@ export function tellyInboxTaskOfferPayload(input: TellyInboxTaskOfferInput): Row
 
 export async function enqueueTellyTaskOffer(db: Knex, input: TellyInboxTaskOfferInput): Promise<void> {
   const now = nowIso();
-  // Snapshot the authenticated assigning user's label here. TellyMCP must
-  // remain independent of Marrow's users table and never hydrate it later.
+  // Snapshot the assigning actor label here. Internal integrations may supply
+  // their automation label; callers do not hydrate Marrow users in TellyMCP.
   const actor = await db("users").where({ id: input.actorUserId }).first("email");
-  const actorLabel = typeof actor?.email === "string" ? actor.email.trim() : "";
+  const actorLabel = input.actorLabel?.trim() || (typeof actor?.email === "string" ? actor.email.trim() : "");
   const payload = tellyInboxTaskOfferPayload({ ...input, ...(actorLabel ? { actorLabel } : {}) });
   await db("integration_outbox")
     .insert({

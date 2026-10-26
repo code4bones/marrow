@@ -117,7 +117,7 @@ export class PgToolService extends ComposedService {
     }
 
     try {
-      if (!this.db.isTransaction && ["task.create", "task.update_assignee", "task.export_gitlab"].includes(canonicalToolName)) {
+      if (!this.db.isTransaction && ["task.create", "task.update_assignee", "task.handoff", "task.update_status", "task.complete", "task.export_gitlab"].includes(canonicalToolName)) {
         let transactionalService: PgToolService | null = null;
         const result = await this.db.transaction(async (trx) => {
           const service = new (this.constructor as typeof PgToolService)(trx, this.gitHttpFetch, this.llmHttpFetch);
@@ -378,6 +378,8 @@ export class PgToolService extends ComposedService {
           return ok("Task priority updated.", { task: await this.updateTaskPriority(parsed, requestContext) });
         case "task.update_details":
           return ok("Task details updated.", { task: await this.updateTaskDetails(parsed, requestContext) });
+        case "task.handoff":
+          return ok("Task stage handed off.", { task: await this.handoffTask(parsed, requestContext) });
         case "task.update_assignee":
           return ok("Task assignee updated.", { task: await this.updateTaskAssignee(parsed, requestContext) });
         case "decision.record":

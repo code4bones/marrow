@@ -8,9 +8,10 @@ import type { ProjectMemberRole } from '../model/types';
 // package between front/back to generate this from.
 export type TaskPermissionAction =
   | 'create' | 'delete' | 'edit_details' | 'reprioritize'
-  | 'assign' | 'move' | 'complete' | 'review_decide';
+  | 'clarify' | 'assign' | 'move' | 'complete' | 'review_decide';
 
 const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
+  clarify: ['pm', 'developer', 'tester'],
   create: ['pm', 'developer'],
   delete: ['pm'],
   edit_details: ['pm', 'developer'],
@@ -35,6 +36,7 @@ export function canPerform(role: ProjectMemberRole | null | undefined, action: T
 // non-terminal status) is a plain move, but the two decisions coming OUT of
 // review are gated separately, mirroring updateTaskStatus's own branching.
 export function actionForStatus(status: string): TaskPermissionAction {
+  if (status === 'clar') return 'clarify';
   if (status === 'done') return 'complete';
   if (status === 'changes_requested') return 'review_decide';
   return 'move';

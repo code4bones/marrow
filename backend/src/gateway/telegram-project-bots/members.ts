@@ -61,7 +61,7 @@ export function resolveTelegramRecipient(key: string, username: string | null, o
     ? { userId: String(mapped.user_id), telegramId: key, username, resolution: "manual" } : owner();
   if (aliases.length > 1) return owner();
   const telegramId = aliases.length === 1 ? String(aliases[0].mention_key) : username ? null : key;
-  const linked = identities.filter((i) => telegramId ? String(i.telegram_id) === telegramId : String(i.username ?? "").toLowerCase() === username);
+  const linked = identities.filter((i) => telegramId ? String(i.telegram_id) === telegramId : String(i.telegram_username ?? "").toLowerCase() === username);
   if (linked.length === 1) return { userId: String(linked[0].user_id), telegramId: String(linked[0].telegram_id), username, resolution: "linked" };
   return owner();
 }

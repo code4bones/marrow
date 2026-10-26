@@ -36,6 +36,7 @@ beforeEach(async () => {
   });
   await db.schema.alterTable("tasks", (t) => t.text("assignee_user_id").references("id").inTable("users").onDelete("SET NULL"));
   await db.schema.createTable("events", (t) => { t.text("id").primary(); for (const n of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(n); });
+  await db.schema.createTable("telegram_task_sources", (t) => { for (const n of ["task_id", "project_id", "bot_id"]) t.text(n); });
   await db.schema.createTable("links", (t) => { for (const n of ["id", "project_id", "from_id", "to_id", "relation", "created_at"]) t.text(n); });
   await db.schema.createTable("gitlab_issue_links", (t) => { t.text("task_id"); });
   await db.schema.createTable("project_repositories", (t) => { t.text("project_id"); });

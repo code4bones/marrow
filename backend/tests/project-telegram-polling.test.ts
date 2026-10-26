@@ -41,6 +41,7 @@ beforeEach(async () => {
   managers = [];
   db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
   await db.raw("PRAGMA foreign_keys = ON");
+  await db.schema.createTable("telegram_identities", (t) => { t.text("user_id"); t.text("telegram_id"); t.text("telegram_username"); t.text("telegram_first_name"); });
   await db.schema.createTable("users", (t) => { t.text("id").primary(); t.text("email"); t.text("status"); });
   await db.schema.createTable("project_members", (t) => { t.text("project_id"); t.text("user_id"); t.text("status"); });
   await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("title"); t.text("status"); t.text("owner_user_id"); });

@@ -16,7 +16,7 @@ import { type Constructor, BaseService } from "../base.js";
 // below for how a caller's role is resolved and enforced.
 export type ProjectMemberRole = "pm" | "developer" | "tester";
 
-export type TaskPermissionAction = "create" | "delete" | "edit_details" | "reprioritize" | "assign" | "move" | "complete" | "review_decide";
+export type TaskPermissionAction = "create" | "delete" | "edit_details" | "reprioritize" | "assign" | "move" | "complete" | "review_decide" | "clarify";
 
 // pm: full control. developer: creates tasks, edits their descriptive
 // content (title/milestone/scope/acceptance/notes -- everything the full
@@ -36,6 +36,7 @@ const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
   assign: ["pm"],
   move: ["pm", "developer"],
   complete: ["pm", "tester"],
+  clarify: ["pm", "developer", "tester"],
   review_decide: ["pm", "tester"]
 };
 

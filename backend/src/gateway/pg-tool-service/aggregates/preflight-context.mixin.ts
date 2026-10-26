@@ -56,6 +56,8 @@ export function PreflightContextMixin<TBase extends Constructor<PreflightContext
       project,
       task: {
         id: task.id,
+        version: task.version,
+        ...(task.telegram ? { telegram: task.telegram } : {}),
         title: task.title,
         status: task.status,
         priority: task.priority,

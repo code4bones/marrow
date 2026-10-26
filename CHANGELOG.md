@@ -4,6 +4,14 @@
 
 ### Added
 
+- Telegram tasks enter the existing Telly identity/route/acceptance pipeline for
+  resolved performers, preserving owner fallback and shared task semantics.
+- `clar` (CLAR / Уточнение) status with a mandatory question and source replies.
+- Cyclic Telegram task stage handoffs through `task.handoff`, ordinary assignment
+  change replies and final DONE replies via a durable integration outbox.
+- Remembered Telegram participant references in task replies and /hash, with
+  chat-local mappings and Telegram mentions instead of Marrow participant IDs.
+
 - Telegram `/hash` group command and command menu, showing bot tags and their
   chat-specific assignees without a classifier call.
 

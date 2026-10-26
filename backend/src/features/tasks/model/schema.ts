@@ -5,7 +5,7 @@ import * as z from "zod/v4";
 // linked follow-up task carries the actual rework, see
 // TasksMixin.createFollowUpTask) sit between "doing" and "done" in the
 // normal flow but aren't mandatory -- "done" is still reachable directly.
-export const taskStatusSchema = z.enum(["todo", "doing", "blocked", "review", "changes_requested", "done", "cancelled"]);
+export const taskStatusSchema = z.enum(["todo", "doing", "blocked", "clar", "review", "changes_requested", "done", "cancelled"]);
 
 export const createTaskSchema = z.object({
   project: z.string().optional(),
@@ -98,4 +98,11 @@ export const updateTaskDetailsSchema = z.object({
   scope: z.string().nullable().optional(),
   acceptance: z.string().nullable().optional(),
   notes: z.string().nullable().optional()
+});
+
+// A completed stage, not final task completion. Optimistic version fencing
+// makes retries safe even after backend→frontend→backend cycles.
+export const handoffTaskSchema = z.object({
+  id: z.string().min(1), assignees: z.array(z.string().trim().min(1)).min(1).max(50),
+  note: z.string().trim().min(1).max(8000), expectedVersion: z.number().int().positive()
 });

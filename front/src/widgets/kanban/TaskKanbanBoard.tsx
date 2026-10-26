@@ -17,7 +17,7 @@ import { RecordLink } from '../../shared/ui/RecordLink';
 // T-MEMORY-115: review (submitted, awaiting a pm/tester decision) and
 // changes_requested (rejected -- terminal for this card, a linked follow-up
 // task carries the rework) sit between doing/blocked and done.
-const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'review', 'changes_requested', 'done', 'cancelled'] as const;
+const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'clar', 'review', 'changes_requested', 'done', 'cancelled'] as const;
 
 // T-MEMORY-105: priority only ever governs task.next's pick order among
 // open (todo) tasks -- reordering within Done/Cancelled has no operational
@@ -165,6 +165,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
   // T-MEMORY-115: moving a card into Changes Requested needs a mandatory
   // reason (it seeds the auto-created follow-up task's scope) -- holds the
   // task id awaiting that reason instead of firing the mutation immediately.
+  const [pendingClarId, setPendingClarId] = useState<string | null>(null);
   const [pendingChangesRequestId, setPendingChangesRequestId] = useState<string | null>(null);
 
   const [mutateStatus] = useMutation(UPDATE_TASK_STATUS, {
@@ -185,6 +186,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
       message.error(t('actionNotAllowed'));
       return;
     }
+    if (status === 'clar') { setPendingClarId(id); return; }
     if (status === 'changes_requested') {
       setPendingChangesRequestId(id);
       return;
@@ -206,6 +208,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
     todo: t('statusTodo'),
     doing: t('statusDoing'),
     blocked: t('statusBlocked'),
+    clar: t('statusClar'),
     review: t('statusReview'),
     changes_requested: t('statusChangesRequested'),
     done: t('statusDone'),
@@ -419,7 +422,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
                   onDeleted={onChanged}
                 />
               ))}
-            {status === 'changes_requested' || !canCreate ? null : addingStatus === status ? (
+            {status === 'changes_requested' || status === 'clar' || !canCreate ? null : addingStatus === status ? (
               <Input
                 size="small"
                 autoFocus
@@ -444,6 +447,15 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
           </div>
         </div>
       ))}
+      <RequestChangesModal
+        mode="clar"
+        open={pendingClarId !== null}
+        onCancel={() => setPendingClarId(null)}
+        onSubmit={(note) => {
+          if (pendingClarId) mutateStatus({ variables: { id: pendingClarId, status: 'clar', note } });
+          setPendingClarId(null);
+        }}
+      />
       <RequestChangesModal
         open={pendingChangesRequestId !== null}
         loading={requestingChanges}

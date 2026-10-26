@@ -25,6 +25,15 @@ afterEach(() => {
 });
 
 describe("bootstrap", () => {
+  it("supports CLAR in local mode and requires a question", () => {
+    const project = app.projects.create({ slug: "clar-test", title: "Clarification" });
+    const task = app.tasks.create({ project: project.slug, title: "Confirm the format" });
+    expect(() => app.tasks.updateStatus({ id: task.id, status: "clar", note: " " })).toThrow("question is required");
+    expect(app.tasks.updateStatus({ id: task.id, status: "clar", note: "JSON or CSV?" })).toMatchObject({ status: "clar" });
+    const events = app.db.prepare("SELECT type FROM events WHERE related_id = ?").all(task.id);
+    expect(events).toContainEqual({ type: "task.clarification_requested" });
+  });
+
   it("runs migrations", () => {
     const tables = app.db
       .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual') ORDER BY name")

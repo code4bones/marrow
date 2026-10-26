@@ -44,6 +44,8 @@ export function eventTypeForStatus(status: string): string {
       return "task.started";
     case "done":
       return "task.completed";
+    case "clar":
+      return "task.clarification_requested";
     case "blocked":
       return "task.blocked";
     case "cancelled":

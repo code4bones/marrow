@@ -30,6 +30,31 @@ filter reason, AI result and created tasks. Up to 500 recent received messages
 are retained per bot, including messages that never reached DeepSeek. Successful
 chat binding gets a Rich Message reply naming the Marrow project.
 
+### Telegram task execution and feedback
+
+Resolved manual/tag/linked Telegram assignees enter the existing Telly inbox
+pipeline, one offer per new performer. Telly checks its external identity and
+project route binding and asks for acceptance. Owner fallback alone creates a
+Marrow task without an offer; an explicitly resolved owner remains eligible.
+
+`clar` (CLAR, «Уточнение») requires a question and keeps the same task; it creates
+neither review rework nor completion credit. Telegram tasks reply to their source
+message/topic. Other tasks notify their creator and assignees normally. The
+status appears in selectors, filters, kanban and graph views.
+
+`task.handoff` records completed stage work and passes the same Telegram task to
+next performers, resetting it to todo. It can cycle backend → frontend → backend;
+only final completion uses DONE. Each handoff, ordinary reassignment, CLAR and
+DONE gets a Rich Message reply to the original source. People are rendered as
+Telegram mentions/links, using chat-local manual identities before profile links.
+Unlinked people are labelled explicitly, never with a Marrow email/UUID. Source
+participant snapshots preserve earlier performers across later changes.
+
+Feedback is queued in the task transaction and sent after commit. Disabled bots
+defer it; deleted/unbound sources are skipped. Definitively rejected transient
+Telegram requests retry with backoff/retry_after. An uncertain network outcome
+or expired sending lease is retained as failed rather than blindly duplicated.
+
 ### F-001: Project registry
 
 The server must support multiple projects.

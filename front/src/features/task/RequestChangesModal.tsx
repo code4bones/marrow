@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
+  mode?: 'changes_requested' | 'clar';
   open: boolean;
   loading?: boolean;
   onCancel: () => void;
@@ -15,7 +16,7 @@ interface Props {
 // auto-created follow-up task's scope), so both entry points intercept the
 // plain status change and collect it here first instead of firing the
 // mutation with no note (which the backend would reject anyway).
-export function RequestChangesModal({ open, loading, onCancel, onSubmit }: Props) {
+export function RequestChangesModal({ open, loading, onCancel, onSubmit, mode = 'changes_requested' }: Props) {
   const { t } = useTranslation('tasks');
   const [note, setNote] = useState('');
 
@@ -31,8 +32,8 @@ export function RequestChangesModal({ open, loading, onCancel, onSubmit }: Props
   return (
     <Modal
       open={open}
-      title={t('requestChangesTitle')}
-      okText={t('requestChanges')}
+      title={t(mode === 'clar' ? 'clarTitle' : 'requestChangesTitle')}
+      okText={t(mode === 'clar' ? 'requestClar' : 'requestChanges')}
       onOk={submit}
       onCancel={() => { setNote(''); onCancel(); }}
       confirmLoading={loading}
@@ -41,7 +42,7 @@ export function RequestChangesModal({ open, loading, onCancel, onSubmit }: Props
       <Input.TextArea
         rows={4}
         autoFocus
-        placeholder={t('requestChangesPlaceholder')}
+        placeholder={t(mode === 'clar' ? 'clarPlaceholder' : 'requestChangesPlaceholder')}
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />

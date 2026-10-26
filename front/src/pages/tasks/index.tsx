@@ -35,6 +35,7 @@ function statusOptions(t: (key: string) => string) {
     { label: t('statusTodo'), value: 'todo' },
     { label: t('statusDoing'), value: 'doing' },
     { label: t('statusBlocked'), value: 'blocked' },
+    { label: t('statusClar'), value: 'clar' },
     { label: t('statusReview'), value: 'review' },
     { label: t('statusChangesRequested'), value: 'changes_requested' },
     { label: t('statusDone'), value: 'done' },

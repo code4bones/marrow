@@ -13,6 +13,7 @@ function allOptions(t: (key: string) => string) {
     { label: t('statusTodo'),             value: 'todo' },
     { label: t('statusDoing'),            value: 'doing' },
     { label: t('statusBlocked'),          value: 'blocked' },
+    { label: t('statusClar'), value: 'clar' },
     { label: t('statusReview'),           value: 'review' },
     { label: t('statusChangesRequested'), value: 'changes_requested' },
     { label: t('statusDone'),             value: 'done' },
@@ -43,15 +44,15 @@ interface Props {
 // plain, single-step select same as before.
 export function TaskStatusSelect({ id, value, role, onDone }: Props) {
   const { t } = useTranslation('tasks');
-  const [requestChangesOpen, setRequestChangesOpen] = useState(false);
+  const [requestChangesOpen, setRequestChangesOpen] = useState<'changes_requested' | 'clar' | null>(null);
   const [mutate, { loading }] = useMutation(UPDATE_TASK_STATUS, {
     onCompleted: () => { message.success(t('statusUpdated')); onDone?.(); },
     onError: (e) => message.error(e.message),
   });
 
   const handleChange = (status: string) => {
-    if (status === 'changes_requested') {
-      setRequestChangesOpen(true);
+    if (status === 'changes_requested' || status === 'clar') {
+      setRequestChangesOpen(status);
       return;
     }
     mutate({ variables: { id, status } });
@@ -70,12 +71,13 @@ export function TaskStatusSelect({ id, value, role, onDone }: Props) {
         variant="borderless"
       />
       <RequestChangesModal
-        open={requestChangesOpen}
+        open={requestChangesOpen !== null}
+        mode={requestChangesOpen ?? 'changes_requested'}
         loading={loading}
-        onCancel={() => setRequestChangesOpen(false)}
+        onCancel={() => setRequestChangesOpen(null)}
         onSubmit={(note) => {
-          mutate({ variables: { id, status: 'changes_requested', note } });
-          setRequestChangesOpen(false);
+          mutate({ variables: { id, status: requestChangesOpen, note } });
+          setRequestChangesOpen(null);
         }}
       />
     </>

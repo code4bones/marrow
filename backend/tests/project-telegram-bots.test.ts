@@ -66,7 +66,8 @@ beforeEach(async () => {
   vi.stubEnv("PROJECT_MEMORY_PUBLIC_URL", "https://marrow.example.test/api");
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
   vi.stubEnv("AI_PROVIDER_ENC_KEY", Buffer.alloc(32, 8).toString("base64"));
-  vi.stubEnv("TELLY_INBOX_ENABLED", "false");
+  vi.stubEnv("TELLYMCP_INBOX_MCP_URL", "");
+  vi.stubEnv("TELLYMCP_INBOX_BEARER_TOKEN", "");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
   remote.sendRichMessage.mockReset().mockResolvedValue({});
   updateId = 0; rollback = false; httpFetch.mockReset(); vi.mocked(notifyTelegram).mockClear();
@@ -80,7 +81,7 @@ beforeEach(async () => {
   await db.schema.createTable("projects", (t) => { t.text("id").primary(); for (const n of ["slug", "title", "owner_user_id", "status"]) t.text(n); });
   await db.schema.createTable("project_members", (t) => { for (const n of ["project_id", "user_id", "status", "role"]) t.text(n); });
   await db.schema.createTable("gateway_clients", (t) => { t.text("id"); t.text("owner_user_id"); });
-  await db.schema.createTable("telegram_identities", (t) => { t.text("telegram_id").primary(); t.text("user_id"); t.text("username"); });
+  await db.schema.createTable("telegram_identities", (t) => { t.text("telegram_id").primary(); t.text("user_id"); t.text("telegram_username"); });
   await db.schema.createTable("ai_provider_credentials", (t) => {
     t.text("id").primary(); for (const n of ["owner_user_id", "provider", "model", "api_key_enc", "created_at"]) t.text(n); t.boolean("is_default");
   });
@@ -91,16 +92,18 @@ beforeEach(async () => {
   await db.schema.createTable("events", (t) => {
     t.text("id").primary(); for (const n of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(n);
   });
+  await createRequire(import.meta.url)("../migrations/pg/103_integration_outbox.cjs").up(db);
   await migration.up(db);
   await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/121_telegram_chat_mentions.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/123_task_assignees.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/129_telegram_task_feedback_source.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
-  await db("telegram_identities").insert(["owner", "member", "pending", "outsider", "disabled"].map((user_id, index) => ({ user_id, telegram_id: String(11 * (index + 1)), username: user_id })));
+  await db("telegram_identities").insert(["owner", "member", "pending", "outsider", "disabled"].map((user_id, index) => ({ user_id, telegram_id: String(11 * (index + 1)), telegram_username: user_id })));
   await db("ai_provider_credentials").insert({ id: "ai-owner", owner_user_id: "owner", provider: "deepseek", model: "owners-model", api_key_enc: encryptProviderKey("owner-ai-key"), is_default: true, created_at: "2026-01-01" });
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123456789", username: "project_bot", filter_tags: '["ошибка","проверка"]', token_enc: encryptBotSecret(token), poll_revision: randomUUID(), enabled: true, created_at: "2026-01-01", updated_at: "2026-01-01" });
   await db("project_telegram_chats").insert({ bot_id: botId, chat_id: "-10012345", title: "Team", created_at: "2026-01-01" });
@@ -501,7 +504,7 @@ describe("chat recipient mappings and task replies", () => {
     expect(remote.sendRichMessage).toHaveBeenCalledWith("-10012345", { blocks: [
       { type: "heading", size: 3, text: "✅ Задача создана" },
       { type: "paragraph", text: `${task.id}: Исправить вход` },
-      { type: "paragraph", text: "Исполнитель: member@test" },
+      { type: "paragraph", text: ["Исполнитель: ", [{ type: "mention", username: "member", text: "@member" }]] },
       { type: "paragraph", text: { type: "url", text: "Открыть задачу в Marrow →", url: `https://marrow.example.test/projects/test/tasks/${task.id}` } }
     ] }, { reply_parameters: { message_id: 40, allow_sending_without_reply: true }, message_thread_id: 7 }, expect.anything());
     await deliver(raw); await worker.tick(); expect(remote.sendRichMessage).toHaveBeenCalledOnce();
@@ -571,7 +574,7 @@ describe("Telegram recipient tag routing", () => {
     reply([assignment("tag:member")]); await deliver(payload("#ошибка исправь вход", -10012345, 81)); await worker.tick();
     expect(await db("tasks")).toHaveLength(1);
     expect((await db("task_assignees")).map((a) => a.user_id).sort()).toEqual(["member", "owner"]);
-    const sent = JSON.stringify(remote.sendRichMessage.mock.calls); expect(sent).toContain("Исполнители:"); expect(sent).toContain("member@test"); expect(sent).toContain("owner@test");
+    const sent = JSON.stringify(remote.sendRichMessage.mock.calls); expect(sent).toContain("Исполнители:"); expect(sent).toContain("@member"); expect(sent).toContain("@owner"); expect(sent).not.toContain("@test");
     await callOk("project.telegram_chat_set_mention", { ...base, mentionKey: "username:member", userId: null });
     expect(JSON.parse((await db("telegram_chat_mentions").where({ mention_key: "username:member" }).first()).assignment_tags)).toEqual([]);
   });
@@ -623,12 +626,60 @@ describe("unified recipients and Telegram /hash", () => {
     const raw = payload("/hash@project_bot", -10012345, 90, { message_thread_id: 7 });
     const result = await deliver(raw);
     expect(result).toMatchObject({ status: "command", reason: "hash_command", hashReply: { projectTitle: "Test", chatId: "-10012345", messageId: 90, messageThreadId: 7,
-      lines: ["#ошибка → member@test", "#проверка → по упоминаниям; иначе владелец проекта"] } });
+      lines: [["#ошибка → ", [{ type: "mention", username: "duplicate", text: "@duplicate" }]], "#проверка → по упоминаниям; иначе владелец проекта"] } });
     expect(await deliver(raw)).toMatchObject({ duplicate: true });
     expect(await deliver(payload("/hash@project_bot", -10012345, 90))).toMatchObject({ duplicate: true });
     expect(await deliver(payload("/hash@other_bot", -10012345, 91))).toMatchObject({ reason: "command_other_bot" });
     expect(await deliver(payload("/hash", -100999, 92))).toMatchObject({ reason: "unbound_chat" });
     expect(await deliver(payload("/hash", 22, 93, { chat: { id: 22, type: "private" } }))).toMatchObject({ reason: "private_chat" });
     await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
+  });
+});
+
+
+describe("Telegram task offers through the Telly pipe", () => {
+  function enable() {
+    vi.stubEnv("TELLYMCP_INBOX_MCP_URL", "https://telly.invalid/mcp"); vi.stubEnv("TELLYMCP_INBOX_BEARER_TOKEN", "dedicated-test-credential");
+  }
+  it("atomically offers one shared task to every explicitly routed participant, including the owner", async () => {
+    enable(); await deliver(payload("@member @owner привет", -10012345, 80));
+    for (const userId of ["owner", "member"]) await callOk("project.telegram_chat_set_mention", { project: "test", id: botId, chatId: "-10012345", mentionKey: `username:${userId}`, userId, tags: ["ошибка"] });
+    reply([assignment("tag:member")]); const raw = payload("#ошибка исправь вход", -10012345, 81);
+    await deliver(raw); await worker.tick();
+    const task = await db("tasks").first(); const offers = await db("integration_outbox").orderBy("recipient_user_id");
+    expect(await db("tasks")).toHaveLength(1); expect(offers.map((o) => o.recipient_user_id)).toEqual(["member", "owner"]);
+    expect(task.created_by).toBe(`integration:telegram:${botId}`);
+    for (const offer of offers) {
+      const data = JSON.parse(offer.payload);
+      expect(offer).toMatchObject({ task_id: task.id, actor_user_id: "owner", delivery_status: "pending" });
+      expect(data).toMatchObject({ recipient: { externalPrincipal: { namespace: "marrow", subject: offer.recipient_user_id } },
+        resource: { kind: "task", id: task.id }, requiresAcceptance: true, route: { namespace: "marrow", key: "P-TEST", slug: "test" }, display: { sender: "Telegram @project_bot" } });
+      expect(data.consoleText).not.toContain(task.title); expect(data.consoleText).toContain(task.id);
+    }
+    expect(new Set(offers.map((o) => o.source_event_id)).size).toBe(2);
+    await deliver(raw); await deliver(payload("#ошибка исправь вход", -10012345, 81)); await worker.tick();
+    expect(await db("integration_outbox")).toHaveLength(2); expect(await db("tasks")).toHaveLength(1);
+  });
+  it("does not forward owner fallback or conversation, but forwards a linked explicitly mentioned owner", async () => {
+    enable(); reply([assignment("owner")]); await deliver(payload("#ошибка исправь вход", -10012345, 80)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(1); expect(await db("integration_outbox")).toHaveLength(0);
+    reply([]); await deliver(payload("#ошибка @member привет", -10012345, 81)); await worker.tick();
+    expect(await db("integration_outbox")).toHaveLength(0);
+    reply([assignment("11")]); await deliver(payload("#ошибка @owner исправь вход", -10012345, 82)); await worker.tick();
+    expect(await db("integration_outbox")).toHaveLength(1); expect((await db("integration_outbox").first()).recipient_user_id).toBe("owner");
+  });
+  it("rolls back task/source/events/offers on outbox failure and retries with the saved classification", async () => {
+    enable();
+    await db.raw("CREATE TRIGGER reject_telly_offer BEFORE INSERT ON integration_outbox BEGIN SELECT RAISE(ABORT, 'injected outbox failure'); END");
+    await deliver(); await worker.tick();
+    expect(await db("tasks")).toHaveLength(0); expect(await db("telegram_task_sources")).toHaveLength(0); expect(await db("events")).toHaveLength(0); expect(await db("integration_outbox")).toHaveLength(0);
+    expect(notifyTelegram).not.toHaveBeenCalled(); expect(remote.sendRichMessage).not.toHaveBeenCalled();
+    await db.raw("DROP TRIGGER reject_telly_offer"); await db("telegram_message_inbox").update({ available_at: "2000-01-01" }); await worker.tick();
+    expect(await db("tasks")).toHaveLength(1); expect(await db("integration_outbox")).toHaveLength(1); expect(httpFetch).toHaveBeenCalledOnce();
+  });
+  it("does not enable ordinary self-assignment forwarding through spoofed integration metadata", async () => {
+    enable();
+    const result = await service.call("task.create", { project: "test", title: "Self assignment", assignee: "owner" }, { ...owner, metadata: { source: "telegram", kind: "integration" } });
+    expect(result.ok).toBe(true); expect(await db("integration_outbox")).toHaveLength(0);
   });
 });

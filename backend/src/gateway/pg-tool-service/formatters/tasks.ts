@@ -32,6 +32,7 @@ export function taskOut(row: Row) {
   return {
     id: String(row.id),
     projectId: String(row.project_id),
+    version: Number(row.version ?? 1),
     title: String(row.title),
     status: String(row.status),
     milestone: stringOrNull(row.milestone),

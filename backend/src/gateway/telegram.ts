@@ -63,6 +63,7 @@ const EVENT_LABELS: Record<string, [icon: string, label: string]> = {
   "task.created": ["🆕", "Новая задача"],
   "task.assigned": ["📌", "Назначена задача"],
   "task.started": ["▶️", "Задача взята в работу"],
+  "task.clarification_requested": ["❓", "Задаче требуется уточнение"],
   "task.review_requested": ["🔎", "Задача отправлена на проверку"],
   "task.changes_requested": ["🔁", "Требуются исправления"],
   "task.completed": ["✅", "Задача завершена"],

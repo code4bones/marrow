@@ -42,6 +42,7 @@ export const AI_CHAT_ALLOWED_WRITE_TOOLS: ReadonlySet<string> = new Set([
   "task.complete",
   "task.create",
   "task.update_assignee",
+  "task.handoff",
   "task.update_details",
   "task.update_milestone",
   "task.update_priority",

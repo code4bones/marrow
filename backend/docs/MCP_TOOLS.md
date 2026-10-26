@@ -153,6 +153,10 @@ web task and preserves the original message/topic. Send failures cannot roll
 back the task or cause automatic resends; no reply is sent for non-task messages.
 Titles/descriptions use the message language; notes retain the original message
 and Telegram link (or numeric chat/message IDs for basic groups without links).
+Resolved manual/tag/linked recipients also enter the normal Telly inbox pipeline
+with the bot actor label; owner fallback alone does not. Telly resolves its own
+identity/project route bindings and requires acceptance. Group replies and /hash
+render Telegram usernames or numeric-user links, never Marrow participant IDs.
 No surrounding history or attachments are fetched, and edits do not synchronize.
 
 Project bots receive updates via **grammY `Api.getUpdates()` long polling** using
@@ -2448,9 +2452,37 @@ Ordering:
 
 ---
 
+### `task.handoff` (gateway, Telegram tasks)
+
+Complete a stage and pass the **same task** onward. Read `task.get` for its
+current `version`; complete/release active claims first. A current assignee or PM
+may call:
+
+```json
+{"id":"T-MEMORY-001","assignees":["frontend@example.org"],"note":"API implemented and tested; connect the form","expectedVersion":3}
+```
+
+The task becomes todo for its next active members. An identical retry at the
+immediately following version is idempotent; other stale versions are rejected.
+Telly offers use the normal pipeline. Telegram receives a source reply naming
+previous/next Telegram people, with the completed-work note and task link.
+Ordinary `task.update_assignee` also reports changed assignees for Telegram tasks,
+but makes no completed-stage claim. Handoffs can cycle until final DONE.
+GraphQL exposes `handoffTask` with the same fields and `Task.version`.
+
 ### `task.update_status`
 
-Update task status.
+Update task status. `clar` (CLAR, Уточнение) requires `note` containing the
+question; it creates `task.clarification_requested`, no follow-up/credits. Telegram
+sources receive a Rich Message question reply; otherwise creator/assignees receive
+normal notifications. `done`/`task.complete` queue one source reply per transition
+into DONE; repeat completions do not duplicate it. Reopen → DONE can notify again.
+
+Feedback commits with the task, uses the originating bot/message/topic and frozen
+Telegram identities, and runs after commit through integration_outbox. Disabled
+bots defer sends. Deleted/unbound sources are skipped. Uncertain delivery is
+retained as failed without blind resend. Historical tasks are not backfilled into
+notifications. Task.get/preflight include the Telegram workflow for agents.
 
 Input:
 
@@ -2468,6 +2500,9 @@ Allowed statuses:
 todo
 doing
 blocked
+clar
+review
+changes_requested
 done
 cancelled
 ```
