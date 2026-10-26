@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Telegram attachment HTTP response stream errors are contained even after a
+  rejected status, preserving the bot/gateway lifecycle.
+
 ### Added
 
 - Manual task confirmation from Telegram message details with explicit assignees,

@@ -43,7 +43,9 @@ uses existing artifact.put/link.create, commits artifact/source state atomically
 and defers realtime effects. Stable source paths and SHA-256 checks protect retries;
 no existing artifact is overwritten with different content. Disabled bots defer,
 unbound/deleted sources fail explicitly. Credentials stay out of logs and paths.
-Files reuse normal artifact storage and access rules. Telly may accept the task
+File response error/abort listeners are installed before rejecting/draining HTTP
+statuses, so late stream errors remain contained. Files reuse normal artifact
+storage and access rules. Telly may accept the task
 while downloads are pending; task.get/preflight expose this state and guide the
 agent to re-read before using linked artifact IDs.
 

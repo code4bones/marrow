@@ -12,13 +12,19 @@ const httpGet = vi.mocked(get);
 let status: number;
 let headers: Record<string, string>;
 let chunks: Buffer[];
+let emitResponseError: boolean;
 beforeEach(() => {
+  emitResponseError = false;
   status = 200; headers = {}; chunks = [Buffer.from("file")];
   getFile.mockReset().mockResolvedValue({ file_path: "documents/file.pdf", file_size: 4 });
   vi.mocked(projectTelegramApi).mockReturnValue({ getFile } as unknown as ReturnType<typeof projectTelegramApi>);
   httpGet.mockReset().mockImplementation(((_url: unknown, _options: unknown, callback: (r: Readable) => void) => {
     const request = new EventEmitter();
-    queueMicrotask(() => callback(Object.assign(Readable.from(chunks), { statusCode: status, headers })));
+    queueMicrotask(() => {
+      const response = Object.assign(Readable.from(chunks), { statusCode: status, headers });
+      callback(response);
+      if (emitResponseError) response.emit("error", new Error("Connection lost while draining an error response"));
+    });
     return request;
   }) as unknown as typeof get);
   vi.stubEnv("TELEGRAM_BOT_PROXY", "http://127.0.0.1:8888");
@@ -45,6 +51,10 @@ describe("Telegram attachment transport", () => {
     getFile.mockResolvedValue({ file_path: "documents/file.pdf" }); status = 302; headers = { location: "https://other.test/" };
     await expect(downloadTelegramFile("123:fake", "file-id", 10, new AbortController().signal)).rejects.toThrow("TELEGRAM_FILE_DOWNLOAD_FAILED");
     expect(httpGet).toHaveBeenCalledOnce();
+  });
+  it("contains response stream errors even when Telegram returns a rejected HTTP status", async () => {
+    status = 503; emitResponseError = true;
+    await expect(downloadTelegramFile("123:fake", "file-id", 10, new AbortController().signal)).rejects.toThrow("TELEGRAM_FILE_DOWNLOAD_FAILED");
   });
   it("redacts native HTTP errors which may contain the bot credential", async () => {
     httpGet.mockImplementation((() => {

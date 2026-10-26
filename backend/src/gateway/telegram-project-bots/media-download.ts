@@ -15,6 +15,8 @@ export async function downloadTelegramFile(token: string, fileId: string, maxByt
   return new Promise((resolve, reject) => {
     const fail = (code: string) => reject(new AppError("GATEWAY_ERROR", code));
     const request = get(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { agent, signal: deadline }, (response) => {
+      response.once("error", () => fail("TELEGRAM_FILE_DOWNLOAD_FAILED"));
+      response.once("aborted", () => fail("TELEGRAM_FILE_DOWNLOAD_FAILED"));
       if (response.statusCode !== 200) { response.resume(); fail("TELEGRAM_FILE_DOWNLOAD_FAILED"); return; }
       if (Number(response.headers["content-length"] ?? 0) > maxBytes) { response.destroy(); fail("TELEGRAM_FILE_TOO_LARGE"); return; }
       const chunks: Buffer[] = []; let size = 0;
@@ -23,7 +25,6 @@ export async function downloadTelegramFile(token: string, fileId: string, maxByt
         if (size > maxBytes) { response.destroy(); fail("TELEGRAM_FILE_TOO_LARGE"); } else chunks.push(chunk);
       });
       response.once("end", () => resolve(Buffer.concat(chunks)));
-      response.once("error", () => fail("TELEGRAM_FILE_DOWNLOAD_FAILED"));
     });
     request.once("error", () => fail("TELEGRAM_FILE_DOWNLOAD_FAILED"));
   });
