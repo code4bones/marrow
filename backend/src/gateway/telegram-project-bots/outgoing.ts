@@ -22,10 +22,10 @@ function richBody(value: unknown): string {
 // No visible marker or copy of message content is needed. A successful send's
 // Telegram identity remains known even after bot removal or another handoff.
 export async function sendRememberedTelegramReply<T extends { message_id: number }>(db: Knex, botId: string,
-  chatId: string, rich: InputRichMessage, send: () => Promise<T>): Promise<T> {
+  chatId: string, rich: InputRichMessage, send: () => Promise<T>, taskId?: string): Promise<T> {
   const id = randomUUID();
   await db("telegram_outgoing_messages").insert({ id, bot_id: botId, chat_id: chatId,
-    fingerprint: fingerprint(richBody(rich)), created_at: nowIso() });
+    fingerprint: fingerprint(richBody(rich)), ...(taskId ? { task_id: taskId } : {}), created_at: nowIso() });
   const result = await send();
   if (Number.isSafeInteger(result.message_id) && result.message_id > 0)
     await db("telegram_outgoing_messages").where({ id }).update({ message_id: String(result.message_id) });

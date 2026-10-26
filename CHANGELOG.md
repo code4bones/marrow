@@ -4,6 +4,12 @@
 
 ### Added
 
+- Manual task confirmation from Telegram message details with explicit assignees,
+  optional title, AI bypass and the existing deduplicated task/Telly/reply pipeline.
+- Telegram documents/media as task-linked Marrow artifacts, including albums and
+  reply files, durable references/download retries, proxy and size bounds, file
+  progress/retry UI and artifact IDs in task.get/preflight.
+
 - Short tagged reports of current defects qualify as investigation tasks without
   requiring imperative wording; the classifier receives matched configured tags.
 

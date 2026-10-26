@@ -6,6 +6,7 @@ const user = z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTE
 const entity = z.object({ type: z.string(), offset: z.number().int().nonnegative(), length: z.number().int().positive(), user: user.optional() });
 const message = z.object({
   message_id: z.number().int().positive(),
+  media_group_id: z.string().max(100).optional(),
   message_thread_id: z.number().int().positive().optional(),
   chat: z.object({ id: z.number().int().max(Number.MAX_SAFE_INTEGER).min(-Number.MAX_SAFE_INTEGER), type: z.string(), title: z.string().optional(), username: z.string().regex(/^[a-zA-Z0-9_]+$/).optional() }),
   from: user.optional(), text: z.string().max(16384).optional(), caption: z.string().max(16384).optional(),
@@ -17,6 +18,7 @@ export interface TelegramMentionMessage {
   chatId: string;
   messageId: string;
   messageThreadId?: number;
+  mediaGroupId?: string;
   chatTitle: string;
   text: string;
   url: string | null;
@@ -57,5 +59,5 @@ export function parseMentionMessage(raw: Buffer): TelegramMentionMessage | null 
   const url = msg.chat.username ? `https://t.me/${msg.chat.username}/${messageId}`
     : chatId.startsWith("-100") ? `https://t.me/c/${chatId.slice(4)}/${messageId}` : null;
   return { chatId, messageId, ...(msg.message_thread_id !== undefined ? { messageThreadId: msg.message_thread_id } : {}),
-    chatTitle: msg.chat.title ?? chatId, text, url, telegramIds: [...telegramIds], usernames: [...usernames], tags: [...tags] };
+    ...(msg.media_group_id ? { mediaGroupId: msg.media_group_id } : {}), chatTitle: msg.chat.title ?? chatId, text, url, telegramIds: [...telegramIds], usernames: [...usernames], tags: [...tags] };
 }

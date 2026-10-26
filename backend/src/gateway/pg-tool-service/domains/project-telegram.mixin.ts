@@ -1,3 +1,4 @@
+import { queueManualTelegramTask } from "../../telegram-project-bots/manual.js";
 import { chatRecipients, recipientKeys } from "../../telegram-project-bots/recipients.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
@@ -63,10 +64,34 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const { bot, project } = await this.managedTelegramBot(input, context);
       const row = await botMessageSelect(this.db, String(bot.id)).where("m.id", String(input.messageId)).first();
       if (!row) throw new AppError("NOT_FOUND", "Message not found for this project's bot.");
-      const tasks = row.chat_id && row.message_id ? await this.db("telegram_task_sources as s").join("tasks as t", "t.id", "s.task_id")
+      let tasks = row.chat_id && row.message_id ? await this.db("telegram_task_sources as s").join("tasks as t", "t.id", "s.task_id")
         .where({ "s.project_id": project.id, "s.chat_id": row.chat_id, "s.message_id": row.message_id })
         .select("t.id", "t.title", "t.status") : [];
-      return { ...botMessageOut(row, true), tasks };
+      const inbox = row.inbox_id ? await this.db("telegram_message_inbox").where({ id: row.inbox_id }).first() : null;
+      const source = await this.db("telegram_task_sources").where({ project_id: project.id, chat_id: row.chat_id, message_id: row.message_id }).first();
+      const bound = await this.db("project_telegram_chats").where({ bot_id: bot.id, chat_id: row.chat_id }).first();
+      const attachments = await this.db("telegram_message_files").where({ project_id: project.id, chat_id: row.chat_id })
+        .andWhere((q) => { q.where("message_id", row.message_id); if (tasks.length) q.orWhereIn("task_id", tasks.map((t) => String(t.id))); });
+      const extraTaskIds = [...new Set(attachments.filter((a) => a.task_id).map((a) => String(a.task_id)))].filter((id) => !tasks.some((t) => t.id === id));
+      if (extraTaskIds.length) tasks = [...tasks, ...await this.db("tasks").where({ project_id: project.id }).whereIn("id", extraTaskIds).select("id", "title", "status")];
+      const canCreateTask = Boolean(!tasks.length && inbox && bot.enabled && project.status === "active" && bound && !source && !["pending", "processing"].includes(String(inbox.status)));
+      const assignableMembers = canCreateTask ? await activeProjectUsers(this.db, project.id, project.ownerUserId).select("u.id", "u.email") : [];
+      return { ...botMessageOut(row, true), tasks, canCreateTask, assignableMembers, manual: Boolean(inbox?.manual_override), attachments: attachments.map((a) => ({ id: a.id, name: a.file_name, kind: a.kind, contentType: a.content_type, sizeBytes: a.size_bytes === null ? null : Number(a.size_bytes), status: a.status, artifactId: a.artifact_id, lastError: a.last_error })) };
+    }
+
+
+    protected async retryTelegramMessageFile(input: Row, context: NormalizedGatewayRequestContext) {
+      const { project } = await this.managedTelegramBot(input, context);
+      const row = await this.db("telegram_message_files").where({ id: input.fileId, project_id: project.id }).first();
+      if (!row) throw new AppError("NOT_FOUND", "Attachment not found in this project.");
+      if (row.status !== "failed" || !row.task_id) return { queued: false };
+      await this.db("telegram_message_files").where({ id: row.id, status: "failed", attempts: row.attempts }).update({ status: "pending", attempts: Number(row.attempts) + 1, available_at: nowIso(), locked_until: null, last_error: null });
+      return { queued: true };
+    }
+
+    protected async manuallyCreateTelegramTask(input: Row, context: NormalizedGatewayRequestContext) {
+      const { bot, project } = await this.managedTelegramBot(input, context);
+      return queueManualTelegramTask(this.db, project, String(bot.id), String(input.messageId), input.assignees as string[], input.title as string | undefined, context.sessionUserId ?? String(project.ownerUserId));
     }
 
     protected async projectTelegramChatMentions(input: Row, context: NormalizedGatewayRequestContext) {

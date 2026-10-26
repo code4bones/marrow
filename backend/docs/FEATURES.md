@@ -66,6 +66,27 @@ flag and a shared registry of outgoing message IDs. Anonymous channel echoes,
 automatic forwards and updates racing the send response are also fenced. Normal
 human tagged replies remain eligible.
 
+### Manual Telegram task creation and attachments
+
+A skipped/failed message already admitted to the task pipeline can be confirmed
+in its details by an owner/admin: choose active assignees and a title, then create
+the task. This bypasses AI intent but uses the same durable inbox, source dedup,
+shared-task creation, Telegram reply and Telly pipeline. Repeating confirmation
+returns the existing task; an in-flight older AI result cannot override it.
+
+Documents and media in bound chats retain Bot API file references before polling
+acknowledgement. Files for a created task become normal project artifacts linked
+with `attached_to`. Albums share one task, including additional tagged captions;
+files sent as replies to the original request or Marrow's task reply attach to
+that task without another task. Only the largest photo variant is downloaded.
+Downloading runs separately through grammY getFile and the existing Telegram
+HTTPS proxy; errors never undo a task. ARTIFACT_MAX_BYTES applies (10 MiB default),
+with bounded streaming, retries, safe filenames and stable artifact paths. Details
+show file state, artifact links and owner/admin retry for failed downloads.
+Task.get/preflight expose artifact IDs and pending file states so agents can wait
+for files rather than invent their contents. Existing attachments whose file IDs
+were never retained cannot be recovered automatically from old message IDs.
+
 ### F-001: Project registry
 
 The server must support multiple projects.

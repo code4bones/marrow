@@ -248,9 +248,11 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       .select("from_id");
     const noteIds = noteLinks.map((link: Row) => String(link.from_id));
     const source = await this.db("telegram_task_sources").where({ task_id: id, project_id: row.project_id }).first();
-    return { ...await this.formatTask(row), noteIds, noteCount: noteIds.length, gitlab: await exportStatus(this.db, id),
-      ...(source ? { telegram: { chatId: String(source.chat_id), messageId: String(source.message_id),
-        workflow: "Keep ONE shared task. For a completed stage use task.handoff with next assignees, completed-work note and expectedVersion from task.get; complete/release active claims first. For questions use task.update_status(status: clar, note: question). Use DONE only when the entire task is finished. These actions reply to the original Telegram message; do not send a second manual reply." } } : {}) };
+    const artifactLinks = await this.db("links").where({ to_id: id, relation: "attached_to" }).where("from_id", "like", "A-%").select("from_id");
+    const attachments = source ? await this.db("telegram_message_files").where({ task_id: id }).select("id", "file_name", "status", "artifact_id", "last_error") : [];
+    return { ...await this.formatTask(row), noteIds, noteCount: noteIds.length, artifactIds: [...new Set(artifactLinks.map((l) => String(l.from_id)))], gitlab: await exportStatus(this.db, id),
+      ...(source ? { telegram: { attachments: attachments.map((a) => ({ id: a.id, name: a.file_name, status: a.status, artifactId: a.artifact_id, error: a.last_error })), chatId: String(source.chat_id), messageId: String(source.message_id),
+        workflow: "Keep ONE shared task. Telegram files are imported asynchronously as linked artifacts; if attachments are pending, re-read task.get before assuming no file exists. For a completed stage use task.handoff with next assignees, completed-work note and expectedVersion from task.get; complete/release active claims first. For questions use task.update_status(status: clar, note: question). Use DONE only when the entire task is finished. These actions reply to the original Telegram message; do not send a second manual reply." } } : {}) };
 
   }
 

@@ -39,6 +39,20 @@ bots; fingerprints only fence anonymous/channel/automatic-forward messages for
 ten minutes around confirmed sends; unresolved sends retain their fingerprint
 guard until their identity is known. No outbound content is stored here.
 
+Migrations 133–134 add typed inbox `manual_override` and manual-task UI labels.
+The JSON contract has assigneeUserIds, title, requestedBy, ownerUserId and
+requestedAt; the normal monotonic attempts field fences in-flight older work.
+
+Migration 135 adds `telegram_media_groups(project_id, chat_id, media_group_id)`
+with its canonical task message ID, and `telegram_message_files`: source/bot/chat/
+message/file identities, kind/name/MIME/size, album/reply/topic, task/artifact FKs,
+waiting/pending/processing/done/failed state, attempts/time/lease/safe error code.
+Unique (project, chat, message, file_unique_id) fences receive replay. Pending files
+are associated only after a task exists. Artifact writes and task `attached_to`
+links commit with file state. Outgoing messages gain nullable task_id so files
+replying to a Marrow status reply find the same task. Migration 136 adds file UI
+labels. Task.get/preflight expose artifactIds and Telegram attachment state.
+
 ## Gateway Telegram project bots
 
 Migration `117_project_telegram_bots.cjs` adds:

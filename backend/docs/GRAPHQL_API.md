@@ -837,3 +837,13 @@ filtered by `project_members`, an unauthenticated upgrade is refused before
 ```bash
 npm run smoke:gateway:subscriptions
 ```
+
+## Telegram manual task creation and attachments
+
+`TelegramBotMessage` details include canCreateTask, assignableMembers, manual and
+attachments (id, name, kind, contentType, sizeBytes, status, artifactId, lastError).
+`createTaskFromTelegramMessage(project,id,messageId,assignees,title)` confirms work
+without AI and returns `{queued,taskId}`; `retryTelegramMessageFile(project,id,fileId)`
+retries an associated failed download. Both enforce project owner/admin management
+rights. `Task.artifactIds` lists linked attachment artifacts. Files use the normal
+artifact download endpoint and project membership checks.

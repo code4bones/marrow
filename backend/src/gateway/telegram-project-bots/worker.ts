@@ -1,3 +1,5 @@
+import { attachTelegramFiles } from "./media.js";
+import { manualTelegramTask, manualTelegramClassification } from "./manual.js";
 import { telegramParticipants, participantList } from "./participant-references.js";
 import { enqueueTelegramTaskOffers } from "./telly.js";
 import type { Knex } from "knex";
@@ -50,10 +52,14 @@ export class TelegramMessageWorker {
       catch (error) {
         const code = error instanceof AppError ? error.code : "GATEWAY_ERROR";
         const failed = Number(delivery.attempts) >= 5;
-        await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts }).update({
+        const update = this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts });
+        if (delivery.manual_override) update.where("manual_override", typeof delivery.manual_override === "string" ? delivery.manual_override : JSON.stringify(delivery.manual_override));
+        else update.whereNull("manual_override");
+        const changed = await update.update({
           status: failed ? "failed" : "pending", last_error: code, locked_until: null,
           available_at: new Date(Date.now() + Math.min(300, 2 ** Number(delivery.attempts)) * 1000).toISOString()
         });
+        if (!changed) continue;
         await this.db("project_telegram_bots").where({ id: delivery.bot_id }).update({ last_error: code });
         this.logger?.warn({ deliveryId: delivery.id, code, failed }, "Telegram task classification/import failed");
       }
@@ -82,16 +88,23 @@ export class TelegramMessageWorker {
     const chat = await this.db("project_telegram_chats").where({ bot_id: delivery.bot_id, chat_id: delivery.chat_id }).first();
     if (!bot || !project || !chat || !project.owner_user_id) { await this.ignore(delivery); return; }
     const message = jsonValue(delivery.payload) as TelegramMentionMessage;
-    if (!matchesTelegramTags(bot.filter_tags, message.tags)) { await this.ignore(delivery); return; }
-    const members = await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message, String(bot.id), bot.filter_tags);
+    const manual = manualTelegramTask(delivery.manual_override);
+    if (!manual && !matchesTelegramTags(bot.filter_tags, message.tags)) { await this.ignore(delivery); return; }
+    const confirmed = manual ? await manualTelegramClassification(this.db, project, delivery.manual_override, message) : null;
+    const members = confirmed?.members ?? await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message, String(bot.id), bot.filter_tags);
     if (!members.length) { await this.ignore(delivery); return; }
     // No transaction/row locks are held across a potentially slow AI call.
     let classification: Classification;
-    if (delivery.classification && delivery.classified_owner_id === project.owner_user_id) {
+    if (confirmed) {
+      classification = confirmed.classification;
+      await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts }).where("manual_override", JSON.stringify(manual))
+        .update({ classification: JSON.stringify(classification), classified_at: nowIso() });
+    }
+    else if (delivery.classification && delivery.classified_owner_id === project.owner_user_id) {
       classification = classificationSchema.parse(jsonValue(delivery.classification));
     } else {
       classification = await classifyTelegramMessage(this.db, String(project.owner_user_id), message.text, members, this.httpFetch, message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag)));
-      await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts })
+      await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts }).whereNull("manual_override")
         .update({ classification: JSON.stringify(classification), classified_owner_id: project.owner_user_id, classified_at: nowIso() });
     }
     let notifications: PgToolService | null = null;
@@ -102,13 +115,14 @@ export class TelegramMessageWorker {
       const currentProject = await trx("projects").where({ id: project.id, status: "active" }).forUpdate().first();
       const currentBot = await trx("project_telegram_bots").where({ id: bot.id, enabled: true }).forUpdate().first();
       const current = await trx("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts }).forUpdate().first();
-      if (!current) return;
+      if (!current || JSON.stringify(manualTelegramTask(current.manual_override)) !== JSON.stringify(manual)) return;
       const currentChat = await trx("project_telegram_chats").where({ bot_id: bot.id, chat_id: message.chatId }).first();
-      if (!currentProject || !currentBot || !currentChat || !matchesTelegramTags(currentBot.filter_tags, message.tags)) {
+      if (!currentProject || !currentBot || !currentChat || (!manual && !matchesTelegramTags(currentBot.filter_tags, message.tags))) {
         await this.finish(trx, delivery, "ignored", "configuration_changed"); return;
       }
       if (currentProject.owner_user_id !== project.owner_user_id) throw new AppError("GATEWAY_ERROR", "Project owner changed; reclassify with the current owner's DeepSeek.");
-      const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message, String(bot.id), currentBot.filter_tags);
+      const confirmedNow = manual ? await manualTelegramClassification(trx, currentProject, current.manual_override, message) : null;
+      const recipients = confirmedNow?.members ?? await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message, String(bot.id), currentBot.filter_tags);
       const service = this.createService(trx); service.deferEventNotifications();
       let created = false;
       const assignments = classification.tasks.filter((task) => task.confidence >= 0.9);
@@ -123,7 +137,7 @@ export class TelegramMessageWorker {
           project: project.id, title: assignment.title, scope: description, assignees: assigneeIds,
           milestone: `Telegram: ${message.chatTitle}`,
           notes: [`Telegram: ${message.url ?? `chat ${message.chatId}, message ${message.messageId}`}`,
-            `Chat: ${message.chatTitle}`, `DeepSeek evidence: ${assignments.map((task) => task.evidence).join("; ")}`, "", "Original message:", message.text].join("\n")
+            `Chat: ${message.chatTitle}`, `${manual ? "Manually confirmed in Marrow" : "DeepSeek evidence"}: ${assignments.map((task) => task.evidence).join("; ")}`, "", "Original message:", message.text].join("\n")
         }, { clientId: `integration:telegram:${bot.id}`, clientLabel: `Telegram @${bot.username}`,
           metadata: { kind: "integration", source: "telegram" } });
         if (!result.ok) throw new AppError("GATEWAY_ERROR", `Telegram task import failed: ${result.error.code}`);
@@ -131,6 +145,7 @@ export class TelegramMessageWorker {
         const taskId = String(task.id);
         const participants = await telegramParticipants(trx, String(bot.id), message.chatId, assigneeIds);
         await trx("telegram_task_sources").insert({ participants: JSON.stringify(participants), ...key, telegram_user_id: "message", bot_id: bot.id, message_thread_id: message.messageThreadId ?? null, task_id: taskId, created_at: nowIso() });
+        await attachTelegramFiles(trx, String(project.id), message.chatId, message.messageId, taskId, message.mediaGroupId);
         await enqueueTelegramTaskOffers(trx, currentBot, currentProject, task, recipients, assigneeIds);
         confirmation = { chatId: message.chatId, messageId: Number(message.messageId),
           ...(message.messageThreadId !== undefined ? { messageThreadId: message.messageThreadId } : {}),
@@ -138,7 +153,7 @@ export class TelegramMessageWorker {
         created = true;
       }
       await this.finish(trx, delivery, created || classification.tasks.length ? "done" : "ignored",
-        created ? "task_created" : classification.tasks.length ? "no_new_tasks" : "not_task");
+        created ? manual ? "manual_task_created" : "task_created" : classification.tasks.length ? "no_new_tasks" : "not_task");
       await trx("project_telegram_bots").where({ id: bot.id }).update({ last_error: null });
       notifications = service;
     });

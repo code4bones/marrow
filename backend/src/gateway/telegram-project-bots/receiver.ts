@@ -1,3 +1,4 @@
+import { rememberTelegramFiles } from "./media.js";
 import { isOutgoingTelegramUpdate } from "./outgoing.js";
 import { hashReply, type TelegramHashReply } from "./hash-command.js";
 import { rememberChatPeople } from "./people.js";
@@ -47,6 +48,7 @@ export async function acceptTelegramUpdate(db: Knex, botId: string, raw: Buffer,
     if (nextOffset <= Number(bot.poll_offset)) return { accepted: true, duplicate: true };
     const { fromBot, ...received } = receivedMessageSnapshot(update);
     const outgoing = await isOutgoingTelegramUpdate(trx, update);
+    if (!outgoing) await rememberTelegramFiles(trx, bot, update);
     const result: IngestResult = outgoing ? { accepted: false, ignored: true, status: "ignored", reason: "bot_sender" } : message ? await ingestMessage(trx, bot, message) : {
       accepted: false, ignored: true, status: "ignored",
       reason: received.chat_type === "private" ? "private_chat" : fromBot ? "bot_sender" : received.text === null ? "no_text" : "unsupported"
@@ -87,6 +89,8 @@ async function ingestMessage(trx: Knex.Transaction, bot: Row, message: TelegramM
     return { accepted: true, bound: true, status: "bound", reason: "chat_bound", confirmation };
   }
   if (!await trx("project_telegram_chats").where({ bot_id: botId, chat_id: message.chatId }).first()) return { accepted: false, ignored: true, status: "ignored", reason: "unbound_chat" };
+  if (await trx("telegram_message_files").where({ project_id: project.id, chat_id: message.chatId, message_id: message.messageId }).whereNotNull("task_id").first())
+    return { accepted: true, ignored: true, status: "ignored", reason: "attachment_added" };
   const hash = /^\/hash(?:@([a-zA-Z0-9_]+))?$/i.exec(message.text.trim());
   if (hash) {
     if (hash[1] && hash[1].toLowerCase() !== String(bot.username).toLowerCase())
@@ -102,6 +106,12 @@ async function ingestMessage(trx: Knex.Transaction, bot: Row, message: TelegramM
   const matchedTags = message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag));
   const members = await mentionedProjectMembers(trx, String(project.id), project.owner_user_id, message, botId, bot.filter_tags);
   if (!members.length) return { accepted: false, ignored: true, status: "ignored", reason: "no_project_member", matchedTags };
+  if (message.mediaGroupId) {
+    await trx("telegram_media_groups").insert({ project_id: project.id, chat_id: message.chatId, media_group_id: message.mediaGroupId, message_id: message.messageId })
+      .onConflict(["project_id", "chat_id", "media_group_id"]).ignore();
+    const group = await trx("telegram_media_groups").where({ project_id: project.id, chat_id: message.chatId, media_group_id: message.mediaGroupId }).first();
+    message.messageId = String(group.message_id);
+  }
   const rows = await trx("telegram_message_inbox").insert({
     id: randomUUID(), bot_id: botId, project_id: project.id, chat_id: message.chatId, message_id: message.messageId,
     payload: JSON.stringify(message), status: "pending", attempts: 0, available_at: now, received_at: now

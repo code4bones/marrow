@@ -24,6 +24,29 @@ replies with their own new message IDs remain eligible. No visible marker or
 copy of outbound content is added. Known message IDs survive bot deletion.
 `from.is_bot` continues to exclude all other bot messages independently.
 
+## Telegram manual intent and artifacts
+
+A typed, schema-validated inbox `manual_override` snapshots explicit assignees,
+title, requester, owner and confirmation time. Queueing is owner/admin-only and
+locks project/bot/inbox, validates live membership and source dedup, and advances
+the attempt fence. The worker bypasses DeepSeek for this intent, then revalidates
+owner/member/chat/bot state under locks before ordinary creation/reply/Telly work.
+Concurrent retries and an older model response cannot create a second task.
+
+The receiver persists bounded file metadata independently of hashtag/AI decisions
+for human media in bound chats. A media-group anchor shares source identity across
+album captions. Files stay waiting until source creation or manual confirmation;
+new files replying to a known task/request/Marrow reply become pending immediately.
+A separate media worker leases downloads, calls grammY getFile and streams HTTPS
+through TELEGRAM_BOT_PROXY with a byte cap outside SQL. Under the project lock it
+uses existing artifact.put/link.create, commits artifact/source state atomically
+and defers realtime effects. Stable source paths and SHA-256 checks protect retries;
+no existing artifact is overwritten with different content. Disabled bots defer,
+unbound/deleted sources fail explicitly. Credentials stay out of logs and paths.
+Files reuse normal artifact storage and access rules. Telly may accept the task
+while downloads are pending; task.get/preflight expose this state and guide the
+agent to re-read before using linked artifact IDs.
+
 ## Telegram lifecycle delivery
 
 Telegram task creation atomically enqueues existing Telly offers for resolved

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { TelegramMediaWorker } from "../src/gateway/telegram-project-bots/media-worker.js";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import knex, { type Knex } from "knex";
@@ -32,6 +36,7 @@ let updateId = 0;
 let db: Knex;
 let service: TestService;
 let worker: TelegramMessageWorker;
+let artifactDir: string;
 let rollback = false;
 const httpFetch = vi.fn<typeof fetch>();
 const remote = { sendRichMessage: vi.fn().mockResolvedValue({}), getMe: vi.fn(), getWebhookInfo: vi.fn(), setWebhook: vi.fn(), deleteWebhook: vi.fn() };
@@ -64,6 +69,8 @@ async function callOk(name: string, input: Row): Promise<Row> {
 }
 
 beforeEach(async () => {
+  artifactDir = mkdtempSync(join(tmpdir(), "marrow-tg-files-"));
+  vi.stubEnv("ARTIFACT_DIR", artifactDir);
   vi.stubEnv("PROJECT_MEMORY_PUBLIC_URL", "https://marrow.example.test/api");
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
   vi.stubEnv("AI_PROVIDER_ENC_KEY", Buffer.alloc(32, 8).toString("base64"));
@@ -101,7 +108,16 @@ beforeEach(async () => {
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/123_task_assignees.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/129_telegram_task_feedback_source.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/133_telegram_manual_task.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
+  for (const name of ["items", "decisions", "skills"]) await db.schema.createTable(name, (t) => { t.text("id").primary(); t.text("project_id"); });
+  await db.schema.createTable("artifacts", (t) => {
+    t.text("id").primary(); t.integer("version"); t.bigInteger("size_bytes");
+    for (const n of ["project_id", "path", "title", "description", "content_type", "sha256", "storage_path", "status", "archived_at", "archived_by", "archive_reason", "tags", "project_version", "created_by", "updated_by", "source_instance_id", "created_at", "updated_at"]) t.text(n);
+    t.unique(["project_id", "path"]);
+  });
+  await db.schema.createTable("links", (t) => { t.text("id").primary(); for (const n of ["project_id", "from_id", "to_id", "relation", "created_by", "source_instance_id", "created_at"]) t.text(n); });
+  await createRequire(import.meta.url)("../migrations/pg/135_telegram_message_files.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
@@ -113,7 +129,7 @@ beforeEach(async () => {
   worker = new TelegramMessageWorker(db, undefined, httpFetch, (trx) => new TestService(trx));
   reply([assignment()]);
 });
-afterEach(async () => { await worker.stop(); await db.destroy(); vi.unstubAllEnvs(); });
+afterEach(async () => { await worker.stop(); await db.destroy(); rmSync(artifactDir, { recursive: true, force: true }); vi.unstubAllEnvs(); });
 
 describe("Telegram feedback loop exclusion", () => {
   const rich = { blocks: [{ type: "paragraph" as const, text: "#ошибка @member исправь вход · задача передана" }] };
@@ -161,6 +177,141 @@ describe("Telegram feedback loop exclusion", () => {
       expect(await deliver(payload(text, -10012345, 90 + id, { from: { id, is_bot: true } }))).toMatchObject({ reason: "bot_sender" });
     }
     await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("telegram_message_inbox")).toHaveLength(0);
+  });
+});
+
+describe("manual Telegram task confirmation", () => {
+  async function skipped() {
+    reply([]); await deliver(); await worker.tick(); return db("telegram_bot_messages").first();
+  }
+  const input = (messageId: string) => ({ project: "test", id: botId, messageId, assignees: ["member", "owner"], title: "Investigate the reported bug" });
+  it("creates exactly one shared task through the existing pipeline, bypassing AI and offering resolved recipients", async () => {
+    const message = await skipped();
+    expect(await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: message.id })).toMatchObject({ canCreateTask: true });
+    vi.stubEnv("TELLYMCP_INBOX_MCP_URL", "https://telly.test/mcp"); vi.stubEnv("TELLYMCP_INBOX_BEARER_TOKEN", "test-token");
+    expect(await callOk("project.telegram_bot_message_create_task", input(message.id))).toMatchObject({ queued: true });
+    const before = await db("telegram_message_inbox").first();
+    await callOk("project.telegram_bot_message_create_task", input(message.id));
+    expect((await db("telegram_message_inbox").first()).attempts).toBe(before.attempts);
+    await worker.tick(); expect(httpFetch).toHaveBeenCalledOnce();
+    expect(await db("tasks")).toHaveLength(1); expect(await db("task_assignees")).toHaveLength(2);
+    expect(await db("integration_outbox").where({ integration: "tellymcp" })).toHaveLength(2);
+    const task = await db("tasks").first();
+    expect(task).toMatchObject({ title: input(message.id).title, created_by: `integration:telegram:${botId}` });
+    expect(task.notes).toContain("Manually confirmed");
+    expect(await callOk("project.telegram_bot_message_create_task", input(message.id))).toMatchObject({ queued: false, taskId: task.id });
+    expect(await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: message.id })).toMatchObject({ canCreateTask: false, manual: true, tasks: [{ id: task.id }] });
+  });
+  it("rejects unauthorized/inactive recipients, unavailable chats and bot/filtered messages", async () => {
+    const message = await skipped();
+    expect(await service.call("project.telegram_bot_message_create_task", input(message.id), member)).toMatchObject({ ok: false });
+    for (const id of ["disabled", "pending", "outsider"]) expect(await service.call("project.telegram_bot_message_create_task", { ...input(message.id), assignees: [id] }, owner)).toMatchObject({ ok: false });
+    await deliver(payload("#ошибка @member исправь вход", -10012345, 99, { from: { id: 123, is_bot: true } }));
+    const botMessage = await db("telegram_bot_messages").where({ message_id: "99" }).first();
+    expect(await service.call("project.telegram_bot_message_create_task", input(botMessage.id), owner)).toMatchObject({ ok: false });
+    await db("project_telegram_chats").del();
+    expect(await service.call("project.telegram_bot_message_create_task", input(message.id), owner)).toMatchObject({ ok: false });
+    expect(await db("tasks")).toHaveLength(0);
+  });
+  it("fences an old AI result when manual confirmation arrives during classification", async () => {
+    await deliver(); const message = await db("telegram_bot_messages").first();
+    httpFetch.mockImplementationOnce(async () => {
+      await callOk("project.telegram_bot_message_create_task", input(message.id));
+      return Response.json({ choices: [{ message: { content: '{"tasks":[]}' } }] });
+    });
+    await worker.tick();
+    expect(httpFetch).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(1);
+    expect((await db("tasks").first()).title).toBe(input(message.id).title);
+  });
+  it.each(["valid", "invalid"])("fences an old %s AI result even when a retry has reused its attempt number", async (kind) => {
+    await deliver(); const message = await db("telegram_bot_messages").first();
+    httpFetch.mockImplementationOnce(async () => {
+      await callOk("project.telegram_bot_message_create_task", input(message.id));
+      await db("telegram_message_inbox").update({ status: "processing", attempts: 1 });
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ tasks: [assignment(kind === "valid" ? "22" : "owner")] }) } }] });
+    });
+    await worker.tick(); expect(await db("tasks")).toHaveLength(0);
+    expect((await db("telegram_message_inbox").first()).classification).toBeNull();
+    await db("telegram_message_inbox").update({ status: "pending" }); await worker.tick();
+    expect(await db("tasks"), JSON.stringify(await db("telegram_message_inbox").first())).toHaveLength(1);
+    expect((await db("tasks").first()).title).toBe(input(message.id).title);
+    expect(await db("task_assignees")).toHaveLength(2); expect(httpFetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Telegram media artifacts", () => {
+  const document = { file_id: "bot-specific-file", file_unique_id: "stable-file", file_name: "report.pdf", mime_type: "application/pdf", file_size: 8 };
+  const download = vi.fn().mockResolvedValue(Buffer.from("%PDFdemo"));
+  const mediaWorker = () => new TelegramMediaWorker(db, undefined, download, (trx) => new TestService(trx));
+  const fileMessage = (messageId = 100, extra: Row = {}) => payload("", -10012345, messageId, { text: undefined, entities: undefined,
+    caption: "#ошибка @member исправь вход", caption_entities: [{ type: "hashtag", offset: 0, length: 7 }, { type: "mention", offset: 8, length: 7 }], document, ...extra });
+  it("persists file refs before polling acknowledgement and stores real bytes as one task-linked artifact", async () => {
+    download.mockClear(); const raw = fileMessage(); await deliver(raw);
+    expect(await db("telegram_message_files").first()).toMatchObject({ file_id: document.file_id, file_unique_id: document.file_unique_id, status: "waiting" });
+    await worker.tick(); const task = await db("tasks").first();
+    expect(await db("telegram_message_files").first()).toMatchObject({ status: "pending", task_id: task.id });
+    await mediaWorker().tick();
+    const artifact = await db("artifacts").first();
+    expect(artifact).toMatchObject({ content_type: "application/pdf", size_bytes: 8, title: "report.pdf" });
+    expect(readFileSync(join(artifactDir, artifact.storage_path))).toEqual(Buffer.from("%PDFdemo"));
+    expect(await db("links").where({ relation: "attached_to", from_id: artifact.id, to_id: task.id })).toHaveLength(1);
+    expect(await db("telegram_message_files").first()).toMatchObject({ status: "done", artifact_id: artifact.id });
+    await deliver(raw); await deliver(fileMessage()); await worker.tick(); await mediaWorker().tick();
+    expect(download).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(1); expect(await db("artifacts")).toHaveLength(1);
+  });
+  it("collects an entire album and files replying to the original task, without extra tasks", async () => {
+    download.mockClear(); await deliver(fileMessage(101, { media_group_id: "album-1" }));
+    await deliver(payload("", -10012345, 102, { text: undefined, media_group_id: "album-1", photo: [{ file_id: "low", file_unique_id: "low", width: 10, height: 10 }, { file_id: "high", file_unique_id: "photo-id", width: 100, height: 100 }] }));
+    // A second tagged caption in the same album resolves to the first task source.
+    await deliver(fileMessage(103, { media_group_id: "album-1", document: { ...document, file_id: "second", file_unique_id: "second-id" } }));
+    await worker.tick();
+    expect(await db("tasks")).toHaveLength(1); expect(await db("telegram_message_files").where({ status: "pending" })).toHaveLength(3);
+    await deliver(payload("", -10012345, 104, { text: undefined, document: { ...document, file_id: "reply-file", file_unique_id: "reply-id" }, reply_to_message: { message_id: 101 } }));
+    await mediaWorker().tick(); await mediaWorker().tick();
+    expect(await db("artifacts")).toHaveLength(4); expect(await db("tasks")).toHaveLength(1);
+    expect(download.mock.calls.some((c) => c[1] === "high")).toBe(true); expect(download.mock.calls.some((c) => c[1] === "low")).toBe(false);
+  });
+  it("imports files after manual task confirmation and reports oversize without losing the task", async () => {
+    reply([]); await deliver(fileMessage()); await worker.tick();
+    expect(await db("telegram_message_files").first()).toMatchObject({ status: "waiting" });
+    const message = await db("telegram_bot_messages").first();
+    await callOk("project.telegram_bot_message_create_task", { project: "test", id: botId, messageId: message.id, assignees: ["member"] });
+    await worker.tick();
+    vi.stubEnv("ARTIFACT_MAX_BYTES", "4"); download.mockClear(); await mediaWorker().tick();
+    expect(download).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(1);
+    const file = await db("telegram_message_files").first();
+    expect(file).toMatchObject({ status: "failed", last_error: "TELEGRAM_FILE_TOO_LARGE" });
+    vi.stubEnv("ARTIFACT_MAX_BYTES", "100");
+    expect(await service.call("project.telegram_file_retry", { project: "test", id: botId, fileId: file.id }, member)).toMatchObject({ ok: false });
+    await callOk("project.telegram_file_retry", { project: "test", id: botId, fileId: file.id }); await mediaWorker().tick();
+    expect(await db("artifacts")).toHaveLength(1); expect((await db("telegram_message_files").first()).status).toBe("done");
+  });
+  it("isolates download failures and does not download private/unbound/bot media", async () => {
+    download.mockClear();
+    await deliver(fileMessage(101, { chat: { id: -999, type: "supergroup" } }));
+    await deliver(fileMessage(102, { chat: { id: 22, type: "private" } }));
+    await deliver(fileMessage(103, { from: { id: 123, is_bot: true } }));
+    expect(await db("telegram_message_files")).toHaveLength(0);
+    await deliver(fileMessage()); await worker.tick();
+    download.mockRejectedValueOnce(new Error("network /botSECRET/file"));
+    await mediaWorker().tick();
+    expect((await db("telegram_message_files").first()).last_error).toBe("TELEGRAM_FILE_PROCESSING_FAILED");
+    expect(await db("tasks")).toHaveLength(1);
+    await db("telegram_message_files").update({ available_at: "2000-01-01" }); await mediaWorker().tick();
+    expect(await db("artifacts")).toHaveLength(1);
+  });
+  it("attaches a file replying to Marrow's bot confirmation and defers while that bot is disabled", async () => {
+    await deliver(); await worker.tick();
+    const task = await db("tasks").first();
+    // The real Bot API returns an ID; the general fake confirmation returns {}.
+    await sendRememberedTelegramReply(db, botId, "-10012345", { blocks: [{ type: "paragraph", text: "Task created" }] }, async () => ({ message_id: 200 }), task.id);
+    expect(await deliver(fileMessage(201, { reply_to_message: { message_id: 200, from: { id: 123456789, is_bot: true } } }))).toMatchObject({ reason: "attachment_added" });
+    await worker.tick(); expect(await db("tasks")).toHaveLength(1);
+    expect(await db("telegram_message_files").first()).toMatchObject({ task_id: task.id, status: "pending" });
+    await db("project_telegram_bots").update({ enabled: false }); download.mockClear();
+    await mediaWorker().tick(); expect(download).not.toHaveBeenCalled();
+    await db("project_telegram_bots").update({ enabled: true }); await db("telegram_message_files").update({ available_at: "2000-01-01" });
+    await mediaWorker().tick(); expect(await db("artifacts")).toHaveLength(1); expect(await db("tasks")).toHaveLength(1);
   });
 });
 

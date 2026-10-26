@@ -201,6 +201,10 @@ export class PgToolService extends ComposedService {
           return ok("Chat mentions listed.", await this.projectTelegramChatMentions(parsed, requestContext));
         case "project.telegram_chat_set_mention":
           return ok("Chat mention mapping saved.", await this.setProjectTelegramChatMention(parsed, requestContext));
+        case "project.telegram_file_retry":
+          return ok("Attachment retry queued.", await this.retryTelegramMessageFile(parsed, requestContext));
+        case "project.telegram_bot_message_create_task":
+          return ok("Message manually queued as a task.", await this.manuallyCreateTelegramTask(parsed, requestContext));
         case "project.telegram_bot_messages":
           return ok("Bot messages listed.", await this.projectTelegramBotMessages(parsed, requestContext));
         case "project.telegram_bot_message":

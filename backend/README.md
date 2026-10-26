@@ -135,6 +135,11 @@ on the same task; final DONE confirms completion. Each action replies to the
 original Telegram source/topic through a durable outbox. Group replies and /hash
 use remembered Telegram identities instead of Marrow participant identifiers.
 
+Message details allow owner/admin manual task confirmation with explicit
+assignees when AI skips a request. Documents/media are saved as task-linked
+artifacts through the Telegram proxy, with album grouping, reply attachments,
+bounded downloads and visible file states/retries.
+
 The Bots table includes receive/pipeline counters and timestamps. Click a bot
 for settings and its latest 500 incoming messages, then a message for filter,
 classification and task details. Successful chat binding gets a Rich Message

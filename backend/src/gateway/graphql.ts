@@ -302,6 +302,8 @@ const typeDefs = `#graphql
     rejectProjectMember(project: String, userId: ID!): Boolean!
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
+    retryTelegramMessageFile(project: String!, id: ID!, fileId: ID!): Boolean!
+    createTaskFromTelegramMessage(project: String!, id: ID!, messageId: ID!, assignees: [String!]!, title: String): TelegramManualTaskResult!
     addProjectTelegramBot(project: String!, token: String!, tags: [String!]!): ProjectTelegramBot!
     setProjectTelegramChatMention(project: String!, id: ID!, chatId: String!, mentionKey: String!, userId: ID, tags: [String!]): Boolean!
     setProjectTelegramBotTags(project: String!, id: ID!, tags: [String!]!): ProjectTelegramBot!
@@ -676,7 +678,13 @@ const typeDefs = `#graphql
   }
   type TelegramBotMessagePage { messages: [TelegramBotMessage!]!, total: Int! }
   type TelegramBotImportedTask { id: ID!, title: String!, status: String! }
+  type TelegramMessageAttachment { id: ID!, name: String!, kind: String!, contentType: String!, sizeBytes: Float, status: String!, artifactId: ID, lastError: String }
+  type TelegramManualTaskResult { queued: Boolean!, taskId: String }
   type TelegramBotMessage {
+    attachments: [TelegramMessageAttachment!]
+    canCreateTask: Boolean
+    manual: Boolean
+    assignableMembers: [TelegramChatMember!]
     id: ID!
     chatTitle: String
     chatId: String
@@ -1006,6 +1014,7 @@ const typeDefs = `#graphql
   }
 
   type Task {
+    artifactIds: [String!]
     version: Int!
     id: ID!
     projectId: String
@@ -1675,6 +1684,10 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.remove_member", cleanInput(args))).removed,
     renameProjectGroup: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
+    retryTelegramMessageFile: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "project.telegram_file_retry", cleanInput(args))).queued,
+    createTaskFromTelegramMessage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      callTool<Row>(context, "project.telegram_bot_message_create_task", cleanInput(args)),
     addProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_add", cleanInput(args)),
     setProjectTelegramChatMention: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

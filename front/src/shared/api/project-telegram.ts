@@ -84,6 +84,10 @@ export interface TelegramBotMessage {
   text?: string | null;
   matchedTags?: string[];
   mentions?: string[];
+  attachments?: { id: string; name: string; kind: string; contentType: string; sizeBytes: number | null; status: string; artifactId: string | null; lastError: string | null }[];
+  canCreateTask?: boolean;
+  manual?: boolean;
+  assignableMembers?: { id: string; email: string }[];
   classification?: { tasks: { telegramUserId: string; title: string; description: string; evidence: string; confidence: number }[] } | null;
   tasks?: { id: string; title: string; status: string }[];
 }
@@ -100,6 +104,8 @@ export const GET_PROJECT_TELEGRAM_MESSAGE = gql`
   query ProjectTelegramBotMessage($project: String!, $id: ID!, $messageId: ID!) {
     projectTelegramBotMessage(project: $project, id: $id, messageId: $messageId) {
       id chatTitle chatId chatType telegramMessageId messageKind messageUrl receivedAt classifiedAt processedAt status reason lastError
+      attachments { id name kind contentType sizeBytes status artifactId lastError }
+      canCreateTask manual assignableMembers { id email }
       text matchedTags mentions classification tasks { id title status }
     }
   }
@@ -122,5 +128,17 @@ export const GET_TELEGRAM_CHAT_MENTIONS = gql`
 export const SET_TELEGRAM_CHAT_MENTION = gql`
   mutation SetProjectTelegramChatMention($project: String!, $id: ID!, $chatId: String!, $mentionKey: String!, $userId: ID, $tags: [String!]) {
     setProjectTelegramChatMention(project: $project, id: $id, chatId: $chatId, mentionKey: $mentionKey, userId: $userId, tags: $tags)
+  }
+`;
+
+export const CREATE_TASK_FROM_TELEGRAM_MESSAGE = gql`
+  mutation CreateTaskFromTelegramMessage($project: String!, $id: ID!, $messageId: ID!, $assignees: [String!]!, $title: String) {
+    createTaskFromTelegramMessage(project: $project, id: $id, messageId: $messageId, assignees: $assignees, title: $title) { queued taskId }
+  }
+`;
+
+export const RETRY_TELEGRAM_MESSAGE_FILE = gql`
+  mutation RetryTelegramMessageFile($project: String!, $id: ID!, $fileId: ID!) {
+    retryTelegramMessageFile(project: $project, id: $id, fileId: $fileId)
   }
 `;

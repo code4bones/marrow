@@ -28,7 +28,7 @@ export async function sendTaskConfirmation(api: Pick<Api, "sendRichMessage">, co
     reply_parameters: { message_id: confirmation.messageId, allow_sending_without_reply: true },
     ...(confirmation.messageThreadId !== undefined ? { message_thread_id: confirmation.messageThreadId } : {})
   }, signal));
-  if (db && botId) await sendRememberedTelegramReply(db, botId, confirmation.chatId, rich, send);
+  if (db && botId) await sendRememberedTelegramReply(db, botId, confirmation.chatId, rich, send, confirmation.taskId);
   else await send();
 }
 

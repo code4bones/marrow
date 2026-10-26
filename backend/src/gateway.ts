@@ -12,6 +12,7 @@ import { createGatewayLogger } from "./shared/logging/logger.js";
 import { createPgKnex } from "./shared/pg/knex.js";
 import { GitlabIssueWorker } from "./gateway/gitlab-webhooks/worker.js";
 import { GitlabExportWorker } from "./gateway/gitlab-webhooks/export-worker.js";
+import { TelegramMediaWorker } from "./gateway/telegram-project-bots/media-worker.js";
 import { TelegramMessageWorker } from "./gateway/telegram-project-bots/worker.js";
 import { TelegramProjectPolling } from "./gateway/telegram-project-bots/polling.js";
 
@@ -69,6 +70,8 @@ async function main(): Promise<void> {
   gitlabExportWorker.start();
   const telegramTaskFeedback = new TelegramTaskFeedbackDispatcher(db, logger);
   telegramTaskFeedback.start();
+  const telegramMediaWorker = new TelegramMediaWorker(db, logger);
+  telegramMediaWorker.start();
   const telegramMessageWorker = new TelegramMessageWorker(db, logger);
   telegramMessageWorker.start();
   const telegramProjectPolling = new TelegramProjectPolling(db, logger);
@@ -81,6 +84,7 @@ async function main(): Promise<void> {
     gitlabExportWorker.stop();
     await telegramProjectPolling.stop();
     await telegramMessageWorker.stop();
+    await telegramMediaWorker.stop();
     await telegramTaskFeedback.stop();
     await telegramBot?.stop();
     await started.stop();

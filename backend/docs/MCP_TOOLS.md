@@ -2459,6 +2459,30 @@ short-lived content fingerprint registered before sending. This applies to
 binding, /hash, creation, CLAR, handoff and DONE replies. Human tagged replies
 remain eligible; they are never rejected just for replying to a bot.
 
+### Manual Telegram tasks and files (gateway)
+
+`project.telegram_bot_message_create_task({project,id,messageId,assignees,title?})`
+confirms a received inbox message as work without AI. `messageId` is the receive
+journal UUID, `id` the project's bot UUID. Owner/admin only. Assignees are required
+active project members; title defaults to source text with hashtags removed.
+The original source identity is retained; the response is `{queued,taskId}` and
+repeated calls return the existing task. Missing/unbound/disabled bot sources and
+source tombstones are rejected. An older in-flight classification is fenced out.
+Details expose canCreateTask, assignableMembers and manual state; confirmation is
+available for messages already admitted to the task pipeline, not bot/private or
+unbound messages. GraphQL: createTaskFromTelegramMessage with the same fields.
+
+New task documents/media become normal project artifacts; albums share a task and
+reply attachments may target the original request or a Marrow task/status reply.
+Metadata persists before cursor commit and download retries do not duplicate
+artifacts. ARTIFACT_MAX_BYTES bounds the streaming download through the Telegram
+proxy. Details expose attachments with name/kind/size/status/artifactId/lastError.
+`project.telegram_file_retry({project,id,fileId})` retries a failed associated file;
+GraphQL retryTelegramMessageFile mirrors it. Both are owner/admin-only. Task.get
+and preflight expose artifactIds and pending Telegram file state; download bytes
+through existing artifact tools after ready. Files whose IDs were not retained by
+older releases require a new Telegram upload/forward to become artifacts.
+
 ### `task.handoff` (gateway, Telegram tasks)
 
 Complete a stage and pass the **same task** onward. Read `task.get` for its

@@ -53,6 +53,7 @@ beforeEach(async () => {
   await db.schema.createTable("gitlab_issue_links", (t) => { t.text("task_id"); });
   await db.schema.createTable("project_repositories", (t) => { t.text("id").primary(); t.text("project_id"); });
   await require("../migrations/pg/112_gitlab_issue_exports.cjs").up(db); await require("../migrations/pg/103_integration_outbox.cjs").up(db);
+  await db.schema.createTable("artifacts", (t) => t.text("id").primary());
   await db("users").insert(["owner", "dev", "qa", "outsider", "pending", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert({ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" });
   await db("project_members").insert(["owner", "dev", "qa", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, role: user_id === "qa" ? "tester" : "developer", status: user_id === "pending" ? "pending_approval" : "active" })));
@@ -61,6 +62,7 @@ beforeEach(async () => {
   for (const name of ["005_task_claims", "063_telegram_identities", "117_project_telegram_bots", "121_telegram_chat_mentions", "126_telegram_observed_senders", "127_telegram_recipient_tags", "129_telegram_task_feedback_source"])
     await require(`../migrations/pg/${name}.cjs`).up(db);
   await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
+  await require("../migrations/pg/135_telegram_message_files.cjs").up(db);
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
   vi.stubEnv("PROJECT_MEMORY_PUBLIC_URL", "https://marrow.test/api");
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123", username: "project_bot", token_enc: encryptBotSecret("123:fake"), filter_tags: "[]", poll_revision: randomUUID(), enabled: true, created_at: nowIso(), updated_at: nowIso() });

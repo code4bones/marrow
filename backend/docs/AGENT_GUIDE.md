@@ -709,3 +709,9 @@ note:"completed work and next steps", expectedVersion:task.version})`. Read the
 current version from task.get. Keep one task through cyclic handoffs. Use DONE
 only after the entire task is finished. Marrow sends source replies itself; do
 not duplicate those replies manually. These stage handoffs apply to Telegram tasks.
+
+Telegram attachments are imported asynchronously as project artifacts.
+Task.get/preflight expose `artifactIds` and `telegram.attachments` states. Wait or
+re-read if files are pending, then use the normal artifact tools. Do not invent
+screenshot/document contents from a short caption. Stage handoffs retain the same
+task and attachment links.

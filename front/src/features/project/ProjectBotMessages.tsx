@@ -1,10 +1,11 @@
+import { ManualTelegramTask } from "./ManualTelegramTask";
 import { formatBotDateTime as timestamp } from '../../shared/lib/botDateTime';
-import { useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Space, Spin, Table, Tag, Typography } from 'antd';
+import { useMutation, useQuery } from '@apollo/client/react';
+import { Alert, Button, Card, Descriptions, Drawer, Empty, Space, Spin, Table, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { GET_PROJECT_TELEGRAM_MESSAGE, GET_PROJECT_TELEGRAM_MESSAGES, type TelegramBotMessage } from '../../shared/api/project-telegram';
+import { GET_PROJECT_TELEGRAM_MESSAGE, GET_PROJECT_TELEGRAM_MESSAGES, RETRY_TELEGRAM_MESSAGE_FILE, type TelegramBotMessage } from '../../shared/api/project-telegram';
 
 const PAGE_SIZE = 5;
 
@@ -16,6 +17,7 @@ export function ProjectBotMessages({ project, botId }: { project: string; botId:
     { variables: { project, id: botId, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }, pollInterval: 3000, fetchPolicy: 'network-only' });
   const detail = useQuery<{ projectTelegramBotMessage: TelegramBotMessage }>(GET_PROJECT_TELEGRAM_MESSAGE,
     { variables: { project, id: botId, messageId: selectedId }, skip: !selectedId, pollInterval: selectedId ? 3000 : 0, fetchPolicy: 'network-only' });
+  const [retryFile, { loading: retryingFile }] = useMutation(RETRY_TELEGRAM_MESSAGE_FILE, { onCompleted: () => { void detail.refetch(); }, onError: (e) => message.error(e.message) });
   const msg = detail.data?.projectTelegramBotMessage;
   const reason = (value: string | null) => value ? t(`botMessageReason_${value}`, { defaultValue: value }) : '—';
   const status = (value: string) => <Tag color={value === 'failed' ? 'red' : value === 'done' || value === 'bound' ? 'green' : value === 'processing' ? 'processing' : 'default'}>
@@ -53,15 +55,27 @@ export function ProjectBotMessages({ project, botId }: { project: string; botId:
           <Card size="small" title={t('botMessageText')}>
             <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{msg.text || t(`botMessageKind_${msg.messageKind}`, { defaultValue: msg.messageKind })}</Typography.Paragraph>
           </Card>
-          <Card size="small" title={t('botClassificationResult')}>
+          {!!msg.attachments?.length && <Card size="small" title={t('botAttachments')}>
+            <Space orientation="vertical" style={{ width: '100%' }}>{msg.attachments.map((file) => <div key={file.id}>
+              <Space wrap>
+                {file.artifactId ? <Link to={`/projects/${encodeURIComponent(project)}/artifacts?record=${encodeURIComponent(file.artifactId)}`}>{file.name}</Link> : <Typography.Text>{file.name}</Typography.Text>}
+                <Tag>{t(`botFileStatus_${file.status}`, { defaultValue: file.status })}</Tag>
+                {file.status === 'failed' && <Button size="small" loading={retryingFile} onClick={() => retryFile({ variables: { project, id: botId, fileId: file.id } })}>{t('botFileRetry')}</Button>}
+              </Space>
+              {file.lastError && <div><Typography.Text type="danger">{t(`botFileError_${file.lastError}`, { defaultValue: file.lastError })}</Typography.Text></div>}
+            </div>)}</Space>
+          </Card>}
+          <Card size="small" title={t(msg.manual ? 'botManualConfirmation' : 'botClassificationResult')}>
             {!msg.classification ? <Typography.Text type="secondary">{t('botNotClassified')}</Typography.Text>
               : !msg.classification.tasks.length ? <Typography.Text>{t('botNoTaskFound')}</Typography.Text>
                 : msg.classification.tasks.map((task) => <div key={task.telegramUserId} style={{ marginBottom: 12 }}>
                   <Typography.Text strong>{task.title}</Typography.Text>
                   <Typography.Paragraph>{task.description}</Typography.Paragraph>
-                  <Typography.Text type="secondary">{t('botClassificationEvidence', { evidence: task.evidence, confidence: Math.round(task.confidence * 100) })}</Typography.Text>
+                  {!msg.manual && <Typography.Text type="secondary">{t('botClassificationEvidence', { evidence: task.evidence, confidence: Math.round(task.confidence * 100) })}</Typography.Text>}
                 </div>)}
           </Card>
+          {msg.canCreateTask && <ManualTelegramTask key={msg.id} project={project} botId={botId} source={msg}
+            onQueued={() => { void detail.refetch(); }} />}
           <Card size="small" title={t('botCreatedTasks')}>
             {msg.tasks?.length ? <Space orientation="vertical">{msg.tasks.map((task) => <Link key={task.id}
               to={`/projects/${encodeURIComponent(project)}/tasks?record=${encodeURIComponent(task.id)}`}>{task.id}: {task.title}</Link>)}</Space> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('botNoCreatedTasks')} />}

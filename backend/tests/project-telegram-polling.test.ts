@@ -52,6 +52,8 @@ beforeEach(async () => {
   await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
+  await db.schema.createTable("artifacts", (t) => t.text("id").primary());
+  await createRequire(import.meta.url)("../migrations/pg/135_telegram_message_files.cjs").up(db);
   await db("users").insert({ id: "owner", email: "owner@test", status: "active" });
   await db("projects").insert({ id: "P-TEST", owner_user_id: "owner", title: "Project <Alpha> & beta", status: "active" });
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123456789", username: "project_bot",
