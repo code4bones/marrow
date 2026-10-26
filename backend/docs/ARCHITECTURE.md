@@ -10,6 +10,20 @@ The server is intended to be used by coding agents such as Codex. It helps agent
 
 The implementation must stay simple, inspectable, reusable, and maintainable.
 
+## Artifact file previews
+
+`ArtifactFilePreview` selects a native viewer by MIME type, preserving the text
+renderer and normal download link. HEAD validates file availability/access before
+mounting an image/player/PDF viewer. All viewers use authenticated same-origin
+URLs; no public Telegram URLs, base64 GraphQL payloads or relaxed CSP are needed.
+Changing/closing a record aborts the check and removes the old media element.
+
+`artifact-file-response.ts` serves authorized HEAD/GET after artifactDownload's
+normal project checks. Inline disposition requires an explicit flag and passive
+MIME allowlist; HTML/SVG stay downloads. Native players use single byte ranges,
+with 206/416 responses. UTF-8 filenames use RFC5987; private cache and nosniff
+headers apply. Stream errors/disconnects are contained.
+
 ## Telegram outgoing message exclusion
 
 Migration 132 introduces a shared `telegram_outgoing_messages` registry. Every

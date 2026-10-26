@@ -409,7 +409,7 @@ export const GET_RECORD = gql`
         }
         ... on Artifact {
           id path title scope description status
-          contentType sizeBytes tags projectVersion downloadPath createdBy createdAt updatedAt
+          contentType sizeBytes sha256 tags projectVersion downloadPath createdBy createdAt updatedAt
         }
         ... on MemoryRecord {
           id type title status excerpt body tags projectVersion createdBy createdAt updatedAt fromAgent toAgent

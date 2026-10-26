@@ -23,6 +23,8 @@ import { CreateConnectedDecisionButton } from '../../features/decision/CreateCon
 import { DecisionAssigneeSelect } from '../../features/decision/DecisionAssigneeSelect';
 import { DecisionStatusSelect } from '../../features/decision/DecisionStatusSelect';
 import { MemoryStatusSelect } from '../../features/memory/MemoryStatusSelect';
+import { ArtifactFilePreview } from "../../features/artifact/ArtifactFilePreview";
+import { artifactPreviewKind } from "../../shared/lib/artifactPreview";
 import { ArchiveArtifactButton } from '../../features/artifact/ArchiveArtifactButton';
 import { ArchiveSkillButton } from '../../features/skill/ArchiveSkillButton';
 import { canPerform } from '../../shared/lib/taskPermissions';
@@ -196,7 +198,7 @@ function DecisionBody({ r, projectId }: { r: Decision; projectId: string | null 
 function ArtifactBody({ r }: { r: Artifact }) {
   const { t } = useTranslation('common');
   const { labelFor } = useActorLabels([r.createdBy]);
-  const isText = r.contentType?.startsWith('text/') || r.contentType?.includes('json') || r.contentType?.includes('xml');
+  const isText = artifactPreviewKind(r.contentType, r.path) === 'text';
   return (
     <>
       <Field label={t('path')}><Text code style={{ fontSize: 12 }}>{r.path}</Text></Field>
@@ -214,9 +216,10 @@ function ArtifactBody({ r }: { r: Artifact }) {
       {r.contentType && <Field label={t('contentType')}><Text>{r.contentType}</Text></Field>}
       {r.sizeBytes != null && <Field label={t('size')}><Text>{(r.sizeBytes / 1024).toFixed(1)} KB</Text></Field>}
       {r.description && <Field label={t('description')}><Paragraph style={{ margin: 0 }}>{r.description}</Paragraph></Field>}
+      <ArtifactFilePreview key={`${r.id}:${r.sha256 ?? r.updatedAt}`} artifact={r} />
+      {isText && <ArtifactTextPreview id={r.id} />}
       {r.tags.length > 0 && <Field label={t('tags')}><TagList items={r.tags} /></Field>}
       <Field label={t('updated')}><Timestamp value={r.updatedAt} author={labelFor(r.createdBy)} /></Field>
-      {isText && <ArtifactTextPreview id={r.id} />}
     </>
   );
 }

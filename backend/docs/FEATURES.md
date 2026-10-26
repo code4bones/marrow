@@ -87,6 +87,16 @@ Task.get/preflight expose artifact IDs and pending file states so agents can wai
 for files rather than invent their contents. Existing attachments whose file IDs
 were never retained cannot be recovered automatically from old message IDs.
 
+### Artifact previews
+
+Artifact details show the file alongside its description and metadata: raster
+images with zoom, native video/audio controls, and a PDF frame. Text and Markdown
+retain their existing viewer. Every type has a download action. Previews use the
+same authenticated, project-scoped file endpoint as downloads, with HEAD checks,
+explicit safe inline MIME types and byte ranges for native media seeking. HTML
+and SVG remain escaped text/downloads. Switching or closing a record cancels the
+check and unmounts its viewer. Failed/missing files show a retry action.
+
 ### F-001: Project registry
 
 The server must support multiple projects.

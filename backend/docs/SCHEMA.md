@@ -53,6 +53,9 @@ links commit with file state. Outgoing messages gain nullable task_id so files
 replying to a Marrow status reply find the same task. Migration 136 adds file UI
 labels. Task.get/preflight expose artifactIds and Telegram attachment state.
 
+Migration 137 adds artifact viewer/download/retry UI translations; file metadata
+and storage paths are unchanged.
+
 ## Gateway Telegram project bots
 
 Migration `117_project_telegram_bots.cjs` adds:

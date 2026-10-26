@@ -1,8 +1,6 @@
+import { sendArtifactFile } from "./artifact-file-response.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import path from "node:path";
 import { Readable } from "node:stream";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { WebSocketServer } from "ws";
@@ -644,8 +642,14 @@ async function handleRequest(
     }
 
     const artifactDownloadMatch = requestPath.match(/^\/artifacts\/([^/]+)\/download$/);
-    if (request.method === "GET" && artifactDownloadMatch) {
-      await sendArtifactDownload(service, options, request, response, requestId, startedAt, context, artifactDownloadMatch[1]);
+    if ((request.method === "GET" || request.method === "HEAD") && artifactDownloadMatch) {
+      try {
+        await sendArtifactDownload(service, options, request, response, requestId, startedAt, context, artifactDownloadMatch[1]);
+      } catch (error) {
+        const status = error instanceof AppError ? ({ UNAUTHORIZED: 401, INSUFFICIENT_SCOPE: 403, NOT_FOUND: 404, LINK_NOT_FOUND: 404, ARTIFACT_NOT_FOUND: 404 } as Record<string, number>)[error.code] : undefined;
+        if (!status) throw error;
+        send(status, fail(error));
+      }
       return;
     }
 
@@ -867,18 +871,7 @@ async function sendArtifactDownload(
 ): Promise<void> {
   const id = decodeURIComponent(encodedId);
   const download = await service.artifactDownload(id, context);
-  const fileStat = await stat(download.absolutePath);
-  const filename = path.posix.basename(download.artifact.path).replace(/["\\]/g, "_");
-  response.writeHead(200, {
-    "content-type": download.artifact.contentType,
-    "content-length": fileStat.size,
-    "content-disposition": `attachment; filename="${filename}"`,
-    "x-request-id": requestId,
-    "x-artifact-id": download.artifact.id,
-    "x-artifact-sha256": download.artifact.sha256
-  });
-  createReadStream(download.absolutePath).pipe(response);
-  response.on("finish", () => {
+  await sendArtifactFile(request, response, download, requestId, () => {
     logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context);
   });
 }

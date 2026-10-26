@@ -9,6 +9,11 @@
 
 ### Added
 
+- Artifact details preview images with zoom, video/audio with native controls and
+  PDF alongside text/metadata; all formats retain a download action.
+- Authenticated HEAD/inline file viewing, byte ranges for media seeking and UTF-8
+  download filenames, preserving project membership checks and active-content restrictions.
+
 - Manual task confirmation from Telegram message details with explicit assignees,
   optional title, AI bypass and the existing deduplicated task/Telly/reply pipeline.
 - Telegram documents/media as task-linked Marrow artifacts, including albums and

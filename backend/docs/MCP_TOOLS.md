@@ -4040,3 +4040,12 @@ The MCP tool layer is acceptable when:
 * decision recording records events
 * common seeding works
 * gateway mode reports status and recently seen clients
+
+## Authenticated artifact file previews
+
+`GET /artifacts/:id/download` remains an attachment download.
+`HEAD` uses the same authorization/project checks and returns metadata without
+bytes. `?inline=1` permits native inline viewing for supported raster images,
+audio/video and PDF; active HTML/SVG types retain attachment disposition.
+Single `Range: bytes=...` requests support native media seeking. Files keep their
+existing artifact IDs/paths and access rules. Migration137 adds EN/RU viewer labels.
