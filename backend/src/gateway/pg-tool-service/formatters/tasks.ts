@@ -19,6 +19,7 @@ export function compactTask(task: Row) {
     status: String(task.status),
     priority: Number(task.priority ?? 100),
     assigneeUserIds: taskAssigneeIds(task),
+    currentPerformerUserIds: task.currentPerformerUserIds ?? [],
     scopeExcerpt: shortText(stringOrNull(task.scope), 140),
     ...(allowedFiles.length > 0 ? { allowedFiles } : {}),
     ...(forbiddenFiles.length > 0 ? { forbiddenFiles } : {}),
@@ -48,6 +49,7 @@ export function taskOut(row: Row) {
     createdBy: stringOrNull(row.created_by),
     assigneeUserId: assigneeUserIds[0] ?? null,
     assigneeUserIds,
+    currentPerformerUserIds: row.current_performer_user_ids ?? [],
     assigneeDiffersFromOwner: assigneeUserIds.some((id) => assigneeDiffersFromOwner(id, row.created_by)),
     createdAt: dateStringOrNull(row.created_at),
     updatedAt: dateStringOrNull(row.updated_at)

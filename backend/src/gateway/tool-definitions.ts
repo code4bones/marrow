@@ -1,3 +1,4 @@
+import { taskWorkflowSchema } from "./task-workflow.js";
 import * as z from "zod/v4";
 import {
   getDecisionSchema,
@@ -1509,12 +1510,17 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.list",
-    description: "List shared tasks for a project. Use compact=true for low-token task selection before task.get/preflight. Pass assignee=\"me\" to answer \"do I have any tasks?\" -- resolves to whichever real person this connection is authenticated as; a member's email or a distinguishing fragment of it also works, same resolution task.create's own assignee field uses.",
+    description: "List shared tasks for a project. performer=me filters current execution responsibility; assignee=me filters the stable responsible team. Use compact=true for low-token task selection before task.get/preflight. Pass assignee=\"me\" to answer \"do I have any tasks?\" -- resolves to whichever real person this connection is authenticated as; a member's email or a distinguishing fragment of it also works, same resolution task.create's own assignee field uses.",
     schema: listTasksSchema
   },
   {
+    name: "task.workflow",
+    description: "Read append-only task route/status history, newest first: actor, previous and next performers, status, note, time and taskId. Paginate with nextBeforeVersion; repeated visits to the same member are distinct steps.",
+    schema: taskWorkflowSchema
+  },
+  {
     name: "task.get",
-    description: "Get a shared task by id.",
+    description: "Get a task with stable responsible assigneeUserIds, independent currentPerformerUserIds, recent workflow steps and routing rules. For sending an existing task to another person use task.handoff, not task.update_assignee. Read older history through task.workflow.",
     schema: getTaskSchema
   },
   {
@@ -1613,13 +1619,13 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   },
   {
     name: "task.handoff",
-    description: "Finish your stage and pass the SAME Telegram-origin task to the next active project member(s). Supply assignees, note describing completed work/next steps, and expectedVersion from task.get (optimistic retry fence). Does not mark DONE or create another task. Repeated handoffs can cycle between performers. Source Telegram chat receives a rich reply naming previous/next Telegram users; normal assignment/Telly acceptance pipeline is preserved. Only the current assignee or a PM can hand off; other tasks use task.update_assignee. CLAR questions use task.update_status(status: clar, note: question).",
+    description: "Send/pass/передай/отправь the SAME existing task to next current performers. Works for every task. NEVER changes the responsible assignee team or creates a duplicate task. Read task.get, supply assignees (next performers; emails/IDs/fragments), note with completed work/context/next steps, expectedVersion, optional status todo/doing/review/blocked (default todo). Complete/release active claims first. Only a current performer or PM may transfer. Appends actor/from/to/time/status history, preserves repeated cycles and fences retries. Normal Telly offers; Telegram-origin tasks also reply to the original message using Telegram identities. CLAR question: task.update_status(status: clar, note: question); DONE only for the entire task.",
     schema: handoffTaskSchema,
     access: "write"
   },
   {
     name: "task.update_assignee",
-    description: "Replace a task's assignees with assignees: [member emails/IDs/fragments], or clear with assignees: []. The legacy assignee: member/null replaces the entire list with one/zero members. Do not supply both fields. assignee accepts a member's email or a distinguishing fragment of it (e.g. a username), resolved against current project members. Use when the user says something like \"assign this to X\" / \"назначь на X\" / \"поставь эту задачу на X\" about an already-created task.",
+    description: "Explicitly replace the responsible task TEAM using assignees (emails/IDs/fragments), or clear with []. Legacy assignee: member/null replaces the whole team. Does NOT transfer execution, change current performers or append a route step. For send/pass/передай/отправь an existing task to another person ALWAYS use task.handoff instead. Use this PM-only tool solely when the user explicitly asks to edit the responsible team.",
     schema: updateTaskAssigneeSchema,
     access: "write"
   },

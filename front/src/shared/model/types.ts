@@ -49,7 +49,17 @@ export interface GlobalSearchResult {
   updatedAt: string | null;
 }
 
+export interface WorkflowParticipant { userId: string; label: string }
+export interface TaskWorkflowStep {
+  id: string; taskId: string; projectId: string; taskVersion: number; kind: string;
+  actorUserId: string | null; actorClientId: string; actorLabel: string;
+  from: WorkflowParticipant[]; to: WorkflowParticipant[]; status: string; note: string | null; createdAt: string | null;
+}
+export interface TaskWorkflowPage { items: TaskWorkflowStep[]; hasMore: boolean; nextBeforeVersion: number | null }
+
 export interface Task {
+  version: number;
+  currentPerformerUserIds: string[];
   id: string;
   projectId: string | null;
   title: string;

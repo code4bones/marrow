@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Knex } from "knex";
 import * as z from "zod/v4";
 import { participantList, telegramParticipants, telegramPersonSchema } from "./participant-references.js";
-import { getTaskAssigneeIds } from "../task-assignees.js";
+import { getTaskPerformerIds } from "../task-workflow.js";
 import { nowIso } from "../../shared/dates.js";
 import type { Row } from "../pg-tool-service/types.js";
 
@@ -28,7 +28,7 @@ export async function enqueueTelegramTaskFeedback(db: Knex, task: Row, eventId: 
     const key = `${eventId}:${source.chat_id}:${source.message_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const assignees = await getTaskAssigneeIds(db, task);
+    const assignees = await getTaskPerformerIds(db, task);
     const ids = [...new Set([...previousIds, ...assignees, ...(actorId ? [actorId] : [])])];
     const participants = await telegramParticipants(db, String(source.bot_id), String(source.chat_id), ids, source.participants);
     await db("telegram_task_sources").where({ project_id: source.project_id, chat_id: source.chat_id, message_id: source.message_id }).update({ participants: JSON.stringify(participants) });

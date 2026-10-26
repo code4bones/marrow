@@ -117,7 +117,7 @@ export class PgToolService extends ComposedService {
     }
 
     try {
-      if (!this.db.isTransaction && ["task.create", "task.update_assignee", "task.handoff", "task.update_status", "task.complete", "task.export_gitlab"].includes(canonicalToolName)) {
+      if (!this.db.isTransaction && ["task.claim", "task.create", "task.update_assignee", "task.handoff", "task.update_status", "task.complete", "task.export_gitlab"].includes(canonicalToolName)) {
         let transactionalService: PgToolService | null = null;
         const result = await this.db.transaction(async (trx) => {
           const service = new (this.constructor as typeof PgToolService)(trx, this.gitHttpFetch, this.llmHttpFetch);
@@ -352,6 +352,8 @@ export class PgToolService extends ComposedService {
           return ok("GitLab task link loaded.", { gitlab: await this.taskGitlabStatus(parsed, requestContext) });
         case "task.list":
           return ok("Tasks listed.", { tasks: await this.listTasks(parsed, requestContext) });
+        case "task.workflow":
+          return ok("Task workflow loaded.", { workflow: await this.taskWorkflow(parsed, requestContext) });
         case "task.get":
           return ok("Task loaded.", { task: await this.getTask(String(parsed.id), requestContext) });
         case "task.delete":

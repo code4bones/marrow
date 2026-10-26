@@ -45,7 +45,7 @@ beforeEach(async () => {
   await db("projects").insert({ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" });
   await db("project_members").insert(["owner", "dev", "qa", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, role: user_id === "qa" ? "tester" : "developer", status: user_id === "pending" ? "pending_approval" : "active" })));
   await db("tasks").insert({ id: "T-TEST-000", project_id: "P-TEST", title: "Old task", assignee_user_id: "dev", status: "todo", created_by: "user:owner" });
-  await require("../migrations/pg/123_task_assignees.cjs").up(db); service = new TestService(db);
+  await require("../migrations/pg/123_task_assignees.cjs").up(db); await require("../migrations/pg/138_task_workflow.cjs").up(db); service = new TestService(db);
 });
 afterEach(async () => { await db.destroy(); vi.unstubAllEnvs(); });
 

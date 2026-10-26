@@ -42,9 +42,14 @@ neither review rework nor completion credit. Telegram tasks reply to their sourc
 message/topic. Other tasks notify their creator and assignees normally. The
 status appears in selectors, filters, kanban and graph views.
 
-`task.handoff` records completed stage work and passes the same Telegram task to
-next performers, resetting it to todo. It can cycle backend → frontend → backend;
-only final completion uses DONE. Each handoff, ordinary reassignment, CLAR and
+`task.handoff` passes the same task to next current performers for ALL tasks,
+preserving the responsible assignee team. Status is todo by default, optionally
+doing/review/blocked. Separate task_performers and append-only task_workflow_steps
+store current execution and actor/from/to/time/status/note snapshots. The detail
+STATUS field displays the cyclic path as Ant Design Steps above the status and
+paginated history. Explicit team edits are
+separate from routing. It can cycle backend → frontend → backend;
+only final completion uses DONE. For Telegram tasks, each handoff, CLAR and
 DONE gets a Rich Message reply to the original source. People are rendered as
 Telegram mentions/links, using chat-local manual identities before profile links.
 Unlinked people are labelled explicitly, never with a Marrow email/UUID. Source

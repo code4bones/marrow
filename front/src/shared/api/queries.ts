@@ -89,7 +89,7 @@ export const GET_TASKS_PAGE = gql`
       sortDirection: $sortDirection
       pagination: { limit: $limit, offset: $offset }
     ) {
-      items { id title status priority milestone scope notes projectVersion dependsOn activeClaimCount createdBy assigneeUserId assigneeUserIds assigneeDiffersFromOwner createdAt updatedAt }
+      items { id version currentPerformerUserIds title status priority milestone scope notes projectVersion dependsOn activeClaimCount createdBy assigneeUserId assigneeUserIds assigneeDiffersFromOwner createdAt updatedAt }
       pageInfo { totalCount limit offset hasNextPage hasPreviousPage }
     }
   }
@@ -399,7 +399,7 @@ export const GET_RECORD = gql`
       record {
         __typename
         ... on Task {
-          id title status priority milestone scope
+          id version currentPerformerUserIds title status priority milestone scope
           acceptance allowedFiles forbiddenFiles dependsOn notes projectVersion
           activeClaimCount createdBy assigneeUserId assigneeUserIds assigneeDiffersFromOwner createdAt updatedAt
         }
@@ -938,6 +938,22 @@ export const ON_GATEWAY_EVENT = gql`
     gatewayEvents {
       event
       payload
+    }
+  }
+`;
+
+export const GET_TASK_WORKFLOW = gql`
+  query GetTaskWorkflow($id: ID!, $beforeVersion: Int, $limit: Int) {
+    taskWorkflow(id: $id, beforeVersion: $beforeVersion, limit: $limit) {
+      items { id taskId projectId taskVersion kind actorUserId actorClientId actorLabel from { userId label } to { userId label } status note createdAt }
+      hasMore nextBeforeVersion
+    }
+  }
+`;
+export const HANDOFF_TASK = gql`
+  mutation HandoffTask($id: ID!, $assignees: [String!]!, $note: String!, $expectedVersion: Int!, $status: String) {
+    handoffTask(id: $id, assignees: $assignees, note: $note, expectedVersion: $expectedVersion, status: $status) {
+      id version status currentPerformerUserIds assigneeUserId assigneeUserIds notes updatedAt
     }
   }
 `;

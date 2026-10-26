@@ -1,3 +1,4 @@
+import { loadTaskPerformers } from "../task-workflow.js";
 import { loadTaskAssignees } from "../task-assignees.js";
 import { taskOut } from "./formatters/tasks.js";
 import type { Knex } from "knex";
@@ -77,7 +78,7 @@ export class BaseService {
     };
   }
 
-  protected async formatTasks(rows: Row[]) { return (await loadTaskAssignees(this.db, rows)).map(taskOut); }
+  protected async formatTasks(rows: Row[]) { return (await loadTaskPerformers(this.db, await loadTaskAssignees(this.db, rows))).map(taskOut); }
   protected async formatTask(row: Row) { return (await this.formatTasks([row]))[0]; }
 
   protected taskSelectWithActiveClaimCount(query: Knex.QueryBuilder): Knex.QueryBuilder {
@@ -94,7 +95,7 @@ export class BaseService {
       if (!row) {
         continue;
       }
-      return recordLookupOut(table, table === "tasks" ? (await loadTaskAssignees(this.db, [row]))[0] : row);
+      return recordLookupOut(table, table === "tasks" ? (await loadTaskPerformers(this.db, await loadTaskAssignees(this.db, [row])))[0] : row);
     }
     throw new AppError("NOT_FOUND", `Record ${id} does not exist.`, { id });
   }

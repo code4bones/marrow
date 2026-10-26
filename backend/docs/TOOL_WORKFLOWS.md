@@ -423,3 +423,14 @@ If anything blocks completion:
 task.update_status(status="blocked", note="...")
 failed_attempt.record, if an approach should not be repeated
 ```
+
+## Pass an existing task to another member
+
+Read task.get: assigneeUserIds is its responsible team, currentPerformerUserIds
+is the current execution stage. For “send/pass/передай/отправь task to X”,
+complete/release active claims and call task.handoff with next performers in
+assignees, a context/work note, expectedVersion from task.get and optional
+status (todo default; doing/review/blocked). This keeps one task and its original
+responsible team. Use task.workflow to page through actor/from/to/time/status
+history. Only explicit responsible-team edits use task.update_assignee.
+CLAR is a question, DONE is final completion. Telegram replies are automatic.

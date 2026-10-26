@@ -24,8 +24,9 @@ All participants share one task/status, existing workflow permissions and claim
 rules. Assignment controls retain the existing assign permission.
 
 Task/record/preflight/summary/graph reads include all recipients, and `assignee=me`
-or a member filter matches any recipient. Newly added external assignees each get
-one assignment event and a separate idempotent Telly offer; retained assignees do
+or a member filter matches any responsible team member. On task creation external
+performers each get an assignment event and idempotent Telly offer. Later transfers
+use task.handoff and its independent current performers; explicit team edits do
 not get another offer. Lifecycle events notify creator and all assignees, deduped
 with the existing interactive self-action rule. Review follow-ups inherit the
 whole list. Existing single assignments are backfilled into `task_assignees`.
@@ -2483,23 +2484,44 @@ and preflight expose artifactIds and pending Telegram file state; download bytes
 through existing artifact tools after ready. Files whose IDs were not retained by
 older releases require a new Telegram upload/forward to become artifacts.
 
-### `task.handoff` (gateway, Telegram tasks)
+### `task.handoff` (gateway, all tasks)
 
-Complete a stage and pass the **same task** onward. Read `task.get` for its
-current `version`; complete/release active claims first. A current assignee or PM
-may call:
+For “send/pass this task to X” / «передай/отправь задачу X», keep the SAME task
+and use this tool. `assigneeUserIds` is the stable responsible team;
+`currentPerformerUserIds` independently identifies who executes the current stage.
+A handoff never replaces the team. `task.update_assignee` is solely an explicit
+PM edit of that team and does not route work or send Telly offers.
+
+Read `task.get` for current `version`; complete/release active claims first.
+A current performer or PM may call:
 
 ```json
-{"id":"T-MEMORY-001","assignees":["frontend@example.org"],"note":"API implemented and tested; connect the form","expectedVersion":3}
+{"id":"T-MEMORY-001","assignees":["frontend@example.org"],"status":"review","note":"API implemented and tested; connect the form","expectedVersion":3}
 ```
 
-The task becomes todo for its next active members. An identical retry at the
-immediately following version is idempotent; other stale versions are rejected.
-Telly offers use the normal pipeline. Telegram receives a source reply naming
-previous/next Telegram people, with the completed-work note and task link.
-Ordinary `task.update_assignee` also reports changed assignees for Telegram tasks,
-but makes no completed-stage claim. Handoffs can cycle until final DONE.
-GraphQL exposes `handoffTask` with the same fields and `Task.version`.
+The compatibility input name `assignees` means NEXT performers here (one or more).
+Optional status: todo (default), doing, review, blocked. CLAR uses
+`task.update_status` with a question; DONE finishes the whole task.
+The handoff atomically updates current performers/status and appends an immutable
+step with taskId, actor, previous/next participant snapshots, timestamp, note,
+assigned status and task version. Cycles A→B→A→C retain every visit.
+An identical retry at the immediately following version is idempotent; changed
+or older requests are rejected. Telly offers use the existing acceptance pipeline.
+Telegram-origin tasks additionally receive a source Rich Message reply with
+Telegram identities and a task link; do not send a duplicate reply manually.
+
+`task.get` and preflight include the latest 20 steps and `workflowRules`.
+`task.workflow({id,limit:50,beforeVersion})` returns newest-first items,
+`hasMore` and `nextBeforeVersion` for earlier pages (max100). Project membership
+is checked on every page. `task.list({project,performer:"me"})` finds current
+execution, while `assignee:"me"` continues to filter the responsible team.
+GraphQL exposes `taskWorkflow`, `handoffTask` and `Task.currentPerformerUserIds`.
+The task detail STATUS field shows Ant Design Steps above the status control,
+current performers, expandable
+history and a transfer control. List/kanban badges show current performers.
+Existing tasks start with a labelled baseline at migration138; earlier transfers
+are not fabricated from incomplete events. Removing an account clears current
+relations but retains historical labels. History is removed with its task.
 
 ### `task.update_status`
 

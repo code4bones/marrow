@@ -1,3 +1,4 @@
+import { gatewaySchema } from "../src/gateway/graphql.js";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import knex, { type Knex } from "knex";
@@ -10,6 +11,7 @@ import { encryptBotSecret } from "../src/gateway/telegram-project-bots/remote.js
 import { telegramParticipants } from "../src/gateway/telegram-project-bots/participant-references.js";
 import { nowIso } from "../src/shared/dates.js";
 const require = createRequire(import.meta.url);
+const { graphql } = require("graphql") as Pick<typeof import("graphql"), "graphql">;
 vi.mock("../src/gateway/telegram.js", async (original) => ({ ...await original<typeof import("../src/gateway/telegram.js")>(), notifyTelegram: vi.fn().mockResolvedValue(undefined) }));
 const owner: GatewayRequestContext = { clientId: "user:owner", sessionUserId: "owner", sessionRole: "member", sessionSource: "cookie" };
 const dev = { ...owner, clientId: "user:dev", sessionUserId: "dev" };
@@ -58,9 +60,10 @@ beforeEach(async () => {
   await db("projects").insert({ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" });
   await db("project_members").insert(["owner", "dev", "qa", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, role: user_id === "qa" ? "tester" : "developer", status: user_id === "pending" ? "pending_approval" : "active" })));
   await db("tasks").insert({ id: "T-TEST-000", project_id: "P-TEST", title: "Old task", assignee_user_id: "dev", status: "todo", created_by: "user:owner" });
-  await require("../migrations/pg/123_task_assignees.cjs").up(db); service = new TestService(db);
+  await require("../migrations/pg/123_task_assignees.cjs").up(db); await require("../migrations/pg/138_task_workflow.cjs").up(db); service = new TestService(db);
   for (const name of ["005_task_claims", "063_telegram_identities", "117_project_telegram_bots", "121_telegram_chat_mentions", "126_telegram_observed_senders", "127_telegram_recipient_tags", "129_telegram_task_feedback_source"])
     await require(`../migrations/pg/${name}.cjs`).up(db);
+  await db.schema.alterTable("task_claims", (t) => t.text("agent_name"));
   await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
   await require("../migrations/pg/135_telegram_message_files.cjs").up(db);
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
@@ -128,7 +131,7 @@ describe("Telegram task lifecycle feedback", () => {
     vi.stubEnv("TELLYMCP_INBOX_MCP_URL", "https://telly.invalid/mcp");
     const input = { id: task.id, assignees: ["qa"], expectedVersion: Number(task.version), note: "API ready; connect the form" };
     const next = (await call("task.handoff", input, dev)).task as Row;
-    expect(next).toMatchObject({ status: "todo", assigneeUserIds: ["qa"] });
+    expect(next).toMatchObject({ status: "todo", assigneeUserIds: ["dev"], currentPerformerUserIds: ["qa"] });
     await call("task.handoff", input, dev); // retry after ownership passed
     expect(await feedback()).toHaveLength(1);
     expect(await db("integration_outbox").where({ integration: "tellymcp" })).toHaveLength(1);
@@ -146,14 +149,108 @@ describe("Telegram task lifecycle feedback", () => {
     expect(snapshot.dev).toMatchObject([{ telegramId: "111", username: "backend_dev" }]);
   });
 
-  it("distinguishes ordinary reassignment from completion and rejects foreign/non-Telegram handoffs", async () => {
+  it("keeps team edits separate from execution, supports non-Telegram handoff and rejects nonperformers", async () => {
     const task = await create();
     expect(await service.call("task.handoff", { id: task.id, assignees: ["qa"], note: "done", expectedVersion: task.version }, qa)).toMatchObject({ ok: false });
-    await call("task.update_assignee", { id: task.id, assignees: ["qa"] });
-    await dispatcher.tick();
-    expect(resultText()).toContain("Исполнители изменены"); expect(resultText()).not.toContain("Этап завершён");
+    const team = (await call("task.update_assignee", { id: task.id, assignees: ["qa"] })).task as Row;
+    expect(team).toMatchObject({ assigneeUserIds: ["qa"], currentPerformerUserIds: ["dev"] });
+    await dispatcher.tick(); expect(remote).not.toHaveBeenCalled();
+    expect(await db("task_workflow_steps").where({ task_id: task.id })).toHaveLength(1);
     const ordinary = await create(false);
-    expect(await service.call("task.handoff", { id: ordinary.id, assignees: ["qa"], note: "done", expectedVersion: ordinary.version }, dev)).toMatchObject({ ok: false });
+    const moved = (await call("task.handoff", { id: ordinary.id, assignees: ["qa"], note: "API ready", status: "review", expectedVersion: ordinary.version }, dev)).task;
+    expect(moved).toMatchObject({ assigneeUserIds: ["dev"], currentPerformerUserIds: ["qa"], status: "review" });
+    expect(await feedback()).toHaveLength(0);
+  });
+
+  it("records the complete independent route, status changes, actors and stable participant snapshots with pagination", async () => {
+    const task = await create(false);
+    let current = task;
+    for (const [recipient, actor, status, note] of [
+      ["qa", dev, "review", "API ready"], ["dev", qa, "todo", "Validation needs fixing"], ["owner", dev, "blocked", "Need a product decision"]
+    ] as const) {
+      current = (await call("task.handoff", { id: task.id, assignees: [recipient], expectedVersion: current.version, note, status }, actor)).task as Row;
+      expect(current.assigneeUserIds).toEqual(["dev"]);
+    }
+    await call("task.update_status", { id: task.id, status: "clar", note: "Which rules apply?" });
+    await call("task.complete", { id: task.id, acceptanceEvidence: "All stages accepted" });
+    const details = (await call("task.get", { id: task.id })).task as Row;
+    expect(details).toMatchObject({ status: "done", assigneeUserIds: ["dev"], currentPerformerUserIds: ["owner"] });
+    const history = details.workflow as { items: Row[] };
+    expect(history.items.map((s) => s.kind)).toEqual(["status", "status", "handoff", "handoff", "handoff", "created"]);
+    const route = history.items.filter((s) => s.kind !== "status").reverse();
+    expect(route.map((s) => (s.to as Row[]).map((p) => p.userId))).toEqual([["dev"], ["qa"], ["dev"], ["owner"]]);
+    expect(route[1]).toMatchObject({ taskId: task.id, actorUserId: "dev", actorClientId: "user:dev", actorLabel: "dev@test", status: "review", note: "API ready", from: [{ userId: "dev", label: "dev@test" }], to: [{ userId: "qa", label: "qa@test" }], createdAt: expect.any(String) });
+    let beforeVersion: number | undefined;
+    const all: Row[] = [];
+    for (;;) {
+      const page = (await call("task.workflow", { id: task.id, limit: 2, beforeVersion })).workflow as { items: Row[]; hasMore: boolean; nextBeforeVersion: number };
+      all.push(...page.items);
+      if (!page.hasMore) break;
+      beforeVersion = page.nextBeforeVersion;
+    }
+    expect(all.map((s) => s.id)).toEqual(history.items.map((s) => s.id));
+    await db("users").where({ id: "qa" }).del();
+    expect(((await call("task.workflow", { id: task.id })).workflow as { items: Row[] }).items).toEqual(history.items);
+    expect(await service.call("task.workflow", { id: task.id }, { ...owner, clientId: "user:outsider", sessionUserId: "outsider" })).toMatchObject({ ok: false });
+  });
+
+  it("routes several next performers on ONE task and exposes independent performer/team filters", async () => {
+    const task = await create(false);
+    const moved = (await call("task.handoff", { id: task.id, assignees: ["qa", "owner", "qa@test"], expectedVersion: task.version, note: "Test and decide" }, dev)).task as Row;
+    expect(moved).toMatchObject({ assigneeUserIds: ["dev"], currentPerformerUserIds: ["qa", "owner"] });
+    const current = (await call("task.list", { project: "test", performer: "me" }, qa)).tasks as Row[];
+    const team = (await call("task.list", { project: "test", assignee: "me" }, qa)).tasks as Row[];
+    expect(current.map((t) => t.id)).toContain(task.id); expect(team.map((t) => t.id)).not.toContain(task.id);
+    expect((await call("task.list", { project: "test", performer: "qa", compact: true })).tasks).toMatchObject([{ currentPerformerUserIds: ["qa", "owner"] }]);
+    expect(await service.call("task.handoff", { id: task.id, assignees: ["dev"], expectedVersion: moved.version, note: "Not my stage" }, dev)).toMatchObject({ ok: false });
+    for (const status of ["done", "clar", "cancelled", "changes_requested"]) expect(await service.call("task.handoff", { id: task.id, assignees: ["dev"], expectedVersion: moved.version, note: "Invalid transfer", status }, qa)).toMatchObject({ ok: false });
+  });
+
+  it("rolls back the entire handoff and path when the outbox fails, and fences retries after returning to a person", async () => {
+    const task = await create();
+    const input = { id: task.id, assignees: ["qa"], expectedVersion: task.version, note: "Ready" };
+    await db.raw("CREATE TRIGGER reject_feedback BEFORE INSERT ON integration_outbox BEGIN SELECT RAISE(ABORT, 'injected'); END");
+    expect(await service.call("task.handoff", input, dev)).toMatchObject({ ok: false });
+    expect((await call("task.get", { id: task.id })).task).toMatchObject({ version: task.version, assigneeUserIds: ["dev"], currentPerformerUserIds: ["dev"] });
+    expect(await db("task_workflow_steps").where({ task_id: task.id })).toHaveLength(1);
+    await db.raw("DROP TRIGGER reject_feedback");
+    const next = (await call("task.handoff", input, dev)).task as Row;
+    await call("task.handoff", input, dev);
+    expect(await db("task_workflow_steps").where({ task_id: task.id })).toHaveLength(2);
+    expect(await service.call("task.handoff", { ...input, status: "review" }, dev)).toMatchObject({ ok: false });
+    const returned = (await call("task.handoff", { ...input, assignees: ["dev"], expectedVersion: next.version }, qa)).task as Row;
+    expect(await service.call("task.handoff", input, dev)).toMatchObject({ ok: false });
+    await call("task.handoff", { ...input, expectedVersion: returned.version }, dev);
+    expect(await db("task_workflow_steps").where({ task_id: task.id })).toHaveLength(4);
+    expect(await feedback()).toHaveLength(3);
+  });
+
+  it("records implicit claim status and blocks handoff until the claim is released", async () => {
+    const task = await create(false);
+    const claimed = await call("task.claim", { taskId: task.id, scope: "Backend", role: "backend" }, dev);
+    const updated = claimed.task as Row;
+    expect(updated).toMatchObject({ status: "doing", currentPerformerUserIds: ["dev"] });
+    expect(await service.call("task.handoff", { id: task.id, assignees: ["qa"], expectedVersion: updated.version, note: "Ready" }, dev)).toMatchObject({ ok: false, error: { code: "TASK_HAS_ACTIVE_CLAIMS" } });
+    await call("task.release", { claimId: (claimed.claim as Row).id, note: "Ready" }, dev);
+    await call("task.handoff", { id: task.id, assignees: ["qa"], expectedVersion: updated.version, note: "Ready" }, dev);
+    expect(await db("task_workflow_steps").where({ task_id: task.id }).orderBy("task_version")).toMatchObject([{ kind: "created" }, { kind: "status", status: "doing" }, { kind: "handoff" }]);
+  });
+
+  it("exposes the independent performers and complete workflow through GraphQL task, record and history", async () => {
+    const task = await create(false);
+    const contextValue = { service, requestContext: owner };
+    const moved = await graphql({ schema: gatewaySchema, contextValue, variableValues: { id: task.id, version: task.version }, source: `mutation($id:ID!,$version:Int!){
+      handoffTask(id:$id,assignees:["qa"],note:"Please review",expectedVersion:$version,status:"review"){id version status assigneeUserIds currentPerformerUserIds}
+    }` });
+    expect(moved.errors).toBeUndefined();
+    expect(moved.data).toMatchObject({ handoffTask: { assigneeUserIds: ["dev"], currentPerformerUserIds: ["qa"], status: "review" } });
+    const result = await graphql({ schema: gatewaySchema, contextValue, variableValues: { id: task.id }, source: `query($id:ID!){
+      task(id:$id){id currentPerformerUserIds assigneeUserIds}
+      record(id:$id){record{...on Task{currentPerformerUserIds assigneeUserIds}}}
+      taskWorkflow(id:$id,limit:1){items{taskId kind status actorLabel from{userId label} to{userId label}} hasMore nextBeforeVersion}
+    }` });
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toMatchObject({ task: { currentPerformerUserIds: ["qa"], assigneeUserIds: ["dev"] }, record: { record: { currentPerformerUserIds: ["qa"], assigneeUserIds: ["dev"] } }, taskWorkflow: { items: [{ taskId: task.id, kind: "handoff", status: "review", to: [{ userId: "qa", label: "qa@test" }] }], hasMore: true } });
   });
 
   it("defers disabled bots, ignores other integration queues, and resumes after activation", async () => {
@@ -234,7 +331,7 @@ describe("Telegram task lifecycle feedback", () => {
     await db("telegram_identities").insert({ id: "qa-linked", user_id: "qa", telegram_id: "444", telegram_username: "global_qa", created_at: nowIso() });
     expect(await telegramParticipants(db, botId, "-100123", ["qa"])).toMatchObject({ qa: [{ telegramId: "222", username: "frontend_qa" }] });
     await db("telegram_chat_mentions").where({ chat_id: "-100123" }).update({ username: null });
-    const task = await create(); await call("task.update_assignee", { id: task.id, assignees: ["qa"] }); await dispatcher.tick();
+    const task = await create(); await call("task.handoff", { id: task.id, assignees: ["qa"], expectedVersion: task.version, note: "Ready" }, dev); await dispatcher.tick();
     expect(resultText()).toContain("tg://user?id=222"); expect(resultText()).not.toContain("@global_qa"); expect(resultText()).not.toContain("333");
   });
 });

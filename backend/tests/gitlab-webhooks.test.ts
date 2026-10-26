@@ -59,7 +59,7 @@ beforeEach(async () => {
     t.text("id").primary();
     for (const name of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(name);
   });
-  await require("../migrations/pg/123_task_assignees.cjs").up(db);
+  await require("../migrations/pg/123_task_assignees.cjs").up(db); await require("../migrations/pg/138_task_workflow.cjs").up(db);
   await settings.up(db); await inbox.up(db); await leadMigration.up(db); await exportsMigration.up(db);
   await require("../migrations/pg/124_gitlab_export_assignees.cjs").up(db);
   await require("../migrations/pg/012_git_credentials.cjs").up(db);

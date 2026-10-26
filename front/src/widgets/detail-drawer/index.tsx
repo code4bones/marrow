@@ -1,3 +1,6 @@
+import { useRealtimeStore } from "../../shared/model/realtime.store";
+import { useRefetchOnVersion } from "../../shared/lib/useRefetchOnVersion";
+import { TaskWorkflowPanel } from "../../features/task/TaskWorkflowPanel";
 import { useQuery } from '@apollo/client/react';
 import { Alert, Divider, Drawer, Skeleton, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +20,6 @@ import { TaskAssigneeSelect } from '../../features/task/TaskAssigneeSelect';
 import { TaskClaimsPanel } from '../../features/task/TaskClaimsPanel';
 import { TaskGitlabPanel } from '../../features/task/TaskGitlabPanel';
 import { TaskPrioritySelect } from '../../features/task/TaskPrioritySelect';
-import { TaskStatusSelect } from '../../features/task/TaskStatusSelect';
 import { RemarkPanel } from '../../features/remark/RemarkPanel';
 import { CreateConnectedDecisionButton } from '../../features/decision/CreateConnectedDecisionButton';
 import { DecisionAssigneeSelect } from '../../features/decision/DecisionAssigneeSelect';
@@ -132,14 +134,15 @@ function ArtifactTextPreview({ id }: { id: string }) {
 
 function TaskBody({ r, projectId }: { r: Task; projectId: string | null }) {
   const { t } = useTranslation('common');
+  const { t: taskT } = useTranslation('tasks');
   const { labelFor } = useActorLabels([r.createdBy]);
   const closeDetailDrawer = useWorkspaceStore((s) => s.closeDetailDrawer);
   const { role } = useMyProjectRole(projectId);
   return (
     <>
       <div style={{ marginBottom: 14 }}><RoleBadge role={role} /></div>
-      <Field label={t('status')}><TaskStatusSelect id={r.id} value={r.status} role={role} /></Field>
-      <Field label={t('assignees')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserIds} role={role} /></Field>
+      <Field label={t('status')}><TaskWorkflowPanel key={r.id} task={r} projectId={projectId} role={role} /></Field>
+      <Field label={taskT('workflowTeam')}><TaskAssigneeSelect id={r.id} projectId={projectId} value={r.assigneeUserIds} role={role} /></Field>
       <Field label={t('priority')}><TaskPrioritySelect id={r.id} value={r.priority} role={role} /></Field>
       {r.milestone && <Field label={t('milestone')}><Text>{r.milestone}</Text></Field>}
       {r.scope && <Field label={t('scope')}><Markdown>{r.scope}</Markdown></Field>}
@@ -406,10 +409,12 @@ export function DetailDrawer() {
   const { selectedRecordId, selectedRecordType, detailDrawerOpen, closeDetailDrawer } =
     useWorkspaceStore();
   const isMobile = useIsMobile();
-  const { data, loading, error } = useQuery<{ record: RecordWrapper }>(GET_RECORD, {
+  const { data, loading, error, refetch } = useQuery<{ record: RecordWrapper }>(GET_RECORD, {
     variables: { id: selectedRecordId },
     skip: !selectedRecordId,
   });
+
+  useRefetchOnVersion(useRealtimeStore((s) => s.tasksVersion), refetch);
 
   const kind = (selectedRecordType ?? 'unknown').toUpperCase();
   const entityType = KIND_TYPE[kind] ?? 'unknown';

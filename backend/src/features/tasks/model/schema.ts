@@ -42,6 +42,7 @@ export const listTasksSchema = z.object({
   // row (task.claim's `agent` param), not a real project member. Lets one
   // agent find what another agent (or itself) currently has claimed,
   // e.g. task.list({ claimedByAgent: "branch-pwa" }).
+  performer: z.string().min(1).optional(),
   claimedByAgent: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   compact: z.boolean().optional()
@@ -104,5 +105,6 @@ export const updateTaskDetailsSchema = z.object({
 // makes retries safe even after backend→frontend→backend cycles.
 export const handoffTaskSchema = z.object({
   id: z.string().min(1), assignees: z.array(z.string().trim().min(1)).min(1).max(50),
+  status: z.enum(["todo", "doing", "review", "blocked"]).optional(),
   note: z.string().trim().min(1).max(8000), expectedVersion: z.number().int().positive()
 });

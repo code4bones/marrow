@@ -126,9 +126,9 @@ function TaskCard({
       <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <RecordLink id={task.id} />
         {task.milestone && <Tag style={{ fontSize: 10 }}>{task.milestone}</Tag>}
-        {task.assigneeUserIds.length > 0 && (
+        {(task.currentPerformerUserIds ?? task.assigneeUserIds).length > 0 && (
           <Tag color="gold" style={{ fontSize: 10 }}>
-            {'→'} {task.assigneeUserIds.map((id) => labelFor(`user:${id}`)).join(', ')}
+            {'→'} {(task.currentPerformerUserIds ?? task.assigneeUserIds).map((id) => labelFor(`user:${id}`)).join(', ')}
           </Tag>
         )}
       </div>
@@ -155,7 +155,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
   const canEdit = canPerform(role, 'edit_details');
   const canDelete = canPerform(role, 'delete');
   const setSelectedRecord = useWorkspaceStore((s) => s.setSelectedRecord);
-  const { labelFor } = useActorLabels(tasks.flatMap((task) => task.assigneeUserIds.map((id) => `user:${id}`)));
+  const { labelFor } = useActorLabels(tasks.flatMap((task) => (task.currentPerformerUserIds ?? task.assigneeUserIds).map((id) => `user:${id}`)));
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [addingStatus, setAddingStatus] = useState<string | null>(null);

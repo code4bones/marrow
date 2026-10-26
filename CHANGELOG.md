@@ -9,6 +9,12 @@
 
 ### Added
 
+- Independent task path/current performers alongside the stable responsible team;
+  immutable actor/from/to/time/status history, cyclic handoffs for all tasks,
+  paginated MCP history and detail-card route/transfer controls.
+- MCP routing rules distinguish task.handoff from explicit responsible-team edits;
+  normal Telly delivery and Telegram source feedback follow current performers.
+
 - Artifact details preview images with zoom, video/audio with native controls and
   PDF alongside text/metadata; all formats retain a download action.
 - Authenticated HEAD/inline file viewing, byte ranges for media seeking and UTF-8

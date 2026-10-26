@@ -141,7 +141,7 @@ const typeDefs = `#graphql
       pagination: PaginationInput
     ): PaginatedMemoryRecords!
 
-    tasks(project: String!, status: String, milestone: String, assignee: String, claimedByAgent: String, limit: Int): [Task!]!
+    tasks(project: String!, status: String, milestone: String, assignee: String, performer: String, claimedByAgent: String, limit: Int): [Task!]!
     # T-MEMORY-051 follow-up: server-driven sort for the Tasks list.
     # sortField/sortDirection default to updated_at desc; GraphQL enums (not
     # free-text) make invalid values impossible -- the schema rejects them
@@ -156,6 +156,7 @@ const typeDefs = `#graphql
       pagination: PaginationInput
     ): PaginatedTasks!
     task(id: ID!): Task!
+    taskWorkflow(id: ID!, beforeVersion: Int, limit: Int): TaskWorkflowPage!
     taskGitlabStatus(id: ID!): TaskGitlabStatus
     taskClaims(taskId: ID!, includeInactive: Boolean): [TaskClaim!]!
     nextTask(project: String!): Task
@@ -336,7 +337,7 @@ const typeDefs = `#graphql
     updateTaskTitle(id: ID!, title: String!): Task!
     updateTaskPriority(id: ID!, priority: Int!): Task!
     updateTaskDetails(id: ID!, title: String, milestone: String, priority: Int, scope: String, acceptance: String, notes: String): Task!
-    handoffTask(id: ID!, assignees: [String!]!, note: String!, expectedVersion: Int!): Task!
+    handoffTask(id: ID!, assignees: [String!]!, note: String!, expectedVersion: Int!, status: String): Task!
     updateTaskAssignee(id: ID!, assignee: String, assignees: [String!]): Task!
     claimTask(input: TaskClaimInput!): TaskClaimResult!
     heartbeatTaskClaim(claimId: ID!, leaseSeconds: Int, note: String): TaskClaim!
@@ -1013,6 +1014,15 @@ const typeDefs = `#graphql
     lastError: String
   }
 
+  type TaskWorkflowParticipant { userId: String!, label: String! }
+  type TaskWorkflowStep {
+    id: ID!, taskId: String!, projectId: String!, taskVersion: Int!, kind: String!
+    actorUserId: String, actorClientId: String!, actorLabel: String!
+    from: [TaskWorkflowParticipant!]!, to: [TaskWorkflowParticipant!]!
+    status: String!, note: String, createdAt: String
+  }
+  type TaskWorkflowPage { items: [TaskWorkflowStep!]!, hasMore: Boolean!, nextBeforeVersion: Int }
+
   type Task {
     artifactIds: [String!]
     version: Int!
@@ -1033,6 +1043,7 @@ const typeDefs = `#graphql
     createdBy: String
     assigneeUserId: String
     assigneeUserIds: [String!]!
+    currentPerformerUserIds: [String!]!
     assigneeDiffersFromOwner: Boolean!
     gitlab: TaskGitlabStatus
     createdAt: String
@@ -1462,6 +1473,8 @@ const resolvers = {
       await pageQuery(context, "tasks", cleanInput(args)),
     task: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.get", cleanInput(args))).task,
+    taskWorkflow: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      (await callTool<Row>(context, "task.workflow", cleanInput(args))).workflow,
     taskGitlabStatus: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "task.gitlab_status", cleanInput(args))).gitlab,
     taskClaims: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

@@ -107,6 +107,7 @@ beforeEach(async () => {
   await createRequire(import.meta.url)("../migrations/pg/126_telegram_observed_senders.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/123_task_assignees.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/138_task_workflow.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/129_telegram_task_feedback_source.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/133_telegram_manual_task.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);

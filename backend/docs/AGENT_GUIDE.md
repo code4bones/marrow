@@ -699,16 +699,24 @@ Use these docs for deeper behavior:
 - [AGENT_STATE_MACHINE.md](AGENT_STATE_MACHINE.md)
 - [MCP_TOOLS.md](MCP_TOOLS.md)
 
-## Telegram task stages
+## Task path, responsible team and current performers
 
-For a Telegram-origin task, task.get/preflight includes its source workflow.
+For every task, task.get/preflight includes workflow history and routing rules.
+`assigneeUserIds` is the responsible team; `currentPerformerUserIds` is current
+execution. On “send/pass/передай/отправь task to X”, use `task.handoff`, NEVER
+`task.update_assignee` or a duplicate task. Team edits require an explicit user
+request and do not transfer work. Find incoming work with `task.list(performer:"me")`.
+Read earlier path steps with `task.workflow` and its version cursor.
 Use `task.update_status({id, status:"clar", note:"question"})` for clarification;
 the original message receives the question. When only your stage is done, release
 or complete your claim, then use `task.handoff({id, assignees:["next member"],
 note:"completed work and next steps", expectedVersion:task.version})`. Read the
 current version from task.get. Keep one task through cyclic handoffs. Use DONE
 only after the entire task is finished. Marrow sends source replies itself; do
-not duplicate those replies manually. These stage handoffs apply to Telegram tasks.
+not duplicate those replies manually. Handoffs work for all tasks; only
+Telegram-origin tasks receive the automatic source-chat replies.
+Optional handoff status is todo (default), doing, review or blocked. Each transfer
+records actor/from/to/time/status/note while the responsible team stays intact.
 
 Telegram attachments are imported asynchronously as project artifacts.
 Task.get/preflight expose `artifactIds` and `telegram.attachments` states. Wait or
