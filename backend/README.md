@@ -118,9 +118,11 @@ login page is unchanged. See [GitLab sign-in setup](docs/AUTH.md#gitlab-sign-in-
 
 Project Settings → **Bots** supports several dedicated Telegram bots and several
 groups/channels per bot. Chats are authorized by a single-use message key. Each
-bot has editable hashtag filters; only tagged messages with mentions of linked
-active project members go to the project owner's saved DeepSeek
-model, which extracts clear assignments and skips conversation. Setup requires
+bot has editable hashtag filters; only tagged messages with mentions go to the project owner's saved DeepSeek
+model, which extracts clear assignments and skips conversation. Per-chat settings
+map observed mentions to project members. Multiple or unresolved recipients fall
+back to the owner; one message creates at most one task and a Rich Message reply
+links it after commit. Setup requires
 `TELEGRAM_BOT_ENC_KEY` (32 random bytes in base64) and existing `AI_PROVIDER_ENC_KEY`.
 Project bots use grammY long polling through the same `TELEGRAM_BOT_PROXY` as the
 notification bot; no inbound Telegram webhook or nginx route is required.

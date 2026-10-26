@@ -1,4 +1,5 @@
 import type { Api } from "grammy";
+import { telegramRequest } from "./request.js";
 import type { AppLogger } from "../../shared/logging/logger.js";
 
 export interface TelegramBindingConfirmation {
@@ -14,12 +15,12 @@ export async function sendBindingConfirmation(
   api: Pick<Api, "sendRichMessage">,
   confirmation: TelegramBindingConfirmation,
   botId: string,
-  signal?: Parameters<Api["sendRichMessage"]>[3],
+  signal?: AbortSignal,
   logger?: AppLogger
 ): Promise<void> {
   if (signal?.aborted) return;
   try {
-    await api.sendRichMessage(confirmation.chatId, {
+    await telegramRequest(signal, (apiSignal) => api.sendRichMessage(confirmation.chatId, {
       blocks: [
         { type: "heading", size: 3, text: "✅ Чат привязан к Marrow" },
         { type: "paragraph", text: `Проект: ${confirmation.projectTitle}` }
@@ -27,7 +28,7 @@ export async function sendBindingConfirmation(
     }, {
       reply_parameters: { message_id: confirmation.messageId, allow_sending_without_reply: true },
       ...(confirmation.messageThreadId !== undefined ? { message_thread_id: confirmation.messageThreadId } : {})
-    }, signal);
+    }, apiSignal));
   } catch {
     if (!signal?.aborted) logger?.warn({ botId, code: "TELEGRAM_BIND_CONFIRMATION_FAILED" }, "Telegram binding confirmation failed; binding is saved");
   }

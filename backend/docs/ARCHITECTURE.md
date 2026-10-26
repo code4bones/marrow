@@ -14,12 +14,13 @@ The implementation must stay simple, inspectable, reusable, and maintainable.
 
 Gateway Telegram project bots use a feature-local `telegram-project-bots/`
 module: grammY polling supervisor, Bot API/credential helpers, entity parser,
-explicit chat binding receiver, per-bot hashtag filter, active-member resolver,
+explicit chat binding receiver, per-bot hashtag filter, chat-scoped mention mappings, active-member resolver,
 a bounded DeepSeek classifier and durable queue worker. Each bot has a renewable
 DB lease, revision and persistent getUpdates offset. Polling uses the existing
 TELEGRAM_BOT_PROXY; it resumes on startup and cancels active requests on
 disable/remove/shutdown. Offset advancement commits with chat binding or queue
-insertion, before Telegram acknowledgement. The project management mixin exposes
+insertion, before Telegram acknowledgement. Bound-chat mentions are remembered before tag
+filtering for manual mapping; private/unbound messages never populate mappings. The project management mixin exposes
 owner/admin operations through MCP/GraphQL. The Bots activity switch changes
 desired state dynamically; computed polling status reports actual connection
 health separately. Each bot catches its API/network/unexpected errors; the
@@ -27,7 +28,11 @@ supervisor also contains initialization/reconciliation/cleanup failures so they
 cannot stop other bots or reject into the gateway lifecycle. The classification worker calls
 DeepSeek outside transactions, saves its classification, then rechecks binding
 and membership and creates tasks/source links/events atomically using PgToolService.
-Realtime/Telegram notifications are deferred until commit. The global notification
+One task per source message is enforced under the project lock; several or
+unresolved mentions assign it to the owner. Realtime/Telegram notifications and
+the project bot's task reply are deferred until commit. Every grammY polling/reply
+request gets a disposable abort signal, avoiding accumulation on the lifetime
+polling signal. The global notification
 bot remains a separate integration. Contracts and deployment live in
 [MCP_TOOLS.md](MCP_TOOLS.md#project-telegram-bots-gateway).
 

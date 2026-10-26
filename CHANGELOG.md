@@ -4,6 +4,9 @@
 
 ### Added
 
+- Per-chat Telegram mention mappings to project members, one task per message
+  with owner fallback for multiple/unknown recipients, and Rich Message task replies.
+
 - Telegram bot receive journals, per-bot pipeline counters/timestamps and
   message details with filter reasons, classification and task links.
 - Rich Message replies confirming chat binding with the Marrow project title.
@@ -17,6 +20,11 @@
   browser-bound single-use state, and identity ownership constraints.
 - A dedicated English/Russian instruction screen for launches without a
   GitLab account link, with navigation to Marrow login or Profile Account.
+
+### Fixed
+
+- Telegram polling now disposes request abort listeners after every grammY call,
+  preventing MaxListenersExceededWarning on long-running bots.
 
 ### Changed
 

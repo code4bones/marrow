@@ -7,6 +7,7 @@ import type { AppLogger } from "../../shared/logging/logger.js";
 import type { Row } from "../pg-tool-service/types.js";
 import { acceptTelegramUpdate } from "./receiver.js";
 import { decryptBotSecret, projectTelegramApi } from "./remote.js";
+import { telegramRequest } from "./request.js";
 import { sendBindingConfirmation } from "./confirmation.js";
 
 interface Poller { revision: string; controller: AbortController; done: Promise<void> }
@@ -96,16 +97,15 @@ export class TelegramProjectPolling {
         if (!current || signal.aborted) return;
         try {
           api ??= this.createApi(decryptBotSecret(String(bot.token_enc)));
-          // grammY's Node types name abort-controller's older DOM shim;
-          // node-fetch accepts the native W3C signal at runtime as well.
-          const apiSignal = signal as unknown as NonNullable<Parameters<Api["getUpdates"]>[1]>;
-          const updates = await api.getUpdates({ offset: Number(current.poll_offset), timeout: 25, limit: 100, allowed_updates: ["message", "channel_post"] }, apiSignal);
+          const updates = await telegramRequest(signal, (apiSignal) => api!.getUpdates({
+            offset: Number(current.poll_offset), timeout: 25, limit: 100, allowed_updates: ["message", "channel_post"]
+          }, apiSignal));
           for (const update of updates) {
             if (signal.aborted) return;
             const result = await acceptTelegramUpdate(this.db, id, Buffer.from(JSON.stringify(update)), { owner, revision });
             if ("stopped" in result && result.stopped) return;
             if ("confirmation" in result && result.confirmation) {
-              await sendBindingConfirmation(api, result.confirmation, id, apiSignal, this.logger);
+              await sendBindingConfirmation(api, result.confirmation, id, signal, this.logger);
             }
           }
           await this.db("project_telegram_bots").where({ id, poll_owner: owner, poll_revision: revision, enabled: true })

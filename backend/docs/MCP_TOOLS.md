@@ -42,6 +42,8 @@ are owner/admin-only and excluded from Ask Marrow's automatic tool set.
 | `project.telegram_bots` | `project` → `bots`, `deepseekReady`; status, bound chats, pending/failed counts; no credentials |
 | `project.telegram_bot_messages` | `project`, `id`, optional `limit`/`offset` → compact journal page and total |
 | `project.telegram_bot_message` | `project`, `id`, `messageId` → message/filter/classification details and linked tasks |
+| `project.telegram_chat_mentions` | `project`, `id`, `chatId` → observed mentions, manual/effective recipients, active project members |
+| `project.telegram_chat_set_mention` | `project`, `id`, `chatId`, `mentionKey`, `userId` (null clears) → `saved`; mapping only in that bound bot/chat |
 | `project.telegram_bot_add` | `project`, `token`, `tags` → bot; verifies getMe, encrypts token, enables grammY polling |
 | `project.telegram_bot_set_tags` | `project`, `id`, `tags` → bot; replaces its hashtag filters |
 | `project.telegram_bot_connect` / `project.telegram_bot_disconnect` | `project`, `id` → bot status; starts/stops local polling, including during Telegram outages |
@@ -53,7 +55,8 @@ are owner/admin-only and excluded from Ask Marrow's automatic tool set.
 GraphQL mirrors these through `projectTelegramBots`, `addProjectTelegramBot`,
 `setProjectTelegramBotTags`, `connectProjectTelegramBot`, `disconnectProjectTelegramBot`,
 `projectTelegramBotLinkCode`, `unlinkProjectTelegramChat`,
-`retryProjectTelegramBot`, and `removeProjectTelegramBot`. Management uses the
+`retryProjectTelegramBot`, `removeProjectTelegramBot`, `projectTelegramChatMentions`
+and `setProjectTelegramChatMention`. Management uses the
 existing owner/admin checks and normal read/write access tiers.
 
 Create a dedicated bot with BotFather, add its token and message tags in Bots, and generate a key.
@@ -61,8 +64,13 @@ Send the exact `/marrow_link@bot_username <key>` command to the intended group o
 channel. This consumes the key and records that bot/chat binding. Each additional
 chat needs a fresh key. Only groups, supergroups and channels can bind; private
 messages cannot. In groups, grant admin rights or disable BotFather Privacy Mode
-and re-add the bot; add the bot as an administrator in channels. Participants
-must link their own Telegram account in Profile for mentions to match. Both
+and re-add the bot; add the bot as an administrator in channels. In each bound
+chat, **Recipients** lists observed mentions even from messages without matching
+tags. Map them to active project participants or clear manual assignments. These
+mappings override global Telegram identities and apply only to that bot/chat.
+Clearing restores account matching; missing/ambiguous/inactive recipients fall
+back to the owner. Mappings are rechecked before task creation. Only future tasks
+and queued messages use changes; past messages are not reprocessed. Both
 `@username` (case-insensitive) and Telegram `text_mention` IDs work in text/captions;
 UTF-16 entity offsets are respected. Arbitrary text containing a name is not a mention.
 
@@ -77,20 +85,26 @@ Bots. For example, `ошибка` and `проверка` match `#ошибка` o
 message or caption. At least one exact Telegram hashtag entity must match;
 matching is case-insensitive and Unicode-normalized, including Cyrillic.
 `#` is optional in configuration. Messages without a matching tag are excluded
-from member lookup, classification queue insertion and any AI request, while
+from classification queue insertion and any AI request, while
 remaining visible in the bounded receive journal. Different bots in the
 same chat can have different filters. Keys used for chat binding do not need tags.
 
-Only new tagged messages/posts from bound chats with at least one active project-member
-mention enter the durable queue. The owner's configured DeepSeek credential is
+Only new tagged messages/posts from bound chats with mentions and an active
+project owner enter the durable queue. Manual mappings, unique linked identities,
+then the owner fallback resolve candidates. The owner's configured DeepSeek credential is
 used (default DeepSeek first, otherwise newest DeepSeek with a selected model),
 never the admin's or another participant's key. DeepSeek receives only message
-text and the mentioned members' Telegram IDs/usernames. Its JSON response has no
+text and candidate Telegram IDs/normalized mention keys and usernames (no participant emails). Its JSON response has no
 tools and must name only those candidates, quote exact source evidence, and have
 confidence at least 0.90. A mention alone is insufficient: conversation, reports
 of completed work and uncertain intent produce no tasks. Clear requests, including
 polite requests phrased as questions, can create tasks. There is at most one task
-per message/recipient; distinct mentioned recipients may receive separate tasks.
+per source message, regardless of bot or number of recipients. Multiple distinct
+mentions always assign the one task to the project owner; repeated mentions of
+the same username count once. A single resolved mention selects that member.
+A Rich Message reply after commit names the task and actual assignee, links the
+web task and preserves the original message/topic. Send failures cannot roll
+back the task or cause automatic resends; no reply is sent for non-task messages.
 Titles/descriptions use the message language; notes retain the original message
 and Telegram link (or numeric chat/message IDs for basic groups without links).
 No surrounding history or attachments are fetched, and edits do not synchronize.
@@ -124,11 +138,14 @@ AI output or provider failure creates no tasks, retries with backoff up to five
 attempts, then appears as failed for explicit retry. Successful classification is
 saved and reused after a DB retry. Membership, project owner and binding are
 rechecked before task creation. Task, source link, events and queue completion
-commit together; notifications run after commit. Project/chat/message/Telegram-user
+commit together; notifications run after commit. Each polling/reply API request
+uses a temporary abort signal that is detached and aborted on completion,
+preventing grammY listener accumulation on the long-lived polling signal.
+Project/chat/message
 deduplication prevents duplicate tasks across multiple bots, delivery retries,
 bot reconnection and deleted-task replays.
 
-Deployment: apply migrations 117–120; configure `TELEGRAM_BOT_ENC_KEY` as a new
+Deployment: apply migrations 117–122; configure `TELEGRAM_BOT_ENC_KEY` as a new
 32-byte base64 encryption key and retain it across restarts. Existing DeepSeek
 keys use `AI_PROVIDER_ENC_KEY`. Reuse the existing `TELEGRAM_BOT_PROXY` to reach
 Telegram from the server; no public callback URL or inbound port is required.

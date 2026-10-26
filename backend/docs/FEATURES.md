@@ -12,9 +12,12 @@ The project is split into MVP features, near-future features, and explicitly def
 
 Project Settings → Bots supports multiple dedicated bots and explicit chat
 bindings via one-time message keys. Each bot has an editable hashtag list for
-initial filtering. Only tagged messages mentioning linked active project
-members in bound groups/channels are classified by the project owner's saved
-DeepSeek model. Clear assignments create tasks with source text/links; normal
+initial filtering. Only tagged messages with mentions in bound groups/channels are classified by the project owner's saved
+DeepSeek model. Per-chat settings map observed mentions to active project members, without
+requiring global Telegram account linking. Manual mappings override linked accounts.
+Each source message creates at most one task; multiple or unresolved recipients
+fall back to the project owner. A Rich Message reply links the saved task and names
+its assignee. Clear assignments create tasks with source text/links; normal
 conversation and uncertain intent are skipped. Durable retries, source
 deduplication across bots and post-commit notifications preserve normal task
 behavior. See [tool contracts and setup](MCP_TOOLS.md#project-telegram-bots-gateway).

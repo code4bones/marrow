@@ -249,6 +249,7 @@ const typeDefs = `#graphql
     # docs/AUTH.md's "Git host credentials" section.
     gitCredentials: [GitCredential!]!
     projectTelegramBots(project: String!): ProjectTelegramBots!
+    projectTelegramChatMentions(project: String!, id: ID!, chatId: String!): TelegramChatMentions!
     projectTelegramBotMessages(project: String!, id: ID!, limit: Int, offset: Int): TelegramBotMessagePage!
     projectTelegramBotMessage(project: String!, id: ID!, messageId: ID!): TelegramBotMessage!
     projectRepositories(project: String!): [ProjectRepository!]!
@@ -302,6 +303,7 @@ const typeDefs = `#graphql
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     addProjectTelegramBot(project: String!, token: String!, tags: [String!]!): ProjectTelegramBot!
+    setProjectTelegramChatMention(project: String!, id: ID!, chatId: String!, mentionKey: String!, userId: ID): Boolean!
     setProjectTelegramBotTags(project: String!, id: ID!, tags: [String!]!): ProjectTelegramBot!
     connectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
     disconnectProjectTelegramBot(project: String!, id: ID!): ProjectTelegramBot!
@@ -646,6 +648,9 @@ const typeDefs = `#graphql
 
   type ProjectTelegramBots { bots: [ProjectTelegramBot!]!, deepseekReady: Boolean! }
   type ProjectTelegramChat { chatId: String!, title: String! }
+  type TelegramChatMention { key: String!, label: String!, userId: ID, effectiveUserId: ID, resolution: String!, lastSeenAt: String }
+  type TelegramChatMember { id: ID!, email: String! }
+  type TelegramChatMentions { mentions: [TelegramChatMention!]!, members: [TelegramChatMember!]!, ownerUserId: ID }
   type TelegramChatLinkCode { command: String!, expiresAt: String! }
   enum TelegramBotPollingStatus { inactive starting active error }
   type ProjectTelegramBot {
@@ -1503,6 +1508,8 @@ const resolvers = {
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
     projectTelegramBots: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bots", cleanInput(args)),
+    projectTelegramChatMentions: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_chat_mentions", cleanInput(args)),
     projectTelegramBotMessages: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_messages", cleanInput(args)),
     projectTelegramBotMessage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
@@ -1663,6 +1670,8 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
     addProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_add", cleanInput(args)),
+    setProjectTelegramChatMention: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      Boolean((await callTool<Row>(context, "project.telegram_chat_set_mention", { ...cleanInput(args), userId: args.userId ?? null })).saved),
     setProjectTelegramBotTags: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bot_set_tags", cleanInput(args)),
     connectProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

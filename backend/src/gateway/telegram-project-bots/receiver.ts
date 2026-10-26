@@ -4,7 +4,7 @@ import { nowIso } from "../../shared/dates.js";
 import { AppError } from "../../shared/errors.js";
 import type { Row } from "../pg-tool-service/types.js";
 import { parseMentionMessage, type TelegramMentionMessage } from "./protocol.js";
-import { mentionedProjectMembers } from "./members.js";
+import { mentionedProjectMembers, rememberChatMentions } from "./members.js";
 import { matchesTelegramTags, telegramBotTags } from "./tags.js";
 import type { TelegramBindingConfirmation } from "./confirmation.js";
 import { receivedMessageSnapshot, TELEGRAM_MESSAGE_HISTORY_LIMIT } from "./messages.js";
@@ -82,9 +82,10 @@ async function ingestMessage(trx: Knex.Transaction, bot: Row, message: TelegramM
     return { accepted: true, bound: true, status: "bound", reason: "chat_bound", confirmation };
   }
   if (!await trx("project_telegram_chats").where({ bot_id: botId, chat_id: message.chatId }).first()) return { accepted: false, ignored: true, status: "ignored", reason: "unbound_chat" };
+  await rememberChatMentions(trx, botId, message);
   if (!matchesTelegramTags(bot.filter_tags, message.tags)) return { accepted: false, ignored: true, status: "ignored", reason: "no_matching_tag" };
   const matchedTags = message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag));
-  const members = await mentionedProjectMembers(trx, String(project.id), project.owner_user_id, message);
+  const members = await mentionedProjectMembers(trx, String(project.id), project.owner_user_id, message, botId);
   if (!members.length) return { accepted: false, ignored: true, status: "ignored", reason: "no_project_member", matchedTags };
   const rows = await trx("telegram_message_inbox").insert({
     id: randomUUID(), bot_id: botId, project_id: project.id, chat_id: message.chatId, message_id: message.messageId,

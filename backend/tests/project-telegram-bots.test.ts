@@ -33,7 +33,7 @@ let service: TestService;
 let worker: TelegramMessageWorker;
 let rollback = false;
 const httpFetch = vi.fn<typeof fetch>();
-const remote = { getMe: vi.fn(), getWebhookInfo: vi.fn(), setWebhook: vi.fn(), deleteWebhook: vi.fn() };
+const remote = { sendRichMessage: vi.fn().mockResolvedValue({}), getMe: vi.fn(), getWebhookInfo: vi.fn(), setWebhook: vi.fn(), deleteWebhook: vi.fn() };
 
 class TestService extends PgToolService {
   protected override async touchClient(): Promise<void> {}
@@ -68,6 +68,7 @@ beforeEach(async () => {
   vi.stubEnv("AI_PROVIDER_ENC_KEY", Buffer.alloc(32, 8).toString("base64"));
   vi.stubEnv("TELLY_INBOX_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
+  remote.sendRichMessage.mockReset().mockResolvedValue({});
   updateId = 0; rollback = false; httpFetch.mockReset(); vi.mocked(notifyTelegram).mockClear();
   remote.getMe.mockReset().mockResolvedValue({ id: 123456789, is_bot: true, username: "project_bot" });
   remote.getWebhookInfo.mockReset().mockResolvedValue({ url: "" });
@@ -92,6 +93,7 @@ beforeEach(async () => {
   });
   await migration.up(db);
   await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/121_telegram_chat_mentions.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
@@ -288,8 +290,8 @@ describe("Telegram mention pipeline", () => {
     await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
   });
 
-  it("skips unbound chats, nonmembers and private chats before any AI request", async () => {
-    for (const raw of [payload(undefined, -100999), payload("#ошибка @outsider исправь вход"), payload("#ошибка @pending исправь вход"), payload("#ошибка @disabled исправь вход"), payload("hello"), payload(undefined, 22, 10, { chat: { id: 22, type: "private" } })]) {
+  it("skips unbound chats, messages without mentions and private chats before any AI request", async () => {
+    for (const raw of [payload(undefined, -100999), payload("hello"), payload(undefined, 22, 10, { chat: { id: 22, type: "private" } })]) {
       expect(await deliver(raw)).toMatchObject({ ignored: true });
     }
     await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("telegram_message_inbox")).toHaveLength(0);
@@ -334,7 +336,9 @@ describe("Telegram mention pipeline", () => {
       { type: "mention", offset: caption.lastIndexOf("@member"), length: 7 }
     ] });
     reply([assignment(), assignment("11")]); await deliver(raw); await worker.tick();
-    expect((await db("tasks")).map((t) => t.assignee_user_id).sort()).toEqual(["member", "owner"]);
+    expect((await db("tasks")).map((t) => t.assignee_user_id).sort()).toEqual(["owner"]);
+    expect(await db("telegram_task_sources")).toHaveLength(1);
+    expect(remote.sendRichMessage).toHaveBeenCalledOnce();
   });
 
   it("deduplicates across bots and deliveries, including after task deletion", async () => {
@@ -373,7 +377,8 @@ describe("Telegram mention pipeline", () => {
       await db("project_members").where({ user_id: "member" }).del();
       return Response.json({ choices: [{ message: { content: JSON.stringify({ tasks: [assignment()] }) } }] });
     });
-    await deliver(); await worker.tick(); expect(await db("tasks")).toHaveLength(0);
+    await deliver(); await worker.tick(); expect(await db("tasks")).toHaveLength(1);
+    expect((await db("tasks").first()).assignee_user_id).toBe("owner");
   });
 
   it("does not create tasks when a chat is unlinked during classification", async () => {
@@ -415,4 +420,101 @@ describe("Telegram mention pipeline", () => {
     await expect(deliver(Buffer.from('{"update_id":"invalid"}'))).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
+});
+
+describe("chat recipient mappings and task replies", () => {
+  const chatInput = () => ({ project: "test", id: botId, chatId: "-10012345" });
+  const map = (mentionKey: string, userId: string | null) => callOk("project.telegram_chat_set_mention", { ...chatInput(), mentionKey, userId });
+
+  it("discovers unlinked mentions before tags, maps and clears without globally linking Telegram", async () => {
+    await db("telegram_identities").where({ user_id: "member" }).del();
+    await deliver(payload("@new_person привет", -10012345, 20));
+    const read = () => callOk("project.telegram_chat_mentions", chatInput());
+    expect(await read()).toMatchObject({ mentions: [{ key: "username:new_person", userId: null, effectiveUserId: "owner", resolution: "owner" }] });
+    expect(httpFetch).not.toHaveBeenCalled();
+    await map("username:new_person", "member"); await deliver(payload("@new_person еще привет", -10012345, 21));
+    expect(await read()).toMatchObject({ mentions: [{ userId: "member", effectiveUserId: "member", resolution: "manual" }] });
+    reply([assignment("username:new_person")]);
+    await deliver(payload("#ошибка @new_person исправь вход", -10012345, 22)); await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBe("member");
+    expect(await db("telegram_identities").where({ user_id: "member" })).toHaveLength(0);
+    await map("username:new_person", null);
+    expect(await read()).toMatchObject({ mentions: [{ userId: null, effectiveUserId: "owner", resolution: "owner" }] });
+    expect(await db("tasks")).toHaveLength(1);
+  });
+
+  it("serves GraphQL and rejects unauthorized callers, inactive recipients, wrong projects, bots and chats", async () => {
+    await deliver(payload("@new_person привет"));
+    const input = { ...chatInput(), mentionKey: "username:new_person", userId: "member" };
+    expect(await service.call("project.telegram_chat_set_mention", input, member)).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
+    expect(await service.call("project.telegram_chat_mentions", chatInput(), member)).toMatchObject({ ok: false });
+    for (const userId of ["outsider", "pending", "disabled"]) expect(await service.call("project.telegram_chat_set_mention", { ...input, userId }, owner)).toMatchObject({ ok: false });
+    expect(await service.call("project.telegram_chat_set_mention", { ...input, chatId: "-100999" }, owner)).toMatchObject({ ok: false });
+    expect(await service.call("project.telegram_chat_set_mention", { ...input, project: "other" }, { ...owner, sessionRole: "admin" })).toMatchObject({ ok: false });
+    const otherId = randomUUID();
+    await db("project_telegram_bots").insert({ ...await db("project_telegram_bots").first(), id: otherId, telegram_bot_id: "2222222" });
+    await db("project_telegram_chats").insert({ bot_id: otherId, chat_id: "-10012345", title: "Team", created_at: "2026-01-01" });
+    expect(await service.call("project.telegram_chat_set_mention", { ...input, id: otherId }, owner)).toMatchObject({ ok: false });
+    const contextValue = { service, requestContext: owner };
+    const result = await graphql({ schema: gatewaySchema, contextValue, variableValues: { id: botId },
+      source: `mutation($id:ID!){setProjectTelegramChatMention(project:"test", id:$id, chatId:"-10012345", mentionKey:"username:new_person", userId:"member")}` });
+    expect(result.errors).toBeUndefined(); expect(result.data?.setProjectTelegramChatMention).toBe(true);
+    const read = await graphql({ schema: gatewaySchema, contextValue, variableValues: { id: botId },
+      source: `query($id:ID!){projectTelegramChatMentions(project:"test", id:$id, chatId:"-10012345"){ownerUserId members{id email} mentions{key label userId effectiveUserId resolution lastSeenAt}}}` });
+    expect(read.errors).toBeUndefined(); expect(read.data).toMatchObject({ projectTelegramChatMentions: { mentions: [{ userId: "member", resolution: "manual" }] } });
+  });
+
+  it("isolates mappings between groups and uses the owner for unresolved or multiple recipients", async () => {
+    await deliver(payload("@new_person привет")); await map("username:new_person", "member");
+    await db("project_telegram_chats").insert({ bot_id: botId, chat_id: "-100999", title: "Other", created_at: "2026-01-01" });
+    reply([assignment("username:new_person")]);
+    await deliver(payload("#ошибка @new_person исправь вход", -100999, 20)); await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBe("owner");
+    reply([assignment(), assignment("11")]);
+    await deliver(payload("#ошибка @member @owner исправь вход", -10012345, 21)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(2);
+    expect((await db("tasks")).every((t) => t.assignee_user_id === "owner")).toBe(true);
+  });
+
+  it("rechecks mappings after AI and removes them with the chat", async () => {
+    await deliver(payload("@new_person привет")); await map("username:new_person", "member");
+    httpFetch.mockImplementation(async () => {
+      await map("username:new_person", "owner");
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ tasks: [assignment("username:new_person")] }) } }] });
+    });
+    await deliver(payload("#ошибка @new_person исправь вход", -10012345, 22)); await worker.tick();
+    expect((await db("tasks").first()).assignee_user_id).toBe("owner");
+    await callOk("project.telegram_bot_unlink_chat", chatInput()); expect(await db("telegram_chat_mentions")).toHaveLength(0);
+  });
+
+  it("replies with actual assignee, URL and forum topic only after commit and only once", async () => {
+    remote.sendRichMessage.mockImplementation(async () => {
+      expect(await db("tasks")).toHaveLength(1); expect((await db("telegram_message_inbox").first()).status).toBe("done"); return {};
+    });
+    const raw = payload(undefined, -10012345, 40, { message_thread_id: 7 }); await deliver(raw); await worker.tick();
+    const task = await db("tasks").first();
+    expect(remote.sendRichMessage).toHaveBeenCalledWith("-10012345", { blocks: [
+      { type: "heading", size: 3, text: "✅ Задача создана" },
+      { type: "paragraph", text: `${task.id}: Исправить вход` },
+      { type: "paragraph", text: "Исполнитель: member@test" },
+      { type: "paragraph", text: { type: "url", text: "Открыть задачу в Marrow →", url: `https://marrow.example.test/projects/test/tasks/${task.id}` } }
+    ] }, { reply_parameters: { message_id: 40, allow_sending_without_reply: true }, message_thread_id: 7 }, expect.anything());
+    await deliver(raw); await worker.tick(); expect(remote.sendRichMessage).toHaveBeenCalledOnce();
+  });
+
+  it("contains send errors without retrying committed tasks or leaking credentials", async () => {
+    remote.sendRichMessage.mockRejectedValue(new Error(`request failed /bot${token}/sendRichMessage`));
+    const warn = vi.fn();
+    const isolated = new TelegramMessageWorker(db, { warn } as unknown as import("../src/shared/logging/logger.js").AppLogger, httpFetch, (trx) => new TestService(trx));
+    await deliver(); await isolated.tick(); await isolated.stop();
+    expect(await db("tasks")).toHaveLength(1); expect((await db("telegram_message_inbox").first()).status).toBe("done");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(token); expect(warn).toHaveBeenCalled();
+    await worker.tick(); expect(remote.sendRichMessage).toHaveBeenCalledOnce();
+  });
+
+  it("does not reply for conversation or rolled-back tasks", async () => {
+    reply([]); await deliver(); await worker.tick(); expect(remote.sendRichMessage).not.toHaveBeenCalled();
+    reply([assignment()]); rollback = true; await deliver(payload(undefined, -10012345, 99)); await worker.tick();
+    expect(await db("tasks")).toHaveLength(0); expect(remote.sendRichMessage).not.toHaveBeenCalled();
+  });
 });

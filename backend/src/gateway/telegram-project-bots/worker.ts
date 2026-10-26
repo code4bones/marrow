@@ -6,8 +6,9 @@ import { PgToolService } from "../pg-tool-service.js";
 import type { Row } from "../pg-tool-service/types.js";
 import type { LlmHttpFetch } from "../llm-providers/index.js";
 import { classificationSchema, classifyTelegramMessage, type Classification } from "./classifier.js";
-import { mentionedProjectMembers } from "./members.js";
+import { mentionedProjectMembers, telegramAssignee } from "./members.js";
 import type { TelegramMentionMessage } from "./protocol.js";
+import { notifyCreatedTelegramTask, type TelegramTaskConfirmation } from "./task-confirmation.js";
 import { matchesTelegramTags } from "./tags.js";
 
 function jsonValue(value: unknown): unknown { return typeof value === "string" ? JSON.parse(value) : value; }
@@ -18,7 +19,8 @@ export class TelegramMessageWorker {
   private stopping = false;
   constructor(private readonly db: Knex, private readonly logger?: AppLogger,
     private readonly httpFetch: LlmHttpFetch = fetch,
-    private readonly createService: (db: Knex) => PgToolService = (db) => new PgToolService(db)) {}
+    private readonly createService: (db: Knex) => PgToolService = (db) => new PgToolService(db),
+    private readonly notifyTask = notifyCreatedTelegramTask) {}
 
   start(): void {
     if (this.timer) return;
@@ -79,7 +81,7 @@ export class TelegramMessageWorker {
     if (!bot || !project || !chat || !project.owner_user_id) { await this.ignore(delivery); return; }
     const message = jsonValue(delivery.payload) as TelegramMentionMessage;
     if (!matchesTelegramTags(bot.filter_tags, message.tags)) { await this.ignore(delivery); return; }
-    const members = await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message);
+    const members = await mentionedProjectMembers(this.db, String(project.id), project.owner_user_id, message, String(bot.id));
     if (!members.length) { await this.ignore(delivery); return; }
     // No transaction/row locks are held across a potentially slow AI call.
     let classification: Classification;
@@ -91,6 +93,7 @@ export class TelegramMessageWorker {
         .update({ classification: JSON.stringify(classification), classified_owner_id: project.owner_user_id, classified_at: nowIso() });
     }
     let notifications: PgToolService | null = null;
+    let confirmation: TelegramTaskConfirmation | null = null;
     await this.db.transaction(async (trx) => {
       // Serialize IDs and source deduplication within this project, then
       // fence disconnect/unlink and stale workers before any task is made.
@@ -103,24 +106,31 @@ export class TelegramMessageWorker {
         await this.finish(trx, delivery, "ignored", "configuration_changed"); return;
       }
       if (currentProject.owner_user_id !== project.owner_user_id) throw new AppError("GATEWAY_ERROR", "Project owner changed; reclassify with the current owner's DeepSeek.");
-      const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message);
+      const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message, String(bot.id));
       const service = this.createService(trx); service.deferEventNotifications();
       let created = false;
-      for (const assignment of classification.tasks) {
-        const member = recipients.find((m) => m.telegramId === assignment.telegramUserId);
-        if (!member || assignment.confidence < 0.9) continue;
-        const key = { project_id: project.id, chat_id: message.chatId, message_id: message.messageId, telegram_user_id: member.telegramId };
-        if (await trx("telegram_task_sources").where(key).first()) continue;
+      const assignments = classification.tasks.filter((task) => task.confidence >= 0.9);
+      const key = { project_id: project.id, chat_id: message.chatId, message_id: message.messageId };
+      // Serialize on the project above, and deduplicate the whole message,
+      // including sources created by earlier versions or another project bot.
+      if (assignments.length && recipients.length && !await trx("telegram_task_sources").where(key).first()) {
+        const assigneeId = telegramAssignee(message, recipients, String(currentProject.owner_user_id));
+        const assignment = assignments[0];
+        const description = [...new Set(assignments.map((task) => task.description))].join("\n\n").slice(0, 4000);
         const result = await service.call("task.create", {
-          project: project.id, title: assignment.title, scope: assignment.description, assignee: member.userId,
+          project: project.id, title: assignment.title, scope: description, assignee: assigneeId,
           milestone: `Telegram: ${message.chatTitle}`,
           notes: [`Telegram: ${message.url ?? `chat ${message.chatId}, message ${message.messageId}`}`,
-            `Chat: ${message.chatTitle}`, `DeepSeek evidence: ${assignment.evidence}`, "", "Original message:", message.text].join("\n")
+            `Chat: ${message.chatTitle}`, `DeepSeek evidence: ${assignments.map((task) => task.evidence).join("; ")}`, "", "Original message:", message.text].join("\n")
         }, { clientId: `integration:telegram:${bot.id}`, clientLabel: `Telegram @${bot.username}`,
           metadata: { kind: "integration", source: "telegram" } });
         if (!result.ok) throw new AppError("GATEWAY_ERROR", `Telegram task import failed: ${result.error.code}`);
         const taskId = String(((result.data as Row).task as Row).id);
-        await trx("telegram_task_sources").insert({ ...key, task_id: taskId, created_at: nowIso() });
+        await trx("telegram_task_sources").insert({ ...key, telegram_user_id: "message", task_id: taskId, created_at: nowIso() });
+        const user = await trx("users").where({ id: assigneeId }).first();
+        confirmation = { chatId: message.chatId, messageId: Number(message.messageId),
+          ...(message.messageThreadId !== undefined ? { messageThreadId: message.messageThreadId } : {}),
+          taskId, title: assignment.title, projectSlug: String(currentProject.slug), assignee: String(user?.email ?? assigneeId) };
         created = true;
       }
       await this.finish(trx, delivery, created || classification.tasks.length ? "done" : "ignored",
@@ -129,6 +139,11 @@ export class TelegramMessageWorker {
       notifications = service;
     });
     (notifications as PgToolService | null)?.flushEventNotifications(this.db);
+    if (confirmation) {
+      // Best effort, no blind resend after an uncertain network outcome.
+      try { await this.notifyTask(bot, confirmation, this.logger); }
+      catch { this.logger?.warn({ botId: bot.id, code: "TELEGRAM_TASK_CONFIRMATION_FAILED" }, "Telegram task confirmation failed; task is saved"); }
+    }
   }
 
   private async ignore(delivery: Row): Promise<void> {

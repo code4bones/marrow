@@ -104,3 +104,22 @@ export const GET_PROJECT_TELEGRAM_MESSAGE = gql`
     }
   }
 `;
+
+export interface TelegramChatMentions {
+  ownerUserId: string | null;
+  members: { id: string; email: string }[];
+  mentions: { key: string; label: string; userId: string | null; effectiveUserId: string | null; resolution: 'manual' | 'linked' | 'owner'; lastSeenAt: string | null }[];
+}
+export const GET_TELEGRAM_CHAT_MENTIONS = gql`
+  query ProjectTelegramChatMentions($project: String!, $id: ID!, $chatId: String!) {
+    projectTelegramChatMentions(project: $project, id: $id, chatId: $chatId) {
+      ownerUserId members { id email }
+      mentions { key label userId effectiveUserId resolution lastSeenAt }
+    }
+  }
+`;
+export const SET_TELEGRAM_CHAT_MENTION = gql`
+  mutation SetProjectTelegramChatMention($project: String!, $id: ID!, $chatId: String!, $mentionKey: String!, $userId: ID) {
+    setProjectTelegramChatMention(project: $project, id: $id, chatId: $chatId, mentionKey: $mentionKey, userId: $userId)
+  }
+`;

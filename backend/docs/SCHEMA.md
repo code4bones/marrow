@@ -31,6 +31,16 @@ commit atomically; pipeline completion/counters commit with tasks. Migration 120
 adds table/history/detail translations. No Telegram bot token or binding key is
 stored in the journal.
 
+Migration `121_telegram_chat_mentions.cjs` adds `telegram_chat_mentions`, keyed by
+`(bot_id, chat_id, mention_key)`: normalized username/Telegram ID, display label,
+last-seen timestamp and optional mapped user FK. The composite FK cascades on
+chat unlink/bot removal; user deletion clears the manual assignment. Runtime
+checks restrict assignments to active project members and the active owner.
+Migration 122 adds EN/RU chat-recipient settings. Only new bound-chat mentions are
+collected; existing messages are not reprocessed. New task source rows use the
+`telegram_user_id = 'message'` marker; source lookup checks the whole project/chat/
+message under a project lock, including older per-recipient tombstones.
+
 ## Gateway project GitLab settings
 
 Migration `112_gitlab_issue_exports.cjs` adds `gitlab_issue_exports`: a unique nullable task FK (`ON DELETE SET NULL`), original task ID, project FK, optional repository FK, retained explicit repository choice, repository host/numeric project ID/URL snapshot, assigning/recipient identities, GitLab assignee, lifecycle (`pending`, `processing`, `uncertain`, `blocked`, `failed`, `done`, `cancelled`), POST-attempt timestamp, retry lease and safe diagnostic code. The operation UUID is the issue-description correlation marker; no token is copied into the operation. Assignment and intent commit atomically. A committed POST-attempt flag forbids blind re-creation after process death or lost response. `gitlab_issue_links` is shared by import and export. Export tombstones persist after task/repository removal for late webhook correlation.

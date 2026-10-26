@@ -10,6 +10,7 @@ import {
   SET_PROJECT_TELEGRAM_BOT_TAGS,
   type ProjectTelegramBot, type TelegramChatLinkCode,
 } from '../../shared/api/project-telegram';
+import { ProjectBotChatSettings } from './ProjectBotChatSettings';
 import { ProjectBotMessages } from './ProjectBotMessages';
 
 export function ProjectBotsSection({ project, canManage }: { project: string; canManage: boolean }) {
@@ -18,6 +19,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
     GET_PROJECT_TELEGRAM_BOTS, { variables: { project }, skip: !canManage, pollInterval: 2000, fetchPolicy: 'network-only' },
   );
   const [addingOpen, setAddingOpen] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<{ botId: string; chatId: string; title: string } | null>(null);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [linkCode, setLinkCode] = useState<(TelegramChatLinkCode & { username: string }) | null>(null);
   const [editingTags, setEditingTags] = useState<ProjectTelegramBot | null>(null);
@@ -89,17 +91,17 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
           locale={{ emptyText: t('noBotChats') }} scroll={{ x: 450 }} columns={[
             { title: t('botChatTitle'), dataIndex: 'title' },
             { title: 'Telegram ID', dataIndex: 'chatId' },
-            { title: t('memberActions'), key: 'actions', render: (_, chat) => <Popconfirm title={t('unlinkBotChatConfirm')}
+            { title: t('memberActions'), key: 'actions', render: (_, chat) => <Space><Button size="small" onClick={() => setSelectedChat({ botId: bot.id, ...chat })}>{t('botChatSettings')}</Button><Popconfirm title={t('unlinkBotChatConfirm')}
               onConfirm={() => unlink({ variables: { project, id: bot.id, chatId: chat.chatId } })}>
               <Button size="small" disabled={busy}>{t('unlinkBotChat')}</Button>
-            </Popconfirm> },
+            </Popconfirm></Space> },
           ]} />
       </Space>
     </Card>
   );
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithHistory')} />
+      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithMappings')} />
       {data && !data.projectTelegramBots.deepseekReady && <Alert type="warning" showIcon title={t('botsDeepseekRequired')} />}
       {error && <Alert type="error" showIcon title={error.message} />}
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddingOpen(true)}>{t('addBot')}</Button>
@@ -130,6 +132,10 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
             <ProjectBotMessages key={selectedBot.id} project={project} botId={selectedBot.id} />
           </Card>
         </Space>}
+      </Drawer>
+      <Drawer title={t('botChatSettingsTitle', { title: selectedChat?.title })} size={1050} open={Boolean(selectedChat)}
+        onClose={() => setSelectedChat(null)} destroyOnHidden>
+        {selectedChat && <ProjectBotChatSettings key={`${selectedChat.botId}:${selectedChat.chatId}`} project={project} botId={selectedChat.botId} chatId={selectedChat.chatId} />}
       </Drawer>
       <Modal title={t('addBot')} open={addingOpen} destroyOnHidden onCancel={() => { if (!adding) { setAddingOpen(false); form.resetFields(); } }}
         onOk={() => form.submit()} confirmLoading={adding} okText={t('addBot')}>
