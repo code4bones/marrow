@@ -1,6 +1,6 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@apollo/client/react';
-import { Alert, Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Space, Spin, Switch, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,6 +10,7 @@ import {
   SET_PROJECT_TELEGRAM_BOT_TAGS,
   type ProjectTelegramBot, type TelegramChatLinkCode,
 } from '../../shared/api/project-telegram';
+import { ProjectBotMessages } from './ProjectBotMessages';
 
 export function ProjectBotsSection({ project, canManage }: { project: string; canManage: boolean }) {
   const { t } = useTranslation('projects');
@@ -17,6 +18,7 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
     GET_PROJECT_TELEGRAM_BOTS, { variables: { project }, skip: !canManage, pollInterval: 2000, fetchPolicy: 'network-only' },
   );
   const [addingOpen, setAddingOpen] = useState(false);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [linkCode, setLinkCode] = useState<(TelegramChatLinkCode & { username: string }) | null>(null);
   const [editingTags, setEditingTags] = useState<ProjectTelegramBot | null>(null);
   const [togglingBotId, setTogglingBotId] = useState<string | null>(null);
@@ -54,55 +56,81 @@ export function ProjectBotsSection({ project, canManage }: { project: string; ca
 
   if (!canManage) return <Alert type="info" showIcon title={t('botsOwnerOnly')} />;
   const bots = data?.projectTelegramBots.bots ?? [];
+  const selectedBot = bots.find((bot) => bot.id === selectedBotId);
+  const time = (value: string | null) => value ? new Date(value).toLocaleString() : '—';
+  const renderBotDetails = (bot: ProjectTelegramBot) => (
+    <Card key={bot.id} size="small" title={<Space wrap><span>@{bot.username}</span>
+      <Switch checked={bot.enabled} loading={togglingBotId === bot.id} disabled={busy || togglingBotId !== null}
+        checkedChildren={t('botActive')} unCheckedChildren={t('botInactive')}
+        aria-label={t('botActivityLabel', { username: bot.username })}
+        onChange={(active) => { void toggleBot(bot, active); }} />
+      <Tag color={statusColors[bot.pollingStatus]}>{t(`botPolling_${bot.pollingStatus}`)}</Tag>
+    </Space>}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
+        <Space wrap>
+          <Button size="small" disabled={busy || !bot.enabled} onClick={() => {
+            void generate({ variables: { project, id: bot.id } }).then((result) => {
+              if (result.data) setLinkCode({ ...result.data.projectTelegramBotLinkCode, username: bot.username });
+            }).catch(() => {});
+          }}>{t('linkBotChat')}</Button>
+          <Popconfirm title={t('removeBotConfirm')} onConfirm={() => remove({ variables: { project, id: bot.id } })}>
+            <Button danger size="small" disabled={busy}>{t('remove')}</Button>
+          </Popconfirm>
+        </Space>
+        <Space wrap>
+          <Typography.Text>{t('botTags')}:</Typography.Text>
+          {bot.tags.map((tag) => <Tag key={tag}>#{tag}</Tag>)}
+          <Button size="small" disabled={busy} onClick={() => { tagsForm.setFieldsValue({ tags: bot.tags }); setEditingTags(bot); }}>{t('editBotTags')}</Button>
+        </Space>
+        {bot.lastError && <Alert type="warning" showIcon title={t('botProcessingError')} description={t(`botError_${bot.lastError}`, { defaultValue: bot.lastError })} />}
+        {bot.lastPolledAt && <Typography.Text type="secondary">{t('botLastPoll', { time: new Date(bot.lastPolledAt).toLocaleString() })}</Typography.Text>}
+        {bot.failedCount > 0 && <Button size="small" disabled={busy} onClick={() => { void retry({ variables: { project, id: bot.id } }).catch(() => {}); }}>{t('retryBotMessages')}</Button>}
+        <Table size="small" rowKey="chatId" pagination={false} dataSource={bot.chats}
+          locale={{ emptyText: t('noBotChats') }} scroll={{ x: 450 }} columns={[
+            { title: t('botChatTitle'), dataIndex: 'title' },
+            { title: 'Telegram ID', dataIndex: 'chatId' },
+            { title: t('memberActions'), key: 'actions', render: (_, chat) => <Popconfirm title={t('unlinkBotChatConfirm')}
+              onConfirm={() => unlink({ variables: { project, id: bot.id, chatId: chat.chatId } })}>
+              <Button size="small" disabled={busy}>{t('unlinkBotChat')}</Button>
+            </Popconfirm> },
+          ]} />
+      </Space>
+    </Card>
+  );
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelp')} />
+      <Alert type="info" showIcon title={t('botsHowItWorks')} description={t('botsSetupHelpWithHistory')} />
       {data && !data.projectTelegramBots.deepseekReady && <Alert type="warning" showIcon title={t('botsDeepseekRequired')} />}
       {error && <Alert type="error" showIcon title={error.message} />}
       <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddingOpen(true)}>{t('addBot')}</Button>
-      {loading && !data && <Spin />}
-      {!loading && !error && !bots.length && <Empty description={t('noBots')} />}
-      {bots.map((bot) => (
-        <Card key={bot.id} size="small" title={<Space wrap><span>@{bot.username}</span>
-          <Switch checked={bot.enabled} loading={togglingBotId === bot.id} disabled={busy || togglingBotId !== null}
-            checkedChildren={t('botActive')} unCheckedChildren={t('botInactive')}
-            aria-label={t('botActivityLabel', { username: bot.username })}
-            onChange={(active) => { void toggleBot(bot, active); }} />
-          <Tag color={statusColors[bot.pollingStatus]}>{t(`botPolling_${bot.pollingStatus}`)}</Tag>
-        </Space>}>
-          <Space orientation="vertical" style={{ width: '100%' }}>
-            <Space wrap>
-              <Button size="small" disabled={busy || !bot.enabled} onClick={() => {
-                void generate({ variables: { project, id: bot.id } }).then((result) => {
-                  if (result.data) setLinkCode({ ...result.data.projectTelegramBotLinkCode, username: bot.username });
-                }).catch(() => {});
-              }}>{t('linkBotChat')}</Button>
-              <Popconfirm title={t('removeBotConfirm')} onConfirm={() => remove({ variables: { project, id: bot.id } })}>
-                <Button danger size="small" disabled={busy}>{t('remove')}</Button>
-              </Popconfirm>
-            </Space>
-            <Space wrap>
-              <Typography.Text>{t('botTags')}:</Typography.Text>
-              {bot.tags.map((tag) => <Tag key={tag}>#{tag}</Tag>)}
-              <Button size="small" disabled={busy} onClick={() => { tagsForm.setFieldsValue({ tags: bot.tags }); setEditingTags(bot); }}>{t('editBotTags')}</Button>
-            </Space>
-            {bot.lastError && <Alert type="warning" showIcon title={t('botProcessingError')} description={t(`botError_${bot.lastError}`, { defaultValue: bot.lastError })} />}
-            {bot.lastPolledAt && <Typography.Text type="secondary">{t('botLastPoll', { time: new Date(bot.lastPolledAt).toLocaleString() })}</Typography.Text>}
-            <Typography.Text type="secondary">{t('botQueueStatus', { pending: bot.pendingCount, failed: bot.failedCount })}</Typography.Text>
-            {bot.failedCount > 0 && <Button size="small" disabled={busy} onClick={() => { void retry({ variables: { project, id: bot.id } }).catch(() => {}); }}>{t('retryBotMessages')}</Button>}
-            {bot.lastReceivedAt && <Typography.Text type="secondary">{t('botLastMessage', { chat: bot.lastChatTitle, time: new Date(bot.lastReceivedAt).toLocaleString() })}</Typography.Text>}
-            <Table size="small" rowKey="chatId" pagination={false} dataSource={bot.chats}
-              locale={{ emptyText: t('noBotChats') }} scroll={{ x: 450 }} columns={[
-                { title: t('botChatTitle'), dataIndex: 'title' },
-                { title: 'Telegram ID', dataIndex: 'chatId' },
-                { title: t('memberActions'), key: 'actions', render: (_, chat) => <Popconfirm title={t('unlinkBotChatConfirm')}
-                  onConfirm={() => unlink({ variables: { project, id: bot.id, chatId: chat.chatId } })}>
-                  <Button size="small" disabled={busy}>{t('unlinkBotChat')}</Button>
-                </Popconfirm> },
-              ]} />
-          </Space>
-        </Card>
-      ))}
+      <Table<ProjectTelegramBot> size="small" rowKey="id" loading={loading && !data} dataSource={bots}
+        pagination={false} scroll={{ x: 1950 }} locale={{ emptyText: t('noBots') }}
+        onRow={(bot) => ({ onClick: () => setSelectedBotId(bot.id), style: { cursor: 'pointer' } })}
+        columns={[
+          { title: t('botName'), dataIndex: 'username', width: 180, fixed: 'left', render: (name, bot) => <Button type="link" onClick={() => setSelectedBotId(bot.id)}>@{name}</Button> },
+          { title: t('botActivity'), key: 'activity', width: 130, render: (_, bot) => <span onClick={(e) => e.stopPropagation()}>
+            <Switch checked={bot.enabled} loading={togglingBotId === bot.id} disabled={busy || togglingBotId !== null}
+              checkedChildren={t('botActive')} unCheckedChildren={t('botInactive')} aria-label={t('botActivityLabel', { username: bot.username })}
+              onChange={(active) => { void toggleBot(bot, active); }} />
+          </span> },
+          { title: t('botConnection'), key: 'connection', width: 190, render: (_, bot) => <Tag color={statusColors[bot.pollingStatus]}>{t(`botPolling_${bot.pollingStatus}`)}</Tag> },
+          { title: t('botReceivedCount'), dataIndex: 'receivedCount', width: 105 },
+          { title: t('botMatchedCount'), dataIndex: 'matchedCount', width: 125 },
+          { title: t('botProcessedCount'), dataIndex: 'processedCount', width: 115 },
+          { title: t('botPendingCount'), dataIndex: 'pendingCount', width: 100 },
+          { title: t('botFailedCount'), dataIndex: 'failedCount', width: 90 },
+          { title: t('botLastReceivedAt'), dataIndex: 'lastReceivedAt', width: 170, render: time },
+          { title: t('botLastMatchedAt'), dataIndex: 'lastMatchedAt', width: 170, render: time },
+          { title: t('botLastProcessedAt'), dataIndex: 'lastProcessedAt', width: 170, render: time },
+        ]} />
+      <Drawer title={t('botDetails')} open={Boolean(selectedBot)} onClose={() => setSelectedBotId(null)} size={1050} destroyOnHidden>
+        {selectedBot && <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+          {renderBotDetails(selectedBot)}
+          <Card size="small" title={t('botMessageHistory')}>
+            <ProjectBotMessages key={selectedBot.id} project={project} botId={selectedBot.id} />
+          </Card>
+        </Space>}
+      </Drawer>
       <Modal title={t('addBot')} open={addingOpen} destroyOnHidden onCancel={() => { if (!adding) { setAddingOpen(false); form.resetFields(); } }}
         onOk={() => form.submit()} confirmLoading={adding} okText={t('addBot')}>
         <Typography.Paragraph>{t('botTokenHelp')}</Typography.Paragraph>

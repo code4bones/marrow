@@ -56,6 +56,11 @@ function reply(tasks: Row[]) {
   httpFetch.mockImplementation(async () => Response.json({ choices: [{ message: { content: JSON.stringify({ tasks }) } }] }));
 }
 async function deliver(raw = payload(), id = botId) { return acceptTelegramUpdate(db, id, raw); }
+async function callOk(name: string, input: Row): Promise<Row> {
+  const result = await service.call(name, input, owner);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.data as Row;
+}
 
 beforeEach(async () => {
   vi.stubEnv("PROJECT_MEMORY_PUBLIC_URL", "https://marrow.example.test/api");
@@ -86,6 +91,7 @@ beforeEach(async () => {
     t.text("id").primary(); for (const n of ["project_id", "type", "title", "body", "related_id", "agent_name", "target_user_ids", "created_by", "source_instance_id", "created_at"]) t.text(n);
   });
   await migration.up(db);
+  await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
@@ -136,8 +142,8 @@ describe("project bot and chat configuration", () => {
   });
 
   it("restricts management and keys to the owner/admin, scopes bot IDs and never returns secrets", async () => {
-    for (const name of ["project.telegram_bots", "project.telegram_bot_add", "project.telegram_bot_set_tags", "project.telegram_bot_link_code", "project.telegram_bot_disconnect", "project.telegram_bot_unlink_chat", "project.telegram_bot_retry", "project.telegram_bot_remove"]) {
-      expect(await service.call(name, { project: "test", id: botId, token, tags: ["ошибка"], chatId: "-10012345" }, member)).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
+    for (const name of ["project.telegram_bots", "project.telegram_bot_messages", "project.telegram_bot_message", "project.telegram_bot_add", "project.telegram_bot_set_tags", "project.telegram_bot_link_code", "project.telegram_bot_disconnect", "project.telegram_bot_unlink_chat", "project.telegram_bot_retry", "project.telegram_bot_remove"]) {
+      expect(await service.call(name, { project: "test", id: botId, messageId: randomUUID(), token, tags: ["ошибка"], chatId: "-10012345" }, member)).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
     }
     expect(remote.getMe).not.toHaveBeenCalled();
     expect(await service.call("project.telegram_bot_disconnect", { project: "other", id: botId }, { ...owner, sessionRole: "admin" })).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
@@ -196,6 +202,62 @@ describe("project bot and chat configuration", () => {
 });
 
 describe("Telegram mention pipeline", () => {
+  it("counts every received message but only accepted/completed pipeline entries, with inspectable results", async () => {
+    await deliver(payload("hello", 22, 1, { chat: { id: 22, type: "private" } }));
+    await deliver(payload("#ошибка @member исправь вход", -100999, 2));
+    await deliver(payload("@member исправь вход", -10012345, 3));
+    const accepted = payload(undefined, -10012345, 4); await deliver(accepted); await deliver(accepted);
+    let bot = await db("project_telegram_bots").first();
+    expect(bot).toMatchObject({ received_count: 4, matched_count: 1, processed_count: 0 });
+    expect(bot.last_received_at).toBeTruthy(); expect(bot.last_matched_at).toBeTruthy();
+    await worker.tick(); bot = await db("project_telegram_bots").first();
+    expect(bot).toMatchObject({ received_count: 4, matched_count: 1, processed_count: 1 }); expect(bot.last_processed_at).toBeTruthy();
+    const page = await callOk("project.telegram_bot_messages", { project: "test", id: botId });
+    expect(page.total).toBe(4);
+    const messages = page.messages as Row[];
+    expect(messages.map((m) => m.reason).sort()).toEqual(["no_matching_tag", "private_chat", "task_created", "unbound_chat"]);
+    const done = messages.find((m) => m.status === "done")!;
+    const detail = await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: done.id });
+    expect(detail).toMatchObject({ text: "#ошибка @member исправь вход", matchedTags: ["ошибка"], mentions: ["@member"], classification: { tasks: [{ telegramUserId: "22" }] } });
+    expect(detail.classifiedAt).toBeTruthy(); expect(detail.processedAt).toBeTruthy(); expect(detail.tasks).toHaveLength(1);
+    const graphqlResult = await graphql({ schema: gatewaySchema, contextValue: { service, requestContext: owner },
+      variableValues: { id: botId, messageId: done.id }, source: `query($id: ID!, $messageId: ID!) {
+        projectTelegramBots(project:"test") { bots { receivedCount matchedCount processedCount lastReceivedAt lastMatchedAt lastProcessedAt } }
+        projectTelegramBotMessages(project:"test", id:$id, limit:1) { total messages { id status reason receivedAt excerpt } }
+        projectTelegramBotMessage(project:"test", id:$id, messageId:$messageId) { text matchedTags mentions classification tasks { id title status } }
+      }` });
+    expect(graphqlResult.errors).toBeUndefined();
+    expect(graphqlResult.data).toMatchObject({ projectTelegramBots: { bots: [{ receivedCount: 4, matchedCount: 1, processedCount: 1 }] },
+      projectTelegramBotMessages: { total: 4 }, projectTelegramBotMessage: { text: "#ошибка @member исправь вход" } });
+    const one = await callOk("project.telegram_bot_messages", { project: "test", id: botId, limit: 1, offset: 1 });
+    expect(one.messages).toHaveLength(1); expect(one.total).toBe(4);
+    await worker.tick(); expect((await db("project_telegram_bots").first()).processed_count).toBe(1);
+  });
+
+  it("redacts binding keys and scopes message details to the correct bot/project", async () => {
+    const key = await callOk("project.telegram_bot_link_code", { project: "test", id: botId });
+    await deliver(payload(String(key.command)));
+    const page = await callOk("project.telegram_bot_messages", { project: "test", id: botId });
+    const row = (page.messages as Row[])[0];
+    const detail = await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: row.id });
+    expect(detail.status).toBe("bound"); expect(String(detail.text)).toContain("[ключ скрыт]");
+    expect(JSON.stringify(detail)).not.toContain(String(key.command).split(" ")[1]);
+    expect(await service.call("project.telegram_bot_message", { project: "other", id: botId, messageId: row.id }, { ...owner, sessionRole: "admin" })).toMatchObject({ ok: false });
+    const otherId = randomUUID(), bot = await db("project_telegram_bots").first();
+    await db("project_telegram_bots").insert({ ...bot, id: otherId, telegram_bot_id: "9999999" });
+    expect(await service.call("project.telegram_bot_message", { project: "test", id: otherId, messageId: row.id }, owner)).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  });
+
+  it("keeps only the latest 500 message bodies while retaining lifetime counters", async () => {
+    await db("telegram_bot_messages").insert(Array.from({ length: 500 }, (_, i) => ({ id: randomUUID(), bot_id: botId, telegram_update_id: i + 1,
+      chat_type: "private", message_kind: "text", text: "old", status: "ignored", reason: "private_chat", matched_tags: "[]", mentions: "[]", received_at: "2000-01-01" })));
+    await db("project_telegram_bots").update({ received_count: 500, poll_offset: 501 });
+    await deliver(Buffer.from('{"update_id":501,"message":{"message_id":7,"chat":{"id":22,"type":"private"},"text":"new"}}'));
+    expect(await db("telegram_bot_messages")).toHaveLength(500);
+    expect(await db("telegram_bot_messages").where({ telegram_update_id: 1 }).first()).toBeUndefined();
+    expect((await db("project_telegram_bots").first()).received_count).toBe(501);
+  });
+
   it("applies exact per-bot Unicode hashtag filters before queuing or charging DeepSeek", async () => {
     const changed = await service.call("project.telegram_bot_set_tags", { project: "test", id: botId, tags: ["#ОШИБКА", "ошибка"] }, owner);
     expect(changed).toMatchObject({ ok: true, data: { tags: ["ошибка"] } });

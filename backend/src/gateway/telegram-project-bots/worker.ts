@@ -88,7 +88,7 @@ export class TelegramMessageWorker {
     } else {
       classification = await classifyTelegramMessage(this.db, String(project.owner_user_id), message.text, members, this.httpFetch);
       await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts })
-        .update({ classification: JSON.stringify(classification), classified_owner_id: project.owner_user_id });
+        .update({ classification: JSON.stringify(classification), classified_owner_id: project.owner_user_id, classified_at: nowIso() });
     }
     let notifications: PgToolService | null = null;
     await this.db.transaction(async (trx) => {
@@ -100,7 +100,7 @@ export class TelegramMessageWorker {
       if (!current) return;
       const currentChat = await trx("project_telegram_chats").where({ bot_id: bot.id, chat_id: message.chatId }).first();
       if (!currentProject || !currentBot || !currentChat || !matchesTelegramTags(currentBot.filter_tags, message.tags)) {
-        await trx("telegram_message_inbox").where({ id: delivery.id }).update({ status: "ignored", locked_until: null }); return;
+        await this.finish(trx, delivery, "ignored", "configuration_changed"); return;
       }
       if (currentProject.owner_user_id !== project.owner_user_id) throw new AppError("GATEWAY_ERROR", "Project owner changed; reclassify with the current owner's DeepSeek.");
       const recipients = await mentionedProjectMembers(trx, String(project.id), currentProject.owner_user_id, message);
@@ -123,7 +123,8 @@ export class TelegramMessageWorker {
         await trx("telegram_task_sources").insert({ ...key, task_id: taskId, created_at: nowIso() });
         created = true;
       }
-      await trx("telegram_message_inbox").where({ id: delivery.id }).update({ status: created || classification.tasks.length ? "done" : "ignored", locked_until: null, last_error: null });
+      await this.finish(trx, delivery, created || classification.tasks.length ? "done" : "ignored",
+        created ? "task_created" : classification.tasks.length ? "no_new_tasks" : "not_task");
       await trx("project_telegram_bots").where({ id: bot.id }).update({ last_error: null });
       notifications = service;
     });
@@ -131,7 +132,17 @@ export class TelegramMessageWorker {
   }
 
   private async ignore(delivery: Row): Promise<void> {
-    await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts })
-      .update({ status: "ignored", locked_until: null });
+    await this.db.transaction(async (trx) => {
+      await trx("project_telegram_bots").where({ id: delivery.bot_id }).forUpdate().first();
+      await this.finish(trx, delivery, "ignored", "configuration_changed");
+    });
+  }
+
+  private async finish(trx: Knex.Transaction, delivery: Row, status: "done" | "ignored", reason: string): Promise<void> {
+    const now = nowIso();
+    const rows = await trx("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts })
+      .update({ status, result_reason: reason, processed_at: now, locked_until: null, last_error: null }).returning("id");
+    if (rows.length) await trx("project_telegram_bots").where({ id: delivery.bot_id })
+      .update({ processed_count: trx.raw("processed_count + 1"), last_processed_at: now });
   }
 }

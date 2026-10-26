@@ -7,9 +7,10 @@ import type { AppLogger } from "../../shared/logging/logger.js";
 import type { Row } from "../pg-tool-service/types.js";
 import { acceptTelegramUpdate } from "./receiver.js";
 import { decryptBotSecret, projectTelegramApi } from "./remote.js";
+import { sendBindingConfirmation } from "./confirmation.js";
 
 interface Poller { revision: string; controller: AbortController; done: Promise<void> }
-type PollingApi = Pick<Api, "getUpdates">;
+type PollingApi = Pick<Api, "getUpdates" | "sendRichMessage">;
 
 function pollingError(error: unknown): { code: string; retryAfter?: number } {
   const value = error as { error_code?: number; parameters?: { retry_after?: number } } | null;
@@ -103,6 +104,9 @@ export class TelegramProjectPolling {
             if (signal.aborted) return;
             const result = await acceptTelegramUpdate(this.db, id, Buffer.from(JSON.stringify(update)), { owner, revision });
             if ("stopped" in result && result.stopped) return;
+            if ("confirmation" in result && result.confirmation) {
+              await sendBindingConfirmation(api, result.confirmation, id, apiSignal, this.logger);
+            }
           }
           await this.db("project_telegram_bots").where({ id, poll_owner: owner, poll_revision: revision, enabled: true })
             .update({ last_polled_at: nowIso(), poll_error: null, poll_retry_at: null });

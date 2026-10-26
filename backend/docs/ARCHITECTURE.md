@@ -31,6 +31,14 @@ Realtime/Telegram notifications are deferred until commit. The global notificati
 bot remains a separate integration. Contracts and deployment live in
 [MCP_TOOLS.md](MCP_TOOLS.md#project-telegram-bots-gateway).
 
+The polling ingress records every newly observed update in a bounded per-bot
+journal before task filters, with binding keys redacted. Receive counters,
+journal rows, chat binding/queue writes and the cursor commit together; pipeline
+completion counters commit with task creation. Owner/admin GraphQL/MCP reads
+provide compact journal pages and selected-message details. A successful binding
+returns a post-commit Rich Message reply descriptor to the polling loop; sending
+it is isolated from binding and cursor persistence.
+
 Use a feature-oriented architecture inspired by FSD principles.
 
 This is not a frontend application, so do not copy FSD mechanically. Instead, apply the core ideas:

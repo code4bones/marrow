@@ -249,6 +249,8 @@ const typeDefs = `#graphql
     # docs/AUTH.md's "Git host credentials" section.
     gitCredentials: [GitCredential!]!
     projectTelegramBots(project: String!): ProjectTelegramBots!
+    projectTelegramBotMessages(project: String!, id: ID!, limit: Int, offset: Int): TelegramBotMessagePage!
+    projectTelegramBotMessage(project: String!, id: ID!, messageId: ID!): TelegramBotMessage!
     projectRepositories(project: String!): [ProjectRepository!]!
     projectGitlabMappings(project: String!): [ProjectGitlabMapping!]!
     projectGitlabUsers(project: String!, host: String!, query: String!): [GitlabUser!]!
@@ -654,11 +656,39 @@ const typeDefs = `#graphql
     pollingStatus: TelegramBotPollingStatus!
     lastError: String
     lastPolledAt: String
+    receivedCount: Int!
+    matchedCount: Int!
+    processedCount: Int!
+    lastMatchedAt: String
+    lastProcessedAt: String
     lastReceivedAt: String
     lastChatTitle: String
     failedCount: Int!
     pendingCount: Int!
     chats: [ProjectTelegramChat!]!
+  }
+  type TelegramBotMessagePage { messages: [TelegramBotMessage!]!, total: Int! }
+  type TelegramBotImportedTask { id: ID!, title: String!, status: String! }
+  type TelegramBotMessage {
+    id: ID!
+    chatTitle: String
+    chatId: String
+    chatType: String!
+    telegramMessageId: String
+    messageKind: String!
+    messageUrl: String
+    receivedAt: String!
+    classifiedAt: String
+    processedAt: String
+    status: String!
+    reason: String
+    lastError: String
+    excerpt: String
+    text: String
+    matchedTags: [String!]
+    mentions: [String!]
+    classification: JSON
+    tasks: [TelegramBotImportedTask!]
   }
   type ProjectRepository {
     id: ID!
@@ -1473,6 +1503,10 @@ const resolvers = {
       (await callTool<Row>(context, "git.credential_list", {})).credentials,
     projectTelegramBots: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       await callTool<Row>(context, "project.telegram_bots", cleanInput(args)),
+    projectTelegramBotMessages: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_messages", cleanInput(args)),
+    projectTelegramBotMessage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      await callTool<Row>(context, "project.telegram_bot_message", cleanInput(args)),
     projectRepositories: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.repositories", cleanInput(args))).repositories,
     projectGitlabMappings: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

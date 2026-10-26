@@ -6,6 +6,7 @@ import { decryptBotSecret, encryptBotSecret, projectTelegramApi } from "../../te
 import { linkCodeHash } from "../../telegram-project-bots/receiver.js";
 import { telegramBotTags } from "../../telegram-project-bots/tags.js";
 import { telegramPollingStatus } from "../../telegram-project-bots/status.js";
+import { botMessageOut, botMessageSelect } from "../../telegram-project-bots/messages.js";
 import type { Constructor } from "../base.js";
 import type { Tier1Instance } from "../core/links-core.mixin.js";
 import { dateStringOrNull } from "../formatters/common.js";
@@ -19,6 +20,8 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const pending = await this.db("telegram_message_inbox").where({ bot_id: row.id }).whereIn("status", ["pending", "processing"]).count({ count: "*" }).first();
       return { id: row.id, username: row.username, tags: telegramBotTags(row.filter_tags), enabled: Boolean(row.enabled), lastError: row.poll_error ?? row.last_error ?? null,
         pollingStatus: telegramPollingStatus(row),
+        receivedCount: Number(row.received_count ?? 0), matchedCount: Number(row.matched_count ?? 0), processedCount: Number(row.processed_count ?? 0),
+        lastMatchedAt: dateStringOrNull(row.last_matched_at), lastProcessedAt: dateStringOrNull(row.last_processed_at),
         lastPolledAt: dateStringOrNull(row.last_polled_at),
         lastReceivedAt: dateStringOrNull(row.last_received_at), lastChatTitle: row.last_chat_title ?? null,
         failedCount: Number(failed?.count ?? 0), pendingCount: Number(pending?.count ?? 0),
@@ -37,6 +40,31 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       const provider = project.ownerUserId ? await this.db("ai_provider_credentials")
         .where({ owner_user_id: project.ownerUserId, provider: "deepseek" }).whereNotNull("model").whereNot("model", "").first() : null;
       return { bots: await Promise.all(bots.map((bot) => this.telegramBotOut(bot))), deepseekReady: Boolean(provider) };
+    }
+
+    private async managedTelegramBot(input: Row, context: NormalizedGatewayRequestContext) {
+      const project = await this.managedTelegramProject(input, context);
+      const bot = await this.db("project_telegram_bots").where({ id: input.id, project_id: project.id }).first();
+      if (!bot) throw new AppError("NOT_FOUND", "Bot not found in this project.");
+      return { bot, project };
+    }
+
+    protected async projectTelegramBotMessages(input: Row, context: NormalizedGatewayRequestContext) {
+      const { bot } = await this.managedTelegramBot(input, context);
+      const rows = await botMessageSelect(this.db, String(bot.id)).orderBy("m.received_at", "desc").orderBy("m.telegram_update_id", "desc")
+        .limit(Number(input.limit ?? 25)).offset(Number(input.offset ?? 0));
+      const total = await this.db("telegram_bot_messages").where({ bot_id: bot.id }).count({ count: "*" }).first();
+      return { messages: rows.map((row) => botMessageOut(row)), total: Number(total?.count ?? 0) };
+    }
+
+    protected async projectTelegramBotMessage(input: Row, context: NormalizedGatewayRequestContext) {
+      const { bot, project } = await this.managedTelegramBot(input, context);
+      const row = await botMessageSelect(this.db, String(bot.id)).where("m.id", String(input.messageId)).first();
+      if (!row) throw new AppError("NOT_FOUND", "Message not found for this project's bot.");
+      const tasks = row.chat_id && row.message_id ? await this.db("telegram_task_sources as s").join("tasks as t", "t.id", "s.task_id")
+        .where({ "s.project_id": project.id, "s.chat_id": row.chat_id, "s.message_id": row.message_id })
+        .select("t.id", "t.title", "t.status") : [];
+      return { ...botMessageOut(row, true), tasks };
     }
 
     protected async addProjectTelegramBot(input: Row, context: NormalizedGatewayRequestContext) {
@@ -121,8 +149,11 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
         const bot = await trx("project_telegram_bots").where({ id: input.id, project_id: project.id }).forUpdate().first();
         if (!bot) throw new AppError("NOT_FOUND", "Bot not found in this project.");
         await trx("project_telegram_chats").where({ bot_id: bot.id, chat_id: input.chatId }).del();
-        await trx("telegram_message_inbox").where({ bot_id: bot.id, chat_id: input.chatId }).whereIn("status", ["pending", "processing", "failed"])
-          .update({ status: "ignored", locked_until: null });
+        const now = nowIso();
+        const ignored = await trx("telegram_message_inbox").where({ bot_id: bot.id, chat_id: input.chatId }).whereIn("status", ["pending", "processing", "failed"])
+          .update({ status: "ignored", locked_until: null, result_reason: "chat_unlinked", processed_at: now }).returning("id");
+        if (ignored.length) await trx("project_telegram_bots").where({ id: bot.id })
+          .update({ processed_count: trx.raw("processed_count + ?", [ignored.length]), last_processed_at: now });
       });
       return { removed: true };
     }

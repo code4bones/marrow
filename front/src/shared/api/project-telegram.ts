@@ -8,6 +8,11 @@ export interface ProjectTelegramBot {
   pollingStatus: 'inactive' | 'starting' | 'active' | 'error';
   lastError: string | null;
   lastPolledAt: string | null;
+  receivedCount: number;
+  matchedCount: number;
+  processedCount: number;
+  lastMatchedAt: string | null;
+  lastProcessedAt: string | null;
   lastReceivedAt: string | null;
   lastChatTitle: string | null;
   failedCount: number;
@@ -20,7 +25,7 @@ export const GET_PROJECT_TELEGRAM_BOTS = gql`
   query ProjectTelegramBots($project: String!) {
     projectTelegramBots(project: $project) {
       deepseekReady
-      bots { id username tags enabled pollingStatus lastError lastPolledAt lastReceivedAt lastChatTitle failedCount pendingCount chats { chatId title } }
+      bots { id username tags enabled pollingStatus lastError lastPolledAt lastReceivedAt lastChatTitle receivedCount matchedCount processedCount lastMatchedAt lastProcessedAt failedCount pendingCount chats { chatId title } }
     }
   }
 `;
@@ -59,4 +64,43 @@ export const UNLINK_PROJECT_TELEGRAM_CHAT = gql`
 `;
 export const RETRY_PROJECT_TELEGRAM_BOT = gql`
   mutation RetryProjectTelegramBot($project: String!, $id: ID!) { retryProjectTelegramBot(project: $project, id: $id) }
+`;
+
+export interface TelegramBotMessage {
+  id: string;
+  chatTitle: string | null;
+  chatId: string | null;
+  chatType: string;
+  telegramMessageId: string | null;
+  messageKind: string;
+  messageUrl: string | null;
+  receivedAt: string;
+  classifiedAt: string | null;
+  processedAt: string | null;
+  status: string;
+  reason: string | null;
+  lastError: string | null;
+  excerpt: string | null;
+  text?: string | null;
+  matchedTags?: string[];
+  mentions?: string[];
+  classification?: { tasks: { telegramUserId: string; title: string; description: string; evidence: string; confidence: number }[] } | null;
+  tasks?: { id: string; title: string; status: string }[];
+}
+
+export const GET_PROJECT_TELEGRAM_MESSAGES = gql`
+  query ProjectTelegramBotMessages($project: String!, $id: ID!, $limit: Int, $offset: Int) {
+    projectTelegramBotMessages(project: $project, id: $id, limit: $limit, offset: $offset) {
+      total
+      messages { id chatTitle chatId chatType telegramMessageId messageKind messageUrl receivedAt classifiedAt processedAt status reason lastError excerpt }
+    }
+  }
+`;
+export const GET_PROJECT_TELEGRAM_MESSAGE = gql`
+  query ProjectTelegramBotMessage($project: String!, $id: ID!, $messageId: ID!) {
+    projectTelegramBotMessage(project: $project, id: $id, messageId: $messageId) {
+      id chatTitle chatId chatType telegramMessageId messageKind messageUrl receivedAt classifiedAt processedAt status reason lastError
+      text matchedTags mentions classification tasks { id title status }
+    }
+  }
 `;

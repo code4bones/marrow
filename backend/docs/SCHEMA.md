@@ -21,6 +21,16 @@ Migration `117_project_telegram_bots.cjs` adds:
 
 Migration 118 adds the English/Russian Bots UI translations.
 
+Migration `119_telegram_bot_messages.cjs` adds lifetime receive/match/process
+counters and latest-match/process timestamps to bots; classification/completion
+timestamps and result reason to the inbox; and `telegram_bot_messages`, a bounded
+receive journal with unique `(bot_id, telegram_update_id)`, chat/message metadata,
+redacted text, filter results and nullable inbox FK. The latest 500 entries per
+bot are retained independently of lifetime counters. Journal/counters/cursor
+commit atomically; pipeline completion/counters commit with tasks. Migration 120
+adds table/history/detail translations. No Telegram bot token or binding key is
+stored in the journal.
+
 ## Gateway project GitLab settings
 
 Migration `112_gitlab_issue_exports.cjs` adds `gitlab_issue_exports`: a unique nullable task FK (`ON DELETE SET NULL`), original task ID, project FK, optional repository FK, retained explicit repository choice, repository host/numeric project ID/URL snapshot, assigning/recipient identities, GitLab assignee, lifecycle (`pending`, `processing`, `uncertain`, `blocked`, `failed`, `done`, `cancelled`), POST-attempt timestamp, retry lease and safe diagnostic code. The operation UUID is the issue-description correlation marker; no token is copied into the operation. Assignment and intent commit atomically. A committed POST-attempt flag forbids blind re-creation after process death or lost response. `gitlab_issue_links` is shared by import and export. Export tombstones persist after task/repository removal for late webhook correlation.

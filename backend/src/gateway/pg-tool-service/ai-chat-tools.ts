@@ -50,6 +50,8 @@ export const AI_CHAT_ALLOWED_WRITE_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 export const AI_CHAT_EXCLUDED_READ_TOOLS: ReadonlySet<string> = new Set([
+  "project.telegram_bot_messages",
+  "project.telegram_bot_message",
   "ai.available_models",
   "ai.conversation_messages",
   "ai.conversations_list",

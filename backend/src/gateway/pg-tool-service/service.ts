@@ -197,6 +197,10 @@ export class PgToolService extends ComposedService {
           return ok("GitLab imports queued for retry.", await this.retryProjectWebhookImports(parsed, requestContext));
         case "project.telegram_bots":
           return ok("Project Telegram bots listed.", await this.projectTelegramBots(parsed, requestContext));
+        case "project.telegram_bot_messages":
+          return ok("Bot messages listed.", await this.projectTelegramBotMessages(parsed, requestContext));
+        case "project.telegram_bot_message":
+          return ok("Bot message loaded.", await this.projectTelegramBotMessage(parsed, requestContext));
         case "project.telegram_bot_add":
           return ok("Project Telegram bot added.", await this.addProjectTelegramBot(parsed, requestContext));
         case "project.telegram_bot_set_tags":

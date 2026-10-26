@@ -19,6 +19,12 @@ conversation and uncertain intent are skipped. Durable retries, source
 deduplication across bots and post-commit notifications preserve normal task
 behavior. See [tool contracts and setup](MCP_TOOLS.md#project-telegram-bots-gateway).
 
+The Bots table shows receive/pipeline counters and last-message times. Selecting
+a bot opens its settings and receive journal; selecting a message shows its text,
+filter reason, AI result and created tasks. Up to 500 recent received messages
+are retained per bot, including messages that never reached DeepSeek. Successful
+chat binding gets a Rich Message reply naming the Marrow project.
+
 ### F-001: Project registry
 
 The server must support multiple projects.

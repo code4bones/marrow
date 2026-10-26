@@ -26,9 +26,22 @@ error. `pollingStatus` is computed from enabled state, polling diagnostics, a li
 receiver lease and recent successful polling; a classification failure does not
 mark the Telegram connection broken. Status is refreshed every two seconds.
 
+Bots are displayed in a table with lifetime received/accepted/processed counts,
+pending/failed counts, and timestamps of the latest incoming, accepted and
+completed message. Click a bot to inspect settings and the latest 500 received
+messages. Logging covers private/unbound/filter-rejected/media messages as well
+as the task pipeline, so receiving can be diagnosed independently of task creation.
+The journal starts with new updates after migration 119; earlier messages are
+not backfilled. Binding commands are redacted in stored message text. Detail
+shows the original text, chat/link, matched tags/member mentions, skip reason,
+pipeline/AI timestamps, saved classification and linked tasks. These diagnostics
+are owner/admin-only and excluded from Ask Marrow's automatic tool set.
+
 | Tool | Input / result |
 | --- | --- |
 | `project.telegram_bots` | `project` → `bots`, `deepseekReady`; status, bound chats, pending/failed counts; no credentials |
+| `project.telegram_bot_messages` | `project`, `id`, optional `limit`/`offset` → compact journal page and total |
+| `project.telegram_bot_message` | `project`, `id`, `messageId` → message/filter/classification details and linked tasks |
 | `project.telegram_bot_add` | `project`, `token`, `tags` → bot; verifies getMe, encrypts token, enables grammY polling |
 | `project.telegram_bot_set_tags` | `project`, `id`, `tags` → bot; replaces its hashtag filters |
 | `project.telegram_bot_connect` / `project.telegram_bot_disconnect` | `project`, `id` → bot status; starts/stops local polling, including during Telegram outages |
@@ -53,12 +66,19 @@ must link their own Telegram account in Profile for mentions to match. Both
 `@username` (case-insensitive) and Telegram `text_mention` IDs work in text/captions;
 UTF-16 entity offsets are respected. Arbitrary text containing a name is not a mention.
 
+After commit, the project bot sends a Rich Message reply to the binding command,
+showing the project title as literal text. Forum-topic replies keep their thread
+ID. A replay or invalid/expired key sends no duplicate confirmation. Delivery is
+best-effort: send errors are safely logged without undoing binding/cursor writes
+or stopping polling; there is no blind retry after an uncertain send outcome.
+
 Each bot has 1–20 tags (up to 64 letters/digits/underscores each), editable in
 Bots. For example, `ошибка` and `проверка` match `#ошибка` or `#проверка` in a
 message or caption. At least one exact Telegram hashtag entity must match;
 matching is case-insensitive and Unicode-normalized, including Cyrillic.
-`#` is optional in configuration. Messages without a matching tag are discarded
-before member lookup, queue insertion or any AI request. Different bots in the
+`#` is optional in configuration. Messages without a matching tag are excluded
+from member lookup, classification queue insertion and any AI request, while
+remaining visible in the bounded receive journal. Different bots in the
 same chat can have different filters. Keys used for chat binding do not need tags.
 
 Only new tagged messages/posts from bound chats with at least one active project-member
@@ -108,7 +128,7 @@ commit together; notifications run after commit. Project/chat/message/Telegram-u
 deduplication prevents duplicate tasks across multiple bots, delivery retries,
 bot reconnection and deleted-task replays.
 
-Deployment: apply migrations 117/118; configure `TELEGRAM_BOT_ENC_KEY` as a new
+Deployment: apply migrations 117–120; configure `TELEGRAM_BOT_ENC_KEY` as a new
 32-byte base64 encryption key and retain it across restarts. Existing DeepSeek
 keys use `AI_PROVIDER_ENC_KEY`. Reuse the existing `TELEGRAM_BOT_PROXY` to reach
 Telegram from the server; no public callback URL or inbound port is required.

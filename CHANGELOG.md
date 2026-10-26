@@ -4,6 +4,9 @@
 
 ### Added
 
+- Telegram bot receive journals, per-bot pipeline counters/timestamps and
+  message details with filter reasons, classification and task links.
+- Rich Message replies confirming chat binding with the Marrow project title.
 - Project Settings → Bots: multiple Telegram bots and key-bound chats,
   editable hashtag filters, and task extraction through the project owner's
   DeepSeek. Bots use grammY polling over the existing Telegram proxy, with

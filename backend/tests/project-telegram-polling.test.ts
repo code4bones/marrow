@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelegramProjectPolling } from "../src/gateway/telegram-project-bots/polling.js";
 import { encryptBotSecret, projectTelegramApi } from "../src/gateway/telegram-project-bots/remote.js";
 import type { AppLogger } from "../src/shared/logging/logger.js";
+import { linkCodeHash } from "../src/gateway/telegram-project-bots/receiver.js";
 
 const migration = createRequire(import.meta.url)("../migrations/pg/117_project_telegram_bots.cjs");
 const token = `123456789:${"a".repeat(35)}`;
@@ -21,26 +22,79 @@ function untilAborted(signal: Parameters<GetUpdates>[1]): ReturnType<GetUpdates>
   });
 }
 function blockedClient() {
-  return { getUpdates: vi.fn<GetUpdates>().mockImplementation((_other, signal) => untilAborted(signal)) };
+  return { getUpdates: vi.fn<GetUpdates>().mockImplementation((_other, signal) => untilAborted(signal)),
+    sendRichMessage: vi.fn<Api["sendRichMessage"]>().mockResolvedValue({
+      message_id: 900, date: 1, chat: { id: -10012345, type: "supergroup", title: "Team" }, rich_message: { blocks: [] }
+    }) };
 }
-function manager(client: Pick<Api, "getUpdates">, logger?: AppLogger) {
+function manager(client: Pick<Api, "getUpdates" | "sendRichMessage">, logger?: AppLogger) {
   const result = new TelegramProjectPolling(db, logger, () => client); managers.push(result); return result;
+}
+async function bindingUpdate(): Promise<Awaited<ReturnType<GetUpdates>>[number]> {
+  const code = "b".repeat(32);
+  await db("project_telegram_bots").where({ id: botId }).update({ link_code_hash: linkCodeHash(code), link_code_expires_at: new Date(Date.now() + 60_000).toISOString() });
+  return { update_id: 41, message: { message_id: 37, date: 1, message_thread_id: 17, from: { id: 22, is_bot: false, first_name: "Member" },
+    chat: { id: -10012345, type: "supergroup", title: "Team" }, text: `/marrow_link@project_bot ${code}` } };
 }
 beforeEach(async () => {
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
   managers = [];
   db = knex({ client: "better-sqlite3", connection: { filename: ":memory:" }, useNullAsDefault: true });
   await db.raw("PRAGMA foreign_keys = ON");
-  await db.schema.createTable("projects", (t) => { t.text("id").primary(); });
+  await db.schema.createTable("projects", (t) => { t.text("id").primary(); t.text("title"); t.text("status"); });
   await db.schema.createTable("tasks", (t) => { t.text("id").primary(); });
   await migration.up(db);
-  await db("projects").insert({ id: "P-TEST" });
+  await createRequire(import.meta.url)("../migrations/pg/119_telegram_bot_messages.cjs").up(db);
+  await db("projects").insert({ id: "P-TEST", title: "Project <Alpha> & beta", status: "active" });
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123456789", username: "project_bot",
     token_enc: encryptBotSecret(token), poll_revision: randomUUID(), filter_tags: '["ошибка"]', enabled: true, created_at: "2026-01-01", updated_at: "2026-01-01" });
 });
 afterEach(async () => { await Promise.all(managers.map((m) => m.stop())); await db.destroy(); vi.unstubAllEnvs(); });
 
 describe("project bot grammY polling", () => {
+  it("replies once with a Rich Message after the binding and cursor commit, in the original topic", async () => {
+    const update = await bindingUpdate(); const client = blockedClient();
+    client.getUpdates.mockResolvedValueOnce([update]).mockResolvedValueOnce([{ ...update, update_id: 42 }]).mockResolvedValueOnce([update]);
+    client.sendRichMessage.mockImplementation(async () => {
+      expect(await db("project_telegram_chats").first()).toMatchObject({ bot_id: botId, chat_id: "-10012345" });
+      expect(await db("project_telegram_bots").first()).toMatchObject({ poll_offset: 42, link_code_hash: null });
+      return { message_id: 900, date: 1, chat: { id: -10012345, type: "supergroup", title: "Team" }, rich_message: { blocks: [] } };
+    });
+    await manager(client).reconcile();
+    await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(4));
+    expect(client.sendRichMessage).toHaveBeenCalledOnce();
+    expect(client.sendRichMessage).toHaveBeenCalledWith("-10012345", { blocks: [
+      { type: "heading", size: 3, text: "✅ Чат привязан к Marrow" },
+      { type: "paragraph", text: "Проект: Project <Alpha> & beta" }
+    ] }, { reply_parameters: { message_id: 37, allow_sending_without_reply: true }, message_thread_id: 17 }, expect.anything());
+    expect(JSON.stringify(client.sendRichMessage.mock.calls)).not.toContain("b".repeat(32));
+  });
+
+  it("contains reply failures while preserving the binding and continuing polling", async () => {
+    const update = await bindingUpdate(), client = blockedClient(), warn = vi.fn();
+    client.getUpdates.mockResolvedValueOnce([update]).mockResolvedValueOnce([{ update_id: 42 }]);
+    client.sendRichMessage.mockRejectedValue(new HttpError(`Failed URL /bot${token}/sendRichMessage`, new Error("proxy error")));
+    await manager(client, { warn } as unknown as AppLogger).reconcile();
+    await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(3));
+    expect(await db("project_telegram_chats")).toHaveLength(1);
+    expect(await db("project_telegram_bots").first()).toMatchObject({ poll_offset: 43, poll_error: null });
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ code: "TELEGRAM_BIND_CONFIRMATION_FAILED" }), expect.any(String));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(token);
+  });
+
+  it("does not send confirmation for an expired key or a rolled-back binding", async () => {
+    const update = await bindingUpdate(), client = blockedClient();
+    await db("project_telegram_bots").update({ link_code_expires_at: "2000-01-01" });
+    client.getUpdates.mockResolvedValueOnce([update]); const first = manager(client); await first.reconcile();
+    await vi.waitFor(() => expect(client.getUpdates).toHaveBeenCalledTimes(2));
+    expect(client.sendRichMessage).not.toHaveBeenCalled(); await first.stop();
+    const nextUpdate = await bindingUpdate(); await db("project_telegram_bots").update({ poll_offset: 0 });
+    await db.raw("CREATE TRIGGER reject_chat_binding BEFORE INSERT ON project_telegram_chats BEGIN SELECT RAISE(ABORT, 'injected binding failure'); END");
+    const next = blockedClient(); next.getUpdates.mockResolvedValueOnce([nextUpdate]); await manager(next).reconcile();
+    await vi.waitFor(async () => expect((await db("project_telegram_bots").first()).poll_error).toBe("TELEGRAM_POLL_FAILED"));
+    expect(next.sendRichMessage).not.toHaveBeenCalled(); expect(await db("project_telegram_chats")).toHaveLength(0);
+  });
+
   it("uses the same HTTP proxy agent as the notification bot with a long-poll-compatible timeout", () => {
     vi.stubEnv("TELEGRAM_BOT_PROXY", "http://proxy.example.test:8080");
     const api = projectTelegramApi(token);
