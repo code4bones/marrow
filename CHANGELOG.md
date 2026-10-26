@@ -4,6 +4,13 @@
 
 ### Added
 
+- Short tagged reports of current defects qualify as investigation tasks without
+  requiring imperative wording; the classifier receives matched configured tags.
+
+- Outgoing project-bot message registry prevents feedback loops through anonymous
+  channel posts, channel-to-group forwards, edits, replays and other project bots;
+  pre-send fingerprints fence updates arriving before the API response.
+
 - Telegram tasks enter the existing Telly identity/route/acceptance pipeline for
   resolved performers, preserving owner fallback and shared task semantics.
 - `clar` (CLAR / Уточнение) status with a mandatory question and source replies.

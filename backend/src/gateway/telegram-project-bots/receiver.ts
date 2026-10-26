@@ -1,3 +1,4 @@
+import { isOutgoingTelegramUpdate } from "./outgoing.js";
 import { hashReply, type TelegramHashReply } from "./hash-command.js";
 import { rememberChatPeople } from "./people.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -45,11 +46,12 @@ export async function acceptTelegramUpdate(db: Knex, botId: string, raw: Buffer,
     }
     if (nextOffset <= Number(bot.poll_offset)) return { accepted: true, duplicate: true };
     const { fromBot, ...received } = receivedMessageSnapshot(update);
-    const result: IngestResult = message ? await ingestMessage(trx, bot, message) : {
+    const outgoing = await isOutgoingTelegramUpdate(trx, update);
+    const result: IngestResult = outgoing ? { accepted: false, ignored: true, status: "ignored", reason: "bot_sender" } : message ? await ingestMessage(trx, bot, message) : {
       accepted: false, ignored: true, status: "ignored",
       reason: received.chat_type === "private" ? "private_chat" : fromBot ? "bot_sender" : received.text === null ? "no_text" : "unsupported"
     };
-    await rememberChatPeople(trx, botId, update);
+    if (!outgoing) await rememberChatPeople(trx, botId, update);
     const now = nowIso();
     await trx("telegram_bot_messages").insert({ id: randomUUID(), bot_id: botId, telegram_update_id: updateId,
       ...received, received_at: now, status: result.status, reason: result.reason, inbox_id: result.inboxId ?? null,

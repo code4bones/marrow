@@ -11,7 +11,7 @@ import { classificationSchema, classifyTelegramMessage, type Classification } fr
 import { mentionedProjectMembers, telegramAssignees } from "./members.js";
 import type { TelegramMentionMessage } from "./protocol.js";
 import { notifyCreatedTelegramTask, type TelegramTaskConfirmation } from "./task-confirmation.js";
-import { matchesTelegramTags } from "./tags.js";
+import { matchesTelegramTags, telegramBotTags } from "./tags.js";
 
 function jsonValue(value: unknown): unknown { return typeof value === "string" ? JSON.parse(value) : value; }
 
@@ -90,7 +90,7 @@ export class TelegramMessageWorker {
     if (delivery.classification && delivery.classified_owner_id === project.owner_user_id) {
       classification = classificationSchema.parse(jsonValue(delivery.classification));
     } else {
-      classification = await classifyTelegramMessage(this.db, String(project.owner_user_id), message.text, members, this.httpFetch);
+      classification = await classifyTelegramMessage(this.db, String(project.owner_user_id), message.text, members, this.httpFetch, message.tags.filter((tag) => telegramBotTags(bot.filter_tags).includes(tag)));
       await this.db("telegram_message_inbox").where({ id: delivery.id, status: "processing", attempts: delivery.attempts })
         .update({ classification: JSON.stringify(classification), classified_owner_id: project.owner_user_id, classified_at: nowIso() });
     }
@@ -145,7 +145,7 @@ export class TelegramMessageWorker {
     (notifications as PgToolService | null)?.flushEventNotifications(this.db);
     if (confirmation) {
       // Best effort, no blind resend after an uncertain network outcome.
-      try { await this.notifyTask(bot, confirmation, this.logger); }
+      try { await this.notifyTask(bot, confirmation, this.logger, this.db); }
       catch { this.logger?.warn({ botId: bot.id, code: "TELEGRAM_TASK_CONFIRMATION_FAILED" }, "Telegram task confirmation failed; task is saved"); }
     }
   }

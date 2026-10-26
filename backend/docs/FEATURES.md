@@ -55,6 +55,17 @@ defer it; deleted/unbound sources are skipped. Definitively rejected transient
 Telegram requests retry with backoff/retry_after. An uncertain network outcome
 or expired sending lease is retained as failed rather than blindly duplicated.
 
+Tagged bug reports with a concrete affected operation qualify as investigation
+work even without an imperative. Missing symptoms/causes are not invented; bare
+tags, conversation and already resolved work remain excluded. Every new model
+call reloads the owner's saved DeepSeek key/model; a retry may reuse the message's
+saved classification rather than spend another call.
+
+Project bot replies are excluded before classification using the bot-sender
+flag and a shared registry of outgoing message IDs. Anonymous channel echoes,
+automatic forwards and updates racing the send response are also fenced. Normal
+human tagged replies remain eligible.
+
 ### F-001: Project registry
 
 The server must support multiple projects.

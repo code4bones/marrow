@@ -60,6 +60,7 @@ beforeEach(async () => {
   await require("../migrations/pg/123_task_assignees.cjs").up(db); service = new TestService(db);
   for (const name of ["005_task_claims", "063_telegram_identities", "117_project_telegram_bots", "121_telegram_chat_mentions", "126_telegram_observed_senders", "127_telegram_recipient_tags", "129_telegram_task_feedback_source"])
     await require(`../migrations/pg/${name}.cjs`).up(db);
+  await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
   vi.stubEnv("TELEGRAM_BOT_ENC_KEY", Buffer.alloc(32, 7).toString("base64"));
   vi.stubEnv("PROJECT_MEMORY_PUBLIC_URL", "https://marrow.test/api");
   await db("project_telegram_bots").insert({ id: botId, project_id: "P-TEST", telegram_bot_id: "123", username: "project_bot", token_enc: encryptBotSecret("123:fake"), filter_tags: "[]", poll_revision: randomUUID(), enabled: true, created_at: nowIso(), updated_at: nowIso() });

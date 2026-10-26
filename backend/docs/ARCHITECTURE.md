@@ -10,6 +10,20 @@ The server is intended to be used by coding agents such as Codex. It helps agent
 
 The implementation must stay simple, inspectable, reusable, and maintainable.
 
+## Telegram outgoing message exclusion
+
+Migration 132 introduces a shared `telegram_outgoing_messages` registry. Every
+project-bot send (binding, /hash, creation, lifecycle) stores a content SHA-256
+fingerprint before remote I/O and the returned chat/message identity afterward.
+Ingress excludes known outgoing IDs across all project bots, including channel
+auto-forwards and edits, before commands, tag filtering or classification. For
+anonymous/channel/automatic-forward updates, a ten-minute fingerprint window also
+fences updates racing the API response. A send without a confirmed message ID
+retains its fingerprint guard across a longer Telegram outage. Human
+replies with their own new message IDs remain eligible. No visible marker or
+copy of outbound content is added. Known message IDs survive bot deletion.
+`from.is_bot` continues to exclude all other bot messages independently.
+
 ## Telegram lifecycle delivery
 
 Telegram task creation atomically enqueues existing Telly offers for resolved

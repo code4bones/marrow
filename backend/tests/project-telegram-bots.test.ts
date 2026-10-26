@@ -10,6 +10,7 @@ import { parseMentionMessage } from "../src/gateway/telegram-project-bots/protoc
 import { decryptBotSecret, encryptBotSecret, projectTelegramApi } from "../src/gateway/telegram-project-bots/remote.js";
 import { TelegramMessageWorker } from "../src/gateway/telegram-project-bots/worker.js";
 import { notifyTelegram } from "../src/gateway/telegram.js";
+import { sendRememberedTelegramReply } from "../src/gateway/telegram-project-bots/outgoing.js";
 import { AppError } from "../src/shared/errors.js";
 import { fail } from "../src/shared/mcp/tool-response.js";
 import { gatewaySchema } from "../src/gateway/graphql.js";
@@ -100,6 +101,7 @@ beforeEach(async () => {
   await createRequire(import.meta.url)("../migrations/pg/127_telegram_recipient_tags.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/123_task_assignees.cjs").up(db);
   await createRequire(import.meta.url)("../migrations/pg/129_telegram_task_feedback_source.cjs").up(db);
+  await createRequire(import.meta.url)("../migrations/pg/132_telegram_outgoing_messages.cjs").up(db);
   await db("users").insert(["owner", "member", "pending", "outsider", "disabled"].map((id) => ({ id, email: `${id}@test`, status: id === "disabled" ? "disabled" : "active" })));
   await db("projects").insert([{ id: "P-TEST", slug: "test", title: "Test", owner_user_id: "owner", status: "active" }, { id: "P-OTHER", slug: "other", title: "Other", owner_user_id: "outsider", status: "active" }]);
   await db("project_members").insert(["owner", "member", "pending", "disabled"].map((user_id) => ({ project_id: "P-TEST", user_id, status: user_id === "pending" ? "pending_approval" : "active", role: "developer" })));
@@ -112,6 +114,55 @@ beforeEach(async () => {
   reply([assignment()]);
 });
 afterEach(async () => { await worker.stop(); await db.destroy(); vi.unstubAllEnvs(); });
+
+describe("Telegram feedback loop exclusion", () => {
+  const rich = { blocks: [{ type: "paragraph" as const, text: "#ошибка @member исправь вход · задача передана" }] };
+  const text = "#ошибка @member исправь вход · задача передана";
+  it("blocks an anonymous channel echo before the send response, then remembers its message ID", async () => {
+    await sendRememberedTelegramReply(db, botId, "-10012345", rich, async () => {
+      expect((await db("telegram_outgoing_messages").first()).message_id).toBeNull();
+      expect(await deliver(payload(text, -10012345, 91))).toMatchObject({ reason: "bot_sender", ignored: true });
+      return { message_id: 91 };
+    });
+    expect((await db("telegram_outgoing_messages").first()).message_id).toBe("91");
+    expect(await deliver(payload(text, -10012345, 91, { from: { id: 22, is_bot: false } }))).toMatchObject({ reason: "bot_sender" });
+    await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
+    expect(await db("telegram_message_inbox")).toHaveLength(0);
+  });
+  it("blocks a second project bot, automatic channel forwarding and edited/replayed echoes", async () => {
+    const secondId = randomUUID();
+    const bot = await db("project_telegram_bots").where({ id: botId }).first();
+    await db("project_telegram_bots").insert({ ...bot, id: secondId, telegram_bot_id: "999", username: "second_bot", poll_offset: 0 });
+    await db("project_telegram_chats").insert({ bot_id: secondId, chat_id: "-10012345", title: "Same chat", created_at: "2026-01-01" });
+    await sendRememberedTelegramReply(db, botId, "-10012345", rich, async () => ({ message_id: 91 }));
+    const raw = payload(text, -10012345, 91);
+    expect(await deliver(raw, secondId)).toMatchObject({ reason: "bot_sender" });
+    expect(await deliver(raw, secondId)).toMatchObject({ duplicate: true });
+    expect(await deliver(payload(text, -10012345, 92, { from: { id: 777000, is_bot: false }, is_automatic_forward: true,
+      forward_origin: { type: "channel", chat: { id: -10012345 }, message_id: 91 } }))).toMatchObject({ reason: "bot_sender" });
+    const edited = JSON.parse(payload(text, -10012345, 91).toString()); edited.edited_channel_post = edited.message; delete edited.message;
+    expect(await deliver(Buffer.from(JSON.stringify(edited)))).toMatchObject({ reason: "bot_sender" });
+    await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
+  });
+  it("does not suppress a real member's tagged reply to a bot or copied text", async () => {
+    await sendRememberedTelegramReply(db, botId, "-10012345", rich, async () => ({ message_id: 91 }));
+    expect(await deliver(payload(text, -10012345, 92, { from: { id: 22, is_bot: false }, reply_to_message: { message_id: 91, from: { id: 123456789, is_bot: true } } }))).toMatchObject({ status: "queued" });
+    await worker.tick(); expect(httpFetch).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(1);
+  });
+  it("retains loop protection after an uncertain send and a long polling outage", async () => {
+    await expect(sendRememberedTelegramReply(db, botId, "-10012345", rich, async () => { throw new Error("unknown send outcome"); })).rejects.toThrow("unknown");
+    await db("telegram_outgoing_messages").update({ created_at: "2000-01-01" });
+    const raw = JSON.parse(payload(text, -10012345, 91).toString()); raw.channel_post = { ...raw.message, chat: { ...raw.message.chat, type: "channel" } }; delete raw.message;
+    expect(await deliver(Buffer.from(JSON.stringify(raw)))).toMatchObject({ reason: "bot_sender" });
+    await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("tasks")).toHaveLength(0);
+  });
+  it("never classifies tagged replies from ourselves or another bot", async () => {
+    for (const id of [123456789, 999]) {
+      expect(await deliver(payload(text, -10012345, 90 + id, { from: { id, is_bot: true } }))).toMatchObject({ reason: "bot_sender" });
+    }
+    await worker.tick(); expect(httpFetch).not.toHaveBeenCalled(); expect(await db("telegram_message_inbox")).toHaveLength(0);
+  });
+});
 
 describe("project bot and chat configuration", () => {
   it("reports configured activity and current Telegram connection separately through GraphQL", async () => {
@@ -529,6 +580,19 @@ describe("chat recipient mappings and task replies", () => {
 
 
 describe("Telegram owner fallback without mentions", () => {
+  it("reads the owner's changed model for each new call and passes matched configured tags for short bug reports", async () => {
+    const text = "#бэк #ошибка\nпри попытке сохранить вопрос";
+    reply([assignment("owner", { title: "Разобраться с ошибкой при сохранении вопроса", description: "Исследовать сбой сохранения вопроса; детали ошибки не указаны.", evidence: text })]);
+    await db("ai_provider_credentials").update({ model: "deepseek-flash" });
+    await deliver(payload(text, -10012345, 96)); await worker.tick();
+    const request = JSON.parse(String(httpFetch.mock.calls[0][1]?.body));
+    expect(request.model).toBe("deepseek-flash");
+    expect(JSON.parse(request.messages[1].content)).toMatchObject({ matchedConfiguredTags: ["ошибка"], message: text });
+    expect((await db("tasks").first()).title).toBe("Разобраться с ошибкой при сохранении вопроса");
+    await db("ai_provider_credentials").update({ model: "owners-next-model" });
+    await deliver(payload(text, -10012345, 97)); await worker.tick();
+    expect(JSON.parse(String(httpFetch.mock.calls[1][1]?.body)).model).toBe("owners-next-model");
+  });
   it("classifies a tagged actionable message with no named recipient and assigns the owner", async () => {
     reply([assignment("owner")]);
     await deliver(payload("#ошибка исправь вход")); await worker.tick();

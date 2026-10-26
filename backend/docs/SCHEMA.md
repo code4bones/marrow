@@ -32,6 +32,13 @@ Migration 130 extends the PostgreSQL task status check with `clar`; 131 adds
 English/Russian status/question UI translations. Task DTOs expose `version` for
 handoff concurrency fencing.
 
+Migration 132 adds `telegram_outgoing_messages`: UUID, nullable bot FK (SET NULL),
+chat/message IDs, SHA-256 content fingerprint and creation time, with identity
+and bounded fingerprint lookup indexes. Identity guards apply across project
+bots; fingerprints only fence anonymous/channel/automatic-forward messages for
+ten minutes around confirmed sends; unresolved sends retain their fingerprint
+guard until their identity is known. No outbound content is stored here.
+
 ## Gateway Telegram project bots
 
 Migration `117_project_telegram_bots.cjs` adds:

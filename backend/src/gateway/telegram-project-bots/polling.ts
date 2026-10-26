@@ -117,10 +117,10 @@ export class TelegramProjectPolling {
             const result = await acceptTelegramUpdate(this.db, id, Buffer.from(JSON.stringify(update)), { owner, revision });
             if ("stopped" in result && result.stopped) return;
             if ("hashReply" in result && result.hashReply) {
-              await sendHashReply(api, result.hashReply, id, signal, this.logger);
+              await sendHashReply(api, result.hashReply, id, signal, this.logger, this.db);
             }
             if ("confirmation" in result && result.confirmation) {
-              await sendBindingConfirmation(api, result.confirmation, id, signal, this.logger);
+              await sendBindingConfirmation(api, result.confirmation, id, signal, this.logger, this.db);
             }
           }
           await this.db("project_telegram_bots").where({ id, poll_owner: owner, poll_revision: revision, enabled: true })

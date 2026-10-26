@@ -1,4 +1,5 @@
-import type { RichText } from "grammy/types";
+import { sendRememberedTelegramReply } from "./outgoing.js";
+import type { RichText, InputRichMessage } from "grammy/types";
 import { telegramParticipants, participantList, telegramPeopleText } from "./participant-references.js";
 import type { Api } from "grammy";
 import type { Knex } from "knex";
@@ -31,15 +32,18 @@ export async function hashReply(db: Knex, bot: Row, project: Row, message: Teleg
     ...(message.messageThreadId !== undefined ? { messageThreadId: message.messageThreadId } : {}) };
 }
 
-export async function sendHashReply(api: Pick<Api, "sendRichMessage">, reply: TelegramHashReply, botId: string, signal?: AbortSignal, logger?: AppLogger): Promise<void> {
+export async function sendHashReply(api: Pick<Api, "sendRichMessage">, reply: TelegramHashReply, botId: string, signal?: AbortSignal, logger?: AppLogger, db?: Knex): Promise<void> {
   if (signal?.aborted) return;
   try {
-    await telegramRequest(signal, (s) => api.sendRichMessage(reply.chatId, { blocks: [
+    const rich: InputRichMessage = { blocks: [
       { type: "heading", size: 3, text: "Теги и исполнители" },
       { type: "paragraph", text: `Проект: ${reply.projectTitle}` },
       ...reply.lines.map((line) => ({ type: "paragraph" as const, text: line }))
-    ] }, { reply_parameters: { message_id: reply.messageId, allow_sending_without_reply: true },
+    ] };
+    const send = () => telegramRequest(signal, (s) => api.sendRichMessage(reply.chatId, rich, { reply_parameters: { message_id: reply.messageId, allow_sending_without_reply: true },
       ...(reply.messageThreadId !== undefined ? { message_thread_id: reply.messageThreadId } : {}) }, s));
+    if (db) await sendRememberedTelegramReply(db, botId, reply.chatId, rich, send);
+    else await send();
   } catch { if (!signal?.aborted) logger?.warn({ botId, code: "TELEGRAM_HASH_REPLY_FAILED" }, "Telegram tag command reply failed"); }
 }
 

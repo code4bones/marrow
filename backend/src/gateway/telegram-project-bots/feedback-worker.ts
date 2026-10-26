@@ -1,3 +1,4 @@
+import { sendRememberedTelegramReply } from "./outgoing.js";
 import { taskFeedbackMessage } from "./feedback-message.js";
 import type { Api } from "grammy";
 import { GrammyError } from "grammy";
@@ -45,8 +46,9 @@ export class TelegramTaskFeedbackDispatcher {
       try {
         const webUrl = marrowWebUrl();
         if (!webUrl) { await this.fail(row, "TELEGRAM_FEEDBACK_WEB_URL_REQUIRED"); continue; }
-        const sent = await telegramRequest(this.controller.signal, (s) => api.sendRichMessage(payload.chatId, taskFeedbackMessage(payload, webUrl), { reply_parameters: { message_id: payload.messageId, allow_sending_without_reply: true },
-          ...(payload.messageThreadId ? { message_thread_id: payload.messageThreadId } : {}) }, s));
+        const rich = taskFeedbackMessage(payload, webUrl);
+        const sent = await sendRememberedTelegramReply(this.db, payload.botId, payload.chatId, rich, () => telegramRequest(this.controller.signal, (s) => api.sendRichMessage(payload.chatId, rich, { reply_parameters: { message_id: payload.messageId, allow_sending_without_reply: true },
+          ...(payload.messageThreadId ? { message_thread_id: payload.messageThreadId } : {}) }, s)));
         await this.db("integration_outbox").where({ id: row.id, delivery_status: "sending", attempt_count: row.attempt_count })
           .update({ delivery_status: "delivered", delivered_at: nowIso(), delivery_response: JSON.stringify({ messageId: sent.message_id }), locked_until: null, last_error: null, updated_at: nowIso() });
       } catch (error) {

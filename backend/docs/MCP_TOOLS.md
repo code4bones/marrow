@@ -2452,6 +2452,13 @@ Ordering:
 
 ---
 
+Project-bot replies cannot become new Telegram tasks: ingress rejects bot
+senders and a shared registry of sent chat/message IDs, including channel
+forwards. Anonymous channel updates racing the send response are fenced by a
+short-lived content fingerprint registered before sending. This applies to
+binding, /hash, creation, CLAR, handoff and DONE replies. Human tagged replies
+remain eligible; they are never rejected just for replying to a bot.
+
 ### `task.handoff` (gateway, Telegram tasks)
 
 Complete a stage and pass the **same task** onward. Read `task.get` for its
