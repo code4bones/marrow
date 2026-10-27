@@ -73,6 +73,13 @@ human tagged replies remain eligible.
 
 ### Manual Telegram task creation and attachments
 
+Message details include **Retry processing** for eligible tagged messages that
+were rejected/failed or historically swallowed as `attachment_added`. This runs
+the owner's DeepSeek again. Recovery reuses the original message identity and
+retained artifact bytes, correcting only the reply's erroneous attachment links.
+The operation is owner/admin-only and idempotent; imported/deleted sources,
+active jobs, bot/private/unbound messages and manual overrides remain excluded.
+
 A skipped/failed message already admitted to the task pipeline can be confirmed
 in its details by an owner/admin: choose active assignees and a title, then create
 the task. This bypasses AI intent but uses the same durable inbox, source dedup,
@@ -82,8 +89,12 @@ returns the existing task; an in-flight older AI result cannot override it.
 Documents and media in bound chats retain Bot API file references before polling
 acknowledgement. Files for a created task become normal project artifacts linked
 with `attached_to`. Albums share one task, including additional tagged captions;
-files sent as replies to the original request or Marrow's task reply attach to
-that task without another task. Only the largest photo variant is downloaded.
+files sent as replies to the original request or Marrow's task reply without
+matching work hashtags attach to that task without another task. A reply caption
+with a configured hashtag goes through classification as a separate task candidate,
+including replies to done/cancelled tasks. Its files wait for its own result and
+stay with its album; the parent task is not reopened or given those files.
+Only the largest photo variant is downloaded.
 Downloading runs separately through grammY getFile and the existing Telegram
 HTTPS proxy; errors never undo a task. ARTIFACT_MAX_BYTES applies (10 MiB default),
 with bounded streaming, retries, safe filenames and stable artifact paths. Details

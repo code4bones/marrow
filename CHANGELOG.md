@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Telegram photo/document replies with configured work hashtags are classified as
+  separate task candidates instead of being swallowed as attachments to an older
+  task. Files and albums follow the new task even while its parent is pending.
+- Message details now offer retry processing for rejected/failed classifications
+  and historical tagged replies swallowed as attachments, preserving artifact
+  bytes and preventing duplicate tasks.
+
 - Telegram attachment HTTP response stream errors are contained even after a
   rejected status, preserving the bot/gateway lifecycle.
 

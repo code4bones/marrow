@@ -272,6 +272,138 @@ describe("Telegram media artifacts", () => {
     expect(await db("artifacts")).toHaveLength(4); expect(await db("tasks")).toHaveLength(1);
     expect(download.mock.calls.some((c) => c[1] === "high")).toBe(true); expect(download.mock.calls.some((c) => c[1] === "low")).toBe(false);
   });
+  it.each(["todo", "done", "cancelled"].flatMap((status) => ["request", "bot reply"].map((target) => ({ status, target }))))(
+    "classifies a tagged photo replying to a $status task's $target as separate work", async ({ status, target }) => {
+      await deliver(); await worker.tick();
+      const original = await db("tasks").first();
+      await db("tasks").where({ id: original.id }).update({ status });
+      await sendRememberedTelegramReply(db, botId, "-10012345", { blocks: [{ type: "paragraph", text: "Task status" }] }, async () => ({ message_id: 200 }), original.id);
+      httpFetch.mockClear(); download.mockClear();
+      const extra = { document: undefined, photo: [{ file_id: "bug-photo", file_unique_id: "bug-photo-id", width: 800, height: 600 }],
+        reply_to_message: { message_id: target === "request" ? 10 : 200 } };
+      expect(await deliver(fileMessage(201, extra))).toMatchObject({ status: "queued", matchedTags: ["ошибка"] });
+      expect(await db("telegram_message_files").first()).toMatchObject({ status: "waiting", task_id: null, reply_to_message_id: String(extra.reply_to_message.message_id) });
+      await worker.tick(); await mediaWorker().tick();
+      expect(httpFetch).toHaveBeenCalledOnce();
+      const source = await db("telegram_task_sources").where({ message_id: "201" }).first();
+      expect(source.task_id).not.toBe(original.id);
+      expect(await db("tasks")).toHaveLength(2);
+      expect(await db("tasks").where({ id: original.id }).first()).toMatchObject({ status });
+      const file = await db("telegram_message_files").first();
+      expect(file).toMatchObject({ task_id: source.task_id, status: "done" });
+      expect(await db("links").where({ from_id: file.artifact_id, to_id: source.task_id, relation: "attached_to" })).toHaveLength(1);
+      expect(await db("links").where({ from_id: file.artifact_id, to_id: original.id })).toHaveLength(0);
+      const journal = await db("telegram_bot_messages").where({ message_id: "201" }).first();
+      expect(await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: journal.id }))
+        .toMatchObject({ reason: "task_created", classification: { tasks: [expect.any(Object)] }, tasks: [{ id: source.task_id }] });
+      await deliver(fileMessage(201, extra)); await worker.tick(); await mediaWorker().tick();
+      expect(httpFetch).toHaveBeenCalledOnce(); expect(download).toHaveBeenCalledOnce();
+      expect(await db("tasks")).toHaveLength(2); expect(await db("artifacts")).toHaveLength(1);
+    });
+  it("keeps a pending parent worker from taking files belonging to a tagged reply or its album", async () => {
+    await deliver();
+    await deliver(fileMessage(201, { media_group_id: "new-bug", reply_to_message: { message_id: 10 } }));
+    await deliver(fileMessage(202, { caption: undefined, caption_entities: undefined, media_group_id: "new-bug", reply_to_message: { message_id: 10 } }));
+    await deliver(fileMessage(203, { caption: "Additional screenshot", caption_entities: [], reply_to_message: { message_id: 10 } }));
+    await worker.tick();
+    const parent = await db("telegram_task_sources").where({ message_id: "10" }).first();
+    const child = await db("telegram_task_sources").where({ message_id: "201" }).first();
+    expect(child.task_id).not.toBe(parent.task_id);
+    expect(await db("tasks")).toHaveLength(2);
+    for (const messageId of ["201", "202"]) expect(await db("telegram_message_files").where({ message_id: messageId }).first())
+      .toMatchObject({ task_id: child.task_id, status: "pending" });
+    expect(await db("telegram_message_files").where({ message_id: "203" }).first()).toMatchObject({ task_id: parent.task_id, status: "pending" });
+  });
+  it.each([false, true])("keeps the new reply album together when classified before the remaining files: %s", async (classifyFirst) => {
+    await deliver(); await worker.tick(); const original = await db("tasks").first();
+    await db("tasks").where({ id: original.id }).update({ status: "done" });
+    httpFetch.mockClear();
+    await deliver(fileMessage(201, { media_group_id: "new-bug", reply_to_message: { message_id: 10 } }));
+    if (classifyFirst) await worker.tick();
+    await deliver(fileMessage(202, { caption: undefined, caption_entities: undefined, media_group_id: "new-bug", reply_to_message: { message_id: 10 } }));
+    await deliver(fileMessage(203, { media_group_id: "new-bug", reply_to_message: { message_id: 10 } }));
+    await worker.tick(); await mediaWorker().tick();
+    const child = await db("telegram_task_sources").where({ message_id: "201" }).first();
+    expect(child.task_id).not.toBe(original.id);
+    expect(await db("tasks")).toHaveLength(2); expect(httpFetch).toHaveBeenCalledOnce();
+    expect(await db("telegram_message_files")).toHaveLength(3);
+    for (const file of await db("telegram_message_files")) expect(file).toMatchObject({ task_id: child.task_id, status: "done" });
+  });
+  it("leaves rejected tagged reply files available for manual confirmation instead of attaching them to the parent", async () => {
+    await deliver(); await worker.tick();
+    reply([]);
+    await deliver(fileMessage(201, { reply_to_message: { message_id: 10 } })); await worker.tick();
+    expect(await db("tasks")).toHaveLength(1);
+    expect(await db("telegram_message_files").first()).toMatchObject({ task_id: null, status: "waiting" });
+    const journal = await db("telegram_bot_messages").where({ message_id: "201" }).first();
+    expect(await callOk("project.telegram_bot_message", { project: "test", id: botId, messageId: journal.id })).toMatchObject({ canCreateTask: true, reason: "not_task", tasks: [] });
+  });
+  it("recovers a historical swallowed reply through the retry button API without losing bytes or duplicating its task", async () => {
+    await deliver(); await worker.tick();
+    const original = await db("tasks").first();
+    await db("tasks").where({ id: original.id }).update({ status: "done" });
+    // Emulate an old release: the caption was tagged, but its file was
+    // already imported into the closed parent's task before AI admission.
+    await deliver(fileMessage(201, { caption: "Additional screenshot", caption_entities: [], reply_to_message: { message_id: 10 } }));
+    await mediaWorker().tick();
+    const file = await db("telegram_message_files").first();
+    const artifact = await db("artifacts").first();
+    const originalBytes = readFileSync(join(artifactDir, artifact.storage_path));
+    const journal = await db("telegram_bot_messages").where({ message_id: "201" }).first();
+    await db("telegram_bot_messages").where({ id: journal.id }).update({ text: "#ошибка @member исправь вход со скриншота" });
+    const args = { project: "test", id: botId, messageId: journal.id };
+    expect(await callOk("project.telegram_bot_message", args)).toMatchObject({ canCreateTask: false, canRetry: true, tasks: [{ id: original.id }] });
+    expect(await service.call("project.telegram_bot_message_retry", args, member)).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
+    const result = await graphql({ schema: gatewaySchema, contextValue: { service, requestContext: owner }, variableValues: args,
+      source: `mutation($project:String!,$id:ID!,$messageId:ID!){retryTelegramBotMessage(project:$project,id:$id,messageId:$messageId){queued taskId}}` });
+    expect(result.errors).toBeUndefined(); expect(result.data).toMatchObject({ retryTelegramBotMessage: { queued: true, taskId: null } });
+    expect(await callOk("project.telegram_bot_message_retry", args)).toMatchObject({ queued: true });
+    expect(await db("telegram_message_inbox").where({ message_id: "201" })).toHaveLength(1);
+    expect(await db("events").where({ type: "telegram.message_retry_requested", related_id: journal.id })).toHaveLength(1);
+    expect(await db("telegram_message_files").where({ id: file.id }).first()).toMatchObject({ task_id: null, status: "waiting", artifact_id: artifact.id });
+    expect(await db("links").where({ from_id: artifact.id, to_id: original.id, relation: "attached_to" })).toHaveLength(0);
+    expect(await callOk("project.telegram_bot_message", args)).toMatchObject({ status: "queued", canRetry: false, tasks: [] });
+    httpFetch.mockClear(); await worker.tick(); await mediaWorker().tick();
+    expect(httpFetch).toHaveBeenCalledOnce();
+    const source = await db("telegram_task_sources").where({ message_id: "201" }).first();
+    expect(source.task_id).not.toBe(original.id);
+    expect(await db("tasks").where({ id: original.id }).first()).toMatchObject({ status: "done" });
+    expect(await db("telegram_message_files").where({ id: file.id }).first()).toMatchObject({ task_id: source.task_id, status: "done", artifact_id: artifact.id });
+    expect(await db("artifacts")).toHaveLength(1);
+    expect(readFileSync(join(artifactDir, artifact.storage_path))).toEqual(originalBytes);
+    expect(await db("links").where({ from_id: artifact.id, to_id: source.task_id, relation: "attached_to" })).toHaveLength(1);
+    expect(await callOk("project.telegram_bot_message_retry", args)).toMatchObject({ queued: false, taskId: source.task_id });
+    await worker.tick(); expect(await db("tasks")).toHaveLength(2); expect(httpFetch).toHaveBeenCalledOnce();
+    await db("tasks").where({ id: source.task_id }).del();
+    expect(await service.call("project.telegram_bot_message_retry", args, owner)).toMatchObject({ ok: false });
+  });
+  it("reclassifies one rejected inbox message, clears the saved AI result and remains idempotent while queued", async () => {
+    reply([]); await deliver(fileMessage()); await worker.tick();
+    const journal = await db("telegram_bot_messages").first();
+    const args = { project: "test", id: botId, messageId: journal.id };
+    const read = await graphql({ schema: gatewaySchema, contextValue: { service, requestContext: owner }, variableValues: args,
+      source: `query($project:String!,$id:ID!,$messageId:ID!){projectTelegramBotMessage(project:$project,id:$id,messageId:$messageId){canRetry canCreateTask}}` });
+    expect(read.errors).toBeUndefined(); expect(read.data).toMatchObject({ projectTelegramBotMessage: { canRetry: true, canCreateTask: true } });
+    await callOk("project.telegram_bot_message_retry", args);
+    const queued = await db("telegram_message_inbox").where({ id: journal.inbox_id }).first();
+    expect(queued).toMatchObject({ status: "pending", classification: null, classified_at: null, processed_at: null });
+    await callOk("project.telegram_bot_message_retry", args);
+    expect((await db("telegram_message_inbox").where({ id: journal.inbox_id }).first()).attempts).toBe(queued.attempts);
+    reply([assignment()]); httpFetch.mockClear(); await worker.tick();
+    expect(httpFetch).toHaveBeenCalledOnce(); expect(await db("tasks")).toHaveLength(1);
+  });
+  it("never exposes or executes message retries for bot, private, unbound or untagged messages", async () => {
+    await deliver(fileMessage(101, { from: { id: 123, is_bot: true } }));
+    await deliver(fileMessage(102, { chat: { id: 22, type: "private" } }));
+    await deliver(fileMessage(103, { chat: { id: -999, type: "supergroup" } }));
+    await deliver(fileMessage(104, { caption: "ordinary chat", caption_entities: [] }));
+    for (const journal of await db("telegram_bot_messages")) {
+      const args = { project: "test", id: botId, messageId: journal.id };
+      expect(await callOk("project.telegram_bot_message", args)).toMatchObject({ canRetry: false });
+      expect(await service.call("project.telegram_bot_message_retry", args, owner)).toMatchObject({ ok: false });
+    }
+    expect(await db("telegram_message_inbox")).toHaveLength(0); expect(await db("tasks")).toHaveLength(0);
+  });
   it("imports files after manual task confirmation and reports oversize without losing the task", async () => {
     reply([]); await deliver(fileMessage()); await worker.tick();
     expect(await db("telegram_message_files").first()).toMatchObject({ status: "waiting" });
@@ -306,7 +438,7 @@ describe("Telegram media artifacts", () => {
     const task = await db("tasks").first();
     // The real Bot API returns an ID; the general fake confirmation returns {}.
     await sendRememberedTelegramReply(db, botId, "-10012345", { blocks: [{ type: "paragraph", text: "Task created" }] }, async () => ({ message_id: 200 }), task.id);
-    expect(await deliver(fileMessage(201, { reply_to_message: { message_id: 200, from: { id: 123456789, is_bot: true } } }))).toMatchObject({ reason: "attachment_added" });
+    expect(await deliver(fileMessage(201, { caption: "Additional attachment", caption_entities: [], reply_to_message: { message_id: 200, from: { id: 123456789, is_bot: true } } }))).toMatchObject({ reason: "attachment_added" });
     await worker.tick(); expect(await db("tasks")).toHaveLength(1);
     expect(await db("telegram_message_files").first()).toMatchObject({ task_id: task.id, status: "pending" });
     await db("project_telegram_bots").update({ enabled: false }); download.mockClear();

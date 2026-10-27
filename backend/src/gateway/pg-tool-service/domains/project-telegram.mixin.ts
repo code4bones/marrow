@@ -1,4 +1,5 @@
 import { queueManualTelegramTask } from "../../telegram-project-bots/manual.js";
+import { queueTelegramMessageRetry, telegramMessageRetryState } from "../../telegram-project-bots/retry.js";
 import { chatRecipients, recipientKeys } from "../../telegram-project-bots/recipients.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { nowIso } from "../../../shared/dates.js";
@@ -76,7 +77,8 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
       if (extraTaskIds.length) tasks = [...tasks, ...await this.db("tasks").where({ project_id: project.id }).whereIn("id", extraTaskIds).select("id", "title", "status")];
       const canCreateTask = Boolean(!tasks.length && inbox && bot.enabled && project.status === "active" && bound && !source && !["pending", "processing"].includes(String(inbox.status)));
       const assignableMembers = canCreateTask ? await activeProjectUsers(this.db, project.id, project.ownerUserId).select("u.id", "u.email") : [];
-      return { ...botMessageOut(row, true), tasks, canCreateTask, assignableMembers, manual: Boolean(inbox?.manual_override), attachments: attachments.map((a) => ({ id: a.id, name: a.file_name, kind: a.kind, contentType: a.content_type, sizeBytes: a.size_bytes === null ? null : Number(a.size_bytes), status: a.status, artifactId: a.artifact_id, lastError: a.last_error })) };
+      const { canRetry } = await telegramMessageRetryState(this.db, project, bot, row, inbox);
+      return { ...botMessageOut(row, true), tasks, canCreateTask, canRetry, assignableMembers, manual: Boolean(inbox?.manual_override), attachments: attachments.map((a) => ({ id: a.id, name: a.file_name, kind: a.kind, contentType: a.content_type, sizeBytes: a.size_bytes === null ? null : Number(a.size_bytes), status: a.status, artifactId: a.artifact_id, lastError: a.last_error })) };
     }
 
 
@@ -92,6 +94,13 @@ export function ProjectTelegramMixin<TBase extends Constructor<Tier1Instance>>(B
     protected async manuallyCreateTelegramTask(input: Row, context: NormalizedGatewayRequestContext) {
       const { bot, project } = await this.managedTelegramBot(input, context);
       return queueManualTelegramTask(this.db, project, String(bot.id), String(input.messageId), input.assignees as string[], input.title as string | undefined, context.sessionUserId ?? String(project.ownerUserId));
+    }
+
+    protected async retryTelegramBotMessage(input: Row, context: NormalizedGatewayRequestContext) {
+      const { bot, project } = await this.managedTelegramBot(input, context);
+      const { changed, ...result } = await queueTelegramMessageRetry(this.db, project, String(bot.id), String(input.messageId));
+      if (changed) await this.recordEventForProject(project.id, { type: "telegram.message_retry_requested", title: "Telegram message queued for classification", related_id: String(input.messageId) }, context);
+      return result;
     }
 
     protected async projectTelegramChatMentions(input: Row, context: NormalizedGatewayRequestContext) {

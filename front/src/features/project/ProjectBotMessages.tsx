@@ -1,11 +1,12 @@
 import { ManualTelegramTask } from "./ManualTelegramTask";
+import { ReloadOutlined } from '@ant-design/icons';
 import { formatBotDateTime as timestamp } from '../../shared/lib/botDateTime';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Alert, Button, Card, Descriptions, Drawer, Empty, Space, Spin, Table, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { GET_PROJECT_TELEGRAM_MESSAGE, GET_PROJECT_TELEGRAM_MESSAGES, RETRY_TELEGRAM_MESSAGE_FILE, type TelegramBotMessage } from '../../shared/api/project-telegram';
+import { GET_PROJECT_TELEGRAM_MESSAGE, GET_PROJECT_TELEGRAM_MESSAGES, RETRY_TELEGRAM_BOT_MESSAGE, RETRY_TELEGRAM_MESSAGE_FILE, type TelegramBotMessage } from '../../shared/api/project-telegram';
 
 const PAGE_SIZE = 5;
 
@@ -18,6 +19,9 @@ export function ProjectBotMessages({ project, botId }: { project: string; botId:
   const detail = useQuery<{ projectTelegramBotMessage: TelegramBotMessage }>(GET_PROJECT_TELEGRAM_MESSAGE,
     { variables: { project, id: botId, messageId: selectedId }, skip: !selectedId, pollInterval: selectedId ? 3000 : 0, fetchPolicy: 'network-only' });
   const [retryFile, { loading: retryingFile }] = useMutation(RETRY_TELEGRAM_MESSAGE_FILE, { onCompleted: () => { void detail.refetch(); }, onError: (e) => message.error(e.message) });
+  const [retryMessage, { loading: retryingMessage }] = useMutation(RETRY_TELEGRAM_BOT_MESSAGE, {
+    onCompleted: () => { message.success(t('botMessageRetryQueued')); void detail.refetch(); }, onError: (e) => message.error(e.message),
+  });
   const msg = detail.data?.projectTelegramBotMessage;
   const reason = (value: string | null) => value ? t(`botMessageReason_${value}`, { defaultValue: value }) : '—';
   const status = (value: string) => <Tag color={value === 'failed' ? 'red' : value === 'done' || value === 'bound' ? 'green' : value === 'processing' ? 'processing' : 'default'}>
@@ -65,7 +69,9 @@ export function ProjectBotMessages({ project, botId }: { project: string; botId:
               {file.lastError && <div><Typography.Text type="danger">{t(`botFileError_${file.lastError}`, { defaultValue: file.lastError })}</Typography.Text></div>}
             </div>)}</Space>
           </Card>}
-          <Card size="small" title={t(msg.manual ? 'botManualConfirmation' : 'botClassificationResult')}>
+          <Card size="small" title={t(msg.manual ? 'botManualConfirmation' : 'botClassificationResult')}
+            extra={msg.canRetry && <Button size="small" type="primary" icon={<ReloadOutlined />} loading={retryingMessage}
+              onClick={() => { void retryMessage({ variables: { project, id: botId, messageId: msg.id } }).catch(() => {}); }}>{t('botMessageRetry')}</Button>}>
             {!msg.classification ? <Typography.Text type="secondary">{t('botNotClassified')}</Typography.Text>
               : !msg.classification.tasks.length ? <Typography.Text>{t('botNoTaskFound')}</Typography.Text>
                 : msg.classification.tasks.map((task) => <div key={task.telegramUserId} style={{ marginBottom: 12 }}>

@@ -86,6 +86,7 @@ export interface TelegramBotMessage {
   mentions?: string[];
   attachments?: { id: string; name: string; kind: string; contentType: string; sizeBytes: number | null; status: string; artifactId: string | null; lastError: string | null }[];
   canCreateTask?: boolean;
+  canRetry?: boolean;
   manual?: boolean;
   assignableMembers?: { id: string; email: string }[];
   classification?: { tasks: { telegramUserId: string; title: string; description: string; evidence: string; confidence: number }[] } | null;
@@ -105,7 +106,7 @@ export const GET_PROJECT_TELEGRAM_MESSAGE = gql`
     projectTelegramBotMessage(project: $project, id: $id, messageId: $messageId) {
       id chatTitle chatId chatType telegramMessageId messageKind messageUrl receivedAt classifiedAt processedAt status reason lastError
       attachments { id name kind contentType sizeBytes status artifactId lastError }
-      canCreateTask manual assignableMembers { id email }
+      canCreateTask canRetry manual assignableMembers { id email }
       text matchedTags mentions classification tasks { id title status }
     }
   }
@@ -140,5 +141,11 @@ export const CREATE_TASK_FROM_TELEGRAM_MESSAGE = gql`
 export const RETRY_TELEGRAM_MESSAGE_FILE = gql`
   mutation RetryTelegramMessageFile($project: String!, $id: ID!, $fileId: ID!) {
     retryTelegramMessageFile(project: $project, id: $id, fileId: $fileId)
+  }
+`;
+
+export const RETRY_TELEGRAM_BOT_MESSAGE = gql`
+  mutation RetryTelegramBotMessage($project: String!, $id: ID!, $messageId: ID!) {
+    retryTelegramBotMessage(project: $project, id: $id, messageId: $messageId) { queued taskId }
   }
 `;

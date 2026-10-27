@@ -304,6 +304,7 @@ const typeDefs = `#graphql
     updateProjectMemberRole(project: String, userId: ID!, role: String!): [ProjectMember!]!
     removeProjectMember(project: String, userId: ID!): [ProjectMember!]!
     retryTelegramMessageFile(project: String!, id: ID!, fileId: ID!): Boolean!
+    retryTelegramBotMessage(project: String!, id: ID!, messageId: ID!): TelegramManualTaskResult!
     createTaskFromTelegramMessage(project: String!, id: ID!, messageId: ID!, assignees: [String!]!, title: String): TelegramManualTaskResult!
     addProjectTelegramBot(project: String!, token: String!, tags: [String!]!): ProjectTelegramBot!
     setProjectTelegramChatMention(project: String!, id: ID!, chatId: String!, mentionKey: String!, userId: ID, tags: [String!]): Boolean!
@@ -684,6 +685,7 @@ const typeDefs = `#graphql
   type TelegramBotMessage {
     attachments: [TelegramMessageAttachment!]
     canCreateTask: Boolean
+    canRetry: Boolean
     manual: Boolean
     assignableMembers: [TelegramChatMember!]
     id: ID!
@@ -1699,6 +1701,8 @@ const resolvers = {
       (await callTool<Row>(context, "project_group.rename", cleanInput(args))).members,
     retryTelegramMessageFile: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       (await callTool<Row>(context, "project.telegram_file_retry", cleanInput(args))).queued,
+    retryTelegramBotMessage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
+      callTool<Row>(context, "project.telegram_bot_message_retry", cleanInput(args)),
     createTaskFromTelegramMessage: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>
       callTool<Row>(context, "project.telegram_bot_message_create_task", cleanInput(args)),
     addProjectTelegramBot: async (_parent: unknown, args: Row, context: GatewayGraphqlContext) =>

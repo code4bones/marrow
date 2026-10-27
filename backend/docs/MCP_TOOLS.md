@@ -2462,6 +2462,17 @@ remain eligible; they are never rejected just for replying to a bot.
 
 ### Manual Telegram tasks and files (gateway)
 
+`project.telegram_bot_message_retry({project,id,messageId})` requeues one tagged
+human message for DeepSeek. GraphQL `retryTelegramBotMessage` and the message
+detail's **Retry processing** button use the same owner/admin-only operation.
+`canRetry` is false for imported sources, active jobs, bots/private/unbound chats,
+untagged messages and manual overrides. Historical `attachment_added` entries
+without an inbox can be reconstructed from retained text/file metadata: the
+reply's erroneous file links are removed, artifact bytes/IDs are retained and
+the normal classifier/task/Telegram/Telly pipeline runs. Source tombstones are
+never recreated; repeated calls while queued or after import do not duplicate
+work. Missing original text/file metadata may require a new Telegram message.
+
 `project.telegram_bot_message_create_task({project,id,messageId,assignees,title?})`
 confirms a received inbox message as work without AI. `messageId` is the receive
 journal UUID, `id` the project's bot UUID. Owner/admin only. Assignees are required
@@ -2474,7 +2485,10 @@ available for messages already admitted to the task pipeline, not bot/private or
 unbound messages. GraphQL: createTaskFromTelegramMessage with the same fields.
 
 New task documents/media become normal project artifacts; albums share a task and
-reply attachments may target the original request or a Marrow task/status reply.
+reply attachments without configured work hashtags may target the original request
+or a Marrow task/status reply. Tagged reply captions remain independent task
+candidates even if the parent task is done/cancelled; their files wait for that
+classification and attach to the new task, preserving album/source deduplication.
 Metadata persists before cursor commit and download retries do not duplicate
 artifacts. ARTIFACT_MAX_BYTES bounds the streaming download through the Telegram
 proxy. Details expose attachments with name/kind/size/status/artifactId/lastError.

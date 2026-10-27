@@ -48,7 +48,7 @@ export async function acceptTelegramUpdate(db: Knex, botId: string, raw: Buffer,
     if (nextOffset <= Number(bot.poll_offset)) return { accepted: true, duplicate: true };
     const { fromBot, ...received } = receivedMessageSnapshot(update);
     const outgoing = await isOutgoingTelegramUpdate(trx, update);
-    if (!outgoing) await rememberTelegramFiles(trx, bot, update);
+    if (!outgoing) await rememberTelegramFiles(trx, bot, update, Boolean(message && matchesTelegramTags(bot.filter_tags, message.tags)));
     const result: IngestResult = outgoing ? { accepted: false, ignored: true, status: "ignored", reason: "bot_sender" } : message ? await ingestMessage(trx, bot, message) : {
       accepted: false, ignored: true, status: "ignored",
       reason: received.chat_type === "private" ? "private_chat" : fromBot ? "bot_sender" : received.text === null ? "no_text" : "unsupported"
