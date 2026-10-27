@@ -111,7 +111,7 @@ const typeDefs = `#graphql
     projectInviteLink(id: ID, slug: String): ProjectInviteLink!
     projectSummary(project: String!, query: String, includeCommon: Boolean, limits: ProjectSummaryLimitsInput): ProjectSummary!
     projectSearch(project: String!, query: String!, limit: Int): [GlobalSearchResult!]!
-    projectGraph(projectId: ID!, depth: Int = 2, maxPerType: Int = 60): ProjectGraph!
+    projectGraph(projectId: ID!, depth: Int = 2, maxPerType: Int = 60, assignee: String): ProjectGraph!
     record(id: ID!): RecordLookup!
 
     memory(id: ID!): MemoryRecord!

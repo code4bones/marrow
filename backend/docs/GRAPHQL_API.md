@@ -258,14 +258,16 @@ loading full claim history for every row. Open the task detail drawer and call
 Project graph:
 
 ```graphql
-query ProjectGraph($projectId: ID!) {
-  projectGraph(projectId: $projectId, depth: 2, maxPerType: 60) {
+query ProjectGraph($projectId: ID!, $assignee: String) {
+  projectGraph(projectId: $projectId, depth: 2, maxPerType: 60, assignee: $assignee) {
     nodes {
       id
       kind
       title
       status
       createdAt
+      assigneeUserId
+      assigneeUserIds
     }
     edges {
       from
@@ -282,6 +284,14 @@ the requested depth. Edges come from stored links, task dependencies
 `record(id)` to open the shared detail drawer. `createdAt` (added for
 I-PMEM-011's horizontal timeline view) is always present, including on the
 PROJECT node.
+
+Optional `assignee` is a project participant's user ID. Omit it or pass null for
+the full graph. When selected, tasks match any responsible assignee (including
+secondary assignees), decisions match their assignee, and assignment filtering
+happens before `maxPerType`. Only matching related endpoints and their edges are
+retained, plus the current project anchor. Memory and artifacts have no assignee
+and are excluded from this view. Authorship and current performers are not used
+as assignment fallbacks. The existing project access checks apply unchanged.
 
 Events are deliberately excluded from this graph (I-MEMORY-022 step 3):
 they're operational bookkeeping (`item.created`, `link.created`, ...), not

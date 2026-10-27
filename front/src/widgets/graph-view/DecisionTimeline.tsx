@@ -21,6 +21,7 @@ import { apolloClient } from '../../shared/api/apollo';
 import { GET_RECORD } from '../../shared/api/queries';
 import { RecordLink } from '../../shared/ui/RecordLink';
 import { kindHasMilestone, rootKindEmptyHint, rootKindLabel, rootKindStatuses, type RootKind } from './rootKind';
+import { graphNodeAssignedTo } from '../../shared/lib/graphAssignee';
 import { STATUS_COLORS as GENERIC_STATUS_COLORS } from '../../shared/ui/statusColors';
 import { Timestamp } from '../../shared/ui/Timestamp';
 
@@ -1222,9 +1223,10 @@ interface Props {
   showTasks: boolean;
   /** D-MEMORY-024: which kind the baseline ribbon lists — owned by the parent so the "Root:" dropdown can live in its header alongside "Show tasks"/"Link depth". */
   rootKind: RootKind;
+  assigneeUserId: string | null;
 }
 
-export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind }: Props) {
+export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks, rootKind, assigneeUserId }: Props) {
   // Owner's call: milestone grouping is always on for TASK/DECISION roots
   // (the only kinds with a `milestone` field) -- no toggle, no separate
   // chronological mode to opt out of. MEMORY/ARTIFACT roots keep the
@@ -1289,9 +1291,26 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   const nodeById = useMemo(() => {
     const base = new Map(nodes.map((n) => [n.id, n]));
     if (lazyResolved.size === 0) return base;
-    for (const [id, node] of lazyResolved) if (!base.has(id)) base.set(id, node);
+    for (const [id, node] of lazyResolved) {
+      if (!base.has(id) && (!assigneeUserId || graphNodeAssignedTo(node, assigneeUserId))) base.set(id, node);
+    }
     return base;
-  }, [nodes, lazyResolved]);
+  }, [nodes, lazyResolved, assigneeUserId]);
+
+  // The overlay is fetched project-wide. Keep drill links inside the
+  // selected participant's graph so lazy record lookup cannot bypass it.
+  const linksByRecord = useMemo(() => {
+    if (!assigneeUserId) return overlay.linksByRecord;
+    const scoped = new Map<string, Link[]>();
+    for (const [id, links] of overlay.linksByRecord) {
+      const matching = links.filter((link) => {
+        const from = nodeById.get(link.fromId), to = nodeById.get(link.toId);
+        return from && to && graphNodeAssignedTo(from, assigneeUserId) && graphNodeAssignedTo(to, assigneeUserId);
+      });
+      if (matching.length) scoped.set(id, matching);
+    }
+    return scoped;
+  }, [overlay.linksByRecord, nodeById, assigneeUserId]);
 
   // One batched lookup covering every node currently known (batch-loaded +
   // any lazily point-resolved drill target), not one per card.
@@ -1356,9 +1375,12 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
     });
   }, [baselineNodes, normalizedFilter, hiddenStatuses]);
   const filteredTaskMarkers = useMemo(() => {
-    if (!normalizedFilter) return overlay.taskMarkers;
-    return overlay.taskMarkers.filter((m) => m.title.toLowerCase().includes(normalizedFilter));
-  }, [overlay.taskMarkers, normalizedFilter]);
+    return overlay.taskMarkers.filter((marker) => {
+      const task = nodeById.get(marker.taskId);
+      if (assigneeUserId && (!task || !graphNodeAssignedTo(task, assigneeUserId))) return false;
+      return !normalizedFilter || marker.title.toLowerCase().includes(normalizedFilter);
+    });
+  }, [overlay.taskMarkers, normalizedFilter, nodeById, assigneeUserId]);
 
   // T-MEMORY-103: how many of filteredBaselineNodes are actually turned
   // into DOM cards right now -- resets to the initial page whenever the
@@ -1560,10 +1582,12 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   if (baselineNodes.length === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <Typography.Text type="secondary">{t('noKindRecordedYet', { kind: rootKindLabel(t, rootKind).toLowerCase() })}</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        <Typography.Text type="secondary">{assigneeUserId
+          ? t('noAssignedRecords', { ns: 'projects', kind: rootKindLabel(t, rootKind).toLowerCase() })
+          : t('noKindRecordedYet', { kind: rootKindLabel(t, rootKind).toLowerCase() })}</Typography.Text>
+        {!assigneeUserId && <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           {rootKindEmptyHint(t, rootKind)}
-        </Typography.Text>
+        </Typography.Text>}
       </div>
     );
   }
@@ -1571,7 +1595,7 @@ export function DecisionTimeline({ nodes, edges, loading, projectSlug, showTasks
   const common: ColumnCommonProps = {
     nodeById,
     satellitesByRecord,
-    linksByRecord: overlay.linksByRecord,
+    linksByRecord,
     remarksByTarget: overlay.remarksByTarget,
     chain: validChain,
     onToggle: handleToggle,

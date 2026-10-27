@@ -8,6 +8,27 @@ The project is split into MVP features, near-future features, and explicitly def
 
 ## MVP features
 
+### Overview participant filter
+
+Available in backend **1.107.0** and frontend **0.79.0**.
+
+Overview's Timeline/Tree toolbar has a project participant selector before Root.
+**All participants** shows the full record graph; selecting a participant shows
+tasks whose responsible team includes that user and decisions assigned to them.
+The selector lists active project participants, including the owner. It filters
+by assignment rather than authorship or current execution responsibility.
+
+The choice is a server-side per-user, per-project preference
+(`overviewAssignee:<slug>`) and is preserved when changing Root, revisiting a
+project or reloading. The selected scope also applies to Tree, drill links and
+task-event overlays. Memory/artifacts have no assignee field, so their root lists
+are empty while a participant is selected. Choose All participants to browse
+those domains. Project summary statistics and the Summary tab remain project-wide.
+
+GraphQL `projectGraph(assignee: <user ID>)` applies task/decision assignment filters
+before record limits and keeps the project anchor. Related endpoints outside the
+selected assignment scope are excluded; project membership checks still apply.
+
 ### Gateway: Telegram project bots
 
 Project Settings → Bots supports multiple dedicated bots and explicit chat
@@ -52,8 +73,6 @@ separate from routing. It can cycle backend → frontend → backend;
 only final completion uses DONE. For Telegram tasks, each handoff, CLAR and
 DONE gets a Rich Message reply to the original source. People are rendered as
 Telegram mentions/links, using chat-local manual identities before profile links.
-Task creation and lifecycle replies format the task ID as a separate inline-code
-fragment for copying; the colon and title remain ordinary text outside that fragment.
 Unlinked people are labelled explicitly, never with a Marrow email/UUID. Source
 participant snapshots preserve earlier performers across later changes.
 
@@ -72,6 +91,22 @@ Project bot replies are excluded before classification using the bot-sender
 flag and a shared registry of outgoing message IDs. Anonymous channel echoes,
 automatic forwards and updates racing the send response are also fenced. Normal
 human tagged replies remain eligible.
+
+### Copying task IDs in Telegram replies
+
+Available in backend **1.106.2** (`backend-v1.106.2`). Task creation and lifecycle
+replies display the identifier as a separate inline-code fragment:
+
+`T-SLIFE-181`: Разобраться с невозможностью назначить программу или сценарий
+
+Copying that fragment selects only `T-SLIFE-181`, without the colon, title or
+surrounding text. The ID is sent as structured `RichTextCode` (`type: "code"`);
+the colon and title are a separate plain-text fragment. The Marrow navigation
+link remains a separate action below the task information.
+
+The same formatting applies to task creation, handoff, clarification (CLAR),
+completion (DONE) and assignee-change replies. It applies to messages sent by
+the updated backend; previously sent Telegram messages are not rewritten.
 
 ### Manual Telegram task creation and attachments
 

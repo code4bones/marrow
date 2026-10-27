@@ -16,6 +16,10 @@
 
 ### Added
 
+- Overview participant selector before Root, with per-project saved selection,
+  responsible-assignee filtering for Timeline/Tree and a matching GraphQL graph
+  filter applied before record limits.
+
 - Independent task path/current performers alongside the stable responsible team;
   immutable actor/from/to/time/status history, cyclic handoffs for all tasks,
   paginated MCP history and detail-card route/transfer controls.

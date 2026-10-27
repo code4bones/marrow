@@ -185,13 +185,13 @@ export function ProjectsCoreMixin<TBase extends Constructor<BaseService>>(Base: 
   // caller must already be a member to see the roster at all).
   protected async listProjectMembers(input: Row, context?: NormalizedGatewayRequestContext) {
     const project = await this.resolveProject(input.project, context);
-    const rows = await this.db("project_members")
-      .join("users", "users.id", "project_members.user_id")
-      .where("project_members.project_id", project.id)
-      .andWhere("project_members.status", "active")
+    const rows = await this.db("users")
+      .leftJoin("project_members", (join) => join.on("users.id", "project_members.user_id").andOnVal("project_members.project_id", project.id))
+      .where("users.status", "active")
+      .andWhere((query) => query.where("project_members.status", "active").orWhere("users.id", project.ownerUserId ?? null))
       .orderBy("users.email")
       .select<{ id: string; email: string; role: string | null }[]>("users.id", "users.email", "project_members.role");
-    return { members: rows.map((row) => ({ userId: row.id, email: row.email, role: row.role ?? null })) };
+    return { members: rows.map((row) => ({ userId: row.id, email: row.email, role: row.id === project.ownerUserId ? "pm" : row.role ?? null })) };
   }
 
   // Only the project's owner or a system admin can rename/re-slug it --

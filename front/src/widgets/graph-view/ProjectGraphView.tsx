@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { GET_PROJECT, GET_PROJECT_GRAPH } from '../../shared/api/queries';
 import { useRefetchOnVersion } from '../../shared/lib/useRefetchOnVersion';
 import { useUserPreference } from '../../shared/lib/useUserPreference';
+import { useProjectMembers } from '../../shared/lib/useProjectMembers';
+import { graphNodeAssignedTo } from '../../shared/lib/graphAssignee';
 import { useRealtimeStore } from '../../shared/model/realtime.store';
 import type { ProjectGraph } from '../../shared/model/types';
 import { DecisionTimeline } from './DecisionTimeline';
@@ -17,6 +19,7 @@ type ViewMode = 'timeline' | 'tree';
 // backend's actual maximum (graph.mixin.ts's projectGraph clamps depth to
 // [1, 5] via boundedInteger) rather than the old UI-imposed cap of 3.
 const MAX_LINK_DEPTH = 5;
+const EMPTY_GRAPH: ProjectGraph = { nodes: [], edges: [] };
 
 interface Props {
   slug: string;
@@ -67,6 +70,8 @@ export function ProjectGraphView({ slug }: Props) {
   // `slug` is exactly what GET_PROJECT_GRAPH's own `projectId` variable
   // already passes below (resolveProject() accepts a slug just as well).
   const [rootKind, setRootKind] = useUserPreference<RootKind>(`timelineRootKind:${slug}`, 'DECISION');
+  const [assignee, setAssignee] = useUserPreference<string | null>(`overviewAssignee:${slug}`, null);
+  const { members, loading: membersLoading, error: membersError } = useProjectMembers(slug);
 
   // T-context (2026-09-02, owner's ask -- project switch felt slow): this
   // used to wait on `projectId` (resolved by the GET_PROJECT query above),
@@ -88,13 +93,13 @@ export function ProjectGraphView({ slug }: Props) {
   // depth control added (still always ends up at the owner's mandated
   // MAX_LINK_DEPTH), this only staggers when the fuller data arrives.
   const QUICK_DEPTH = 1;
-  const quickGraphVariables = useMemo(() => ({ projectId: slug, depth: QUICK_DEPTH }), [slug]);
+  const quickGraphVariables = useMemo(() => ({ projectId: slug, depth: QUICK_DEPTH, assignee }), [slug, assignee]);
   const { data: quickGraphData } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
     { variables: quickGraphVariables },
   );
 
-  const graphVariables = useMemo(() => ({ projectId: slug, depth }), [slug, depth]);
+  const graphVariables = useMemo(() => ({ projectId: slug, depth, assignee }), [slug, depth, assignee]);
   const { data: graphData, loading: graphLoading, error: graphError, refetch: refetchGraph } = useQuery<{ projectGraph: ProjectGraph }>(
     GET_PROJECT_GRAPH,
     {
@@ -116,13 +121,18 @@ export function ProjectGraphView({ slug }: Props) {
   );
 
   const error = projectError || graphError;
-  if (error) return <Alert type="error" message={error.message} style={{ margin: 16 }} />;
-
   // Prefer the full depth=5 graph once it's in; fall back to the quick
   // depth=1 one so the ribbon paints before the fuller fetch resolves.
   const graph = graphData?.projectGraph ?? quickGraphData?.projectGraph;
-  const nodes = graph?.nodes ?? [];
-  const edges = graph?.edges ?? [];
+  // Also narrow cached data while the server fetch for a new participant
+  // is pending, so records from the previous selection never flash through.
+  const filteredGraph = useMemo(() => {
+    if (!assignee || !graph) return graph ?? EMPTY_GRAPH;
+    const nodes = graph.nodes.filter((node) => node.id === projectId || graphNodeAssignedTo(node, assignee));
+    const ids = new Set(nodes.map((node) => node.id));
+    return { nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
+  }, [graph, assignee, projectId]);
+  const { nodes, edges } = filteredGraph;
   // `&& !xData`, not just `xLoading` -- useRefetchOnVersion right above
   // calls refetchGraph() on every realtime event across every domain, and
   // Apollo flips *Loading back to true for that background refetch too, not
@@ -137,6 +147,7 @@ export function ProjectGraphView({ slug }: Props) {
   // "has data" for this gate too, so the loading spinner clears the moment
   // EITHER fetch lands, not only the full one.
   const loading = (projectLoading && !projectData) || (graphLoading && !graph);
+  if (error) return <Alert type="error" message={error.message} style={{ margin: 16 }} />;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -147,12 +158,28 @@ export function ProjectGraphView({ slug }: Props) {
           onChange={(value) => setView(value as ViewMode)}
           options={[{ label: t('timeline'), value: 'timeline' }, { label: t('tree'), value: 'tree' }]}
         />
-        <Space size={12}>
+        <Space size={12} wrap>
+          <Space size={6}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('overviewParticipant')}</Typography.Text>
+            <Select
+              aria-label={t('overviewParticipant')}
+              value={assignee ?? ''}
+              onChange={(value) => setAssignee(value || null)}
+              options={[{ value: '', label: t('allParticipants') }, ...members.map((member) => ({ value: member.userId, label: member.email }))]}
+              showSearch
+              optionFilterProp="label"
+              loading={membersLoading}
+              size="small"
+              style={{ width: 210 }}
+              popupMatchSelectWidth={false}
+            />
+          </Space>
           {view === 'timeline' && (
             <>
               <Space size={6}>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('root')}</Typography.Text>
                 <Select
+                  aria-label={t('root')}
                   value={rootKind}
                   onChange={setRootKind}
                   options={rootKindOptions(t)}
@@ -175,19 +202,23 @@ export function ProjectGraphView({ slug }: Props) {
           )}
         </Space>
       </div>
+      {membersError && <Alert type="warning" title={membersError.message} showIcon />}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {view === 'timeline' ? (
           <DecisionTimeline
+            key={assignee ?? 'all'}
             nodes={nodes}
             edges={edges}
             loading={loading}
             projectSlug={slug}
             showTasks={rootKind === 'DECISION' && showTasks}
             rootKind={rootKind}
+            assigneeUserId={assignee}
           />
         ) : (
           projectId && projectData && (
             <GraphTree
+              key={assignee ?? 'all'}
               nodes={nodes}
               edges={edges}
               loading={loading}

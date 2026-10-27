@@ -134,6 +134,9 @@ Resolved Telegram performers enter the existing Telly acceptance pipeline.
 on the same task; final DONE confirms completion. Each action replies to the
 original Telegram source/topic through a durable outbox. Group replies and /hash
 use remembered Telegram identities instead of Marrow participant identifiers.
+Since backend 1.106.2, task IDs in creation and lifecycle replies are separate
+copyable inline-code fragments, excluding the colon and title. See
+[copying task IDs](docs/FEATURES.md#copying-task-ids-in-telegram-replies).
 
 Message details allow owner/admin manual task confirmation with explicit
 assignees when AI skips a request. Documents/media are saved as task-linked

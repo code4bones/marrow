@@ -15,6 +15,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     }
 
     const project = await this.resolveProject(projectId, context);
+    const assignee = stringOrNull(input.assignee);
     const depth = boundedInteger(input.depth, 2, 1, 5);
     // Events are operational bookkeeping (created/updated/status-changed), not
     // curated knowledge edges — I-MEMORY-022 measured them at ~80% of graph
@@ -25,6 +26,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     const edges = new Map<string, GraphEdge>();
 
     const addNode = (node: GraphNode) => {
+      if (assignee && node.id !== project.id && !node.assigneeUserIds.includes(assignee)) return;
       nodes.set(node.id, node);
     };
     const addEdge = (edge: Omit<GraphEdge, "id">) => {
@@ -47,7 +49,7 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
     // memory turns "up to 10 sequential round trips" into "at most 2"
     // (this Promise.all, then one final node-detail batch below).
     const [items, tasks, decisions, artifacts, allLinks] = await Promise.all([
-      this.db("items")
+      assignee ? Promise.resolve([]) : this.db("items")
         .select("id", "title", "status", "type", "project_id", "created_by", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")
@@ -55,14 +57,19 @@ export function GraphMixin<TBase extends Constructor<Tier1Instance>>(Base: TBase
       this.db("tasks")
         .select("id", "title", "status", "project_id", "depends_on", "created_by", "created_at", "milestone", "assignee_user_id")
         .where({ project_id: project.id })
+        .modify((query) => {
+          if (assignee) query.andWhere((q) => q.where("assignee_user_id", assignee)
+            .orWhereIn("id", this.db("task_assignees").select("task_id").where({ user_id: assignee })));
+        })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
       this.db("decisions")
         .select("id", "title", "status", "project_id", "supersedes_id", "created_by", "created_at", "milestone", "assignee_user_id")
         .where({ project_id: project.id })
+        .modify((query) => { if (assignee) query.andWhere({ assignee_user_id: assignee }); })
         .orderBy("updated_at", "desc")
         .limit(maxPerType),
-      this.db("artifacts")
+      assignee ? Promise.resolve([]) : this.db("artifacts")
         .select("id", "title", "status", "project_id", "path", "created_by", "created_at")
         .where({ project_id: project.id })
         .orderBy("updated_at", "desc")

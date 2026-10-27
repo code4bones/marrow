@@ -70,7 +70,9 @@ function buildForest(nodes: GraphNode[], edges: GraphEdge[], project: TreeProjec
     assigneeUserId: null, assigneeUserIds: [], assigneeDiffersFromOwner: false, children: [],
   };
   const builtById = new Map<string, BuiltNode>();
-  const visited = new Set<string>();
+  // The project is already the synthetic root, including when a member's
+  // filtered graph contains only that anchor and no assigned records.
+  const visited = new Set<string>([project.id]);
 
   const order = [...nodes].sort(compareByCreatedThenId);
   for (const seed of order) {

@@ -556,8 +556,8 @@ export const GET_PROJECT_SETTINGS = gql`
 `;
 
 export const GET_PROJECT_GRAPH = gql`
-  query GetProjectGraph($projectId: ID!, $depth: Int, $maxPerType: Int) {
-    projectGraph(projectId: $projectId, depth: $depth, maxPerType: $maxPerType) {
+  query GetProjectGraph($projectId: ID!, $depth: Int, $maxPerType: Int, $assignee: String) {
+    projectGraph(projectId: $projectId, depth: $depth, maxPerType: $maxPerType, assignee: $assignee) {
       nodes { id kind title status createdBy assigneeUserId assigneeUserIds assigneeDiffersFromOwner createdAt milestone }
       edges { id from to relation }
     }
