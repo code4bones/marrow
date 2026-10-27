@@ -24,10 +24,8 @@ interface FormValues {
 // no way back into those fields once the task existed (only title had its
 // own dedicated inline editor, on the Kanban card). Backed by
 // task.update_details, one call for every field here. priority is only
-// included in that call when the user actually changed it, since it alone
-// carries a stricter permission (reprioritize) than the rest of the form --
-// submitting it unchanged would risk failing the whole save for a developer
-// who only touched the other fields.
+// included in that call when the user actually changed it. The backend
+// checks the reprioritize action separately; PM and Developer have both grants.
 export function EditTaskDrawer({ task, role }: { task: Task; role?: ProjectMemberRole | null }) {
   const { t } = useTranslation('tasks');
   const [open, setOpen] = useState(false);

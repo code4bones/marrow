@@ -1,7 +1,7 @@
 import type { ProjectMemberRole } from '../model/types';
 
 // T-context (owner's ask, 2026-08-23): mirrors backend's TASK_ACTION_ROLES
-// (projects-core.mixin.ts) exactly -- the backend is the real enforcement,
+// (core/projects-core.mixin.ts) exactly -- the backend is the real enforcement,
 // this is purely a UI convenience so a viewer's own role hides/disables
 // actions they don't have instead of letting them find out via an error
 // toast after the fact. Keep the two in sync by hand; there's no shared
@@ -13,13 +13,13 @@ export type TaskPermissionAction =
 const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
   clarify: ['pm', 'developer', 'tester'],
   create: ['pm', 'developer'],
-  delete: ['pm'],
+  delete: ['pm', 'developer'],
   edit_details: ['pm', 'developer'],
-  reprioritize: ['pm'],
-  assign: ['pm'],
+  reprioritize: ['pm', 'developer'],
+  assign: ['pm', 'developer'],
   move: ['pm', 'developer'],
-  complete: ['pm', 'tester'],
-  review_decide: ['pm', 'tester'],
+  complete: ['pm', 'developer', 'tester'],
+  review_decide: ['pm', 'developer', 'tester'],
 };
 
 // While the viewer's role hasn't loaded yet (a brief query on mount),

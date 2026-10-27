@@ -32,7 +32,7 @@ type Row = Record<string, unknown>;
 // before the record-level permission check ever got a chance to run. Now
 // access:"write", same tier as every other create/update tool; the
 // project-scoped guard lives in the handler itself (deleteTask's existing
-// assertProjectMember+assertTaskPermission("delete") pm-only check;
+// assertProjectMember+assertTaskPermission("delete") pm/developer check;
 // deleteDecision/deleteMemory/deleteLink/deleteEvent gained a plain
 // assertProjectMember call -- any active project member may delete these,
 // no per-role restriction, since they have no pm/developer/tester action

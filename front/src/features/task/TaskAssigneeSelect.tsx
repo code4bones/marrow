@@ -23,7 +23,7 @@ export function TaskAssigneeSelect({ id, projectId, value, role, onDone }: Props
     onError: (e) => message.error(e.message),
   });
 
-  // T-context: assign is pm-only -- everyone else sees the current
+  // PM and Developer can assign; other roles see the current
   // assignee as plain text instead of a control that would just error.
   if (!canPerform(role, 'assign')) {
     const email = value.map((id) => members.find((m) => m.userId === id)?.email ?? id).join(', ');

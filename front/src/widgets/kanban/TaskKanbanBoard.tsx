@@ -14,7 +14,7 @@ import type { ProjectMemberRole, Task } from '../../shared/model/types';
 import { useWorkspaceStore } from '../../shared/model/workspace.store';
 import { RecordLink } from '../../shared/ui/RecordLink';
 
-// T-MEMORY-115: review (submitted, awaiting a pm/tester decision) and
+// T-MEMORY-115: review (submitted, awaiting a pm/developer/tester decision) and
 // changes_requested (rejected -- terminal for this card, a linked follow-up
 // task carries the rework) sit between doing/blocked and done.
 const COLUMN_STATUSES = ['todo', 'doing', 'blocked', 'clar', 'review', 'changes_requested', 'done', 'cancelled'] as const;
@@ -258,8 +258,7 @@ export function TaskKanbanBoard({ tasks, projectSlug, groupByMilestone, role, on
       return;
     }
     // T-context: reordering within a column renumbers priority, gated the
-    // same as any other priority change (pm-only) -- a Developer/Tester can
-    // still drop a card back where it started, just can't reshuffle order.
+    // same as any other priority change (PM/Developer).
     if (!canPerform(role, 'reprioritize')) {
       message.error(t('actionNotAllowed'));
       return;

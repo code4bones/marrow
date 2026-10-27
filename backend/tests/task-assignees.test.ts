@@ -85,7 +85,44 @@ describe("shared task assignees", () => {
     }
     expect(await service.call("task.create", { project: "test", title: "Invalid", assignee: "dev", assignees: ["qa"] }, owner)).toMatchObject({ ok: false });
     expect(await service.call("task.update_assignee", { id: task.id }, owner)).toMatchObject({ ok: false });
-    expect(await service.call("task.update_assignee", { id: task.id, assignees: [] }, { ...owner, sessionUserId: "dev", clientId: "user:dev" })).toMatchObject({ ok: false });
+    expect(await service.call("task.update_assignee", { id: task.id, assignees: [] }, { ...owner, sessionUserId: "qa", clientId: "user:qa" })).toMatchObject({ ok: false, error: { code: "UNAUTHORIZED" } });
+  });
+
+  it("lets a Developer manage tasks assigned to other members, including priority, team, review and deletion", async () => {
+    const dev = { ...owner, sessionUserId: "dev", clientId: "user:dev" };
+    const task = (await call("task.create", { project: "test", title: "Developer-managed task", assignees: ["qa"] }, dev)).task as Row;
+    expect((await call("task.update_details", { id: task.id, title: "Updated task", scope: "New scope", priority: 20 }, dev)).task)
+      .toMatchObject({ title: "Updated task", scope: "New scope", priority: 20 });
+    expect((await call("task.update_priority", { id: task.id, priority: 10 }, dev)).task).toMatchObject({ priority: 10 });
+    expect((await call("task.update_assignee", { id: task.id, assignees: ["owner", "qa"] }, dev)).task)
+      .toMatchObject({ assigneeUserIds: ["owner", "qa"], currentPerformerUserIds: ["qa"] });
+    expect((await call("task.update_status", { id: task.id, status: "review" }, dev)).task).toMatchObject({ status: "review" });
+    const review = await call("task.update_status", { id: task.id, status: "changes_requested", note: "Fix validation" }, dev);
+    expect(review.task).toMatchObject({ status: "changes_requested" });
+    expect(review.followUpTask).toMatchObject({ assigneeUserIds: ["owner", "qa"] });
+    expect((await call("task.update_status", { id: task.id, status: "cancelled" }, dev)).task).toMatchObject({ status: "cancelled" });
+    const disposable = await create(["qa"]);
+    expect((await call("task.delete", { id: disposable.id }, dev)).deletedTask).toMatchObject({ id: disposable.id });
+    expect(await db("tasks").where({ id: disposable.id }).first()).toBeUndefined();
+  });
+
+  it.each(["outsider", "pending"])("keeps %s without active project membership from managing tasks", async (userId) => {
+    const context = { ...owner, sessionUserId: userId, clientId: `user:${userId}` };
+    const task = await create();
+    const inputs: Array<[string, Row]> = [
+      ["task.create", { project: "test", title: "Forbidden" }],
+      ["task.update_details", { id: task.id, title: "Forbidden", priority: 1 }],
+      ["task.update_priority", { id: task.id, priority: 1 }],
+      ["task.update_assignee", { id: task.id, assignees: ["qa"] }],
+      ["task.update_status", { id: task.id, status: "changes_requested", note: "Forbidden" }],
+      ["task.update_status", { id: task.id, status: "done" }],
+      ["task.complete", { id: task.id }],
+      ["task.delete", { id: task.id }],
+    ];
+    for (const [name, input] of inputs) {
+      expect(await service.call(name, input, context)).toMatchObject({ ok: false, error: { code: "PROJECT_NOT_FOUND" } });
+    }
+    expect(await db("tasks").where({ id: task.id }).first()).toMatchObject({ title: task.title, status: "todo", version: task.version });
   });
 
   it("preserves graph/status/follow-up recipients and cleans deleted user relations", async () => {

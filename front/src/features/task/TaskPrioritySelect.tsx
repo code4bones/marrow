@@ -14,7 +14,7 @@ interface Props {
   onDone?: () => void;
 }
 
-// T-context: reprioritize is pm-only -- everyone else sees a plain
+// Reprioritization is available to PM and Developer; other roles see a plain
 // PriorityTag instead of a control that would just error on change.
 export function TaskPrioritySelect({ id, value, role, onDone }: Props) {
   const { t } = useTranslation('tasks');

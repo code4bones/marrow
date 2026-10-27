@@ -392,7 +392,7 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
       return { task: await this.formatTask(row) };
     }
     // T-MEMORY-115: a reviewer's reject decision, not a plain move -- gated
-    // separately (review_decide: pm/tester) from every other status change
+    // separately (review_decide: pm/developer/tester) from every other status change
     // (move: pm/developer). The note is mandatory here specifically because
     // it becomes the new follow-up task's scope -- an empty one would leave
     // that task saying nothing about what actually needs fixing.
@@ -602,11 +602,9 @@ export function TasksMixin<TBase extends Constructor<MemoryInstance>>(Base: TBas
 
   // T-MEMORY-110: backs the full task-editing drawer -- whoever can create a
   // task (pm/developer, see task.create's own "create" gate) gets the same
-  // reach to fully describe it afterward, not just rename it. priority is
-  // the one field in this form that stays behind its own stricter gate
-  // (reprioritize: pm only) -- checked only when priority is actually part
-  // of this call, so a developer submitting the rest of the form with
-  // priority left untouched never trips it.
+  // reach to fully describe it afterward, not just rename it. Priority
+  // retains its separate reprioritize check when supplied in this call;
+  // PM and Developer have both grants.
   protected async updateTaskDetails(input: Row, context: NormalizedGatewayRequestContext) {
     const id = String(input.id);
     const current = await this.db("tasks").where({ id }).first();

@@ -78,6 +78,41 @@ beforeEach(async () => {
 afterEach(async () => { await dispatcher?.stop(); await db.destroy(); vi.unstubAllEnvs(); });
 
 describe("Telegram task lifecycle feedback", () => {
+  it.each(["task.complete", "task.update_status", "graphql.completeTask", "graphql.updateTaskStatus"])("allows Developer completion through %s with workflow and Telegram feedback", async (method) => {
+    const task = await create();
+    // Completion is a project role grant, independent of current execution.
+    await call("task.handoff", { id: task.id, assignees: ["qa"], expectedVersion: task.version, note: "Ready for QA" }, dev);
+    if (method.startsWith("graphql.")) {
+      const mutation = method === "graphql.completeTask"
+        ? 'completeTask(id:$id,acceptanceEvidence:"Checked"){task{id status}}'
+        : 'updateTaskStatus(id:$id,status:"done",note:"Checked"){id status}';
+      const result = await graphql({ schema: gatewaySchema, contextValue: { service, requestContext: dev },
+        variableValues: { id: task.id }, source: `mutation($id:ID!){${mutation}}` });
+      expect(result.errors).toBeUndefined();
+      expect(JSON.stringify(result.data)).toContain('"status":"done"');
+    } else {
+      expect((await call(method, { id: task.id, status: "done", acceptanceEvidence: "Checked", note: "Checked" }, dev)).task)
+        .toMatchObject({ id: task.id, status: "done" });
+    }
+    const completedEvents = await db("events").where({ related_id: task.id, type: "task.completed" });
+    expect(completedEvents).toHaveLength(1);
+    expect(await db("task_workflow_steps").where({ task_id: task.id, kind: "status", status: "done" }).first())
+      .toMatchObject({ actor_user_id: "dev" });
+    expect(await db("integration_outbox").where({ source_event_id: completedEvents[0].id, integration: "telegram_project_bot" })).toHaveLength(1);
+  });
+
+  it("retains active-claim and forced-completion requirements for Developer", async () => {
+    const task = await create();
+    await call("task.claim", { taskId: task.id, role: "test", scope: "QA" }, qa);
+    expect(await service.call("task.complete", { id: task.id }, dev))
+      .toMatchObject({ ok: false, error: { code: "TASK_HAS_ACTIVE_CLAIMS" } });
+    expect(await service.call("task.complete", { id: task.id, force: true }, dev))
+      .toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+    expect((await call("task.complete", { id: task.id, force: true, reason: "Manually verified" }, dev)).task)
+      .toMatchObject({ status: "done" });
+    expect(await db("task_claims").where({ task_id: task.id }).first()).toMatchObject({ status: "cancelled" });
+  });
+
   it("commits DONE and one durable reply, preserves source/topic and resolves Telegram users", async () => {
     const task = await create();
     remote.mockImplementation(async () => {

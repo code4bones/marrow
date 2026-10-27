@@ -18,26 +18,19 @@ export type ProjectMemberRole = "pm" | "developer" | "tester";
 
 export type TaskPermissionAction = "create" | "delete" | "edit_details" | "reprioritize" | "assign" | "move" | "complete" | "review_decide" | "clarify";
 
-// pm: full control. developer: creates tasks, edits their descriptive
-// content (title/milestone/scope/acceptance/notes -- everything the full
-// edit form covers except priority, which stays reprioritize-gated even
-// inside that same form), moves between every status except into done and
-// except deciding a review (developer can still move a task INTO review,
-// that's a plain move -- only the pm/tester decision coming OUT of review
-// is gated separately). tester: can move a task into done (task.complete,
-// directly or via updateTaskStatus's status==='done' special case) and can
-// decide a review (approve to done, or reject to changes_requested via
-// review_decide) -- no other task-mutating power.
+// PM and Developer can manage tasks, including completion and review
+// decisions. Tester can complete, decide reviews and request clarification.
+// Project membership is checked independently before these action grants.
 const TASK_ACTION_ROLES: Record<TaskPermissionAction, ProjectMemberRole[]> = {
   create: ["pm", "developer"],
-  delete: ["pm"],
+  delete: ["pm", "developer"],
   edit_details: ["pm", "developer"],
-  reprioritize: ["pm"],
-  assign: ["pm"],
+  reprioritize: ["pm", "developer"],
+  assign: ["pm", "developer"],
   move: ["pm", "developer"],
-  complete: ["pm", "tester"],
+  complete: ["pm", "developer", "tester"],
   clarify: ["pm", "developer", "tester"],
-  review_decide: ["pm", "tester"]
+  review_decide: ["pm", "developer", "tester"]
 };
 
 // Project sharing: URL-safe random invite codes -- same base64url shape as

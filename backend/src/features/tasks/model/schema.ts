@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-// T-MEMORY-115: "review" (submitted, awaiting a pm/tester decision) and
+// T-MEMORY-115: "review" (submitted, awaiting a pm/developer/tester decision) and
 // "changes_requested" (reviewer rejected it -- terminal for THIS task, a
 // linked follow-up task carries the actual rework, see
 // TasksMixin.createFollowUpTask) sit between "doing" and "done" in the

@@ -74,6 +74,10 @@
 
 ### Changed
 
+- Active project Developers can manage tasks, including completion, review
+  decisions, priority, responsible-team assignment and deletion. Backend and
+  web UI permissions match; membership and completion claim checks remain.
+
 - Telegram recipients now show one person per known Telegram identity, sharing
   mappings and tags across sender/mention aliases; conflicting mappings require
   one explicit selection.

@@ -23,6 +23,20 @@ They need access to shared knowledge:
 
 The system should prevent knowledge from being trapped in one developer's local SQLite database.
 
+## Project task permissions
+
+Active project members with the `developer` role can create, edit, delete,
+reprioritize and assign tasks, change their status (including `done` and
+`cancelled`), and approve or request changes during review. These task action
+grants match `pm` in both MCP/GraphQL enforcement and the web UI. Tester
+permissions remain completion, review decisions and clarification requests.
+
+Task actions still require project membership. Pending invitees and users
+outside the project gain no access. Completion retains active-claim checks
+and forced-completion evidence requirements. Stage handoffs still require a
+current performer or PM; changing the responsible team does not transfer
+execution. Project ownership and membership management permissions are unchanged.
+
 ## Runtime Modes
 
 Marrow MCP supports two runtime modes.
