@@ -7,7 +7,7 @@ export function taskFeedbackMessage(payload: TelegramTaskFeedback, webUrl: strin
     handoff: "🔄 Задача передана", reassigned: "👥 Исполнители изменены" };
   return { blocks: [
     { type: "heading", size: 3, text: headings[payload.status] },
-    { type: "paragraph", text: `${payload.taskId}: ${payload.title}` },
+    { type: "paragraph", text: [{ type: "code", text: payload.taskId }, `: ${payload.title}`] },
     { type: "paragraph", text: [payload.status === "clar" ? "Уточнение запрашивает: " : payload.status === "handoff" ? "От: " : payload.status === "done" ? "Завершили: " : "Предыдущие исполнители: ", telegramPeopleText(payload.from)] },
     ...(payload.status === "handoff" || payload.status === "reassigned" ? [{ type: "paragraph" as const, text: ["Передано: ", telegramPeopleText(payload.to)] }] : []),
     ...(payload.note ? [{ type: "paragraph" as const, text: payload.note }] : []),

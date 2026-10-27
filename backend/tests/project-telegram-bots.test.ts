@@ -838,7 +838,7 @@ describe("chat recipient mappings and task replies", () => {
     const task = await db("tasks").first();
     expect(remote.sendRichMessage).toHaveBeenCalledWith("-10012345", { blocks: [
       { type: "heading", size: 3, text: "✅ Задача создана" },
-      { type: "paragraph", text: `${task.id}: Исправить вход` },
+      { type: "paragraph", text: [{ type: "code", text: task.id }, ": Исправить вход"] },
       { type: "paragraph", text: ["Исполнитель: ", [{ type: "mention", username: "member", text: "@member" }]] },
       { type: "paragraph", text: { type: "url", text: "Открыть задачу в Marrow →", url: `https://marrow.example.test/projects/test/tasks/${task.id}` } }
     ] }, { reply_parameters: { message_id: 40, allow_sending_without_reply: true }, message_thread_id: 7 }, expect.anything());

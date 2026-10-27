@@ -20,7 +20,7 @@ export async function sendTaskConfirmation(api: Pick<Api, "sendRichMessage">, co
   const url = `${webUrl}/projects/${encodeURIComponent(confirmation.projectSlug)}/tasks/${encodeURIComponent(confirmation.taskId)}`;
   const rich: InputRichMessage = { blocks: [
     { type: "heading", size: 3, text: "✅ Задача создана" },
-    { type: "paragraph", text: `${confirmation.taskId}: ${confirmation.title}` },
+    { type: "paragraph", text: [{ type: "code", text: confirmation.taskId }, `: ${confirmation.title}`] },
     { type: "paragraph", text: [ `${confirmation.assignees.length > 1 ? "Исполнители" : "Исполнитель"}: `, telegramPeopleText(confirmation.assignees) ] },
     { type: "paragraph", text: { type: "url", text: "Открыть задачу в Marrow →", url } }
   ] };

@@ -52,6 +52,8 @@ separate from routing. It can cycle backend → frontend → backend;
 only final completion uses DONE. For Telegram tasks, each handoff, CLAR and
 DONE gets a Rich Message reply to the original source. People are rendered as
 Telegram mentions/links, using chat-local manual identities before profile links.
+Task creation and lifecycle replies format the task ID as a separate inline-code
+fragment for copying; the colon and title remain ordinary text outside that fragment.
 Unlinked people are labelled explicitly, never with a Marrow email/UUID. Source
 participant snapshots preserve earlier performers across later changes.
 

@@ -81,6 +81,9 @@
 
 ### Changed
 
+- Telegram task creation and lifecycle replies render only the task ID as inline
+  code so it can be copied separately from the colon and title.
+
 - Active project Developers can manage tasks, including completion, review
   decisions, priority, responsible-team assignment and deletion. Backend and
   web UI permissions match; membership and completion claim checks remain.
