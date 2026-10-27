@@ -160,7 +160,6 @@ export function ProjectGraphView({ slug }: Props) {
         />
         <Space size={12} wrap>
           <Space size={6}>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('overviewParticipant')}</Typography.Text>
             <Select
               aria-label={t('overviewParticipant')}
               value={assignee ?? ''}
@@ -177,7 +176,6 @@ export function ProjectGraphView({ slug }: Props) {
           {view === 'timeline' && (
             <>
               <Space size={6}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('root')}</Typography.Text>
                 <Select
                   aria-label={t('root')}
                   value={rootKind}
