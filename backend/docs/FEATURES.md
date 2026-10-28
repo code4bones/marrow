@@ -8,6 +8,15 @@ The project is split into MVP features, near-future features, and explicitly def
 
 ## MVP features
 
+### Agent artifact downloads
+
+`artifact.download` retrieves actual bytes by artifact ID or project/path using
+the existing MCP authorization. PNG/JPEG/GIF/WebP are returned as native MCP
+images so vision-capable agents can inspect screenshots; other files are embedded
+binary resources. Explicit `format="base64"` supports decoding/saving a file
+locally. Metadata reads stay compact. Downloads enforce project membership,
+size limits (5 MiB default, 20 MiB explicit maximum) and stored SHA-256.
+
 ### Overview participant filter
 
 Available in backend **1.107.0** and frontend **0.79.0**.

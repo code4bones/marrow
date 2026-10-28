@@ -341,8 +341,11 @@ For Markdown or text files, the agent should call `artifact.peek` first when it
 needs orientation, then `artifact.read_text` when it needs the actual file text
 in model context. Both avoid `contentBase64`. Use `artifact.put_text` when
 writing Markdown or text artifacts. Use `artifact.get(includeContent=true)` only
-when exact inline base64 content is actually needed. For larger files or binary
-files, download from `downloadPath`.
+when exact inline base64 text content is actually needed. For images and binary
+files, use `artifact.download(id=...)` over the same authenticated MCP connection:
+images arrive as native MCP image content, other files as embedded resources.
+Use `format="base64"` to decode/save bytes locally. The default limit is 5 MiB,
+explicit maximum 20 MiB. For larger files, stream from authenticated `downloadPath`.
 
 ### Upload
 

@@ -320,11 +320,18 @@ For text or Markdown files, call `artifact.peek` first when orienting, then
 Use `artifact.put_text` when creating or updating Markdown/text artifacts. It
 stores UTF-8 text directly and avoids base64.
 
-Use `artifact.get(includeContent=true)` only when exact base64 file bytes are
-actually needed.
+For a selected screenshot/image, call `artifact.download(id=...)`: supported
+PNG/JPEG/GIF/WebP arrive as native MCP images, not metadata. Other files arrive
+as embedded binary resources. If the client cannot display that content or needs
+a local file, call `artifact.download(id=..., format="base64")`, decode
+`data.download.contentBase64` locally, and open it with the client's file/image
+viewer. Do not conclude an image is unavailable just because `artifact.get`
+returned metadata. The download uses the same MCP authorization.
 
-For binary files or larger files, use the returned `downloadPath` and append it
-to `GW_ENDPOINT`.
+`artifact.download` defaults to 5 MiB; raise `maxBytes` explicitly up to 20 MiB.
+For larger files, use the returned `downloadPath` appended to `GW_ENDPOINT`
+with the existing HTTP authorization. `artifact.get(includeContent=true)`
+continues to support exact base64 for small text files only.
 
 Ask before overwriting an artifact unless the user explicitly requested a
 replacement.

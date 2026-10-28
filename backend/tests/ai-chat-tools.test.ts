@@ -29,7 +29,7 @@ describe("aiChatToolSpecs", () => {
       "env.variable_set", "env.variable_delete", "user.preference_set",
       "git.credential_create", "git.credential_delete", "git.credential_list",
       "ai.ask", "ai.provider_create", "ai.provider_update", "ai.provider_delete",
-      "artifact.put"
+      "artifact.put", "artifact.download"
     ];
     for (const name of forbidden) {
       expect(offered.has(name), name).toBe(false);

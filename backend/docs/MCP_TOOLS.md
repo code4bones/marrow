@@ -272,6 +272,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.peek`
 * `artifact.read_text`
 * `artifact.get`
+* `artifact.download`
 * `artifact.update_metadata`
 * `artifact.archive`
 * `git.credential_create`
@@ -413,6 +414,7 @@ docs/AUTH.md.
 | `artifact.search` | read | | `handoff.create` | write |
 | `artifact.list` | read | | `handoff.latest` | read |
 | `artifact.get` | read | | `handoff.search` | read |
+| `artifact.download` | read | | | |
 | `artifact.peek` | read | | `git.credential_create` | write |
 | `artifact.read_text` | read | | `git.credential_list` | read |
 | `artifact.update_metadata` | write | | `git.credential_delete` | write |
@@ -1417,7 +1419,7 @@ Input by path:
 }
 ```
 
-For small files, agents may request inline base64 content:
+For small **text** files, agents may request inline base64 content:
 
 ```json
 {
@@ -1427,11 +1429,55 @@ For small files, agents may request inline base64 content:
 }
 ```
 
-Use direct download for larger files and binaries.
+For images and binary files, call `artifact.download`. `includeContent=true`
+rejects binary artifacts. The authenticated HTTP `downloadPath` remains
+available for streaming larger files with a bearer token or browser session.
 
 Agents should usually call `artifact.peek` first for orientation, then
 `artifact.read_text` for Markdown/text content. Use inline base64 only when
 the exact file bytes are needed in the model context.
+
+---
+
+### `artifact.download` (gateway)
+
+Retrieve actual file bytes through the authenticated MCP connection. No separate
+HTTP credential, public URL or browser session is needed. Resolve by `id`, or by
+`project` and `path` (`project:null` for common files):
+
+```json
+{"id":"A-SLIFE-034"}
+```
+
+`format="auto"` (default) returns PNG/JPEG/GIF/WebP in native MCP `image`
+content, allowing a vision-capable agent to inspect screenshots. MIME and file
+signature must agree; other formats, including SVG, arrive as an embedded MCP
+resource with a base64 `blob`. This URI identifies the returned attachment;
+it is not a public download URL. Text and `structuredContent` contain only
+metadata (`artifact` and `download`), without repeating binary base64.
+
+For clients that need exact bytes to save locally, or cannot consume native
+MCP content:
+
+```json
+{"id":"A-SLIFE-034","format":"base64","maxBytes":5242880}
+```
+
+The explicit base64 response contains `data.download.contentBase64`. Decode it
+to a client-local file, then use the client's image/file viewer. The tool cannot
+write to the client's filesystem. All modes include filename, MIME, size, and
+`artifact.sha256`; bytes are checked against the stored size and SHA-256.
+
+`maxBytes` defaults to 5 MiB and may be raised explicitly to 20 MiB. Oversized
+files fail without returning partial content; for larger files use the existing
+authenticated HTTP download. Missing files return `ARTIFACT_BYTES_MISSING`;
+metadata/content disagreement returns `ARTIFACT_CONFLICT`. Project membership
+checks apply before reading bytes, including calls by ID. Common artifacts
+follow existing common-scope visibility. Use `artifact.read_text` for text.
+
+The gateway's built-in Ask Marrow text-only tool loop does not expose this
+binary tool. MCP clients receive native content; vision support depends on the
+client/model. Refresh the MCP connection's tool list after upgrading.
 
 ---
 

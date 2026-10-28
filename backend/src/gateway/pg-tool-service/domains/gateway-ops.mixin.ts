@@ -136,7 +136,7 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
         "Call task.next or task.get when working from a recorded task.",
         "Call preflight before editing files.",
         "Call artifact.search before artifact.list; use compact=true for navigation and small artifact.peek excerpts before reading full text.",
-        "Call artifact.read_text and artifact.put_text for Markdown/text; use base64 artifact.get/artifact.put only for exact bytes or binary files.",
+        "Call artifact.read_text and artifact.put_text for Markdown/text. Call artifact.download(id) to inspect an image/screenshot or retrieve a binary file through MCP; format=base64 supports local file saving. Use artifact.put for binary uploads.",
         "After large artifact/manual reads, compact the chat before implementation; clear context when switching projects.",
         "Record decisions, failed attempts, events, and useful memory after meaningful work."
       ],
@@ -154,7 +154,7 @@ export function GatewayOpsMixin<TBase extends Constructor<BaseService>>(Base: TB
         status: "available",
         intent:
           "Store reusable files such as AGENTS.md templates on the gateway under project-oriented paths so agents can search and download them.",
-        tools: ["artifact.put_text", "artifact.put", "artifact.search", "artifact.peek", "artifact.read_text", "artifact.get"]
+        tools: ["artifact.put_text", "artifact.put", "artifact.search", "artifact.peek", "artifact.read_text", "artifact.get", "artifact.download"]
       },
       connectionSnippets: connectionSnippets()
     };

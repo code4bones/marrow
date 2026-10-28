@@ -51,6 +51,9 @@ export const AI_CHAT_ALLOWED_WRITE_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 export const AI_CHAT_EXCLUDED_READ_TOOLS: ReadonlySet<string> = new Set([
+  // This assistant's provider loop transports tool results as text, without
+  // native MCP image/resource support. Do not flood it with binary base64.
+  "artifact.download",
   "project.telegram_chat_mentions",
   "project.telegram_bot_messages",
   "project.telegram_bot_message",

@@ -102,6 +102,8 @@ artifact.peek id=<artifact id>
 artifact.read_text id=<artifact id>, when Markdown/text content is needed
 artifact.put_text path=<artifact path> text=<updated text>, when Markdown/text content should be saved
 artifact.get id=<artifact id> includeContent=true, only if exact base64 bytes are needed
+artifact.download id=<artifact id>, to inspect an image or retrieve a binary attachment
+artifact.download id=<artifact id> format="base64", to decode/save the file locally
 ```
 
 The gateway is the source of truth for bundled templates. Client agents should

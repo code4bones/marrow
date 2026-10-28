@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { asMcpResult } from "../shared/mcp/tool-response.js";
+import { artifactDownloadMcpResult } from "./artifact-download.js";
 import { readPackageMetadata } from "./pg-tool-service/formatters/gateway-ops.js";
 import { defaultGatewayOutputSchema, gatewayToolClaudeName, gatewayToolRequiredScopes, gatewayToolSpecs } from "./tool-definitions.js";
 import type { GatewayRequestContext, PgToolService } from "./pg-tool-service.js";
@@ -47,7 +48,10 @@ export async function createGatewayMcpServer(service: PgToolService, context: Ga
           securitySchemes: [{ type: "oauth2", scopes: gatewayToolRequiredScopes(spec.name) }]
         }
       },
-      async (input) => asMcpResult(await service.call(spec.name, input, context))
+      async (input) => {
+        const response = await service.call(spec.name, input, context);
+        return spec.name === "artifact.download" ? artifactDownloadMcpResult(response) : asMcpResult(response);
+      }
     );
   }
 

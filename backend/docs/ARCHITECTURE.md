@@ -63,6 +63,18 @@ storage and access rules. Telly may accept the task
 while downloads are pending; task.get/preflight expose this state and guide the
 agent to re-read before using linked artifact IDs.
 
+## Agent artifact delivery
+
+The gateway's `artifact.download` service resolves ID/path through existing
+membership-protected artifact lookups, then opens a bounded file read and checks
+stored size/SHA-256. `artifact-download.ts` maps verified raster MIME/signatures
+to native MCP image content, other files to embedded binary resources. The MCP
+adapter omits base64 from text/structured metadata in auto mode; explicit base64
+mode preserves exact bytes for clients saving files locally. It uses the MCP
+call's existing authorization, without exposing server paths as client files or
+minting public URLs. HTTP streaming downloads and browser previews remain
+available. The text-only built-in AI tool loop excludes binary downloads.
+
 ## Telegram lifecycle delivery
 
 Telegram task creation atomically enqueues existing Telly offers for resolved

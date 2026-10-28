@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { loadArtifactDownload } from "../../artifact-download.js";
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { projectKeyFromId } from "../../../shared/ids/id.service.js";
@@ -345,6 +346,11 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     );
   }
 
+  protected async downloadArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
+    const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
+    return loadArtifactDownload(row, input);
+  }
+
   protected async getArtifact(input: Row, context?: NormalizedGatewayRequestContext) {
     const row = input.id ? await this.artifactRowById(String(input.id), context) : await this.artifactRowByPath(input, context);
     const output = artifactOut(row);
@@ -355,7 +361,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
       // for includeContent, the one path that previously still allowed it
       // for anything under maxBytes regardless of content type.
       if (!isTextArtifact(String(row.content_type), String(row.path))) {
-        throw new AppError("VALIDATION_ERROR", "Artifact is binary. Use downloadPath instead of includeContent.", {
+        throw new AppError("VALIDATION_ERROR", "Artifact is binary. Use artifact.download for MCP image/file content, or the authenticated HTTP downloadPath.", {
           contentType: row.content_type,
           downloadPath: output.downloadPath
         });
@@ -399,7 +405,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
           truncated: false,
           excerpt: null,
           outline: [],
-          note: "Binary or non-text artifact. Use downloadPath when bytes are needed."
+          note: "Binary or non-text artifact. Use artifact.download for MCP image/file content, or the authenticated HTTP downloadPath."
         }
       };
     }
@@ -430,7 +436,7 @@ export function ArtifactsMixin<TBase extends Constructor<Tier1Instance>>(Base: T
     const isText = isTextArtifact(contentType, artifactPath);
     const isMarkdown = isMarkdownArtifact(contentType, artifactPath);
     if (!isText) {
-      throw new AppError("VALIDATION_ERROR", "Artifact is not a text artifact. Use downloadPath for binary bytes.", {
+      throw new AppError("VALIDATION_ERROR", "Artifact is not a text artifact. Use artifact.download for MCP image/file content, or the authenticated HTTP downloadPath.", {
         contentType,
         path: artifactPath,
         downloadPath: output.downloadPath

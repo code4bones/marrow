@@ -93,7 +93,7 @@ export function artifactGetEfficiencyHints(input: Row, artifact: Row) {
         "Inline base64 content was returned. Use artifact.peek or artifact.read_text for Markdown/text unless exact bytes are required.",
         "Compact the chat after consuming base64 content."
       ]
-    : ["Only artifact metadata was returned. Use artifact.peek or artifact.read_text before requesting includeContent=true."];
+    : ["Only artifact metadata was returned. Use artifact.download for images/binary files, artifact.peek or artifact.read_text for text."];
   return tokenEfficiencyBase({
     severity: base64Included || input.includeContent === true ? "warn" : "info",
     strategy: base64Included ? "base64-inline-content" : "metadata-only",
@@ -101,7 +101,7 @@ export function artifactGetEfficiencyHints(input: Row, artifact: Row) {
     base64Included,
     estimatedChars,
     warnings,
-    preferredNextTools: ["artifact.peek", "artifact.read_text"],
+    preferredNextTools: ["artifact.download", "artifact.peek", "artifact.read_text"],
     compactAfterThis: base64Included || estimatedChars > 12_000
   });
 }

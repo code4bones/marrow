@@ -314,6 +314,12 @@ Bad common records:
 
 ## Artifact Navigation
 
+For a task's screenshot or binary attachment, select its artifact ID and call
+`artifact.download`. Supported raster images arrive as native MCP image content;
+other files as embedded resources. `format="base64"` returns exact bytes for
+local saving/viewing. Use the MCP connection's existing authorization; no
+separate browser login is needed. Default cap 5 MiB, explicit maximum 20 MiB.
+
 Use this when browsing shared files by hierarchy or tags:
 
 ```text

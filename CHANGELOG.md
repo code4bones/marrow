@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- `artifact.download` retrieves real artifact bytes by ID/project-path through
+  MCP: native raster images, embedded file resources, and explicit base64 for
+  local saving, with membership checks, bounded size and SHA-256 verification.
+
 ### Fixed
 
 - Telegram photo/document replies with configured work hashtags are classified as

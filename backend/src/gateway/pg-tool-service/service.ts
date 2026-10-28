@@ -305,6 +305,8 @@ export class PgToolService extends ComposedService {
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed, requestContext) });
         case "artifact.list":
           return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed, requestContext) });
+        case "artifact.download":
+          return ok("Artifact bytes downloaded.", await this.downloadArtifact(parsed, requestContext));
         case "artifact.get": {
           const artifact = await this.getArtifact(parsed, requestContext);
           return ok("Artifact loaded.", {

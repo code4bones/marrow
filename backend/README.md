@@ -315,7 +315,9 @@ pm2 save
 and then seeds or updates bundled common artifact templates from the installed
 package into PostgreSQL plus `ARTIFACT_DIR`. Clients do not seed templates
 locally; they discover gateway templates with `artifact.search`,
-`artifact.list`, `artifact.peek`, `artifact.read_text`, `artifact.put_text`, and `artifact.get`. Run `pm3m seed templates` on the gateway
+`artifact.list`, `artifact.peek`, `artifact.read_text`, `artifact.put_text`, `artifact.get`, and `artifact.download`.
+`artifact.download(id)` delivers native MCP images or binary attachments;
+`format="base64"` supports local saving. Run `pm3m seed templates` on the gateway
 only when you need to repeat just the template sync.
 
 Gateway MCP tools publish `outputSchema` in `tools/list`. Every tool exposes the

@@ -1,4 +1,5 @@
 import { taskWorkflowSchema } from "./task-workflow.js";
+import { DEFAULT_ARTIFACT_DOWNLOAD_BYTES, MAX_ARTIFACT_DOWNLOAD_BYTES } from "./artifact-download.js";
 import * as z from "zod/v4";
 import {
   getDecisionSchema,
@@ -336,6 +337,13 @@ const artifactGetSchema = z
   .refine((value) => Boolean(value.id || value.path), {
     message: "Either id or path is required."
   });
+const artifactDownloadSchema = z.object({
+  id: z.string().min(1).optional(),
+  project: z.string().nullable().optional(),
+  path: z.string().min(1).optional(),
+  format: z.enum(["auto", "base64"]).optional(),
+  maxBytes: z.number().int().min(1).max(MAX_ARTIFACT_DOWNLOAD_BYTES).default(DEFAULT_ARTIFACT_DOWNLOAD_BYTES)
+}).refine((value) => Boolean(value.id || value.path), { message: "Either id or path is required." });
 const artifactPeekSchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -1421,9 +1429,19 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.get",
     description:
-      "Get artifact metadata by id or project/path. Set includeContent=true for small TEXT files when the agent needs base64 content inline; binary artifacts always reject includeContent -- fetch downloadPath instead.",
+      "Get artifact metadata by id or project/path. For images/screenshots and binary files call artifact.download with the same id to receive actual MCP image/file content. includeContent=true supports small TEXT files only; prefer artifact.read_text for text.",
     schema: artifactGetSchema,
     outputSchema: output(artifactWithContentOutputDataSchema)
+  },
+  {
+    name: "artifact.download",
+    description:
+      "Download actual artifact bytes by id or project/path using this MCP connection's authorization. Default format=auto returns PNG/JPEG/GIF/WebP as native MCP image content so you can inspect screenshots; other files as an embedded resource blob. To save/decode any file locally, use format=base64 and decode data.download.contentBase64. Returns filename, MIME, size and SHA-256. maxBytes defaults to 5 MiB, explicit maximum 20 MiB; oversized files fail without truncation. Does not write to the client's filesystem. Prefer artifact.read_text for text and artifact.get for metadata.",
+    schema: artifactDownloadSchema,
+    outputSchema: output(z.object({ artifact: artifactSchema, download: z.object({
+      format: z.enum(["image", "resource", "base64"]), encoding: z.literal("base64"),
+      mimeType: z.string(), filename: z.string(), uri: z.string(), sizeBytes: z.number(), contentBase64: z.string().optional()
+    }) }))
   },
   {
     name: "artifact.peek",
