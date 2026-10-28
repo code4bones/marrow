@@ -37,6 +37,7 @@ describe("aiChatToolSpecs", () => {
   });
 
   it("offers a write tool only if it is explicitly allow-listed", () => {
+    expect(offered.has("record.download_url")).toBe(true);
     for (const spec of gatewayToolSpecs.filter((tool) => tool.access === "write")) {
       expect(offered.has(spec.name), spec.name).toBe(AI_CHAT_ALLOWED_WRITE_TOOLS.has(spec.name));
     }

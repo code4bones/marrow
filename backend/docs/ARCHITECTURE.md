@@ -65,6 +65,18 @@ agent to re-read before using linked artifact IDs.
 
 ## Agent artifact delivery
 
+`record.download_url` provides the ordinary HTTP path for every record kind and
+its directly linked artifact attachments. `downloads.mixin.ts` resolves typed
+DTOs through existing membership/common-event/request access rules, exports
+Markdown/JSON where no original file exists, and issues a random256bit capability.
+Migration142 stores only token hashes, record/format/hash, issuing principal and
+five-minute expiry. The public `/artifacts/download/:token/:filename` route
+precedes session/OAuth authorization and validates the grant, fresh user role/
+membership, record and content hash. Artifact bytes stream from existing storage;
+record exports are generated on demand. Expiry/deletion/content changes revoke
+access. URL tokens are redacted from application logs and omitted in nginx access
+logs. Responses are no-store with no-referrer; HEAD/Range do not consume grants.
+
 The gateway's `artifact.download` service resolves ID/path through existing
 membership-protected artifact lookups, then opens a bounded file read and checks
 stored size/SHA-256. `artifact-download.ts` maps verified raster MIME/signatures

@@ -27,4 +27,8 @@ describe("log redaction", () => {
     expect(redactUrlForLog("/graphql")).toBe("/graphql");
     expect(redactUrlForLog(undefined)).toBeUndefined();
   });
+  it("redacts download capability tokens embedded in paths", () => {
+    expect(redactUrlForLog("/api/artifacts/download/secret-token/photo.jpg?inline=1")).toBe("/api/artifacts/download/[REDACTED]/photo.jpg?inline=1");
+    expect(redactUrlForLog("/artifacts/download/secret-token/photo.jpg")).toBe("/artifacts/download/[REDACTED]/photo.jpg");
+  });
 });

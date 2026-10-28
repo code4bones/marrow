@@ -4,6 +4,13 @@
 
 ### Added
 
+- `record.download_url` issues five-minute HTTP URLs for any accessible entity
+  and its attached artifacts, including filename/MIME/size/hash/expiry and
+  explicit agent download steps. GET needs no Authorization; entities export
+  Markdown/JSON, artifact bytes are streamed unchanged.
+
+### Added
+
 - `artifact.download` retrieves real artifact bytes by ID/project-path through
   MCP: native raster images, embedded file resources, and explicit base64 for
   local saving, with membership checks, bounded size and SHA-256 verification.

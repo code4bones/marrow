@@ -273,6 +273,7 @@ PostgreSQL gateway mode exposes the same core tools plus gateway diagnostics and
 * `artifact.read_text`
 * `artifact.get`
 * `artifact.download`
+* `record.download_url`
 * `artifact.update_metadata`
 * `artifact.archive`
 * `git.credential_create`
@@ -415,6 +416,7 @@ docs/AUTH.md.
 | `artifact.list` | read | | `handoff.latest` | read |
 | `artifact.get` | read | | `handoff.search` | read |
 | `artifact.download` | read | | | |
+| `record.download_url` | read | | | |
 | `artifact.peek` | read | | `git.credential_create` | write |
 | `artifact.read_text` | read | | `git.credential_list` | read |
 | `artifact.update_metadata` | write | | `git.credential_delete` | write |
@@ -1436,6 +1438,65 @@ available for streaming larger files with a bearer token or browser session.
 Agents should usually call `artifact.peek` first for orientation, then
 `artifact.read_text` for Markdown/text content. Use inline base64 only when
 the exact file bytes are needed in the model context.
+
+---
+
+### `record.download_url` (gateway)
+
+Create a five-minute direct download URL for **any accessible entity ID**:
+project, task, decision, memory (including handoffs/requests/replies), skill,
+artifact, event or link. OAuth/session authorization is used only for issuing
+the URL. The second HTTP step needs no Authorization header or cookies.
+
+```json
+{"id":"A-SLIFE-034"}
+```
+
+For a task or any other record, directly linked accessible artifact attachments
+are included by default. `includeAttachments:false` omits them. Artifacts return
+their original file; skill/memory Markdown bodies are preserved; other records
+are exported to `.md`, or pass `format:"json"` for structured JSON exports.
+
+The response includes `download`, `attachments[]` and explicit `instructions`.
+Missing/corrupt authorized attachment files appear in `unavailableAttachments`
+with ID/error code, without blocking the entity export or other attachments.
+Every download entry contains:
+
+```json
+{
+  "id":"A-SLIFE-034",
+  "kind":"ARTIFACT",
+  "filename":"photo-example.jpg",
+  "contentType":"image/jpeg",
+  "sizeBytes":38998,
+  "sha256":"<sha256>",
+  "url":"https://marrow.example.com/api/artifacts/download/<opaque-token>/photo-example.jpg",
+  "expiresAt":"<ISO timestamp>",
+  "expiresInSeconds":300
+}
+```
+
+**Agent steps:** request the link; GET the exact URL with the client's HTTP/file
+tool without authentication headers; save with the supplied filename; verify
+size/hash and open/read the file. A vision/file tool may fetch the URL directly
+if supported. Request a fresh link after expiry. Downloading a skill does not
+activate or apply it: that still requires `skill.activate`.
+
+GET/HEAD/Range and repeated downloads work until expiry; the link is not
+consumed by preview/HEAD requests. Responses use `private, no-store` and
+`Referrer-Policy:no-referrer`. Invalid/expired tokens, renamed URL filenames,
+deleted/changed records, disabled users and revoked membership return404.
+Each capability is bound to one record and content hash. Tokens are random256bit,
+stored only as SHA-256 hashes in `download_grants`; expiry is checked on every
+request. Expired grants are cleaned up on issuance. They survive gateway restarts.
+Only the entity DTO is exported; server storage paths/credentials are not.
+
+`PROJECT_MEMORY_PUBLIC_URL` must be the configured public API base, including
+its prefix (e.g. `https://marrow.example.com/api`). URLs are never built from
+untrusted Host/forwarded headers. Gateway logs redact tokens, and reverse-proxy
+access logging must be disabled/redacted for `/api/artifacts/download/` (see
+the nginx deployment templates). Treat the full URL as a temporary credential;
+do not put it in persistent shared memory.
 
 ---
 

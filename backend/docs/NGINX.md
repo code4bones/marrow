@@ -1,5 +1,29 @@
 # Project Memory Gateway — Nginx
 
+## Temporary file download URLs
+
+The public API base in `PROJECT_MEMORY_PUBLIC_URL` includes the nginx prefix.
+`record.download_url` returns `/api/artifacts/download/<token>/<filename>` URLs
+for ordinary anonymous GET/HEAD/Range. Proxy this route to the gateway before
+any external auth middleware. The gateway validates its own five-minute token.
+Disable/redact access logging for this prefix at **every proxy hop**; the path
+token is a temporary credential. Application request logs redact it separately.
+The supplied gateway location templates contain the dedicated no-access-log block.
+
+For Nginx Proxy Manager, persist this in the Marrow host's Advanced configuration
+(retaining the host's normal upstream and proxy include):
+
+```nginx
+location ^~ /api/artifacts/download/ {
+  access_log off;
+  include conf.d/include/proxy.conf;
+}
+```
+
+Validate with `nginx -t` before reload. No token is needed in the proxy's
+Authorization header. Original authenticated `/artifacts/:id/download` and
+all other API routes retain their existing auth behavior.
+
 Use this only for the internal nginx that sits in front of the local PostgreSQL gateway. External TLS, host routing, and certificates can stay in Nginx Proxy Manager.
 
 The gateway process should usually stay bound to localhost:

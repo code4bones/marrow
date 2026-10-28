@@ -1,5 +1,14 @@
 # SCHEMA.md
 
+## Temporary download grants (gateway migration142)
+
+`download_grants`: token_hash primary key (SHA-256, raw token is never stored),
+record_id, export format, issuing user_id/client_id, content sha256, indexed
+expires_at. Each row grants a single file for300seconds. Access checks reload the
+current record and issuing user's active role/membership; stale content fails.
+Expired rows are deleted on new issuance. Polymorphic record IDs are resolved
+through typed public DTOs, never raw database exports.
+
 ## Shared task assignees
 
 Migration 123 adds canonical `task_assignees(task_id, user_id, position)` with a

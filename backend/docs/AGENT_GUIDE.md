@@ -320,7 +320,22 @@ For text or Markdown files, call `artifact.peek` first when orienting, then
 Use `artifact.put_text` when creating or updating Markdown/text artifacts. It
 stores UTF-8 text directly and avoids base64.
 
-For a selected screenshot/image, call `artifact.download(id=...)`: supported
+To save ANY accessible entity (artifact, screenshot, Markdown, skill, task,
+decision, project, event, link, handoff/request/reply), use this workflow:
+
+1. Call `record.download_url(id=...)`. The response includes `download` and
+   accessible directly linked `attachments`, each with URL, filename,
+   contentType, sizeBytes, sha256 and expiresAt.
+2. GET the exact returned URL with the client's HTTP/file tool, **without
+   Authorization or cookies**. Save using filename; verify size/hash, then open
+   the local image/document. Artifacts keep their original bytes/name; other
+   records export Markdown (or `format="json"`).
+3. Links expire after 300 seconds. Request fresh links if expired. HEAD and
+   repeated/ranged GETs are allowed until expiry. Never paste the URL into
+   persistent memory/logs. Downloading a skill does not activate its instructions;
+   use `skill.activate` when applying it.
+
+For native viewing inside MCP, call `artifact.download(id=...)`: supported
 PNG/JPEG/GIF/WebP arrive as native MCP images, not metadata. Other files arrive
 as embedded binary resources. If the client cannot display that content or needs
 a local file, call `artifact.download(id=..., format="base64")`, decode

@@ -1,4 +1,5 @@
 import { sendArtifactFile } from "./artifact-file-response.js";
+import { sendRecordDownload } from "./record-download-response.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -328,6 +329,24 @@ async function handleRequest(
   };
 
   try {
+    // This route authorizes one file with a five-minute capability, not the
+    // caller's session/OAuth. It must precede the normal auth gate.
+    if (requestPath.startsWith("/artifacts/download/")) {
+      response.setHeader("cache-control", "private, no-store");
+      response.setHeader("referrer-policy", "no-referrer");
+      const route = /^\/artifacts\/download\/([^/]+)\/([^/]+)$/.exec(requestPath);
+      if (request.method !== "GET" && request.method !== "HEAD") { response.setHeader("allow", "GET, HEAD"); send(405, { ok: false }); return; }
+      try {
+        if (!route) throw new Error("Invalid download route");
+        const file = await service.resolveDownloadUrl(route[1]);
+        if (decodeURIComponent(route[2]) !== file.filename) throw new Error("Invalid filename");
+        await sendRecordDownload(request, response, file, requestId, () => logRequest(options, request, response.statusCode, Date.now() - startedAt, requestId, context));
+      } catch {
+        if (!response.headersSent) send(404, { ok: false, error: { code: "NOT_FOUND", message: "Download link is invalid or expired." } });
+        else response.destroy();
+      }
+      return;
+    }
     const gitlabWebhookRoute = /^\/integrations\/gitlab\/webhooks\/([0-9a-f-]{36})$/i.exec(requestPath);
     if (request.method === "POST" && gitlabWebhookRoute) {
       // External webhooks authenticate with their own per-repository secret,
@@ -2765,6 +2784,7 @@ function sanitizeLogString(value: string): string {
 
 function redactSensitiveLogText(value: string): string {
   return value
+    .replace(/(\/artifacts\/download\/)[^/?\s"'`]+/g, "$1[REDACTED]")
     .replace(/(authorization\s*:\s*bearer\s+)[^\s"'`]+/gi, "$1[REDACTED]")
     .replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]")
     .replace(
@@ -2794,6 +2814,7 @@ export function isSensitiveKey(key: string): boolean {
 // /auth/register/pending?token=, OAuth ?code=&state=): keep the path and the
 // parameter names in the log, drop the values.
 export function redactUrlForLog(rawUrl: string | undefined): string | undefined {
+  rawUrl = rawUrl?.replace(/(\/artifacts\/download\/)[^/?]+/g, "$1[REDACTED]");
   if (!rawUrl || !rawUrl.includes("?")) {
     return rawUrl;
   }

@@ -12,14 +12,14 @@ export function canPreviewArtifactInline(contentType: string): boolean {
     || /^(?:audio|video)\/[a-z0-9.+-]+$/.test(mime);
 }
 
-function disposition(filename: string, inline: boolean): string {
+export function disposition(filename: string, inline: boolean): string {
   const clean = [...filename].map((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 || c === '"' || c === "\\" ? "_" : c).join("");
   const ascii = clean.replace(/[^\x20-\x7e]/g, "_");
   const encoded = encodeURIComponent(clean).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-function byteRange(value: string, size: number): { start: number; end: number } | null {
+export function byteRange(value: string, size: number): { start: number; end: number } | null {
   const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
   if (!match || (!match[1] && !match[2]) || size === 0) return null;
   const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
@@ -30,7 +30,7 @@ function byteRange(value: string, size: number): { start: number; end: number } 
 // Caller must resolve artifactDownload first: both HEAD and GET retain normal
 // authentication and project membership checks. Native viewers reuse cookies.
 export async function sendArtifactFile(request: IncomingMessage, response: ServerResponse,
-  download: ArtifactDownload, requestId: string, onFinish?: () => void): Promise<void> {
+  download: ArtifactDownload, requestId: string, onFinish?: () => void, temporary = false): Promise<void> {
   const fileStat = await stat(download.absolutePath);
   if (onFinish) response.once("finish", onFinish);
   const inline = new URL(request.url ?? "/", "http://gateway").searchParams.get("inline") === "1"
@@ -39,7 +39,7 @@ export async function sendArtifactFile(request: IncomingMessage, response: Serve
     "content-type": download.artifact.contentType,
     "content-length": fileStat.size,
     "content-disposition": disposition(path.posix.basename(download.artifact.path), inline),
-    "cache-control": "private, no-cache",
+    "cache-control": temporary ? "private, no-store" : "private, no-cache",
     "x-content-type-options": "nosniff",
     "accept-ranges": "bytes",
     "x-request-id": requestId,

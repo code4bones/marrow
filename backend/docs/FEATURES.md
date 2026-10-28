@@ -10,6 +10,13 @@ The project is split into MVP features, near-future features, and explicitly def
 
 ### Agent artifact downloads
 
+`record.download_url(id)` issues a five-minute URL for any accessible record:
+artifacts preserve original bytes, skills/memory export their Markdown body,
+and other records export Markdown or JSON. Directly linked artifact attachments
+receive their own URLs. Each entry includes filename, contentType, sizeBytes,
+sha256 and expiresAt. Agents GET the URL without Authorization/cookies, save
+the file and open it locally. Expired links must be requested again.
+
 `artifact.download` retrieves actual bytes by artifact ID or project/path using
 the existing MCP authorization. PNG/JPEG/GIF/WebP are returned as native MCP
 images so vision-capable agents can inspect screenshots; other files are embedded

@@ -1429,7 +1429,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "artifact.get",
     description:
-      "Get artifact metadata by id or project/path. For images/screenshots and binary files call artifact.download with the same id to receive actual MCP image/file content. includeContent=true supports small TEXT files only; prefer artifact.read_text for text.",
+      "Get artifact metadata by id or project/path. To download a file, call record.download_url(id), then GET its URL without Authorization within5minutes. Use artifact.download for native MCP image content. includeContent=true supports small TEXT files only; prefer artifact.read_text for text.",
     schema: artifactGetSchema,
     outputSchema: output(artifactWithContentOutputDataSchema)
   },
@@ -1442,6 +1442,18 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
       format: z.enum(["image", "resource", "base64"]), encoding: z.literal("base64"),
       mimeType: z.string(), filename: z.string(), uri: z.string(), sizeBytes: z.number(), contentBase64: z.string().optional()
     }) }))
+  },
+  {
+    name: "record.download_url",
+    description:
+      "Get a temporary direct download URL for ANY accessible Marrow entity by id: artifact/image/document, skill, memory/Markdown/handoff/request/reply, task, decision, project, event or link, plus its accessible directly linked artifact attachments. WORKFLOW: 1) Call this tool with the entity id. 2) GET download.url or attachments[].url using your HTTP/file download tool WITHOUT Authorization or cookies. 3) Save with filename, verify sizeBytes/sha256, then open/read the local file. Links expire after 5 minutes; call again for fresh links. Response includes original artifact filename (or generated export filename), contentType, sizeBytes, sha256 and expiresAt for EACH URL. Artifacts preserve original bytes; other records export Markdown by default or format=json. includeAttachments defaults true. Downloading a skill does NOT activate/apply it; call skill.activate when applying instructions. Prefer this workflow for downloading/saving files without exposing OAuth credentials; use artifact.download only when native MCP image content is desired.",
+    schema: z.object({ id: z.string().min(1), format: z.enum(["markdown", "json"]).optional(), includeAttachments: z.boolean().optional() }),
+    outputSchema: output(z.object({
+      download: z.object({ id: z.string(), kind: z.string(), filename: z.string(), contentType: z.string(), sizeBytes: z.number(), sha256: z.string(), url: z.string(), expiresAt: z.string(), expiresInSeconds: z.number() }),
+      attachments: z.array(z.object({ id: z.string(), kind: z.string(), filename: z.string(), contentType: z.string(), sizeBytes: z.number(), sha256: z.string(), url: z.string(), expiresAt: z.string(), expiresInSeconds: z.number() })),
+      unavailableAttachments: z.array(z.object({ id: z.string(), code: z.string() })),
+      instructions: z.string()
+    }))
   },
   {
     name: "artifact.peek",

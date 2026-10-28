@@ -104,6 +104,7 @@ artifact.put_text path=<artifact path> text=<updated text>, when Markdown/text c
 artifact.get id=<artifact id> includeContent=true, only if exact base64 bytes are needed
 artifact.download id=<artifact id>, to inspect an image or retrieve a binary attachment
 artifact.download id=<artifact id> format="base64", to decode/save the file locally
+record.download_url id=<any entity id>, then GET returned URLs without Authorization, save/open locally within5minutes
 ```
 
 The gateway is the source of truth for bundled templates. Client agents should

@@ -1,4 +1,5 @@
 import type { Knex } from "knex";
+import { DownloadsMixin } from "./domains/downloads.mixin.js";
 import type { IncomingHttpHeaders } from "node:http";
 import { acceptGitlabWebhook } from "../gitlab-webhooks/receiver.js";
 import { ProjectTelegramMixin } from "./domains/project-telegram.mixin.js";
@@ -97,7 +98,7 @@ const ComposedService = GlobalSearchMixin(
   )
 );
 
-export class PgToolService extends ComposedService {
+export class PgToolService extends DownloadsMixin(ComposedService) {
   async acceptGitlabIssueWebhook(repositoryId: string, raw: Buffer, headers: IncomingHttpHeaders) {
     return acceptGitlabWebhook(this.db, repositoryId, raw, headers);
   }
@@ -305,6 +306,8 @@ export class PgToolService extends ComposedService {
           return ok("Artifacts searched.", { results: await this.searchArtifacts(parsed, requestContext) });
         case "artifact.list":
           return ok("Artifacts listed.", { artifacts: await this.listArtifacts(parsed, requestContext) });
+        case "record.download_url":
+          return ok("Temporary download URLs created.", await this.createDownloadUrls(parsed, requestContext));
         case "artifact.download":
           return ok("Artifact bytes downloaded.", await this.downloadArtifact(parsed, requestContext));
         case "artifact.get": {

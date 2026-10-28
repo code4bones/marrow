@@ -314,6 +314,12 @@ Bad common records:
 
 ## Artifact Navigation
 
+For ordinary downloads of ANY entity or its attached files: call
+`record.download_url(id)`, then GET `download.url`/`attachments[].url` without
+Authorization/cookies. Save using filename and verify sizeBytes/sha256; open
+locally. URLs expire after5minutes. Artifacts keep original bytes; other records
+export Markdown/JSON. Downloading a skill does not activate its instructions.
+
 For a task's screenshot or binary attachment, select its artifact ID and call
 `artifact.download`. Supported raster images arrive as native MCP image content;
 other files as embedded resources. `format="base64"` returns exact bytes for
