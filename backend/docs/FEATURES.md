@@ -10,6 +10,11 @@ The project is split into MVP features, near-future features, and explicitly def
 
 ### Agent artifact downloads
 
+Temporary URLs are available since backend **1.109.0** (`backend-v1.109.0`).
+On **2026-10-28**, the user confirmed that their agent successfully retrieved
+the screenshot with the deployed download workflow. This confirms real agent
+usage in addition to the automated HTTP/MCP checks.
+
 `record.download_url(id)` issues a five-minute URL for any accessible record:
 artifacts preserve original bytes, skills/memory export their Markdown body,
 and other records export Markdown or JSON. Directly linked artifact attachments

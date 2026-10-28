@@ -323,6 +323,10 @@ stores UTF-8 text directly and avoids base64.
 To save ANY accessible entity (artifact, screenshot, Markdown, skill, task,
 decision, project, event, link, handoff/request/reply), use this workflow:
 
+Available since backend **1.109.0**; real agent screenshot retrieval was
+confirmed by the user on **2026-10-28**. If `artifact.get` returns only metadata,
+continue with `record.download_url` to retrieve the actual file.
+
 1. Call `record.download_url(id=...)`. The response includes `download` and
    accessible directly linked `attachments`, each with URL, filename,
    contentType, sizeBytes, sha256 and expiresAt.

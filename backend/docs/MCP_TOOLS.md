@@ -1443,6 +1443,9 @@ the exact file bytes are needed in the model context.
 
 ### `record.download_url` (gateway)
 
+Available since backend **1.109.0**. On **2026-10-28**, the user confirmed that
+their agent successfully obtained the screenshot using the deployed workflow.
+
 Create a five-minute direct download URL for **any accessible entity ID**:
 project, task, decision, memory (including handoffs/requests/replies), skill,
 artifact, event or link. OAuth/session authorization is used only for issuing
@@ -1481,6 +1484,16 @@ tool without authentication headers; save with the supplied filename; verify
 size/hash and open/read the file. A vision/file tool may fetch the URL directly
 if supported. Request a fresh link after expiry. Downloading a skill does not
 activate or apply it: that still requires `skill.activate`.
+
+For a CLI client, take `DOWNLOAD_URL` and `FILENAME` from the returned entry:
+
+```bash
+curl --fail --location "$DOWNLOAD_URL" --output "$FILENAME"
+```
+
+No Marrow OAuth bearer is needed in this HTTP command. Open the saved image
+with the client's image viewer. If `artifact.get` returned only metadata,
+continue with `record.download_url` to obtain the actual file.
 
 GET/HEAD/Range and repeated downloads work until expiry; the link is not
 consumed by preview/HEAD requests. Responses use `private, no-store` and
