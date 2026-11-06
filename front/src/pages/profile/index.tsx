@@ -388,6 +388,7 @@ function ConnectSection() {
 
   const codexCmd = `codex mcp add marrow --url "${mcpUrl}"`;
   const codexLoginCmd = 'codex mcp login marrow --oauth-client-registration cimd';
+  const codexNoBrowserLoginCmd = `${codexLoginCmd} --no-browser`;
 
   // Bare mcpUrl, deliberately WITHOUT the ?client_id=/client_label=/client_kind=
   // query params urlFor() appends for the CLI paths above: those identify a
@@ -462,6 +463,9 @@ function ConnectSection() {
           <CodeBlock code={codexCmd} />
           <Step n={2}>{t('codexCimdLogin')}</Step>
           <CodeBlock code={codexLoginCmd} />
+          <Paragraph type="secondary">{t('codexNoBrowserIntro')}</Paragraph>
+          <CodeBlock code={codexNoBrowserLoginCmd} />
+          <Paragraph type="secondary">{t('codexNoBrowserInstructions')}</Paragraph>
           <Step n={3}>
             {t('restartCodexAsk')} <Text code>gateway.status</Text> {t('and')}{' '}
             <Text code>gateway.version</Text>.
