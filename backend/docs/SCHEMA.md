@@ -219,6 +219,11 @@ Search tables:
 
 Stores durable project contexts.
 
+The `P-` prefix is reserved for IDs, case-insensitively; it is forbidden in
+`slug` on insert and rename. Use `frappe-cicd` as a slug. PostgreSQL enforces
+`projects_slug_not_project_id` (migration 144); SQLite enforces insert/update
+triggers (migration 004). Existing artifact files keep their stored paths.
+
 ```sql
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,

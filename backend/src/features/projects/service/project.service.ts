@@ -1,6 +1,7 @@
 import { nowIso } from "../../../shared/dates.js";
 import { AppError } from "../../../shared/errors.js";
 import { createProjectId } from "../../../shared/ids/id.service.js";
+import { projectSlugProblem } from "../model/slug.js";
 import type { CreateProjectInput, Project, ProjectLookup, ProjectStatus } from "../model/types.js";
 import { ProjectRepo } from "../repo/project.repo.js";
 
@@ -19,6 +20,8 @@ export class ProjectService {
   }
 
   create(input: CreateProjectInput): Project {
+    const slugProblem = projectSlugProblem(input.slug);
+    if (slugProblem) throw new AppError("VALIDATION_ERROR", slugProblem);
     const now = nowIso();
     const baseId = createProjectId(input.slug);
     const id = this.uniqueProjectId(baseId);

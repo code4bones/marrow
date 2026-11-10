@@ -1208,7 +1208,7 @@ const baseGatewayToolSpecs: GatewayToolSpec[] = [
   {
     name: "project.create",
     description:
-      "Create a durable shared project scope. In gateway mode this writes to PostgreSQL for all connected developers and agents.",
+      "Create a durable shared project scope. Pass a slug such as frappe-cicd, never an ID such as P-FRAPPE-CICD: the P- prefix is reserved (case-insensitive) and the server generates the ID. In gateway mode this writes to PostgreSQL for all connected developers and agents.",
     schema: createProjectSchema,
     access: "write"
   },

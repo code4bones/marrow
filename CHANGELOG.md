@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Project slugs beginning with `P-` (case-insensitive) are rejected on create
+  and rename, with agent guidance and database enforcement in PostgreSQL and
+  SQLite. The creation form explains the distinction between slugs and IDs.
+
 ### Added
 
 - `record.download_url` issues five-minute HTTP URLs for any accessible entity

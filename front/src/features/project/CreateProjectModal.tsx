@@ -53,7 +53,7 @@ export function CreateProjectModal({ onDone }: Props) {
         width={440}
       >
         <Form form={form} layout="vertical" size="small" style={{ marginTop: 16 }}>
-          <Form.Item name="slug" label={t('slug')} rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: t('slugPattern') }]}>
+          <Form.Item name="slug" label={t('slug')} extra={t('slugHelp')} rules={[{ required: true, pattern: /^(?!p-)[a-z0-9][a-z0-9-]{0,62}$/, message: t('slugPattern') }]}>
             <Input placeholder="my-project" />
           </Form.Item>
           <Form.Item name="title" label={t('title')} rules={[{ required: true }]}>

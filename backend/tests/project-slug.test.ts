@@ -6,10 +6,17 @@ import { artifactStoragePath } from "../src/gateway/pg-tool-service/formatters/a
 // T-MEMORY-169: the slug is a directory name under ARTIFACT_DIR.
 describe("project slug", () => {
   it.each([
-    "marrow", "original_eheart", "enigma2-skin-designer", "gi-et11000", "SCORMv1", "a", "x".repeat(63)
+    "marrow", "frappe-cicd", "p_project", "original_eheart", "enigma2-skin-designer", "gi-et11000", "SCORMv1", "a", "x".repeat(63)
   ])("accepts %s (every slug that exists today, and plain new ones)", (slug) => {
     expect(projectSlugProblem(slug)).toBeNull();
     expect(createProjectSchema.safeParse({ slug, title: "t" }).success).toBe(true);
+  });
+
+  it.each(["P-FRAPPE-CICD", "P-P", "P-", "p-frappe-cicd"])("rejects the reserved ID prefix in %s with an actionable hint", (slug) => {
+    expect(projectSlugProblem(slug)).toContain('reserved for project IDs');
+    const result = createProjectSchema.safeParse({ slug, title: "t" });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.message).toContain('project ID is generated automatically');
   });
 
   it.each([
@@ -23,6 +30,7 @@ describe("project slug", () => {
   it("artifactStoragePath keeps normal slugs and the common namespace", () => {
     expect(artifactStoragePath("marrow", "docs/a.md")).toBe("marrow/docs/a.md");
     expect(artifactStoragePath(null, "docs/a.md")).toBe("common/docs/a.md");
+    expect(artifactStoragePath("P-FRAPPE-CICD", "docs/a.md")).toBe("P-FRAPPE-CICD/docs/a.md");
   });
 
   it("artifactStoragePath refuses a slug that could leave its own directory", () => {

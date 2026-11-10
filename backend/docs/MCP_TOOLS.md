@@ -1693,6 +1693,12 @@ Output:
 Behavior:
 
 * slug must be unique
+* slug must not start with `P-` (case-insensitive): that prefix belongs to
+  project IDs and is interpreted as an ID by project-scoped tools
+* pass `slug: "frappe-cicd"`, never `slug: "P-FRAPPE-CICD"`; the server
+  generates the project ID automatically (the create tool does not accept an ID)
+* the same rule applies when changing the slug with `project.update`;
+  PostgreSQL and SQLite also reject direct writes with the reserved prefix
 * status defaults to `active`
 * record `project.created` event
 

@@ -13,7 +13,9 @@ export const PROJECT_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 // Directory names artifacts storage already uses for something else.
 const RESERVED_PROJECT_SLUGS = new Set(["common"]);
 
-export function projectSlugProblem(slug: string): string | null {
+// Existing artifact storage paths must remain readable after naming rules
+// tighten. Only filesystem safety belongs in this check.
+export function projectSlugStorageProblem(slug: string): string | null {
   if (!PROJECT_SLUG_PATTERN.test(slug)) {
     return "Project slug must be 1-63 characters: letters, digits, '-' and '_', starting with a letter or digit.";
   }
@@ -23,9 +25,19 @@ export function projectSlugProblem(slug: string): string | null {
   return null;
 }
 
+export function projectSlugProblem(slug: string): string | null {
+  const storageProblem = projectSlugStorageProblem(slug);
+  if (storageProblem) return storageProblem;
+  if (/^p-/i.test(slug)) {
+    const suggested = slug.slice(2).toLowerCase() || "my-project";
+    return `Project slug cannot start with "P-" (case-insensitive): that prefix is reserved for project IDs. Use slug "${suggested}" instead; the project ID is generated automatically.`;
+  }
+  return null;
+}
+
 export const projectSlugSchema = z.string().superRefine((slug, ctx) => {
   const problem = projectSlugProblem(slug);
   if (problem) {
     ctx.addIssue({ code: "custom", message: problem });
   }
-});
+}).describe('Project slug, for example "frappe-cicd". Never pass a project ID such as "P-FRAPPE-CICD" here: the P- prefix is reserved (case-insensitive). The server generates the project ID.');

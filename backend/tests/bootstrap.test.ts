@@ -25,6 +25,20 @@ afterEach(() => {
 });
 
 describe("bootstrap", () => {
+  it.each(["P-FRAPPE-CICD", "p-frappe-cicd"])("rejects ID-shaped slugs before creating local records: %s", (slug) => {
+    expect(() => app.projects.create({ slug, title: "Frappe Apps CICD" })).toThrow('reserved for project IDs');
+    expect(app.projects.list()).toEqual([]);
+    expect(app.db.prepare("SELECT count(*) AS n FROM events").get()).toEqual({ n: 0 });
+  });
+
+  it.each(["P-FRAPPE-CICD", "p-frappe-cicd"])("blocks direct SQLite inserts and renames to an ID-shaped slug: %s", (slug) => {
+    const project = app.projects.create({ slug: "frappe-cicd", title: "Frappe Apps CICD" });
+    expect(() => app.db.prepare("UPDATE projects SET slug = ? WHERE id = ?").run(slug, project.id)).toThrow('Project slug cannot start with P-');
+    expect(() => app.db.prepare("INSERT INTO projects (id,slug,title,created_at,updated_at) VALUES (?,?,?,?,?)").run("P-BAD", slug, "Bad", "2026-11-10", "2026-11-10")).toThrow('Project slug cannot start with P-');
+    expect(app.projects.get({ id: project.id }).slug).toBe("frappe-cicd");
+    expect(app.projects.list()).toHaveLength(1);
+  });
+
   it("supports CLAR in local mode and requires a question", () => {
     const project = app.projects.create({ slug: "clar-test", title: "Clarification" });
     const task = app.tasks.create({ project: project.slug, title: "Confirm the format" });

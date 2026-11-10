@@ -12,7 +12,7 @@ export function registerProjectTools(server: McpServer, projects: ProjectService
     "project.create",
     {
       description:
-        "Create a durable project scope for project-specific memory. Use this during setup when the repository or work context is not registered yet. After creating it, call project.set_current before creating project tasks, decisions, or memory.",
+        "Create a durable project scope for project-specific memory. Pass a slug such as frappe-cicd, never an ID such as P-FRAPPE-CICD: the P- prefix is reserved (case-insensitive) and the server generates the ID. Use this during setup when the repository or work context is not registered yet. After creating it, call project.set_current before creating project tasks, decisions, or memory.",
       inputSchema: createProjectSchema.shape
     },
     async (input) => {
