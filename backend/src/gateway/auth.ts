@@ -169,7 +169,14 @@ export function createAuthFacade(db: Knex) {
         if (!userId) {
           throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
         }
-        await trx("users").where({ id: userId }).update({ password_hash: passwordHash, updated_at: now });
+        // Admin-issued recovery restores access after losing either factor.
+        await trx("users").where({ id: userId }).update({
+          password_hash: passwordHash,
+          totp_enabled: false,
+          totp_secret: null,
+          totp_recovery_code_hashes: null,
+          updated_at: now
+        });
         // A password reset means the old credential may be compromised.
         await trx("sessions").where({ user_id: userId }).whereNull("revoked_at").update({ revoked_at: now });
         await trx("tokens").where({ user_id: userId, purpose: "password_reset" }).whereNull("used_at").update({ used_at: now });

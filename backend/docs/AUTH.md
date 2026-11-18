@@ -187,7 +187,7 @@ other gateway route.
 |---|---|---|
 | `POST /auth/invite` | admin session cookie | Body `{ email }`. Fails if a user with that email already exists. Returns `{ email, claimPath }` — no email is sent (see below); the frontend/admin relays the link. |
 | `GET /auth/claim?token=` | none | Resolves an `invite` or `password_reset` token to `{ email, purpose }` without consuming it — for rendering the "set your password" form. |
-| `POST /auth/claim` | none | Body `{ token, password }`. For an `invite` token: creates the `users` row (`role=member`, `status=active`, `email_verified_at=null`) and immediately issues a `verify_email` token. For a `password_reset` token: updates `password_hash`, revokes every browser session and invalidates remaining reset links for that user. Token consumption and changes commit atomically; concurrent replay allows only one success. Returns `{ email, emailVerified, verifyEmailPath? }`. Replaying the token returns 400. |
+| `POST /auth/claim` | none | Body `{ token, password }`. For an `invite` token: creates the `users` row (`role=member`, `status=active`, `email_verified_at=null`) and immediately issues a `verify_email` token. For a `password_reset` token: updates `password_hash`, disables TOTP, clears its secret/recovery codes, revokes every browser session and invalidates remaining reset links for that user. Token consumption and changes commit atomically; concurrent replay allows only one success. Returns `{ email, emailVerified, verifyEmailPath? }`. Replaying the token returns 400. |
 | `POST /auth/verify-email?token=` | none | Marks `email_verified_at`. Single-use. |
 | `POST /auth/login` | none | Body `{ email, password }`. Rejects with the *same* generic "Invalid email or password" for both "no such user" and "wrong password" (and runs a same-cost dummy hash for the former so the two cases aren't distinguishable by timing) — see `verifyPassword`/`hashPassword` in `auth.ts`. Status checks run in this order after a correct password match: `pending_approval` gets its own message ("Your account is waiting for admin approval."), any other non-`active` status gets "This account has been disabled.", then (invite-path accounts only — see "Open self-registration" below) unverified email is rejected. On success: sets an httpOnly, `SameSite=Lax` session cookie (`Secure` when `X-Forwarded-Proto: https` is present) and returns `{ status: "session", user }`. If `totp_enabled` is true, returns `{ status: "pending_totp", userId, challenge }` instead of a cookie — the frontend then calls `POST /auth/login/2fa`. |
 | `POST /auth/login/2fa` | none | Body `{ userId, code, challenge }` — second step after `/auth/login` returns `pending_totp`; `challenge` is the short-lived (5 min) HMAC token that response carried, bound to that `userId` (a missing, expired, foreign or tampered one is refused with the same "Invalid or expired code." — the password step must have happened; `TOTP_CHALLENGE_REQUIRED=0` is an emergency switch that accepts a missing one). A TOTP time step is single-use per purpose (login / elevation): the same code cannot be replayed within its ~90 s window. `code` is either a 6-digit TOTP code or one unused recovery code (recovery codes are single-use: a match deletes that hash from `totp_recovery_code_hashes`). On success, identical response/cookie shape to `/auth/login`'s session case. Rate-limited the same way as `/auth/login` (see below), keyed by `userId` instead of email. |
@@ -240,9 +240,18 @@ another link invalidates the previous one. SMTP is not required.
 
 The user opens `/claim?token=...`, enters and confirms a new password, then
 signs in again. Redemption revokes all browser sessions for that account,
-including a session in the browser opening the link. TOTP, recovery codes,
-external provider links, role and status are retained. API credentials are
-unaffected. Password reset does not recover a lost second factor.
+including a session in the browser opening the link. It also disables TOTP
+and clears the authenticator secret and all recovery-code hashes, including
+an unfinished enrollment. The user can sign in with the new password and
+set up 2FA again in Profile. All changes commit in the same transaction;
+a failure leaves the previous password, 2FA and sessions intact. External
+provider links, role, status and API credentials are retained. Accounts
+without a local password can use the link to create one.
+
+Issuing the link leaves the current password and 2FA active until redemption.
+The admin confirmation/dialog and the user's reset form warn about the 2FA
+reset; the success notice prompts the user to enroll again. Ordinary password
+changes through Profile retain 2FA.
 
 Only active target accounts are eligible. Disabled users must be enabled
 through the existing admin action first; pending accounts still go through
@@ -254,7 +263,8 @@ Issuance records the private `user.password_reset_requested` event with
 the acting admin ID and target user ID, never the link or token. The route
 requires an `Origin` matching the request host or an explicit
 `GRAPHQL_CORS_ORIGIN` entry. Run migration
-`145_admin_password_reset_i18n.cjs` for the English/Russian Users labels.
+`145_admin_password_reset_i18n.cjs` for the English/Russian Users labels and
+`146_password_reset_2fa_i18n.cjs` for the combined password/2FA reset warnings.
 
 ### GraphQL accepts a session cookie
 

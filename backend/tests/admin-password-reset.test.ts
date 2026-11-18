@@ -67,7 +67,10 @@ describe("admin-issued password reset links", () => {
     expect(result.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(86_400_000);
     expect(await db("tokens").first()).toMatchObject({ token_hash: hashToken(result.token), created_by: "admin", purpose: "password_reset" });
     expect(JSON.stringify(await db("tokens"))).not.toContain(result.token);
-    expect(await db("users").where({ id: "target" }).first()).toMatchObject({ password_hash: oldHash });
+    expect(await db("users").where({ id: "target" }).first()).toMatchObject({
+      password_hash: oldHash, totp_enabled: postgresUrl ? true : 1,
+      totp_secret: "unchanged-secret", totp_recovery_code_hashes: "unchanged-recovery-codes"
+    });
     expect(await db("sessions").whereNotNull("revoked_at")).toHaveLength(0);
     expect(await auth.claimContext(result.token)).toEqual({ email: result.email, purpose: "password_reset" });
   });
@@ -81,17 +84,43 @@ describe("admin-issued password reset links", () => {
     expect(await db("tokens").where({ id: "verify" }).first()).toMatchObject({ used_at: null });
   });
 
-  it("changes the password once, revokes only the target's sessions and retains 2FA and account settings", async () => {
+  it("resets password and both 2FA credentials once, rejects old challenges and retains account settings", async () => {
+    const pendingLogin = await auth.login("target@example.test", oldPassword, {});
+    if (pendingLogin.status !== "pending_totp") throw new Error("Expected 2FA before reset");
     const link = await auth.createPasswordReset("admin", "target");
     await expect(auth.claim(link.token, "short")).rejects.toThrow("at least 8");
     expect(await auth.claim(link.token, newPassword)).toMatchObject({ userId: "target", emailVerified: true });
     await expect(auth.claim(link.token, "another-password")).rejects.toThrow("invalid or has expired");
     await expect(auth.login("target@example.test", oldPassword, {})).rejects.toThrow("Invalid email or password");
-    expect(await auth.login("target@example.test", newPassword, {})).toMatchObject({ status: "pending_totp", userId: "target" });
+    await expect(auth.loginTotp("target", "123456", {}, pendingLogin.challenge)).rejects.toThrow("Invalid or expired code");
+    await expect(auth.loginTotp("target", "old-recovery-code", {}, pendingLogin.challenge)).rejects.toThrow("Invalid or expired code");
+    expect(await auth.login("target@example.test", newPassword, {})).toMatchObject({ status: "session", user: { id: "target" } });
     expect(await db("users").where({ id: "target" }).first()).toMatchObject({
-      status: "active", role: "member", totp_enabled: postgresUrl ? true : 1, totp_secret: "unchanged-secret", totp_recovery_code_hashes: "unchanged-recovery-codes"
+      status: "active", role: "member", totp_enabled: postgresUrl ? false : 0, totp_secret: null, totp_recovery_code_hashes: null
     });
     expect(await db("sessions").whereNotNull("revoked_at").pluck("user_id")).toEqual(["target"]);
+    expect(await db("users").where({ id: "admin" }).first()).toMatchObject({ password_hash: oldHash, totp_secret: "unchanged-secret" });
+  });
+
+  it.each([true, false])("creates a local password for a provider-only account and clears enrolled/pending TOTP (enabled=%s)", async enabled => {
+    await db("users").where({ id: "target" }).update({ password_hash: null, email_verified_at: null, totp_enabled: enabled });
+    const link = await auth.createPasswordReset("admin", "target");
+    const result = await auth.claim(link.token, newPassword);
+    expect(result).toMatchObject({ emailVerified: false, verifyToken: expect.any(String) });
+    expect(await db("users").where({ id: "target" }).first()).toMatchObject({
+      totp_enabled: postgresUrl ? false : 0, totp_secret: null, totp_recovery_code_hashes: null
+    });
+    // ClaimPage completes this existing same-browser verification step.
+    await auth.verifyEmail(result.verifyToken!);
+    expect(await auth.login(result.email, newPassword, {})).toMatchObject({ status: "session" });
+  });
+
+  it("retains 2FA when an authenticated user changes their password in Profile", async () => {
+    await auth.changePassword("target", oldPassword, newPassword, "target-session");
+    expect(await db("users").where({ id: "target" }).first()).toMatchObject({
+      totp_enabled: postgresUrl ? true : 1, totp_secret: "unchanged-secret", totp_recovery_code_hashes: "unchanged-recovery-codes"
+    });
+    expect(await auth.login("target@example.test", newPassword, {})).toMatchObject({ status: "pending_totp" });
   });
 
   it("allows only one of two concurrent claims to change the password", async () => {
@@ -101,7 +130,7 @@ describe("admin-issued password reset links", () => {
     expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
   });
 
-  it("rolls back the password and token consumption if session revocation fails", async () => {
+  it("rolls back password, 2FA and token consumption if session revocation fails", async () => {
     const { token } = await auth.createPasswordReset("admin", "target");
     if (postgresUrl) {
       await db.raw("CREATE FUNCTION fail_revocation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'revocation failed'; END; $$");
@@ -110,7 +139,10 @@ describe("admin-issued password reset links", () => {
       await db.raw("CREATE TRIGGER fail_revocation BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT, 'revocation failed'); END");
     }
     await expect(auth.claim(token, newPassword)).rejects.toThrow("revocation failed");
-    expect(await db("users").where({ id: "target" }).first()).toMatchObject({ password_hash: oldHash });
+    expect(await db("users").where({ id: "target" }).first()).toMatchObject({
+      password_hash: oldHash, totp_enabled: postgresUrl ? true : 1,
+      totp_secret: "unchanged-secret", totp_recovery_code_hashes: "unchanged-recovery-codes"
+    });
     expect(await auth.claimContext(token)).toMatchObject({ purpose: "password_reset" });
     await db.raw(postgresUrl ? "DROP TRIGGER fail_revocation ON sessions" : "DROP TRIGGER fail_revocation");
     await expect(auth.claim(token, newPassword)).resolves.toMatchObject({ userId: "target" });
@@ -200,6 +232,18 @@ it("seeds RU/EN reset labels and rolls the migration back without removing unrel
   const migration = require("../migrations/pg/145_admin_password_reset_i18n.cjs") as { up(db: Knex): Promise<void>; down(db: Knex): Promise<void> };
   await migration.up(db);
   expect(await db("translations").where({ key: "resetPassword" }).pluck("locale")).toEqual(["en", "ru"]);
+  const combined = require("../migrations/pg/146_password_reset_2fa_i18n.cjs") as typeof migration;
+  await db("translations").insert([
+    { locale: "en", namespace: "auth", key: "passwordResetNotice", value: "Your password has been reset. Sign in with your new password." },
+    { locale: "ru", namespace: "auth", key: "passwordResetNotice", value: "Ваш пароль сброшен. Войдите с новым паролем." }
+  ]);
+  const beforeCombined = await db("translations").select("locale", "namespace", "key", "value").orderBy(["namespace", "key", "locale"]);
+  await combined.up(db);
+  expect(await db("translations").where({ key: "passwordReset2faWarning" }).pluck("locale")).toEqual(["en", "ru"]);
+  expect((await db("translations").where({ locale: "en", namespace: "users", key: "resetLinkInstructions" }).first()).value).toContain("disables two-factor");
+  expect((await db("translations").where({ locale: "ru", namespace: "users", key: "resetPasswordWarning" }).first()).value).toContain("двухфакторная");
+  await combined.down(db);
+  expect(await db("translations").select("locale", "namespace", "key", "value").orderBy(["namespace", "key", "locale"])).toEqual(beforeCombined);
   await migration.down(db);
-  expect(await db("translations").pluck("key")).toEqual(["users"]);
+  expect(await db("translations").where({ namespace: "users" }).pluck("key")).toEqual(["users"]);
 });

@@ -7,7 +7,8 @@
 - Administrators can issue a copyable, single-use password reset link from
   Users, with English/Russian labels and a 24-hour expiry. Issuing a new link
   invalidates earlier links. Password reset atomically consumes the token and
-  revokes browser sessions while retaining two-factor authentication settings.
+  revokes browser sessions and clears two-factor authentication so the user can
+  sign in with the new password and set up an authenticator again.
 
 ### Fixed
 

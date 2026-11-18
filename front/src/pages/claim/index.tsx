@@ -114,6 +114,9 @@ export function ClaimPage() {
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
         {email ? t('settingPasswordFor', { email }) : t('setPasswordToContinue')}
       </Text>
+      {purpose === 'password_reset' && (
+        <Alert type="warning" showIcon message={t('passwordReset2faWarning')} style={{ marginBottom: 16 }} />
+      )}
       {submitError && <Alert type="error" message={submitError} style={{ marginBottom: 16 }} showIcon />}
       <Form form={form} layout="vertical" onFinish={onFinish} disabled={submitting}>
         <PasswordFields autoFocus />
