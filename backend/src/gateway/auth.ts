@@ -35,6 +35,7 @@ export const SESSION_COOKIE_NAME = "marrow_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 24 * 60 * 60 * 1000;
 const PENDING_REGISTRATION_TTL_MS = 30 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const RECOVERY_CODE_COUNT = 10;
@@ -120,73 +121,83 @@ export function createAuthFacade(db: Knex) {
     if (password.length < 8) {
       throw new AppError("VALIDATION_ERROR", "Password must be at least 8 characters.");
     }
-    const now = new Date();
-    const tokenRow = await activeToken(rawToken, ["invite", "password_reset"]);
+    const initialToken = await activeToken(rawToken, ["invite", "password_reset"]);
     const passwordHash = await hashPassword(password);
-    let userId = tokenRow.user_id as string | null;
+    return db.transaction(async (trx) => {
+      // Reset issuance and redemption take the same user lock, so a new
+      // link cannot race with an old link being redeemed.
+      if (initialToken.purpose === "password_reset" && initialToken.user_id) {
+        const target = await trx("users").where({ id: initialToken.user_id }).forUpdate().first();
+        if (!target) throw new AppError("VALIDATION_ERROR", "This link is invalid or has expired.");
+      }
+      const now = new Date();
+      const [tokenRow] = await trx("tokens").where({ id: initialToken.id }).whereNull("used_at")
+        .where("expires_at", ">", now).update({ used_at: now }).returning("*");
+      if (!tokenRow) throw new AppError("VALIDATION_ERROR", "This link is invalid or has expired.");
+      let userId = tokenRow.user_id as string | null;
 
-    if (tokenRow.purpose === "invite") {
-      if (userId) {
-        throw new AppError("VALIDATION_ERROR", "This invite has already been used.");
+      if (tokenRow.purpose === "invite") {
+        if (userId) {
+          throw new AppError("VALIDATION_ERROR", "This invite has already been used.");
+        }
+        if (!tokenRow.email) {
+          throw new AppError("VALIDATION_ERROR", "This invite is missing a target email.");
+        }
+        const existingByEmail = await trx("users").where({ email: tokenRow.email }).first();
+        if (existingByEmail) {
+          throw new AppError("VALIDATION_ERROR", `A user with email ${tokenRow.email} already exists.`);
+        }
+        userId = randomUUID();
+        await trx("users").insert({
+          id: userId,
+          email: tokenRow.email,
+          password_hash: passwordHash,
+          email_verified_at: null,
+          totp_enabled: false,
+          role: "member",
+          invited_by: tokenRow.created_by ?? null,
+          status: "active",
+          created_at: now,
+          updated_at: now
+        });
+        try {
+          await credits.grantSignupBonus(trx, userId);
+        } catch (error) {
+          if (!(error instanceof AppError) || error.code !== "CREDITS_DISABLED") throw error;
+        }
+      } else {
+        if (!userId) {
+          throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
+        }
+        await trx("users").where({ id: userId }).update({ password_hash: passwordHash, updated_at: now });
+        // A password reset means the old credential may be compromised.
+        await trx("sessions").where({ user_id: userId }).whereNull("revoked_at").update({ revoked_at: now });
+        await trx("tokens").where({ user_id: userId, purpose: "password_reset" }).whereNull("used_at").update({ used_at: now });
       }
-      if (!tokenRow.email) {
-        throw new AppError("VALIDATION_ERROR", "This invite is missing a target email.");
-      }
-      const existingByEmail = await db("users").where({ email: tokenRow.email }).first();
-      if (existingByEmail) {
-        throw new AppError("VALIDATION_ERROR", `A user with email ${tokenRow.email} already exists.`);
-      }
-      userId = randomUUID();
-      await db("users").insert({
-        id: userId,
-        email: tokenRow.email,
-        password_hash: passwordHash,
-        email_verified_at: null,
-        totp_enabled: false,
-        role: "member",
-        invited_by: tokenRow.created_by ?? null,
-        status: "active",
-        created_at: now,
-        updated_at: now
-      });
-      try {
-        await credits.grantSignupBonus(db, userId);
-      } catch (error) {
-        if (!(error instanceof AppError) || error.code !== "CREDITS_DISABLED") throw error;
-      }
-    } else {
-      if (!userId) {
-        throw new AppError("VALIDATION_ERROR", "This link is not associated with a user.");
-      }
-      await db("users").where({ id: userId }).update({ password_hash: passwordHash, updated_at: now });
-      // A password reset means the old credential may be compromised.
-      await revokeUserSessions(userId);
-    }
 
-    await db("tokens").where({ id: tokenRow.id }).update({ used_at: now });
+      const user = await trx("users").where({ id: userId }).first();
+      let verifyToken: string | undefined;
+      if (!user.email_verified_at) {
+        verifyToken = newOpaqueToken();
+        await trx("tokens").insert({
+          id: randomUUID(),
+          user_id: userId,
+          email: user.email,
+          purpose: "verify_email",
+          token_hash: hashToken(verifyToken),
+          expires_at: new Date(now.getTime() + VERIFY_EMAIL_TTL_MS),
+          created_by: userId,
+          created_at: now
+        });
+      }
 
-    const user = await db("users").where({ id: userId }).first();
-    let verifyToken: string | undefined;
-    if (!user.email_verified_at) {
-      verifyToken = newOpaqueToken();
-      await db("tokens").insert({
-        id: randomUUID(),
-        user_id: userId,
-        email: user.email,
-        purpose: "verify_email",
-        token_hash: hashToken(verifyToken),
-        expires_at: new Date(now.getTime() + VERIFY_EMAIL_TTL_MS),
-        created_by: userId,
-        created_at: now
-      });
-    }
-
-    return {
-      userId: userId as string,
-      email: user.email as string,
-      emailVerified: Boolean(user.email_verified_at),
-      verifyToken
-    };
+      return {
+        userId: userId as string,
+        email: user.email as string,
+        emailVerified: Boolean(user.email_verified_at),
+        verifyToken
+      };
+    });
   }
 
   async function verifyEmail(rawToken: string): Promise<void> {
@@ -990,6 +1001,26 @@ export function createAuthFacade(db: Knex) {
       .select("id", "email", "role", "status", "totp_enabled as totpEnabled", "created_at as createdAt");
   }
 
+  async function createPasswordReset(actingUserId: string, targetUserId: string): Promise<{ email: string; token: string; expiresAt: Date }> {
+    return db.transaction(async (trx) => {
+      const actor = await trx("users").where({ id: actingUserId, role: "admin", status: "active" }).first();
+      if (!actor) throw new AppError("UNAUTHORIZED", "An active admin account is required to reset passwords.");
+      if (actingUserId === targetUserId) throw new AppError("VALIDATION_ERROR", "Change your own password on the profile page.");
+      const target = await trx("users").where({ id: targetUserId }).forUpdate().first();
+      if (!target) throw new AppError("NOT_FOUND", "User not found.");
+      if (target.status !== "active") throw new AppError("VALIDATION_ERROR", "Password reset is only available for active accounts.");
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MS);
+      const token = newOpaqueToken();
+      await trx("tokens").where({ user_id: targetUserId, purpose: "password_reset" }).whereNull("used_at").update({ used_at: now });
+      await trx("tokens").insert({
+        id: randomUUID(), user_id: targetUserId, email: target.email, purpose: "password_reset",
+        token_hash: hashToken(token), expires_at: expiresAt, created_by: actingUserId, created_at: now
+      });
+      return { email: target.email as string, token, expiresAt };
+    });
+  }
+
   // Refuses to let an admin change their own role/status through this
   // endpoint (self-lockout is a one-way door on a self-hosted, single-owner
   // instance -- ask another admin instead) and refuses to demote or disable
@@ -1615,7 +1646,7 @@ export function createAuthFacade(db: Knex) {
   async function activeToken(rawToken: string, allowedPurposes: string[]): Promise<Record<string, unknown>> {
     const now = new Date();
     const row = await db("tokens").where({ token_hash: hashToken(rawToken) }).first();
-    if (!row || row.used_at || new Date(row.expires_at) < now) {
+    if (!row || row.used_at || new Date(row.expires_at) <= now) {
       throw new AppError("VALIDATION_ERROR", "This link is invalid or has expired.");
     }
     if (!allowedPurposes.includes(row.purpose)) {
@@ -1646,6 +1677,7 @@ export function createAuthFacade(db: Knex) {
     approveUser,
     rejectUser,
     listUsers,
+    createPasswordReset,
     setUserRole,
     setUserStatus,
     deleteUser,

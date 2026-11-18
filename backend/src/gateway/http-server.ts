@@ -2072,6 +2072,26 @@ async function handleAuthRoute(
     return true;
   }
 
+  const passwordResetMatch = requestPath.match(/^\/auth\/admin\/users\/([^/]+)\/password-reset$/);
+  if (request.method === "POST" && passwordResetMatch) {
+    response.setHeader("cache-control", "private, no-store");
+    if (!sessionAuth || sessionAuth.role !== "admin" || sessionAuth.status !== "active") {
+      send(401, fail(new AppError("UNAUTHORIZED", "An admin session is required to reset passwords.")));
+      return true;
+    }
+    const origin = headerString(request, "origin");
+    const allowedOrigins = (process.env.GRAPHQL_CORS_ORIGIN ?? "").split(",").map(value => value.trim()).filter(Boolean);
+    if (!origin || !isAllowedWsOrigin(origin, headerString(request, "host"), allowedOrigins)) {
+      send(403, fail(new AppError("INSUFFICIENT_SCOPE", "A same-origin request is required to reset passwords.")));
+      return true;
+    }
+    const targetUserId = passwordResetMatch[1];
+    const result = await auth.createPasswordReset(sessionAuth.userId, targetUserId);
+    await service.recordSystemEvent("user.password_reset_requested", `Password reset link issued by ${sessionAuth.userId}`, targetUserId);
+    send(200, { ok: true, data: { email: result.email, claimPath: `/claim?token=${result.token}`, expiresAt: result.expiresAt } });
+    return true;
+  }
+
   const roleMatch = requestPath.match(/^\/auth\/admin\/users\/([^/]+)\/role$/);
   if (request.method === "POST" && roleMatch) {
     if (!sessionAuth || sessionAuth.role !== "admin") {

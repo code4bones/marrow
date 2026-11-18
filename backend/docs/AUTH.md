@@ -187,7 +187,7 @@ other gateway route.
 |---|---|---|
 | `POST /auth/invite` | admin session cookie | Body `{ email }`. Fails if a user with that email already exists. Returns `{ email, claimPath }` — no email is sent (see below); the frontend/admin relays the link. |
 | `GET /auth/claim?token=` | none | Resolves an `invite` or `password_reset` token to `{ email, purpose }` without consuming it — for rendering the "set your password" form. |
-| `POST /auth/claim` | none | Body `{ token, password }`. For an `invite` token: creates the `users` row (`role=member`, `status=active`, `email_verified_at=null`) and immediately issues a `verify_email` token. For a `password_reset` token: just updates `password_hash` on the existing user. Returns `{ email, emailVerified, verifyEmailPath? }`. Single-use — replaying the token returns 400. |
+| `POST /auth/claim` | none | Body `{ token, password }`. For an `invite` token: creates the `users` row (`role=member`, `status=active`, `email_verified_at=null`) and immediately issues a `verify_email` token. For a `password_reset` token: updates `password_hash`, revokes every browser session and invalidates remaining reset links for that user. Token consumption and changes commit atomically; concurrent replay allows only one success. Returns `{ email, emailVerified, verifyEmailPath? }`. Replaying the token returns 400. |
 | `POST /auth/verify-email?token=` | none | Marks `email_verified_at`. Single-use. |
 | `POST /auth/login` | none | Body `{ email, password }`. Rejects with the *same* generic "Invalid email or password" for both "no such user" and "wrong password" (and runs a same-cost dummy hash for the former so the two cases aren't distinguishable by timing) — see `verifyPassword`/`hashPassword` in `auth.ts`. Status checks run in this order after a correct password match: `pending_approval` gets its own message ("Your account is waiting for admin approval."), any other non-`active` status gets "This account has been disabled.", then (invite-path accounts only — see "Open self-registration" below) unverified email is rejected. On success: sets an httpOnly, `SameSite=Lax` session cookie (`Secure` when `X-Forwarded-Proto: https` is present) and returns `{ status: "session", user }`. If `totp_enabled` is true, returns `{ status: "pending_totp", userId, challenge }` instead of a cookie — the frontend then calls `POST /auth/login/2fa`. |
 | `POST /auth/login/2fa` | none | Body `{ userId, code, challenge }` — second step after `/auth/login` returns `pending_totp`; `challenge` is the short-lived (5 min) HMAC token that response carried, bound to that `userId` (a missing, expired, foreign or tampered one is refused with the same "Invalid or expired code." — the password step must have happened; `TOTP_CHALLENGE_REQUIRED=0` is an emergency switch that accepts a missing one). A TOTP time step is single-use per purpose (login / elevation): the same code cannot be replayed within its ~90 s window. `code` is either a 6-digit TOTP code or one unused recovery code (recovery codes are single-use: a match deletes that hash from `totp_recovery_code_hashes`). On success, identical response/cookie shape to `/auth/login`'s session case. Rate-limited the same way as `/auth/login` (see below), keyed by `userId` instead of email. |
@@ -210,6 +210,7 @@ other gateway route.
 | `GET /auth/admin/pending-users` | admin session cookie | `[{ id, email, createdAt }]` for every `users` row with `status='pending_approval'`, oldest first. |
 | `POST /auth/admin/pending-users/:id/approve` | admin session cookie | Sets `status=active`. The account can now log in — since `totp_enabled=true`, its next `/auth/login` returns `pending_totp` and needs `/auth/login/2fa` to finish. |
 | `POST /auth/admin/pending-users/:id/reject` | admin session cookie | Sets `status=disabled`. Subsequent `/auth/login` attempts get the generic disabled message. |
+| `POST /auth/admin/users/:id/password-reset` | active admin session cookie + trusted browser `Origin` | Issues a 24-hour, single-use reset link for another active account. Returns `{ email, claimPath, expiresAt }`, with `claimPath=/claim?token=...` pointing to the web UI. Revokes earlier reset links; password/sessions change only on redemption. Response is `private, no-store`. No static, personal or OAuth bearer-only access. |
 
 `POST /auth/login` and `POST /auth/login/2fa` are rate-limited in-memory
 (not Redis — this gateway runs as a single instance, no state to share
@@ -228,6 +229,32 @@ the recommendation left in the schema section. Session and one-shot tokens
 are opaque `base64url(randomBytes(32))` strings; only their sha256 hash is
 ever stored (`sessions.token_hash`, `tokens.token_hash`), so a database read
 never yields a live, directly usable credential.
+
+### Password reset from the Users screen
+
+An administrator selects **Users → Reset password**, confirms the target,
+then copies the link from the result dialog and passes it to the user.
+The raw link is displayed once and is never included in the roster, audit
+events or persistent browser storage. Closing the dialog clears it; issuing
+another link invalidates the previous one. SMTP is not required.
+
+The user opens `/claim?token=...`, enters and confirms a new password, then
+signs in again. Redemption revokes all browser sessions for that account,
+including a session in the browser opening the link. TOTP, recovery codes,
+external provider links, role and status are retained. API credentials are
+unaffected. Password reset does not recover a lost second factor.
+
+Only active target accounts are eligible. Disabled users must be enabled
+through the existing admin action first; pending accounts still go through
+approval. Administrators change their own password on the Profile page.
+For a locked-out sole administrator, the existing shell-access command
+`pm3m admin set-password` remains available.
+
+Issuance records the private `user.password_reset_requested` event with
+the acting admin ID and target user ID, never the link or token. The route
+requires an `Origin` matching the request host or an explicit
+`GRAPHQL_CORS_ORIGIN` entry. Run migration
+`145_admin_password_reset_i18n.cjs` for the English/Russian Users labels.
 
 ### GraphQL accepts a session cookie
 

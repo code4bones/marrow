@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Administrators can issue a copyable, single-use password reset link from
+  Users, with English/Russian labels and a 24-hour expiry. Issuing a new link
+  invalidates earlier links. Password reset atomically consumes the token and
+  revokes browser sessions while retaining two-factor authentication settings.
+
 ### Fixed
 
 - Project slugs beginning with `P-` (case-insensitive) are rejected on create

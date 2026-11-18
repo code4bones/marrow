@@ -133,6 +133,12 @@ interface ClaimResult {
   verifyEmailPath?: string;
 }
 
+export interface PasswordResetLink {
+  email: string;
+  claimPath: string;
+  expiresAt: string;
+}
+
 interface AuthState {
   status: AuthStatus;
   user: AuthUser | null;
@@ -217,6 +223,7 @@ interface AuthState {
   rejectPendingUser: (id: string) => Promise<void>;
 
   fetchUsers: () => Promise<AccountUser[]>;
+  createPasswordReset: (id: string) => Promise<PasswordResetLink>;
   setUserRole: (id: string, role: 'admin' | 'member') => Promise<void>;
   setUserStatus: (id: string, status: 'active' | 'disabled') => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
@@ -612,6 +619,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     return data?.users ?? [];
   },
+
+  createPasswordReset: (id) =>
+    postJson<PasswordResetLink>(`/auth/admin/users/${encodeURIComponent(id)}/password-reset`, {}, 'Could not create a password reset link.'),
 
   setUserRole: async (id, role) => {
     await postJson(`/auth/admin/users/${id}/role`, { role }, 'Could not change this user’s role.');
